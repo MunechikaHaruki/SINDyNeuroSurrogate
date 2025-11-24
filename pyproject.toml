@@ -1,0 +1,73 @@
+[project]
+name = "neurosurrogate"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "MunechikaHaruki", email = "h.m.haruki.160@gmail.com" }
+]
+
+requires-python = ">= 3.11.0"
+
+dependencies = [
+    "matplotlib>=3.10.3",
+    "pysindy~=2.0.0",
+    "mlflow>=3.3.2",
+    "scikit-learn>=1.6.1",
+    "numpy >=2.3.3",
+    "h5py>=3.14.0",
+    "streamlit>=1.47.1",
+    "tqdm>=4.67.1",
+    "loguru>=0.7.3",
+    "typer>=0.16.1",
+    "dotenv>=0.9.9",
+    "cython~=3.1.3",
+    "xarray>=2024.7.0",
+    "pyperclip>=1.11.0",
+    "hydra-core>=1.3.2",
+    "gokart>=1.10.2",
+    "jinja2>=3.1.6",
+    "scipy>=1.16.2",
+]
+    #"torch>=2.7.1",
+    #"torchvision>=0.22.1",
+    #"torchdiffeq>=0.2.5",
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "lizard>=1.17.30",
+    "radon>=6.0.1",
+    "mypy>=1.17.1",
+    "nbstripout>=0.8.1",
+    "notebook>=7.4.2",
+    "psutil>=7.0.0",
+    "ruff>=0.12.9",
+    "types-tqdm>=4.67.0.20250809",
+    "pylint>=3.3.8",
+    "pydeps>=3.0.1",
+    "pyan3==1.1.1 ",
+    "code2flow>=2.5.1",
+]
+
+[tool.mypy]
+strict = true
+exclude = ["scripts/.*"]
+
+[[tool.mypy.overrides]]
+module = ["h5py", "sklearn.*", "pysindy"]
+ignore_missing_imports = true
+
+
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+torchvision = [{ index = "pytorch-cu128" }]
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+
+[build-system]
+requires = ["setuptools>=61.0", "cython","numpy"]
+build-backend = "setuptools.build_meta"

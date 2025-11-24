@@ -1,0 +1,26 @@
+# @package _global_
+
+defaults:
+  - /datasets: default
+  - /neurons: default
+  - /models: default
+  - _self_
+
+experiment_name: exp1-hh_rand_pulse
+
+datasets:
+  train:
+    data_type: hh
+    current:
+      _target_: ${c}
+      iteration: 900000
+      baseline: ${b}
+
+
+c: utils.current_generators.hh_rand_pulse
+b: 0
+
+hydra:
+  sweeper:
+    params:
+      neurons.hh3.params.G_12: 1,0.5,0.3,0.1,0.05,0.025

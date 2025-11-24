@@ -1,0 +1,18 @@
+
+/figures
+
+*.ipynb
+
+# Cython
+*.so
+/build/
+# log
+**/mlruns/**
+**/hydra-multiruns/**
+**/hydra-outputs/**/
+# cache
+**/__pycache__/**
+/data
+**/resources/**
+# pkg
+neurosurrogate.egg-info/

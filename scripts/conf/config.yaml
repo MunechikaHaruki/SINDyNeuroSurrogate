@@ -1,0 +1,24 @@
+defaults:
+  - experiment: exp3  # デフォルトで "experiment" グループの "hh.yaml" を読み込む
+  - _self_ # ショートカット定義は最後に設定
+
+hydra:
+  run:
+    dir: hydra-outputs/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
+
+seed: 6
+
+eval:
+  time_slice:
+    _target_: builtins.slice
+    _args_: [null, null, 1]
+  direct: False
+  onlyThreeComp : ${sc}
+
+
+# alias
+sc: True
+g_12: 1
+g_23: 0.7

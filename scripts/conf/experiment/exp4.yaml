@@ -1,0 +1,30 @@
+# @package _global_
+
+defaults:
+  - /datasets: default
+  - /neurons: default
+  - /models: default
+  - _self_
+
+experiment_name: exp4-ThreeComp-direct
+
+datasets:
+  train:
+    data_type: hh3
+    current:
+      _target_: utils.current_generators.hh_rand_pulse
+      iteration: 900000
+      baseline: 0
+  train_direct:
+    data_type: hh
+    current:
+      _target_: utils.current_generators.hh_rand_pulse
+      iteration: 900000
+      baseline: 0
+
+models:
+  sel_train_u: soma
+hydra:
+  sweeper:
+    params:
+      neurons.hh3.params.G_12: 1,0.5,0.3,0.1,0.05,0.025

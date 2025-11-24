@@ -1,0 +1,21 @@
+preprocessor:
+  _target_: sklearn.decomposition.PCA
+  n_components: 1
+surrogate:
+  _target_: neurosurrogate.modeling.sindy.surrogate.SINDySurrogate
+  feature_lib:
+    _target_: utils.base_hh.base_hh
+  optimizer:
+    _target_: pysindy.optimizers.STLSQ
+    threshold: 0.01
+    normalize_columns: false
+    alpha: 2.0
+  params:
+    G_LEAK: ${neurons.hh3.params.G_LEAK}
+    E_LEAK: ${neurons.hh3.params.E_LEAK}
+    C: ${neurons.hh3.params.C}
+    G_12: ${neurons.hh3.params.G_12}
+    G_23: ${neurons.hh3.params.G_23}
+    DT: ${neurons.hh3.params.DT}
+
+sel_train_u: I_ext
