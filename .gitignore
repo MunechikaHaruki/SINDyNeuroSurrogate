@@ -1,18 +1,24 @@
-
-/figures
-
 *.ipynb
 
-# Cython
+# personal settings
+.vscode
+
+# code metrics
+/figures
+
+# Cython build
 *.so
 /build/
-# log
+
+# logged artifacts
 **/mlruns/**
 **/hydra-multiruns/**
 **/hydra-outputs/**/
+
 # cache
 **/__pycache__/**
 /data
 **/resources/**
-# pkg
+
+# pkg info
 neurosurrogate.egg-info/
