@@ -88,7 +88,7 @@ streamlit:
 # activate logging server
 mlflow:
     @lsof -t -i:{{MLFLOW_PORT}} | xargs kill -9 || true
-    {{VIRTUAL_ENV}} mlflow ui --port {{MLFLOW_PORT}} --backend-store-uri ./mlruns
+    {{VIRTUAL_ENV}} python -m mlflow ui --port {{MLFLOW_PORT}} --backend-store-uri ./mlruns
 
 # deactivate で仮想環境から抜けれます
 alias:
