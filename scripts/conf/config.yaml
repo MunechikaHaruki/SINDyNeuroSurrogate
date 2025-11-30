@@ -19,6 +19,6 @@ eval:
 
 
 # alias
-sc: True
+sc: False
 g_12: 1
 g_23: 0.7
