@@ -149,7 +149,8 @@ class LogEvalTask(gokart.TaskOnKart):
             return fig
 
         datasets_cfg = OmegaConf.create(self.datasets_cfg_yaml)
-        with mlflow.start_run(run_id=self.load()["eval_task"]["run_id"]):
+        run_id = self.load()["eval_task"]["run_id"]
+        with mlflow.start_run(run_id=run_id):
             for k, v in self.load()["eval_task"]["path_dict"].items():
                 if datasets_cfg[k].data_type == "hh":
                     plot_surrogate = plot_hh
@@ -172,4 +173,4 @@ class LogEvalTask(gokart.TaskOnKart):
                     plot_surrogate(surrogate_result, surrogate=True),
                     f"surrogate_result/{k}.png",
                 )
-        self.dump(True)
+        self.dump({"run_id": run_id})

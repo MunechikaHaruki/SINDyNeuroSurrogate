@@ -23,16 +23,22 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 class LogAllConfTask(gokart.TaskOnKart):
     cfg_yaml = luigi.Parameter()
-    eval_task = gokart.TaskInstanceParameter()
+    log_dataset_task = gokart.TaskInstanceParameter()
+    log_preprocess_task = gokart.TaskInstanceParameter()
+    log_eval_task = gokart.TaskInstanceParameter()
 
     def requires(self):
-        return self.eval_task
+        return {
+            "log_dataset_task": self.log_dataset_task,
+            "log_preprocess_task": self.log_preprocess_task,
+            "log_eval_task": self.log_eval_task,
+        }
 
     def run(self):
         cfg = OmegaConf.create(self.cfg_yaml)
         dict_cfg = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
 
-        with mlflow.start_run(run_id=self.load()["run_id"]):
+        with mlflow.start_run(run_id=self.load()["log_eval_task"].get("run_id")):
             mlflow.log_dict(dict_cfg, "config.yaml")
 
             # --- Commit IDの取得 ---
@@ -63,10 +69,6 @@ def main(cfg: DictConfig) -> None:
         seed=cfg.seed,
         experiment_name=cfg.experiment_name,
     )
-    log_dataset_task = LogMakeDatasetTask(
-        **common_params,
-        dataset_task=dataset_task,
-    )
     train_task = TrainModelTask(
         model_cfg_yaml=OmegaConf.to_yaml(cfg.models),
         dataset_task=dataset_task,
@@ -74,28 +76,30 @@ def main(cfg: DictConfig) -> None:
     preprocess_task = PreProcessTask(
         train_task=train_task,
     )
-    log_preprocess_task = LogPreprocessDataTask(
-        preprocess_task=preprocess_task,
-        **common_params,
-    )
+
     eval_task = EvalTask(
         preprocess_task=preprocess_task,
         eval_cfg_yaml=OmegaConf.to_yaml(cfg.eval),
         **common_params,
     )
 
-    log_eval_task = LogEvalTask(
-        eval_task=eval_task,
-        preprocess_task=preprocess_task,
-        datasets_cfg_yaml=OmegaConf.to_yaml(cfg.datasets),
-    )
+    log_tasks = {
+        "log_dataset_task": LogMakeDatasetTask(
+            **common_params,
+            dataset_task=dataset_task,
+        ),
+        "log_preprocess_task": LogPreprocessDataTask(
+            preprocess_task=preprocess_task,
+            **common_params,
+        ),
+        "log_eval_task": LogEvalTask(
+            eval_task=eval_task,
+            preprocess_task=preprocess_task,
+            datasets_cfg_yaml=OmegaConf.to_yaml(cfg.datasets),
+        ),
+    }
 
-    log_all_conf_task = LogAllConfTask(
-        cfg_yaml=OmegaConf.to_yaml(cfg), eval_task=eval_task
-    )
-    gokart.build(log_dataset_task)
-    gokart.build(log_preprocess_task)
-    gokart.build(log_eval_task)
+    log_all_conf_task = LogAllConfTask(cfg_yaml=OmegaConf.to_yaml(cfg), **log_tasks)
     gokart.build(log_all_conf_task)
 
 
