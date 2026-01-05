@@ -20,7 +20,7 @@ from neurosurrogate.config import (
     PROCESSED_DATA_DIR,
     RAW_DATA_DIR,
 )
-from neurosurrogate.dataset import preprocess_dataset
+from neurosurrogate.dataset_utils._base import preprocess_dataset
 from neurosurrogate.plots import plot_3comp_hh, plot_hh
 
 
