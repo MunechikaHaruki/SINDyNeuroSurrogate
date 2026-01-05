@@ -42,7 +42,20 @@ def derivative_n(cls, v, n):
     return cls.derivative_gate(cls.a_n(v), cls.b_n(v), n)
 
 
-gate_base = ps.CustomLibrary(
+gate = ps.CustomLibrary(
+    library_functions=[
+        lambda x: a_m(x),
+        lambda x: a_h(x),
+        lambda x: a_n(x),  # ゼロ除算回避
+    ],
+    function_names=[
+        lambda x: f"*a_m({x})",
+        lambda x: f"*a_h({x})",
+        lambda x: f"*a_n({x})",
+    ],
+)
+
+gate_product = ps.CustomLibrary(
     library_functions=[
         lambda x, y: a_m(x) * y,
         lambda x, y: b_m(x) * y,
@@ -50,9 +63,6 @@ gate_base = ps.CustomLibrary(
         lambda x, y: b_h(x) * y,
         lambda x, y: a_n(x) * y,
         lambda x, y: b_n(x) * y,
-        lambda x: a_m(x),
-        lambda x: a_h(x),
-        lambda x: a_n(x),  # ゼロ除算回避
     ],
     function_names=[
         lambda x, y: f"*a_m({x})*{y}",
@@ -61,9 +71,6 @@ gate_base = ps.CustomLibrary(
         lambda x, y: f"*b_h({x})*{y}",
         lambda x, y: f"*a_n({x})*{y}",
         lambda x, y: f"*b_n({x})*{y}",
-        lambda x: f"*a_m({x})",
-        lambda x: f"*a_h({x})",
-        lambda x: f"*a_n({x})",
     ],
 )
 
@@ -89,4 +96,16 @@ base = ps.CustomLibrary(
 
 
 def base_hh():
-    return gate_base + volt_base + base
+    """
+    GeneralizedLibrary を使用して、各ライブラリが参照する変数の列（インデックス）を指定します。
+    仮定: 列0=V, 列1=m, 列2=h, 列3=n
+    """
+    return ps.GeneralizedLibrary(
+        [gate, gate_product, volt_base, base],
+        inputs_per_library=[
+            [0],
+            [0, 1],
+            [0, 1, 2],  # gate_product に V, m, h を渡す
+            [0, 1, 2],  # base に V, m, h を渡す
+        ],
+    )
