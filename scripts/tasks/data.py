@@ -81,11 +81,11 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
         return self.dataset_task
 
     def run(self):
+        loaded_data = self.load()
         neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
-        path_dict = self.load()["path_dict"]
-        with mlflow.start_run(run_id=self.load()["run_id"]):
+        with mlflow.start_run(run_id=loaded_data["run_id"]):
             for name, dataset_cfg in OmegaConf.create(self.datasets_cfg_yaml).items():
-                xr_data = xr.open_dataset(path_dict[name])
+                xr_data = xr.open_dataset(loaded_data["path_dict"][name])
                 fig = hydra.utils.instantiate(
                     neurons_cfg[dataset_cfg.data_type].plot, xr=xr_data
                 )
@@ -106,12 +106,13 @@ class PreProcessTask(gokart.TaskOnKart):
         return self.train_task
 
     def run(self):
+        loaded_data = self.load()
         preprocessed_path_dict = {}
         # preprocess data
-        for k, v in self.load()["path_dict"].items():
+        for k, v in loaded_data["path_dict"].items():
             xr_data = xr.open_dataset(v)
             xr_gate = xr_data["vars"].to_numpy()[:, GATE_VAR_SLICE]
-            transformed_gate = self.load()["preprocessor"].transform(xr_gate)
+            transformed_gate = loaded_data["preprocessor"].transform(xr_gate)
             V_data = xr_data["vars"][:, V_VAR_SLICE].to_numpy().reshape(-1, 1)
             new_vars = np.concatenate((V_data, transformed_gate), axis=1)
             new_feature_names = ["V"] + [
@@ -131,7 +132,7 @@ class PreProcessTask(gokart.TaskOnKart):
             preprocessed_path_dict[k] = PROCESSED_DATA_DIR / os.path.basename(v)
             transformed_xr.to_netcdf(preprocessed_path_dict[k])
         self.dump(
-            {"path_dict": preprocessed_path_dict, "run_id": self.load()["run_id"]}
+            {"path_dict": preprocessed_path_dict, "run_id": loaded_data["run_id"]}
         )
 
 
@@ -144,11 +145,12 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
         return self.preprocess_task
 
     def run(self):
+        loaded_data = self.load()
         datasets_cfg = OmegaConf.create(self.datasets_cfg_yaml)
         neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
 
-        with mlflow.start_run(run_id=self.load()["run_id"]):
-            for k, v in self.load()["path_dict"].items():
+        with mlflow.start_run(run_id=loaded_data["run_id"]):
+            for k, v in loaded_data["path_dict"].items():
                 xr_data = xr.load_dataset(v)
                 dataset_type = datasets_cfg[k].data_type
                 u_dic = neurons_cfg[dataset_type].transform.u
