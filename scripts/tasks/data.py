@@ -22,12 +22,15 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
     dataset_cfg_yaml = luigi.Parameter()
     neuron_cfg_yaml = luigi.Parameter()
     name = luigi.Parameter()
+    seed = luigi.IntParameter()
 
     def run(self):
         dataset_cfg = OmegaConf.create(self.dataset_cfg_yaml)
         data_type = dataset_cfg["data_type"]
         neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
         params = hydra.utils.instantiate(neuron_cfg["params"])
+        random.seed(self.seed)
+        np.random.seed(self.seed)
 
         temp_h5 = Path(
             self.make_target(
@@ -58,12 +61,12 @@ class MakeDatasetTask(gokart.TaskOnKart):
                 name=name,
                 dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
                 neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
+                seed=self.seed + idx,
             )
-            for name, dataset_cfg in datasets.items()
+            for idx, (name, dataset_cfg) in enumerate(datasets.items())
         }
 
     def run(self):
-        random.seed(self.seed)
         mlflow.set_tracking_uri("file:./mlruns")
         mlflow.set_experiment(self.experiment_name)
         with mlflow.start_run() as run:
