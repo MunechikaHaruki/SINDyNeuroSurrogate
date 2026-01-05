@@ -1,11 +1,10 @@
+from pathlib import Path
 from typing import Any, Dict
 
 import h5py
 import numpy as np
 import xarray as xr
 from tqdm import tqdm
-
-from neurosurrogate.config import INTERIM_DATA_DIR, RAW_DATA_DIR
 
 CHUNK_SIZE = 10000
 
@@ -46,7 +45,7 @@ def run_simulation(
         dset[start_index:end_index] = remaining_chunk
 
 
-def preprocess_dataset(model_type: str, file_name: str, params):
+def preprocess_dataset(model_type: str, file_path: Path, params):
     MODEL_CONFIG: Dict[str, Dict[str, Any]] = {
         "hh": {
             "features": ["V", "M", "H", "N"],
@@ -66,7 +65,7 @@ def preprocess_dataset(model_type: str, file_name: str, params):
     }
     config = MODEL_CONFIG[model_type]
 
-    with h5py.File(RAW_DATA_DIR / model_type / file_name, "r") as f:
+    with h5py.File(file_path, "r") as f:
         coords: Dict[str, Any] = {
             "time": f["time"],
             "features": config["features"],
@@ -97,6 +96,6 @@ def preprocess_dataset(model_type: str, file_name: str, params):
                 [I_pre, I_post, I_soma], dim="direction"
             ).assign_coords(direction=["pre", "post", "soma"])
 
-    netcdf_path = INTERIM_DATA_DIR / model_type / file_name.replace(".h5", ".nc")
+    netcdf_path = file_path.with_suffix(".nc")
     dataset.to_netcdf(netcdf_path)
     return netcdf_path

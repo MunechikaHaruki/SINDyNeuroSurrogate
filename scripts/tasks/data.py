@@ -1,7 +1,9 @@
 import os
 import random
+from pathlib import Path
 
 import gokart
+import gokart.file_processor
 import h5py
 import hydra
 import luigi
@@ -12,7 +14,7 @@ import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
-from neurosurrogate.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from neurosurrogate.config import PROCESSED_DATA_DIR
 from neurosurrogate.dataset_utils._base import preprocess_dataset
 
 
@@ -26,11 +28,17 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
         data_type = dataset_cfg["data_type"]
         neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
         params = hydra.utils.instantiate(neuron_cfg["params"])
-        h5_file_path = f"{RAW_DATA_DIR}/{data_type}/{self.name}.h5"
-        with h5py.File(h5_file_path, "w") as fp:
+
+        temp_h5 = Path(
+            self.make_target(
+                "data.h5", processor=gokart.file_processor.BinaryFileProcessor()
+            ).path()
+        )
+        temp_h5.parent.mkdir(parents=True, exist_ok=True)
+        with h5py.File(temp_h5, "w") as fp:
             hydra.utils.instantiate(dataset_cfg["current"], fp=fp, dt=params.DT)
             hydra.utils.instantiate(neuron_cfg["simulator"], fp=fp, params=params)
-        processed_info = preprocess_dataset(data_type, h5_file_path, params)
+        processed_info = preprocess_dataset(data_type, temp_h5, params)
         self.dump(processed_info)
 
 
