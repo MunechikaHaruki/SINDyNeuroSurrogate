@@ -54,17 +54,18 @@ class LogAllConfTask(gokart.TaskOnKart):
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
-    print(OmegaConf.to_yaml(cfg))
     # gokartのタスクを実行
+    common_params = {
+        "datasets_cfg_yaml": OmegaConf.to_yaml(cfg.datasets),
+        "neurons_cfg_yaml": OmegaConf.to_yaml(cfg.neurons),
+    }
     dataset_task = MakeDatasetTask(
-        datasets_cfg_yaml=OmegaConf.to_yaml(cfg.datasets),
-        neurons_cfg_yaml=OmegaConf.to_yaml(cfg.neurons),
+        **common_params,
         seed=cfg.seed,
         experiment_name=cfg.experiment_name,
     )
     log_dataset_task = LogMakeDatasetTask(
-        datasets_cfg_yaml=OmegaConf.to_yaml(cfg.datasets),
-        neuron_cfg_yaml=OmegaConf.to_yaml(cfg.neurons),
+        **common_params,
         dataset_task=dataset_task,
     )
     train_task = TrainModelTask(
@@ -76,14 +77,12 @@ def main(cfg: DictConfig) -> None:
     )
     log_preprocess_task = LogPreprocessDataTask(
         preprocess_task=preprocess_task,
-        datasets_cfg_yaml=OmegaConf.to_yaml(cfg.datasets),
-        neuron_cfg_yaml=OmegaConf.to_yaml(cfg.neurons),
+        **common_params,
     )
     eval_task = EvalTask(
         preprocess_task=preprocess_task,
         eval_cfg_yaml=OmegaConf.to_yaml(cfg.eval),
-        neuron_cfg_yaml=OmegaConf.to_yaml(cfg.neurons),
-        datasets_cfg_yaml=OmegaConf.to_yaml(cfg.datasets),
+        **common_params,
     )
 
     log_eval_task = LogEvalTask(

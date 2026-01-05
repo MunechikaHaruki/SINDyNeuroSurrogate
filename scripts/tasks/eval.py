@@ -22,7 +22,7 @@ from neurosurrogate.plots import plot_3comp_hh, plot_hh
 class EvalTask(gokart.TaskOnKart):
     preprocess_task = gokart.TaskInstanceParameter()
     eval_cfg_yaml = luigi.Parameter()
-    neuron_cfg_yaml = luigi.Parameter()
+    neurons_cfg_yaml = luigi.Parameter()
     datasets_cfg_yaml = luigi.Parameter()
 
     def requires(self):
@@ -53,8 +53,8 @@ class EvalTask(gokart.TaskOnKart):
                 u = ds["I_ext"].to_numpy()
                 if OmegaConf.create(self.eval_cfg_yaml).direct is True:
                     logger.info("Using direct ThreeComp mode")
-                    neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
-                    u_dic = neuron_cfg[datasets_cfg[k].data_type].transform.u
+                    neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
+                    u_dic = neurons_cfg[datasets_cfg[k].data_type].transform.u
                     u = ds[u_dic.ind].sel(u_dic.sel).to_numpy()
                     # u = ds["I_ext"].to_numpy() # 11/4のデータは,hh3,SingleComp,I_extでの予測　間違い
                     mode = "SingleComp"

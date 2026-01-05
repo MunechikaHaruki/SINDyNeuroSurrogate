@@ -74,20 +74,20 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
     datasets_cfg_yaml = luigi.Parameter()
-    neuron_cfg_yaml = luigi.Parameter()
+    neurons_cfg_yaml = luigi.Parameter()
     dataset_task = gokart.TaskInstanceParameter()
 
     def requires(self):
         return self.dataset_task
 
     def run(self):
-        neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
+        neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
         path_dict = self.load()["path_dict"]
         with mlflow.start_run(run_id=self.load()["run_id"]):
             for name, dataset_cfg in OmegaConf.create(self.datasets_cfg_yaml).items():
                 xr_data = xr.open_dataset(path_dict[name])
                 fig = hydra.utils.instantiate(
-                    neuron_cfg[dataset_cfg.data_type].plot, xr=xr_data
+                    neurons_cfg[dataset_cfg.data_type].plot, xr=xr_data
                 )
                 mlflow.log_figure(fig, f"oridginal/{name}.png")
                 plt.close(fig)
@@ -138,14 +138,14 @@ class PreProcessTask(gokart.TaskOnKart):
 class LogPreprocessDataTask(gokart.TaskOnKart):
     preprocess_task = gokart.TaskInstanceParameter()
     datasets_cfg_yaml = luigi.Parameter()
-    neuron_cfg_yaml = luigi.Parameter()
+    neurons_cfg_yaml = luigi.Parameter()
 
     def requires(self):
         return self.preprocess_task
 
     def run(self):
         datasets_cfg = OmegaConf.create(self.datasets_cfg_yaml)
-        neurons_cfg = OmegaConf.create(self.neuron_cfg_yaml)
+        neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
 
         with mlflow.start_run(run_id=self.load()["run_id"]):
             for k, v in self.load()["path_dict"].items():
