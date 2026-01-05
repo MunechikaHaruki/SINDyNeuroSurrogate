@@ -12,8 +12,6 @@ import mlflow
 import numpy as np
 import xarray as xr
 from loguru import logger
-from neurosurrogate.dataset_utils.hh.hh_simulator import hh_simulate, threecomp_simulate
-from neurosurrogate.dataset_utils.traub.traub_simulator import traub_simulate
 from omegaconf import OmegaConf
 
 from neurosurrogate.config import (
@@ -50,22 +48,16 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
             with h5py.File(output_path, "w") as fp:
                 hydra.utils.instantiate(dataset_cfg.current, fp=fp, dt=params.DT)
-            # Simulation
-            SIMULATORS = {
-                "hh": hh_simulate,
-                "hh3": threecomp_simulate,
-                "traub": traub_simulate,
-            }
-            with h5py.File(output_path, "a") as fp:
                 start_time = time.perf_counter()
-                SIMULATORS[dataset_cfg.data_type](fp, params)
+                hydra.utils.instantiate(
+                    neuron_cfg[dataset_cfg.data_type].simulator, fp=fp, params=params
+                )
                 end_time = time.perf_counter()
                 logger.info(f"Simulation time: {end_time - start_time:.4f}[s]")
             logger.success(f"Dataset generation complete: {output_path}")
             path_dict[name] = preprocess_dataset(
                 dataset_cfg.data_type, file_name, params
             )
-
         self.dump({"path_dict": path_dict, "run_id": run_id})
 
 

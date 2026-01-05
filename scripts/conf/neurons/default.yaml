@@ -1,6 +1,8 @@
 hh:
   params:
     _target_: neurosurrogate.dataset_utils.hh.hh_simulator.HH_Params
+  simulator:
+    _target_: neurosurrogate.dataset_utils.hh.hh_simulator.hh_simulate
   transform:
     u:
       ind: "I_ext"
@@ -15,6 +17,8 @@ hh3:
     E_LEAK: -54.4
     C: 1.0
     DT: 0.01
+  simulator:
+    _target_: neurosurrogate.dataset_utils.hh.hh_simulator.threecomp_simulate
   transform:
     u:
       ind: "I_internal"
