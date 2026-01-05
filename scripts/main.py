@@ -2,10 +2,6 @@ import os
 import subprocess
 import sys
 
-# Add the project root to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-
 import gokart
 import hydra
 import luigi
@@ -20,6 +16,9 @@ from scripts.tasks.data import (
 )
 from scripts.tasks.eval import EvalTask, LogEvalTask
 from scripts.tasks.train import TrainModelTask
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 class LogAllConfTask(gokart.TaskOnKart):
