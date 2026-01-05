@@ -21,7 +21,6 @@ from neurosurrogate.dataset_utils._base import preprocess_dataset
 class GenerateSingleDatasetTask(gokart.TaskOnKart):
     dataset_cfg_yaml = luigi.Parameter()
     neuron_cfg_yaml = luigi.Parameter()
-    name = luigi.Parameter()
     seed = luigi.IntParameter()
 
     def run(self):
@@ -58,7 +57,6 @@ class MakeDatasetTask(gokart.TaskOnKart):
         neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
         return {
             name: GenerateSingleDatasetTask(
-                name=name,
                 dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
                 neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
                 seed=self.seed + idx,
