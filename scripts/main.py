@@ -26,6 +26,7 @@ class LogAllConfTask(gokart.TaskOnKart):
     log_dataset_task = gokart.TaskInstanceParameter()
     log_preprocess_task = gokart.TaskInstanceParameter()
     log_eval_task = gokart.TaskInstanceParameter()
+    run_name_prefix = luigi.Parameter()
 
     def requires(self):
         return {
@@ -50,8 +51,7 @@ class LogAllConfTask(gokart.TaskOnKart):
                 )
             except subprocess.CalledProcessError:
                 commit_id = "unknown"  # gitリポジトリでない場合のフォールバック
-            overrides = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
-            run_name = f"{overrides}_commit-{commit_id}"
+            run_name = f"{self.run_name_prefix}_commit-{commit_id}"
             mlflow.set_tag("mlflow.runName", run_name)
             self.dump(True)
 
@@ -99,7 +99,14 @@ def main(cfg: DictConfig) -> None:
         ),
     }
 
-    log_all_conf_task = LogAllConfTask(cfg_yaml=OmegaConf.to_yaml(cfg), **log_tasks)
+    try:
+        run_name_prefix = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
+    except Exception:
+        run_name_prefix = "default_run"
+
+    log_all_conf_task = LogAllConfTask(
+        cfg_yaml=OmegaConf.to_yaml(cfg), run_name_prefix=run_name_prefix, **log_tasks
+    )
     gokart.build(log_all_conf_task)
 
 
