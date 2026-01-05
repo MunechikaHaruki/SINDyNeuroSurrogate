@@ -19,7 +19,6 @@ from neurosurrogate.config import (
     RAW_DATA_DIR,
 )
 from neurosurrogate.dataset_utils._base import preprocess_dataset
-from neurosurrogate.plots import plot_3comp_hh, plot_hh
 
 
 class MakeDatasetTask(gokart.TaskOnKart):
@@ -64,21 +63,21 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
     datasets_cfg_yaml = luigi.Parameter()
+    neuron_cfg_yaml = luigi.Parameter()
     dataset_task = gokart.TaskInstanceParameter()
 
     def requires(self):
         return self.dataset_task
 
     def run(self):
+        neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
         path_dict = self.load()["path_dict"]
         with mlflow.start_run(run_id=self.load()["run_id"]):
             for name, dataset_cfg in OmegaConf.create(self.datasets_cfg_yaml).items():
-                PLOTTERS = {
-                    "hh": plot_hh,
-                    "hh3": plot_3comp_hh,
-                }
                 xr_data = xr.open_dataset(path_dict[name])
-                fig = PLOTTERS[dataset_cfg.data_type](xr_data)
+                fig = hydra.utils.instantiate(
+                    neuron_cfg[dataset_cfg.data_type].plot, xr=xr_data
+                )
                 mlflow.log_figure(fig, f"oridginal/{name}.png")
                 plt.close(fig)
             logger.info(f"Generated and preprocessed dataset: {name}")

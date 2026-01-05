@@ -1,9 +1,9 @@
+import os
 import subprocess
 import sys
-import os
 
 # Add the project root to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 import gokart
@@ -63,7 +63,9 @@ def main(cfg: DictConfig) -> None:
         experiment_name=cfg.experiment_name,
     )
     log_dataset_task = LogMakeDatasetTask(
-        datasets_cfg_yaml=OmegaConf.to_yaml(cfg.datasets), dataset_task=dataset_task
+        datasets_cfg_yaml=OmegaConf.to_yaml(cfg.datasets),
+        neuron_cfg_yaml=OmegaConf.to_yaml(cfg.neurons),
+        dataset_task=dataset_task,
     )
     train_task = TrainModelTask(
         model_cfg_yaml=OmegaConf.to_yaml(cfg.models),

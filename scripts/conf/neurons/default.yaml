@@ -3,6 +3,8 @@ hh:
     _target_: neurosurrogate.dataset_utils.hh.hh_simulator.HH_Params
   simulator:
     _target_: neurosurrogate.dataset_utils.hh.hh_simulator.hh_simulate
+  plot:
+    _target_: neurosurrogate.plots.plot_hh
   transform:
     u:
       ind: "I_ext"
@@ -19,6 +21,8 @@ hh3:
     DT: 0.01
   simulator:
     _target_: neurosurrogate.dataset_utils.hh.hh_simulator.threecomp_simulate
+  plot:
+    _target_: neurosurrogate.plots.plot_3comp_hh
   transform:
     u:
       ind: "I_internal"
