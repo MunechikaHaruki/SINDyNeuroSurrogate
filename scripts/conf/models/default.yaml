@@ -2,7 +2,7 @@ preprocessor:
   _target_: sklearn.decomposition.PCA
   n_components: 1
 surrogate:
-  _target_: neurosurrogate.modeling.sindy.surrogate.SINDySurrogate
+  _target_: neurosurrogate.modeling.surrogate.SINDySurrogate
   feature_lib:
     _target_: utils.base_hh.base_hh
   optimizer:

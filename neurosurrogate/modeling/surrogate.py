@@ -11,7 +11,7 @@ import xarray as xr
 from jinja2 import Environment, FileSystemLoader
 from loguru import logger
 
-from ...config import PYX_DATA_DIR
+from ..config import PYX_DATA_DIR
 
 
 class SINDySurrogate:
