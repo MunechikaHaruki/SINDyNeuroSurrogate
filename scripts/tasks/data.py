@@ -31,16 +31,17 @@ class MakeDatasetTask(gokart.TaskOnKart):
     seed = luigi.IntParameter()
 
     def run(self):
-        random.seed(self.seed)
-        path_dict = {}
-        neuron_cfg = OmegaConf.create(self.neurons_cfg_yaml)
-
         mlflow.set_tracking_uri("file:./mlruns")
         mlflow.set_experiment(self.experiment_name)
         with mlflow.start_run() as run:
-            run_id = run.info.run_id
             logger.info(f"MLflow Run ID: {run.info.run_id}")
+            path_dict = self._generate_datasets()
+            self.dump({"path_dict": path_dict, "run_id": run.info.run_id})
 
+    def _generate_datasets(self):
+        random.seed(self.seed)
+        path_dict = {}
+        neuron_cfg = OmegaConf.create(self.neurons_cfg_yaml)
         for name, dataset_cfg in OmegaConf.create(self.datasets_cfg_yaml).items():
             file_name = f"{datetime.now()}_{name}.h5"
             params = hydra.utils.instantiate(neuron_cfg[dataset_cfg.data_type].params)
@@ -58,7 +59,7 @@ class MakeDatasetTask(gokart.TaskOnKart):
             path_dict[name] = preprocess_dataset(
                 dataset_cfg.data_type, file_name, params
             )
-        self.dump({"path_dict": path_dict, "run_id": run_id})
+        return path_dict
 
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
