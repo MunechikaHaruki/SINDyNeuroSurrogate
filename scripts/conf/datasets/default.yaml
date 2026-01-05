@@ -2,76 +2,76 @@
 steady_hh_10:
   data_type: hh
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 10
 steady_hh_7:
   data_type: hh
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 7
 steady_hh_6.5:
   data_type: hh
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 6.5
 steady_hh_6.3: #発火
   data_type: hh
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 6.3
 steady_hh_6.2: #閾値付近　4回発火して終わり
   data_type: hh
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 6.2
 steady_hh_5:
   data_type: hh
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 5
 steady_hh_3:
   data_type: hh
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 3
 steady_hh_0:
   data_type: hh
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 0
 
 random_hh3:
   data_type: hh3
   current:
-    _target_: utils.current_generators.hh_rand_pulse
+    _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
 
 random_hh:
   data_type: hh
   current:
-    _target_: utils.current_generators.hh_rand_pulse
+    _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
 
 steady_hh3_0:
   data_type: hh3
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 0
 steady_hh3_3:
   data_type: hh3
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 3
 steady_hh3_5:
   data_type: hh3
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 5
 steady_hh3_15:
   data_type: hh3
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 15
 steady_hh3_20:
   data_type: hh3
   current:
-    _target_: utils.current_generators.hh_steady
+    _target_: neurosurrogate.utils.current_generators.hh_steady
     value: 20

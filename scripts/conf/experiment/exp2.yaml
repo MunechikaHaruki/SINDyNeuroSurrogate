@@ -12,7 +12,7 @@ datasets:
   train:
     data_type: hh
     current:
-      _target_: utils.current_generators.hh_gauss_rand_pulse
+      _target_: neurosurrogate.utils.current_generators.hh_gauss_rand_pulse
       iteration: 900000
       mu: ${m}
       sigma: ${s}

@@ -12,13 +12,13 @@ datasets:
   train:
     data_type: hh3
     current:
-      _target_: utils.current_generators.hh_rand_pulse
+      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
       iteration: 900000
       baseline: 0
   train_direct:
     data_type: hh
     current:
-      _target_: utils.current_generators.hh_rand_pulse
+      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
       iteration: 900000
       baseline: 0
 

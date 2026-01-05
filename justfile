@@ -84,7 +84,7 @@ rebuild:
 # activate visualization server
 streamlit:
     @lsof -t -i:{{STREAMLIT_PORT}} | xargs kill -9 || true
-    {{VIRTUAL_ENV}} streamlit run scripts/utils/streamlit.py --server.port {{STREAMLIT_PORT}}
+    {{VIRTUAL_ENV}} streamlit run scripts/neurosurrogate.utils/streamlit.py --server.port {{STREAMLIT_PORT}}
 # activate logging server
 mlflow:
     @lsof -t -i:{{MLFLOW_PORT}} | xargs kill -9 || true

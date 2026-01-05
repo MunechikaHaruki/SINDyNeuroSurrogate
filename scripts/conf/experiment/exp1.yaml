@@ -17,7 +17,7 @@ datasets:
       baseline: ${b}
 
 
-c: utils.current_generators.hh_rand_pulse
+c: neurosurrogate.utils.current_generators.hh_rand_pulse
 b: 0
 
 # sweep example

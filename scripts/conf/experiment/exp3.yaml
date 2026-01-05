@@ -12,7 +12,7 @@ datasets:
   train:
     data_type: hh
     current:
-      _target_: utils.current_generators.hh_discretized
+      _target_: neurosurrogate.utils.current_generators.hh_discretized
       iteration: 900000
       options: [-5,1.3, 6.3,20]
       weights: [0.3,1,1,1]

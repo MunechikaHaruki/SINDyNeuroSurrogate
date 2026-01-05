@@ -4,7 +4,7 @@ preprocessor:
 surrogate:
   _target_: neurosurrogate.modeling.surrogate.SINDySurrogate
   feature_lib:
-    _target_: utils.base_hh.base_hh
+    _target_: neurosurrogate.utils.base_hh.base_hh
   optimizer:
     _target_: pysindy.optimizers.STLSQ
     threshold: 0.01
