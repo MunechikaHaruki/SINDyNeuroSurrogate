@@ -1,7 +1,5 @@
 import os
 import random
-import time
-from datetime import datetime
 
 import gokart
 import h5py
@@ -14,11 +12,26 @@ import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
-from neurosurrogate.config import (
-    PROCESSED_DATA_DIR,
-    RAW_DATA_DIR,
-)
+from neurosurrogate.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 from neurosurrogate.dataset_utils._base import preprocess_dataset
+
+
+class GenerateSingleDatasetTask(gokart.TaskOnKart):
+    dataset_cfg_yaml = luigi.Parameter()
+    neuron_cfg_yaml = luigi.Parameter()
+    name = luigi.Parameter()
+
+    def run(self):
+        dataset_cfg = OmegaConf.create(self.dataset_cfg_yaml)
+        data_type = dataset_cfg["data_type"]
+        neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
+        params = hydra.utils.instantiate(neuron_cfg["params"])
+        h5_file_path = f"{RAW_DATA_DIR}/{data_type}/{self.name}.h5"
+        with h5py.File(h5_file_path, "w") as fp:
+            hydra.utils.instantiate(dataset_cfg["current"], fp=fp, dt=params.DT)
+            hydra.utils.instantiate(neuron_cfg["simulator"], fp=fp, params=params)
+        processed_info = preprocess_dataset(data_type, h5_file_path, params)
+        self.dump(processed_info)
 
 
 class MakeDatasetTask(gokart.TaskOnKart):
@@ -29,36 +42,25 @@ class MakeDatasetTask(gokart.TaskOnKart):
     experiment_name = luigi.Parameter()
     seed = luigi.IntParameter()
 
+    def requires(self):
+        datasets = OmegaConf.create(self.datasets_cfg_yaml)
+        neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
+        return {
+            name: GenerateSingleDatasetTask(
+                name=name,
+                dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
+                neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
+            )
+            for name, dataset_cfg in datasets.items()
+        }
+
     def run(self):
+        random.seed(self.seed)
         mlflow.set_tracking_uri("file:./mlruns")
         mlflow.set_experiment(self.experiment_name)
         with mlflow.start_run() as run:
             logger.info(f"MLflow Run ID: {run.info.run_id}")
-            path_dict = self._generate_datasets()
-            self.dump({"path_dict": path_dict, "run_id": run.info.run_id})
-
-    def _generate_datasets(self):
-        random.seed(self.seed)
-        path_dict = {}
-        neuron_cfg = OmegaConf.create(self.neurons_cfg_yaml)
-        for name, dataset_cfg in OmegaConf.create(self.datasets_cfg_yaml).items():
-            file_name = f"{datetime.now()}_{name}.h5"
-            params = hydra.utils.instantiate(neuron_cfg[dataset_cfg.data_type].params)
-            output_path = RAW_DATA_DIR / dataset_cfg.data_type / file_name
-
-            with h5py.File(output_path, "w") as fp:
-                hydra.utils.instantiate(dataset_cfg.current, fp=fp, dt=params.DT)
-                start_time = time.perf_counter()
-                hydra.utils.instantiate(
-                    neuron_cfg[dataset_cfg.data_type].simulator, fp=fp, params=params
-                )
-                end_time = time.perf_counter()
-                logger.info(f"Simulation time: {end_time - start_time:.4f}[s]")
-            logger.success(f"Dataset generation complete: {output_path}")
-            path_dict[name] = preprocess_dataset(
-                dataset_cfg.data_type, file_name, params
-            )
-        return path_dict
+            self.dump({"path_dict": self.load(), "run_id": run.info.run_id})
 
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
