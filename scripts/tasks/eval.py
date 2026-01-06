@@ -21,7 +21,6 @@ from .utils import CommonConfig
 
 class EvalTask(gokart.TaskOnKart):
     preprocess_task = gokart.TaskInstanceParameter()
-    eval_cfg_yaml = luigi.Parameter()
 
     def requires(self):
         return self.preprocess_task
@@ -34,7 +33,7 @@ class EvalTask(gokart.TaskOnKart):
         with mlflow.start_run(run_id=self.load()["run_id"]):
             model = mlflow.pyfunc.load_model(f"runs:/{self.load()['run_id']}/model")
         slicer_time = hydra.utils.instantiate(
-            OmegaConf.create(self.eval_cfg_yaml).time_slice
+            OmegaConf.create(conf.eval_cfg_yaml).time_slice
         )
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         path_dict = {}
@@ -44,13 +43,13 @@ class EvalTask(gokart.TaskOnKart):
             if datasets_cfg[k].data_type == "hh":
                 mode = "SingleComp"
                 u = ds["I_ext"].to_numpy()
-                if OmegaConf.create(self.eval_cfg_yaml).onlyThreeComp is True:
+                if OmegaConf.create(conf.eval_cfg_yaml).onlyThreeComp is True:
                     logger.info(f"{k} is passed")
                     continue
             elif datasets_cfg[k].data_type == "hh3":
                 mode = "ThreeComp"
                 u = ds["I_ext"].to_numpy()
-                if OmegaConf.create(self.eval_cfg_yaml).direct is True:
+                if OmegaConf.create(conf.eval_cfg_yaml).direct is True:
                     logger.info("Using direct ThreeComp mode")
                     neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
                     u_dic = neurons_cfg[datasets_cfg[k].data_type].transform.u

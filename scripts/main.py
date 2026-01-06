@@ -65,13 +65,13 @@ def main(cfg: DictConfig) -> None:
         "CommonConfig", "datasets_cfg_yaml", OmegaConf.to_yaml(cfg.datasets)
     )
     luigi_config.set("CommonConfig", "neurons_cfg_yaml", OmegaConf.to_yaml(cfg.neurons))
+    luigi_config.set("CommonConfig", "model_cfg_yaml", OmegaConf.to_yaml(cfg.models))
+    luigi_config.set("CommonConfig", "eval_cfg_yaml", OmegaConf.to_yaml(cfg.eval))
+    luigi_config.set("CommonConfig", "seed", str(cfg.seed))
+    luigi_config.set("CommonConfig", "experiment_name", cfg.experiment_name)
 
-    dataset_task = MakeDatasetTask(
-        seed=cfg.seed,
-        experiment_name=cfg.experiment_name,
-    )
+    dataset_task = MakeDatasetTask()
     train_task = TrainModelTask(
-        model_cfg_yaml=OmegaConf.to_yaml(cfg.models),
         dataset_task=dataset_task,
     )
     preprocess_task = PreProcessTask(
@@ -79,7 +79,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     eval_task = EvalTask(
-        preprocess_task=preprocess_task, eval_cfg_yaml=OmegaConf.to_yaml(cfg.eval)
+        preprocess_task=preprocess_task,
     )
 
     log_tasks = {

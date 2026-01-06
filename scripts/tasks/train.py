@@ -8,6 +8,8 @@ import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
+from .utils import CommonConfig
+
 GATE_VAR_SLICE = slice(1, 4, None)
 V_VAR_SLICE = slice(0, 1, None)
 
@@ -28,14 +30,14 @@ class SindySurrogateWrapper(mlflow.pyfunc.PythonModel):
 class TrainModelTask(gokart.TaskOnKart):
     """モデルの学習を行うタスク"""
 
-    model_cfg_yaml = luigi.Parameter()
     dataset_task = gokart.TaskInstanceParameter()
 
     def requires(self):
         return self.dataset_task
 
     def run(self):
-        model_cfg = OmegaConf.create(self.model_cfg_yaml)
+        conf = CommonConfig()
+        model_cfg = OmegaConf.create(conf.model_cfg_yaml)
         preprocessor = hydra.utils.instantiate(model_cfg.preprocessor)
         surrogate = hydra.utils.instantiate(model_cfg.surrogate)
 

@@ -49,9 +49,6 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
 class MakeDatasetTask(gokart.TaskOnKart):
     """データセットの生成と前処理を行うタスク"""
 
-    experiment_name = luigi.Parameter()
-    seed = luigi.IntParameter()
-
     def requires(self):
         conf = CommonConfig()
         datasets = OmegaConf.create(conf.datasets_cfg_yaml)
@@ -60,14 +57,15 @@ class MakeDatasetTask(gokart.TaskOnKart):
             name: GenerateSingleDatasetTask(
                 dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
                 neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
-                seed=self.seed + idx,
+                seed=conf.seed + idx,
             )
             for idx, (name, dataset_cfg) in enumerate(datasets.items())
         }
 
     def run(self):
+        conf = CommonConfig()
         mlflow.set_tracking_uri("file:./mlruns")
-        mlflow.set_experiment(self.experiment_name)
+        mlflow.set_experiment(conf.experiment_name)
         with mlflow.start_run() as run:
             logger.info(f"MLflow Run ID: {run.info.run_id}")
             self.dump({"path_dict": self.load(), "run_id": run.info.run_id})
