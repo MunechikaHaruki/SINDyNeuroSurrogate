@@ -112,30 +112,32 @@ class LogEvalTask(gokart.TaskOnKart):
         with mlflow.start_run(run_id=run_id):
             for k, v in loaded_data["eval_task"]["path_dict"].items():
                 data_type = datasets_cfg[k].data_type
-                surrogate_result = xr.open_dataset(v)
-                preprocessed_result = xr.open_dataset(
-                    loaded_data["preprocess_task"]["path_dict"][k]
-                )
-                u = preprocessed_result["I_ext"].to_numpy()
-                fig = self.plot_diff(
-                    u, preprocessed_result["vars"], surrogate_result["vars"]
-                )
-                mlflow.log_figure(fig, f"compare/{data_type}/{k}.png")
+                preprocessed_path = loaded_data["preprocess_task"]["path_dict"][k]
 
-                self._debug_show_image(fig)
+                with (
+                    xr.open_dataset(v) as surrogate_result,
+                    xr.open_dataset(preprocessed_path) as preprocessed_result,
+                ):
+                    u = preprocessed_result["I_ext"].to_numpy()
+                    fig = self.plot_diff(
+                        u, preprocessed_result["vars"], surrogate_result["vars"]
+                    )
+                    mlflow.log_figure(fig, f"compare/{data_type}/{k}.png")
 
-                plt.close(fig)
-                fig = hydra.utils.instantiate(
-                    neurons_cfg[datasets_cfg[k].data_type].plot,
-                    xr=surrogate_result,
-                    surrogate=True,
-                )
+                    self._debug_show_image(fig)
 
-                mlflow.log_figure(
-                    fig,
-                    f"surrogate_result/{data_type}/{k}.png",
-                )
-                plt.close(fig)
+                    plt.close(fig)
+                    fig = hydra.utils.instantiate(
+                        neurons_cfg[datasets_cfg[k].data_type].plot,
+                        xr=surrogate_result,
+                        surrogate=True,
+                    )
+
+                    mlflow.log_figure(
+                        fig,
+                        f"surrogate_result/{data_type}/{k}.png",
+                    )
+                    plt.close(fig)
 
         self.dump({"run_id": run_id})
 
