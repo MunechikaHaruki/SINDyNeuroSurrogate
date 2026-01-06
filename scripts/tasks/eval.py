@@ -106,48 +106,6 @@ class LogEvalTask(gokart.TaskOnKart):
         return {"eval_task": self.eval_task, "preprocess_task": self.preprocess_task}
 
     def run(self):
-        def plot_diff(u: np.ndarray, original: xr.DataArray, surrogate: xr.DataArray):
-            num_features = len(original.features.values)
-
-            fig, axs = plt.subplots(
-                1 + 2 * num_features,
-                1,
-                figsize=(10, 4 * (1 + num_features)),
-                sharex=False,
-            )
-
-            # plot external_input (I_ext)
-            axs[0].plot(u, label="I_ext(t)", color="gold")
-            axs[0].set_ylabel("I_ext(t)")
-            axs[0].legend()
-
-            # 各 feature についてループ
-            for i, feature in enumerate(original.features.values):
-                # 1. 元のデータをプロット (引数 'oridginal' から)
-                axs[2 * i + 1].plot(
-                    original.time,
-                    original.sel(features=feature),
-                    color="blue",
-                    label=f"Original {feature}",
-                )
-                axs[2 * i + 1].set_ylabel(feature)
-                axs[2 * i + 1].legend()
-
-                # 2. サロゲートモデルのデータをプロット (引数 'surrogate' から)
-                #    surrogate も 'time' と 'features' の座標を持つと仮定
-                axs[2 * i + 2].plot(
-                    surrogate.time,
-                    surrogate.sel(features=feature),
-                    color="red",
-                    label=f"Surrogate {feature}",
-                )
-                axs[2 * i + 2].set_ylabel(f"Surrogate {feature}")
-                axs[2 * i + 2].legend()
-
-            axs[-1].set_xlabel("Time step")
-            fig.tight_layout()  # レイアウトを自動調整
-            return fig
-
         datasets_cfg = OmegaConf.create(self.datasets_cfg_yaml)
         run_id = self.load()["eval_task"]["run_id"]
         with mlflow.start_run(run_id=run_id):
@@ -161,7 +119,7 @@ class LogEvalTask(gokart.TaskOnKart):
                     self.load()["preprocess_task"]["path_dict"][k]
                 )
                 u = preprocessed_result["I_ext"].to_numpy()
-                fig = plot_diff(
+                fig = self.plot_diff(
                     u, preprocessed_result["vars"], surrogate_result["vars"]
                 )
                 mlflow.log_figure(fig, f"compare/{k}.png")
@@ -174,3 +132,45 @@ class LogEvalTask(gokart.TaskOnKart):
                     f"surrogate_result/{k}.png",
                 )
         self.dump({"run_id": run_id})
+
+    def plot_diff(self, u: np.ndarray, original: xr.DataArray, surrogate: xr.DataArray):
+        num_features = len(original.features.values)
+
+        fig, axs = plt.subplots(
+            1 + 2 * num_features,
+            1,
+            figsize=(10, 4 * (1 + num_features)),
+            sharex=False,
+        )
+
+        # plot external_input (I_ext)
+        axs[0].plot(u, label="I_ext(t)", color="gold")
+        axs[0].set_ylabel("I_ext(t)")
+        axs[0].legend()
+
+        # 各 feature についてループ
+        for i, feature in enumerate(original.features.values):
+            # 1. 元のデータをプロット (引数 'oridginal' から)
+            axs[2 * i + 1].plot(
+                original.time,
+                original.sel(features=feature),
+                color="blue",
+                label=f"Original {feature}",
+            )
+            axs[2 * i + 1].set_ylabel(feature)
+            axs[2 * i + 1].legend()
+
+            # 2. サロゲートモデルのデータをプロット (引数 'surrogate' から)
+            #    surrogate も 'time' と 'features' の座標を持つと仮定
+            axs[2 * i + 2].plot(
+                surrogate.time,
+                surrogate.sel(features=feature),
+                color="red",
+                label=f"Surrogate {feature}",
+            )
+            axs[2 * i + 2].set_ylabel(f"Surrogate {feature}")
+            axs[2 * i + 2].legend()
+
+        axs[-1].set_xlabel("Time step")
+        fig.tight_layout()  # レイアウトを自動調整
+        return fig
