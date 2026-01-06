@@ -148,40 +148,66 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
 
     def run(self):
         loaded_data = self.load()
+        run_id = loaded_data.get("run_id")
+        path_dict = loaded_data.get("path_dict", {})
+
+        if not run_id:
+            raise KeyError("The key 'run_id' is missing from loaded_data.")
+
         datasets_cfg = OmegaConf.create(self.datasets_cfg_yaml)
         neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
 
-        with mlflow.start_run(run_id=loaded_data["run_id"]):
-            for k, v in loaded_data["path_dict"].items():
-                xr_data = xr.load_dataset(v)
-                dataset_type = datasets_cfg[k].data_type
-                u_dic = neurons_cfg[dataset_type].transform.u
-                data = xr_data["vars"]
-                external_input = xr_data[u_dic.ind].sel(u_dic.sel)
-                num_features = len(data.features.values)
+        with mlflow.start_run(run_id=run_id):
+            for key, file_path in path_dict.items():
+                self._process_and_log_dataset(key, file_path, datasets_cfg, neurons_cfg)
 
-                fig, axs = plt.subplots(
-                    1 + num_features,
-                    1,
-                    figsize=(10, 4 * (1 + num_features)),
-                    sharex=True,
-                )
-
-                axs[0].plot(external_input.time, external_input, label="I_ext(t)")
-                axs[0].set_ylabel("I_ext(t)")
-                axs[0].legend()
-
-                for i, feature in enumerate(data.features.values):
-                    axs[i + 1].plot(
-                        data.time, data.sel(features=feature), label=feature
-                    )
-                    axs[i + 1].set_ylabel(feature)
-                    axs[i + 1].legend()
-                axs[-1].set_xlabel("Time step")
-
-                mlflow.log_figure(
-                    fig,
-                    f"preprocessed/{k}.png",
-                )
-                plt.close(fig)
         self.dump(True)
+
+    def _process_and_log_dataset(self, key, file_path, datasets_cfg, neurons_cfg):
+        """1つのデータセットに対して処理とログ出力を行う"""
+        with xr.open_dataset(file_path) as xr_data:
+            # 設定の取得
+            dataset_type = datasets_cfg[key].data_type
+            u_cfg = neurons_cfg[dataset_type].transform.u
+
+            # データの抽出
+            data_vars = xr_data["vars"]
+            external_input = xr_data[u_cfg.ind].sel(u_cfg.sel)
+
+            # プロット作成
+            fig = self._create_figure(data_vars, external_input)
+
+            # MLflow への記録
+            mlflow.log_figure(fig, f"preprocessed/{dataset_type}/{key}.png")
+            plt.close(fig)
+
+    @staticmethod
+    def _create_figure(data_vars, external_input):
+        """matplotlib の描画ロジックをカプセル化"""
+        features = data_vars.features.values
+        num_features = len(features)
+
+        fig, axs = plt.subplots(
+            nrows=1 + num_features,
+            ncols=1,
+            figsize=(10, 4 * (1 + num_features)),
+            sharex=True,
+            layout="constrained",  # タイトルの重なり防止
+        )
+
+        # 外部入力のプロット
+        axs[0].plot(external_input.time, external_input, label="I_ext(t)")
+        axs[0].set_ylabel("I_ext(t)")
+        axs[0].legend()
+
+        # 各特徴量のプロット
+        for i, feature_name in enumerate(features):
+            ax = axs[i + 1]
+            ax.plot(
+                data_vars.time, data_vars.sel(features=feature_name), label=feature_name
+            )
+            ax.set_ylabel(feature_name)
+            ax.legend()
+
+        axs[-1].set_xlabel("Time step")
+        return fig
