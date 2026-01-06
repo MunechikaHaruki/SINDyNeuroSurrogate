@@ -16,12 +16,12 @@ from neurosurrogate.config import (
     SURROGATE_DATA_DIR,
 )
 
+from .utils import CommonConfig
+
 
 class EvalTask(gokart.TaskOnKart):
     preprocess_task = gokart.TaskInstanceParameter()
     eval_cfg_yaml = luigi.Parameter()
-    neurons_cfg_yaml = luigi.Parameter()
-    datasets_cfg_yaml = luigi.Parameter()
 
     def requires(self):
         return self.preprocess_task
@@ -30,12 +30,13 @@ class EvalTask(gokart.TaskOnKart):
         """
         Load a registered model from MLflow and make a prediction.
         """
+        conf = CommonConfig()
         with mlflow.start_run(run_id=self.load()["run_id"]):
             model = mlflow.pyfunc.load_model(f"runs:/{self.load()['run_id']}/model")
         slicer_time = hydra.utils.instantiate(
             OmegaConf.create(self.eval_cfg_yaml).time_slice
         )
-        datasets_cfg = OmegaConf.create(self.datasets_cfg_yaml)
+        datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         path_dict = {}
         for k, v in self.load()["path_dict"].items():
             logger.info(f"{v} started to process")
@@ -51,7 +52,7 @@ class EvalTask(gokart.TaskOnKart):
                 u = ds["I_ext"].to_numpy()
                 if OmegaConf.create(self.eval_cfg_yaml).direct is True:
                     logger.info("Using direct ThreeComp mode")
-                    neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
+                    neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
                     u_dic = neurons_cfg[datasets_cfg[k].data_type].transform.u
                     u = ds[u_dic.ind].sel(u_dic.sel).to_numpy()
                     # u = ds["I_ext"].to_numpy() # 11/4のデータは,hh3,SingleComp,I_extでの予測　間違い
@@ -96,8 +97,6 @@ class EvalTask(gokart.TaskOnKart):
 
 
 class LogEvalTask(gokart.TaskOnKart):
-    datasets_cfg_yaml = luigi.Parameter()
-    neurons_cfg_yaml = luigi.Parameter()
     eval_task = gokart.TaskInstanceParameter()
     preprocess_task = gokart.TaskInstanceParameter()
 
@@ -106,8 +105,9 @@ class LogEvalTask(gokart.TaskOnKart):
 
     def run(self):
         loaded_data = self.load()
-        datasets_cfg = OmegaConf.create(self.datasets_cfg_yaml)
-        neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
+        conf = CommonConfig()
+        datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
+        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
         run_id = loaded_data["eval_task"]["run_id"]
         with mlflow.start_run(run_id=run_id):
             for k, v in loaded_data["eval_task"]["path_dict"].items():

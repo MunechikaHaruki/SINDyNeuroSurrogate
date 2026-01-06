@@ -17,6 +17,8 @@ from omegaconf import OmegaConf
 from neurosurrogate.config import PROCESSED_DATA_DIR
 from neurosurrogate.dataset_utils._base import preprocess_dataset
 
+from .utils import CommonConfig
+
 
 class GenerateSingleDatasetTask(gokart.TaskOnKart):
     dataset_cfg_yaml = luigi.Parameter()
@@ -47,14 +49,13 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
 class MakeDatasetTask(gokart.TaskOnKart):
     """データセットの生成と前処理を行うタスク"""
 
-    datasets_cfg_yaml = luigi.Parameter()
-    neurons_cfg_yaml = luigi.Parameter()
     experiment_name = luigi.Parameter()
     seed = luigi.IntParameter()
 
     def requires(self):
-        datasets = OmegaConf.create(self.datasets_cfg_yaml)
-        neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
+        conf = CommonConfig()
+        datasets = OmegaConf.create(conf.datasets_cfg_yaml)
+        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
         return {
             name: GenerateSingleDatasetTask(
                 dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
@@ -73,18 +74,17 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
-    datasets_cfg_yaml = luigi.Parameter()
-    neurons_cfg_yaml = luigi.Parameter()
     dataset_task = gokart.TaskInstanceParameter()
 
     def requires(self):
         return self.dataset_task
 
     def run(self):
+        conf = CommonConfig()
         loaded_data = self.load()
-        neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
+        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
         with mlflow.start_run(run_id=loaded_data["run_id"]):
-            for name, dataset_cfg in OmegaConf.create(self.datasets_cfg_yaml).items():
+            for name, dataset_cfg in OmegaConf.create(conf.datasets_cfg_yaml).items():
                 with xr.open_dataset(loaded_data["path_dict"][name]) as xr_data:
                     fig = hydra.utils.instantiate(
                         neurons_cfg[dataset_cfg.data_type].plot, xr=xr_data
@@ -140,8 +140,6 @@ class PreProcessTask(gokart.TaskOnKart):
 
 class LogPreprocessDataTask(gokart.TaskOnKart):
     preprocess_task = gokart.TaskInstanceParameter()
-    datasets_cfg_yaml = luigi.Parameter()
-    neurons_cfg_yaml = luigi.Parameter()
 
     def requires(self):
         return self.preprocess_task
@@ -153,9 +151,9 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
 
         if not run_id:
             raise KeyError("The key 'run_id' is missing from loaded_data.")
-
-        datasets_cfg = OmegaConf.create(self.datasets_cfg_yaml)
-        neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
+        conf = CommonConfig()
+        datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
+        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
 
         with mlflow.start_run(run_id=run_id):
             for key, file_path in path_dict.items():

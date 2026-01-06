@@ -59,13 +59,14 @@ class LogAllConfTask(gokart.TaskOnKart):
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
-    # gokartのタスクを実行
-    common_params = {
-        "datasets_cfg_yaml": OmegaConf.to_yaml(cfg.datasets),
-        "neurons_cfg_yaml": OmegaConf.to_yaml(cfg.neurons),
-    }
+
+    luigi_config = luigi.configuration.get_config()
+    luigi_config.set(
+        "CommonConfig", "datasets_cfg_yaml", OmegaConf.to_yaml(cfg.datasets)
+    )
+    luigi_config.set("CommonConfig", "neurons_cfg_yaml", OmegaConf.to_yaml(cfg.neurons))
+
     dataset_task = MakeDatasetTask(
-        **common_params,
         seed=cfg.seed,
         experiment_name=cfg.experiment_name,
     )
@@ -78,24 +79,19 @@ def main(cfg: DictConfig) -> None:
     )
 
     eval_task = EvalTask(
-        preprocess_task=preprocess_task,
-        eval_cfg_yaml=OmegaConf.to_yaml(cfg.eval),
-        **common_params,
+        preprocess_task=preprocess_task, eval_cfg_yaml=OmegaConf.to_yaml(cfg.eval)
     )
 
     log_tasks = {
         "log_dataset_task": LogMakeDatasetTask(
-            **common_params,
             dataset_task=dataset_task,
         ),
         "log_preprocess_task": LogPreprocessDataTask(
             preprocess_task=preprocess_task,
-            **common_params,
         ),
         "log_eval_task": LogEvalTask(
             eval_task=eval_task,
             preprocess_task=preprocess_task,
-            **common_params,
         ),
     }
 
