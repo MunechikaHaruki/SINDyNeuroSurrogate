@@ -1,6 +1,5 @@
 import gokart
 import hydra
-import luigi
 import mlflow
 import numpy as np
 import pandas as pd
@@ -30,10 +29,10 @@ class SindySurrogateWrapper(mlflow.pyfunc.PythonModel):
 class TrainModelTask(gokart.TaskOnKart):
     """モデルの学習を行うタスク"""
 
-    dataset_task = gokart.TaskInstanceParameter()
-
     def requires(self):
-        return self.dataset_task
+        from scripts.tasks.data import MakeDatasetTask
+
+        return MakeDatasetTask()
 
     def run(self):
         conf = CommonConfig()

@@ -11,11 +11,8 @@ from omegaconf import DictConfig, OmegaConf
 from scripts.tasks.data import (
     LogMakeDatasetTask,
     LogPreprocessDataTask,
-    MakeDatasetTask,
-    PreProcessTask,
 )
-from scripts.tasks.eval import EvalTask, LogEvalTask
-from scripts.tasks.train import TrainModelTask
+from scripts.tasks.eval import LogEvalTask
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -23,16 +20,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 class LogAllConfTask(gokart.TaskOnKart):
     cfg_yaml = luigi.Parameter()
-    log_dataset_task = gokart.TaskInstanceParameter()
-    log_preprocess_task = gokart.TaskInstanceParameter()
-    log_eval_task = gokart.TaskInstanceParameter()
     run_name_prefix = luigi.Parameter()
 
     def requires(self):
         return {
-            "log_dataset_task": self.log_dataset_task,
-            "log_preprocess_task": self.log_preprocess_task,
-            "log_eval_task": self.log_eval_task,
+            "log_dataset_task": LogMakeDatasetTask(),
+            "log_preprocess_task": LogPreprocessDataTask(),
+            "log_eval_task": LogEvalTask(),
         }
 
     def run(self):
@@ -70,38 +64,13 @@ def main(cfg: DictConfig) -> None:
     luigi_config.set("CommonConfig", "seed", str(cfg.seed))
     luigi_config.set("CommonConfig", "experiment_name", cfg.experiment_name)
 
-    dataset_task = MakeDatasetTask()
-    train_task = TrainModelTask(
-        dataset_task=dataset_task,
-    )
-    preprocess_task = PreProcessTask(
-        train_task=train_task,
-    )
-
-    eval_task = EvalTask(
-        preprocess_task=preprocess_task,
-    )
-
-    log_tasks = {
-        "log_dataset_task": LogMakeDatasetTask(
-            dataset_task=dataset_task,
-        ),
-        "log_preprocess_task": LogPreprocessDataTask(
-            preprocess_task=preprocess_task,
-        ),
-        "log_eval_task": LogEvalTask(
-            eval_task=eval_task,
-            preprocess_task=preprocess_task,
-        ),
-    }
-
     try:
         run_name_prefix = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
     except Exception:
         run_name_prefix = "default_run"
 
     log_all_conf_task = LogAllConfTask(
-        cfg_yaml=OmegaConf.to_yaml(cfg), run_name_prefix=run_name_prefix, **log_tasks
+        cfg_yaml=OmegaConf.to_yaml(cfg), run_name_prefix=run_name_prefix
     )
     gokart.build(log_all_conf_task)
 

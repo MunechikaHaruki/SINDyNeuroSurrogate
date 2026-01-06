@@ -72,10 +72,8 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
-    dataset_task = gokart.TaskInstanceParameter()
-
     def requires(self):
-        return self.dataset_task
+        return MakeDatasetTask()
 
     def run(self):
         conf = CommonConfig()
@@ -100,10 +98,10 @@ V_VAR_SLICE = slice(0, 1, None)
 
 
 class PreProcessTask(gokart.TaskOnKart):
-    train_task = gokart.TaskInstanceParameter()
-
     def requires(self):
-        return self.train_task
+        from scripts.tasks.train import TrainModelTask
+
+        return TrainModelTask()
 
     def run(self):
         loaded_data = self.load()
@@ -137,10 +135,8 @@ class PreProcessTask(gokart.TaskOnKart):
 
 
 class LogPreprocessDataTask(gokart.TaskOnKart):
-    preprocess_task = gokart.TaskInstanceParameter()
-
     def requires(self):
-        return self.preprocess_task
+        return PreProcessTask()
 
     def run(self):
         loaded_data = self.load()

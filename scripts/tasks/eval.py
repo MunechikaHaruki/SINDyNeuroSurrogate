@@ -2,7 +2,6 @@ from datetime import datetime
 
 import gokart
 import hydra
-import luigi
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
@@ -20,10 +19,10 @@ from .utils import CommonConfig
 
 
 class EvalTask(gokart.TaskOnKart):
-    preprocess_task = gokart.TaskInstanceParameter()
-
     def requires(self):
-        return self.preprocess_task
+        from scripts.tasks.data import PreProcessTask
+
+        return PreProcessTask()
 
     def run(self):
         """
@@ -96,11 +95,10 @@ class EvalTask(gokart.TaskOnKart):
 
 
 class LogEvalTask(gokart.TaskOnKart):
-    eval_task = gokart.TaskInstanceParameter()
-    preprocess_task = gokart.TaskInstanceParameter()
-
     def requires(self):
-        return {"eval_task": self.eval_task, "preprocess_task": self.preprocess_task}
+        from scripts.tasks.data import PreProcessTask
+
+        return {"eval_task": EvalTask(), "preprocess_task": PreProcessTask()}
 
     def run(self):
         loaded_data = self.load()
