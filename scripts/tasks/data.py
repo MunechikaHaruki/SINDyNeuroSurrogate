@@ -85,13 +85,15 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
         neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
         with mlflow.start_run(run_id=loaded_data["run_id"]):
             for name, dataset_cfg in OmegaConf.create(self.datasets_cfg_yaml).items():
-                xr_data = xr.open_dataset(loaded_data["path_dict"][name])
-                fig = hydra.utils.instantiate(
-                    neurons_cfg[dataset_cfg.data_type].plot, xr=xr_data
-                )
-                mlflow.log_figure(fig, f"oridginal/{name}.png")
-                plt.close(fig)
-            logger.info(f"Generated and preprocessed dataset: {name}")
+                with xr.open_dataset(loaded_data["path_dict"][name]) as xr_data:
+                    fig = hydra.utils.instantiate(
+                        neurons_cfg[dataset_cfg.data_type].plot, xr=xr_data
+                    )
+                    mlflow.log_figure(
+                        fig, f"original/{dataset_cfg.data_type}/{name}.png"
+                    )
+                    plt.close(fig)
+                logger.info(f"Logged dataset: {name}")
         self.dump(True)
 
 
