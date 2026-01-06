@@ -95,7 +95,7 @@ def main(cfg: DictConfig) -> None:
         "log_eval_task": LogEvalTask(
             eval_task=eval_task,
             preprocess_task=preprocess_task,
-            datasets_cfg_yaml=OmegaConf.to_yaml(cfg.datasets),
+            **common_params,
         ),
     }
 

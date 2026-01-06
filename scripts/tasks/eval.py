@@ -1,4 +1,3 @@
-import subprocess
 from datetime import datetime
 
 import gokart
@@ -16,7 +15,6 @@ from neurosurrogate.config import (
     DATA_DIR,
     SURROGATE_DATA_DIR,
 )
-from neurosurrogate.plots import plot_3comp_hh, plot_hh
 
 
 class EvalTask(gokart.TaskOnKart):
@@ -99,6 +97,7 @@ class EvalTask(gokart.TaskOnKart):
 
 class LogEvalTask(gokart.TaskOnKart):
     datasets_cfg_yaml = luigi.Parameter()
+    neurons_cfg_yaml = luigi.Parameter()
     eval_task = gokart.TaskInstanceParameter()
     preprocess_task = gokart.TaskInstanceParameter()
 
@@ -106,31 +105,38 @@ class LogEvalTask(gokart.TaskOnKart):
         return {"eval_task": self.eval_task, "preprocess_task": self.preprocess_task}
 
     def run(self):
+        loaded_data = self.load()
         datasets_cfg = OmegaConf.create(self.datasets_cfg_yaml)
-        run_id = self.load()["eval_task"]["run_id"]
+        neurons_cfg = OmegaConf.create(self.neurons_cfg_yaml)
+        run_id = loaded_data["eval_task"]["run_id"]
         with mlflow.start_run(run_id=run_id):
-            for k, v in self.load()["eval_task"]["path_dict"].items():
-                if datasets_cfg[k].data_type == "hh":
-                    plot_surrogate = plot_hh
-                elif datasets_cfg[k].data_type == "hh3":
-                    plot_surrogate = plot_3comp_hh
+            for k, v in loaded_data["eval_task"]["path_dict"].items():
+                data_type = datasets_cfg[k].data_type
                 surrogate_result = xr.open_dataset(v)
                 preprocessed_result = xr.open_dataset(
-                    self.load()["preprocess_task"]["path_dict"][k]
+                    loaded_data["preprocess_task"]["path_dict"][k]
                 )
                 u = preprocessed_result["I_ext"].to_numpy()
                 fig = self.plot_diff(
                     u, preprocessed_result["vars"], surrogate_result["vars"]
                 )
-                mlflow.log_figure(fig, f"compare/{k}.png")
-                TMP = DATA_DIR / "show.png"
-                fig.savefig(TMP)
-                subprocess.run(["wezterm", "imgcat", TMP])
+                mlflow.log_figure(fig, f"compare/{data_type}/{k}.png")
+
+                self._debug_show_image(fig)
+
+                plt.close(fig)
+                fig = hydra.utils.instantiate(
+                    neurons_cfg[datasets_cfg[k].data_type].plot,
+                    xr=surrogate_result,
+                    surrogate=True,
+                )
 
                 mlflow.log_figure(
-                    plot_surrogate(surrogate_result, surrogate=True),
-                    f"surrogate_result/{k}.png",
+                    fig,
+                    f"surrogate_result/{data_type}/{k}.png",
                 )
+                plt.close(fig)
+
         self.dump({"run_id": run_id})
 
     def plot_diff(self, u: np.ndarray, original: xr.DataArray, surrogate: xr.DataArray):
@@ -174,3 +180,10 @@ class LogEvalTask(gokart.TaskOnKart):
         axs[-1].set_xlabel("Time step")
         fig.tight_layout()  # レイアウトを自動調整
         return fig
+
+    def _debug_show_image(self, fig):
+        import subprocess
+
+        TMP = DATA_DIR / "debug.png"
+        fig.savefig(TMP)
+        subprocess.run(["wezterm", "imgcat", TMP])
