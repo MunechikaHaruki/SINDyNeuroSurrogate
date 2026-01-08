@@ -32,7 +32,9 @@ class TrainModelTask(gokart.TaskOnKart):
         preprocessor = hydra.utils.instantiate(model_cfg.preprocessor)
         surrogate = hydra.utils.instantiate(model_cfg.surrogate)
 
-        train_xr_dataset = xr.open_dataset(self.load()["path_dict"]["train"])
+        # MakeDatasetTask now returns the path dictionary directly
+        dataset_paths = self.load()
+        train_xr_dataset = xr.open_dataset(dataset_paths["train"])
         logger.trace(train_xr_dataset)
         train_gate_data = train_xr_dataset["vars"].to_numpy()[:, GATE_VAR_SLICE]
         V_data = train_xr_dataset["vars"].to_numpy()[:, V_VAR_SLICE]
@@ -60,7 +62,6 @@ class TrainModelTask(gokart.TaskOnKart):
             {
                 "surrogate": surrogate,
                 "preprocessor": preprocessor,
-                "path_dict": self.load()["path_dict"],
             }
         )
 
@@ -89,18 +90,25 @@ class LogTrainModelTask(gokart.TaskOnKart):
 
 class PreProcessTask(gokart.TaskOnKart):
     def requires(self):
+        from scripts.tasks.data import MakeDatasetTask
         from scripts.tasks.train import TrainModelTask
 
-        return TrainModelTask()
+        return {
+            "model": TrainModelTask(),
+            "data": MakeDatasetTask(seed=CommonConfig().seed),
+        }
 
     def run(self):
         loaded_data = self.load()
+        model_data = loaded_data["model"]
+        dataset_paths = loaded_data["data"]
+        
         preprocessed_path_dict = {}
         # preprocess data
-        for k, v in loaded_data["path_dict"].items():
+        for k, v in dataset_paths.items():
             xr_data = xr.open_dataset(v)
             xr_gate = xr_data["vars"].to_numpy()[:, GATE_VAR_SLICE]
-            transformed_gate = loaded_data["preprocessor"].transform(xr_gate)
+            transformed_gate = model_data["preprocessor"].transform(xr_gate)
             V_data = xr_data["vars"][:, V_VAR_SLICE].to_numpy().reshape(-1, 1)
             new_vars = np.concatenate((V_data, transformed_gate), axis=1)
             new_feature_names = ["V"] + [
@@ -119,7 +127,7 @@ class PreProcessTask(gokart.TaskOnKart):
             logger.info(transformed_gate.__repr__())
             preprocessed_path_dict[k] = PROCESSED_DATA_DIR / os.path.basename(v)
             transformed_xr.to_netcdf(preprocessed_path_dict[k])
-        self.dump({"path_dict": preprocessed_path_dict})
+        self.dump(preprocessed_path_dict)
 
 
 class LogPreprocessDataTask(gokart.TaskOnKart):
@@ -127,8 +135,7 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
         return PreProcessTask()
 
     def run(self):
-        loaded_data = self.load()
-        path_dict = loaded_data.get("path_dict", {})
+        path_dict = self.load()
 
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)

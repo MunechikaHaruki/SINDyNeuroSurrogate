@@ -85,7 +85,7 @@ class MakeDatasetTask(gokart.TaskOnKart):
         }
 
     def run(self):
-        self.dump({"path_dict": self.load()})
+        self.dump(self.load())
 
 
 class LogSingleDatasetTask(gokart.TaskOnKart):

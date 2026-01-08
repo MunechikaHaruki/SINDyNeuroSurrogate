@@ -38,7 +38,11 @@ class EvalTask(gokart.TaskOnKart):
         )
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         path_dict = {}
-        for k, v in loaded_data["preprocess_task"]["path_dict"].items():
+        
+        # PreProcessTask now returns the dictionary directly
+        preprocessed_paths = loaded_data["preprocess_task"]
+        
+        for k, v in preprocessed_paths.items():
             logger.info(f"{v} started to process")
             ds = xr.open_dataset(v).isel(time=slicer_time)
             if datasets_cfg[k].data_type == "hh":
@@ -69,6 +73,7 @@ class EvalTask(gokart.TaskOnKart):
 
             try:
                 logger.critical(f"{k}")
+                # TrainModelTask returns a dict with "surrogate" key
                 prediction = loaded_data["trainmodel_task"]["surrogate"].predict(
                     **input_data
                 )
@@ -108,9 +113,11 @@ class LogEvalTask(gokart.TaskOnKart):
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
         with mlflow.start_run(run_id=conf.run_id):
+            # EvalTask dumps {"path_dict": ...}
             for k, v in loaded_data["eval_task"]["path_dict"].items():
                 data_type = datasets_cfg[k].data_type
-                preprocessed_path = loaded_data["preprocess_task"]["path_dict"][k]
+                # PreProcessTask dumps the dict directly
+                preprocessed_path = loaded_data["preprocess_task"][k]
 
                 with (
                     xr.open_dataset(v) as surrogate_result,
