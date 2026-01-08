@@ -92,18 +92,24 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
     dataset_name = luigi.Parameter()
     dataset_cfg_yaml = luigi.Parameter()
     neuron_cfg_yaml = luigi.Parameter()
-    file_path = luigi.Parameter()
+    seed = luigi.IntParameter()
     run_id = luigi.Parameter()
+
+    def requires(self):
+        return GenerateSingleDatasetTask(
+            dataset_cfg_yaml=self.dataset_cfg_yaml,
+            neuron_cfg_yaml=self.neuron_cfg_yaml,
+            seed=self.seed,
+        )
 
     def run(self):
         dataset_cfg = OmegaConf.create(self.dataset_cfg_yaml)
         neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
+        file_path = self.load()
 
         with mlflow.start_run(run_id=self.run_id):
-            with xr.open_dataset(Path(self.file_path)) as xr_data:
-                fig = hydra.utils.instantiate(
-                    neuron_cfg.plot, xr=xr_data
-                )
+            with xr.open_dataset(Path(file_path)) as xr_data:
+                fig = hydra.utils.instantiate(neuron_cfg.plot, xr=xr_data)
                 mlflow.log_figure(
                     fig, f"original/{dataset_cfg.data_type}/{self.dataset_name}.png"
                 )
@@ -113,12 +119,9 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
 
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
-    def requires(self):
-        return MakeDatasetTask(seed=CommonConfig().seed)
-
     def run(self):
         conf = CommonConfig()
-        loaded_data = self.load()
+        datasets = OmegaConf.create(conf.datasets_cfg_yaml)
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
 
         run_id = getattr(conf, "run_id", None)
@@ -127,14 +130,16 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
                 run_id = run.info.run_id
 
         tasks = []
-        for name, dataset_cfg in OmegaConf.create(conf.datasets_cfg_yaml).items():
-            file_path = loaded_data["path_dict"][name]
+        seed = CommonConfig().seed
+        for idx, (name, dataset_cfg) in enumerate(datasets.items()):
             tasks.append(
                 LogSingleDatasetTask(
                     dataset_name=name,
                     dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
-                    neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
-                    file_path=str(file_path),
+                    neuron_cfg_yaml=OmegaConf.to_yaml(
+                        neurons_cfg[dataset_cfg.data_type]
+                    ),
+                    seed=seed + idx,
                     run_id=run_id,
                 )
             )
