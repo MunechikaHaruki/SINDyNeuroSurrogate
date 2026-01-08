@@ -2,7 +2,6 @@ import gokart
 import hydra
 import mlflow
 import numpy as np
-import pandas as pd
 import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
@@ -11,19 +10,6 @@ from .utils import CommonConfig
 
 GATE_VAR_SLICE = slice(1, 4, None)
 V_VAR_SLICE = slice(0, 1, None)
-
-
-class SindySurrogateWrapper(mlflow.pyfunc.PythonModel):
-    def __init__(self, surrogate_model):
-        self.sindy_model = surrogate_model
-
-    def predict(self, context, model_input: pd.DataFrame) -> np.ndarray:
-        init = model_input["init"][0]
-        dt = model_input["dt"][0]
-        iter = model_input["iter"][0]
-        u = model_input.get("u", [None])[0]
-        mode = model_input["mode"][0]
-        return self.sindy_model.predict(init, dt, iter, u, mode)
 
 
 class TrainModelTask(gokart.TaskOnKart):
@@ -63,13 +49,6 @@ class TrainModelTask(gokart.TaskOnKart):
             u=u,
             t=train_xr_dataset["time"].to_numpy(),
         )
-
-        with mlflow.start_run(run_id=conf.run_id):
-            mlflow.pyfunc.log_model(
-                name="model",
-                python_model=SindySurrogateWrapper(surrogate),
-                # input_example=input_data,
-            )
 
         self.dump(
             {

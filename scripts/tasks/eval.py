@@ -5,7 +5,6 @@ import hydra
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
-import pandas as pd
 import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
@@ -14,30 +13,32 @@ from neurosurrogate.config import (
     DATA_DIR,
     SURROGATE_DATA_DIR,
 )
+from scripts.tasks.data import PreProcessTask
 
+from .train import TrainModelTask
 from .utils import CommonConfig
 
 
 class EvalTask(gokart.TaskOnKart):
     def requires(self):
-        from scripts.tasks.data import PreProcessTask
-
-        return PreProcessTask()
+        return {
+            "preprocess_task": PreProcessTask(),
+            "trainmodel_task": TrainModelTask(),
+        }
 
     def run(self):
         """
         Load a registered model from MLflow and make a prediction.
         """
+        loaded_data = self.load()
         conf = CommonConfig()
-        run_id = conf.run_id
-        with mlflow.start_run(run_id=run_id):
-            model = mlflow.pyfunc.load_model(f"runs:/{run_id}/model")
+
         slicer_time = hydra.utils.instantiate(
             OmegaConf.create(conf.eval_cfg_yaml).time_slice
         )
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         path_dict = {}
-        for k, v in self.load()["path_dict"].items():
+        for k, v in loaded_data["preprocess_task"]["path_dict"].items():
             logger.info(f"{v} started to process")
             ds = xr.open_dataset(v).isel(time=slicer_time)
             if datasets_cfg[k].data_type == "hh":
@@ -57,20 +58,20 @@ class EvalTask(gokart.TaskOnKart):
                     # u = ds["I_ext"].to_numpy() # 11/4のデータは,hh3,SingleComp,I_extでの予測　間違い
                     mode = "SingleComp"
 
-            input_data = pd.DataFrame(
-                {
-                    "init": [ds["vars"][0]],
-                    "dt": [0.01 * slicer_time.step],
-                    "iter": [len(ds["time"].to_numpy())],
-                    "u": [u],
-                    "mode": [mode],
-                }
-            )
+            input_data = {
+                "init": ds["vars"][0],
+                "dt": 0.01,
+                "iter": len(ds["time"].to_numpy()),
+                "u": u,
+                "mode": mode,
+            }
             logger.info(f"input:{input_data}")
 
             try:
                 logger.critical(f"{k}")
-                prediction = model.predict(input_data)
+                prediction = loaded_data["trainmodel_task"]["surrogate"].predict(
+                    **input_data
+                )
                 logger.info(f"key:{k} prediction_result:{prediction}")
                 if mode == "ThreeComp":
                     I_pre = 1 * (
