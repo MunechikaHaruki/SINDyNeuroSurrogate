@@ -74,11 +74,11 @@ cdef class ThreeComp_Params:
         return self._params.hh.DT
     
     @property
-    def g_12(self):
+    def G_12(self):
         return self._params.G_12
     
     @property
-    def g_23(self):
+    def G_23(self):
         return self._params.G_23
 
 # --- Main simulation functions ---

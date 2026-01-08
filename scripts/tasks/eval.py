@@ -41,25 +41,28 @@ class EvalTask(gokart.TaskOnKart):
 
         # PreProcessTask now returns the dictionary directly
         preprocessed_paths = loaded_data["preprocess_task"]
-
+        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
         for k, v in preprocessed_paths.items():
+            data_type = datasets_cfg[k].data_type
+
+            neuron_cfg = neurons_cfg[data_type]
+
             logger.info(f"{v} started to process")
             ds = xr.open_dataset(v).isel(time=slicer_time)
-            if datasets_cfg[k].data_type == "hh":
+            if data_type == "hh":
                 mode = "SingleComp"
                 u = ds["I_ext"].to_numpy()
                 if OmegaConf.create(conf.eval_cfg_yaml).onlyThreeComp is True:
                     logger.info(f"{k} is passed")
                     continue
-            elif datasets_cfg[k].data_type == "hh3":
+            elif data_type == "hh3":
                 mode = "ThreeComp"
                 u = ds["I_ext"].to_numpy()
                 if OmegaConf.create(conf.eval_cfg_yaml).direct is True:
                     logger.info("Using direct ThreeComp mode")
-                    neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
-                    u_dic = neurons_cfg[datasets_cfg[k].data_type].transform.u
+
+                    u_dic = neuron_cfg.transform.u
                     u = ds[u_dic.ind].sel(u_dic.sel).to_numpy()
-                    # u = ds["I_ext"].to_numpy() # 11/4のデータは,hh3,SingleComp,I_extでの予測　間違い
                     mode = "SingleComp"
 
             input_data = {
@@ -79,18 +82,12 @@ class EvalTask(gokart.TaskOnKart):
                 )
                 logger.info(f"key:{k} prediction_result:{prediction}")
                 if mode == "ThreeComp":
-                    I_pre = 1 * (
-                        prediction["vars"].sel(features="V_pre")
-                        - prediction["vars"].sel(features="V")
+                    from neurosurrogate.dataset_utils._base import (
+                        calc_ThreeComp_internal,
                     )
-                    I_post = 0.7 * (
-                        prediction["vars"].sel(features="V")
-                        - prediction["vars"].sel(features="V_post")
-                    )
-                    I_soma = I_pre - I_post
-                    prediction["I_internal"] = xr.concat(
-                        [I_pre, I_post, I_soma], dim="direction"
-                    ).assign_coords(direction=["pre", "post", "soma"])
+
+                    calc_ThreeComp_internal(prediction, neuron_cfg.params)
+
                 logger.trace(prediction)
 
                 file_path = SURROGATE_DATA_DIR / f"{datetime.now()}_{k}.npy"

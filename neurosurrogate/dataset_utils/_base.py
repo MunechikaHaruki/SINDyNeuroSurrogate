@@ -45,24 +45,40 @@ def run_simulation(
         dset[start_index:end_index] = remaining_chunk
 
 
+MODEL_CONFIG: Dict[str, Dict[str, Any]] = {
+    "hh": {
+        "features": ["V", "M", "H", "N"],
+        "dims": (["time", "features"], ["time"]),
+        "compartments": False,
+    },
+    "hh3": {
+        "features": ["V", "M", "H", "N", "V_pre", "V_post"],
+        "dims": (["time", "features"], ["time"]),
+        "compartments": False,
+    },
+    "traub": {
+        "features": ["V", "XI", "M", "S", "N", "C", "A", "H", "R", "B", "Q"],
+        "dims": (["time", "features", "compartments"], ["time", "compartments"]),
+        "compartments": True,
+    },
+}
+
+
+def calc_ThreeComp_internal(dataset, params):
+    I_pre = params.G_12 * (
+        dataset["vars"].sel(features="V_pre") - dataset["vars"].sel(features="V")
+    )
+    I_post = params.G_23 * (
+        dataset["vars"].sel(features="V") - dataset["vars"].sel(features="V_post")
+    )
+    I_soma = I_pre - I_post
+
+    dataset["I_internal"] = xr.concat(
+        [I_pre, I_post, I_soma], dim="direction"
+    ).assign_coords(direction=["pre", "post", "soma"])
+
+
 def preprocess_dataset(model_type: str, file_path: Path, params):
-    MODEL_CONFIG: Dict[str, Dict[str, Any]] = {
-        "hh": {
-            "features": ["V", "M", "H", "N"],
-            "dims": (["time", "features"], ["time"]),
-            "compartments": False,
-        },
-        "hh3": {
-            "features": ["V", "M", "H", "N", "V_pre", "V_post"],
-            "dims": (["time", "features"], ["time"]),
-            "compartments": False,
-        },
-        "traub": {
-            "features": ["V", "XI", "M", "S", "N", "C", "A", "H", "R", "B", "Q"],
-            "dims": (["time", "features", "compartments"], ["time", "compartments"]),
-            "compartments": True,
-        },
-    }
     config = MODEL_CONFIG[model_type]
 
     with h5py.File(file_path, "r") as f:
@@ -82,20 +98,6 @@ def preprocess_dataset(model_type: str, file_path: Path, params):
         )
 
         if model_type == "hh3":
-            I_pre = params.g_12 * (
-                dataset["vars"].sel(features="V_pre")
-                - dataset["vars"].sel(features="V")
-            )
-            I_post = params.g_23 * (
-                dataset["vars"].sel(features="V")
-                - dataset["vars"].sel(features="V_post")
-            )
-            I_soma = I_pre - I_post
+            calc_ThreeComp_internal(dataset, params)
 
-            dataset["I_internal"] = xr.concat(
-                [I_pre, I_post, I_soma], dim="direction"
-            ).assign_coords(direction=["pre", "post", "soma"])
-
-    # netcdf_path = file_path.with_suffix(".nc")
-    # dataset.to_netcdf(netcdf_path)
     return dataset
