@@ -1,7 +1,3 @@
-import os
-import subprocess
-import sys
-
 import gokart
 import hydra
 import luigi
@@ -9,52 +5,7 @@ import mlflow
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 
-from scripts.tasks.data import (
-    LogMakeDatasetTask,
-    LogPreprocessDataTask,
-)
-from scripts.tasks.eval import LogEvalTask
-from scripts.tasks.train import LogTrainModelTask
-
-# Add the project root to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-
-class LogAllConfTask(gokart.TaskOnKart):
-    cfg_yaml = luigi.Parameter()
-    run_name_prefix = luigi.Parameter()
-
-    def requires(self):
-        return {
-            "log_dataset_task": LogMakeDatasetTask(),
-            "log_preprocess_task": LogPreprocessDataTask(),
-            "log_eval_task": LogEvalTask(),
-            "log_trainmodel_task": LogTrainModelTask(),
-        }
-
-    def run(self):
-        cfg = OmegaConf.create(self.cfg_yaml)
-        dict_cfg = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
-
-        from tasks.utils import CommonConfig
-
-        conf = CommonConfig()
-
-        with mlflow.start_run(run_id=conf.run_id):
-            mlflow.log_dict(dict_cfg, "config.yaml")
-
-            # --- Commit IDの取得 ---
-            try:
-                commit_id = (
-                    subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
-                    .decode("utf-8")
-                    .strip()
-                )
-            except subprocess.CalledProcessError:
-                commit_id = "unknown"  # gitリポジトリでない場合のフォールバック
-            run_name = f"{self.run_name_prefix}_commit-{commit_id}"
-            mlflow.set_tag("mlflow.runName", run_name)
-            self.dump(True)
+from scripts.tasks.utils import RunAllLogging
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -80,7 +31,7 @@ def main(cfg: DictConfig) -> None:
     luigi_config.set("CommonConfig", "seed", str(cfg.seed))
     luigi_config.set("CommonConfig", "run_id", run.info.run_id)
 
-    log_all_conf_task = LogAllConfTask(
+    log_all_conf_task = RunAllLogging(
         cfg_yaml=OmegaConf.to_yaml(cfg), run_name_prefix=run_name_prefix
     )
     gokart.build(log_all_conf_task)

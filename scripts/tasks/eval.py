@@ -13,14 +13,14 @@ from neurosurrogate.config import (
     DATA_DIR,
     SURROGATE_DATA_DIR,
 )
-from scripts.tasks.data import PreProcessTask
 
-from .train import TrainModelTask
 from .utils import CommonConfig
 
 
 class EvalTask(gokart.TaskOnKart):
     def requires(self):
+        from .train import PreProcessTask, TrainModelTask
+
         return {
             "preprocess_task": PreProcessTask(),
             "trainmodel_task": TrainModelTask(),
@@ -98,7 +98,7 @@ class EvalTask(gokart.TaskOnKart):
 
 class LogEvalTask(gokart.TaskOnKart):
     def requires(self):
-        from scripts.tasks.data import PreProcessTask
+        from .train import PreProcessTask
 
         return {"eval_task": EvalTask(), "preprocess_task": PreProcessTask()}
 
