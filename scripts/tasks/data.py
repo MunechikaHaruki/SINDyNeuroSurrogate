@@ -1,4 +1,5 @@
 import random
+import tempfile
 from pathlib import Path
 
 import gokart
@@ -36,17 +37,14 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
         # Set random seeds for reproducibility
         self._set_random_seeds()
 
-        # Prepare temporary H5 file path
-        temp_h5_path = self._get_h5_file_path()
-
-        # Run simulation
-        self._run_simulation(temp_h5_path, dataset_cfg, neuron_cfg, params)
-
-        # Preprocess the simulation data
-        data_type = dataset_cfg["data_type"]
-        processed_dataset = preprocess_dataset(data_type, temp_h5_path, params)
-        netcdf_path = temp_h5_path.with_suffix(".nc")
-        processed_dataset.to_netcdf(netcdf_path)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            temp_h5_path = Path(tmp_dir) / "sim_interim.h5"
+            self._run_simulation(temp_h5_path, dataset_cfg, neuron_cfg, params)
+            # Preprocess the simulation data
+            data_type = dataset_cfg["data_type"]
+            processed_dataset = preprocess_dataset(data_type, temp_h5_path, params)
+            netcdf_path = self._get_nc_file_path()
+            processed_dataset.to_netcdf(netcdf_path)
 
         self.dump(netcdf_path)
 
@@ -54,9 +52,9 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
         random.seed(self.seed)
         np.random.seed(self.seed)
 
-    def _get_h5_file_path(self) -> Path:
+    def _get_nc_file_path(self) -> Path:
         target = self.make_target(
-            "data.h5", processor=gokart.file_processor.BinaryFileProcessor()
+            "data.nc", processor=gokart.file_processor.BinaryFileProcessor()
         )
         path = Path(target.path())
         path.parent.mkdir(parents=True, exist_ok=True)
