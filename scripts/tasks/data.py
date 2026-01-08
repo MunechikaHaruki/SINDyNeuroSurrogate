@@ -19,29 +19,51 @@ from .utils import CommonConfig
 
 
 class GenerateSingleDatasetTask(gokart.TaskOnKart):
+    """
+    Simulates a neuron model based on configurations and preprocesses the result into a dataset.
+    """
+
     dataset_cfg_yaml = luigi.Parameter()
     neuron_cfg_yaml = luigi.Parameter()
     seed = luigi.IntParameter()
 
     def run(self):
+        # Configuration setup
         dataset_cfg = OmegaConf.create(self.dataset_cfg_yaml)
-        data_type = dataset_cfg["data_type"]
         neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
         params = hydra.utils.instantiate(neuron_cfg["params"])
+
+        # Set random seeds for reproducibility
+        self._set_random_seeds()
+
+        # Prepare temporary H5 file path
+        temp_h5_path = self._get_h5_file_path()
+
+        # Run simulation
+        self._run_simulation(temp_h5_path, dataset_cfg, neuron_cfg, params)
+
+        # Preprocess the simulation data
+        data_type = dataset_cfg["data_type"]
+        processed_info = preprocess_dataset(data_type, temp_h5_path, params)
+
+        self.dump(processed_info)
+
+    def _set_random_seeds(self):
         random.seed(self.seed)
         np.random.seed(self.seed)
 
-        temp_h5 = Path(
-            self.make_target(
-                "data.h5", processor=gokart.file_processor.BinaryFileProcessor()
-            ).path()
+    def _get_h5_file_path(self) -> Path:
+        target = self.make_target(
+            "data.h5", processor=gokart.file_processor.BinaryFileProcessor()
         )
-        temp_h5.parent.mkdir(parents=True, exist_ok=True)
-        with h5py.File(temp_h5, "w") as fp:
+        path = Path(target.path())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _run_simulation(self, file_path: Path, dataset_cfg, neuron_cfg, params):
+        with h5py.File(file_path, "w") as fp:
             hydra.utils.instantiate(dataset_cfg["current"], fp=fp, dt=params.DT)
             hydra.utils.instantiate(neuron_cfg["simulator"], fp=fp, params=params)
-        processed_info = preprocess_dataset(data_type, temp_h5, params)
-        self.dump(processed_info)
 
 
 class MakeDatasetTask(gokart.TaskOnKart):
@@ -66,6 +88,30 @@ class MakeDatasetTask(gokart.TaskOnKart):
         self.dump({"path_dict": self.load()})
 
 
+class LogSingleDatasetTask(gokart.TaskOnKart):
+    dataset_name = luigi.Parameter()
+    dataset_cfg_yaml = luigi.Parameter()
+    neuron_cfg_yaml = luigi.Parameter()
+    file_path = luigi.Parameter()
+    run_id = luigi.Parameter()
+
+    def run(self):
+        dataset_cfg = OmegaConf.create(self.dataset_cfg_yaml)
+        neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
+
+        with mlflow.start_run(run_id=self.run_id):
+            with xr.open_dataset(Path(self.file_path)) as xr_data:
+                fig = hydra.utils.instantiate(
+                    neuron_cfg.plot, xr=xr_data
+                )
+                mlflow.log_figure(
+                    fig, f"original/{dataset_cfg.data_type}/{self.dataset_name}.png"
+                )
+                plt.close(fig)
+        logger.info(f"Logged dataset: {self.dataset_name}")
+        self.dump(self.dataset_name)
+
+
 class LogMakeDatasetTask(gokart.TaskOnKart):
     def requires(self):
         return MakeDatasetTask(seed=CommonConfig().seed)
@@ -74,15 +120,24 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
         conf = CommonConfig()
         loaded_data = self.load()
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
-        with mlflow.start_run(run_id=conf.run_id):
-            for name, dataset_cfg in OmegaConf.create(conf.datasets_cfg_yaml).items():
-                with xr.open_dataset(loaded_data["path_dict"][name]) as xr_data:
-                    fig = hydra.utils.instantiate(
-                        neurons_cfg[dataset_cfg.data_type].plot, xr=xr_data
-                    )
-                    mlflow.log_figure(
-                        fig, f"original/{dataset_cfg.data_type}/{name}.png"
-                    )
-                    plt.close(fig)
-                logger.info(f"Logged dataset: {name}")
+
+        run_id = getattr(conf, "run_id", None)
+        if run_id is None:
+            with mlflow.start_run() as run:
+                run_id = run.info.run_id
+
+        tasks = []
+        for name, dataset_cfg in OmegaConf.create(conf.datasets_cfg_yaml).items():
+            file_path = loaded_data["path_dict"][name]
+            tasks.append(
+                LogSingleDatasetTask(
+                    dataset_name=name,
+                    dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
+                    neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
+                    file_path=str(file_path),
+                    run_id=run_id,
+                )
+            )
+        yield tasks
         self.dump(True)
+
