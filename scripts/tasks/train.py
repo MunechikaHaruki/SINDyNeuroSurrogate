@@ -18,8 +18,8 @@ GATE_VAR_SLICE = slice(1, 4, None)
 V_VAR_SLICE = slice(0, 1, None)
 
 
-class TrainModelTask(gokart.TaskOnKart):
-    """モデルの学習を行うタスク"""
+class TrainPreprocessorTask(gokart.TaskOnKart):
+    """前処理器（Preprocessor）の学習を行うタスク"""
 
     def requires(self):
         from scripts.tasks.data import MakeDatasetTask
@@ -30,26 +30,59 @@ class TrainModelTask(gokart.TaskOnKart):
         conf = CommonConfig()
         model_cfg = OmegaConf.create(conf.model_cfg_yaml)
         preprocessor = hydra.utils.instantiate(model_cfg.preprocessor)
-        surrogate = hydra.utils.instantiate(model_cfg.surrogate)
 
-        # MakeDatasetTask now returns the path dictionary directly
+        # MakeDatasetTask returns the path dictionary
         dataset_paths = self.load()
         train_xr_dataset = xr.open_dataset(dataset_paths["train"])
-        logger.trace(train_xr_dataset)
+        train_gate_data = train_xr_dataset["vars"].to_numpy()[:, GATE_VAR_SLICE]
+
+        logger.info("Fitting preprocessor...")
+        preprocessor.fit(train_gate_data)
+        self.dump(preprocessor)
+
+
+class TrainModelTask(gokart.TaskOnKart):
+    """モデルの学習を行うタスク"""
+
+    def requires(self):
+        from scripts.tasks.data import MakeDatasetTask
+
+        return {
+            "data": MakeDatasetTask(seed=CommonConfig().seed),
+            "preprocessor": TrainPreprocessorTask(),
+        }
+
+    def _prepare_train_data(self, train_xr_dataset, preprocessor):
         train_gate_data = train_xr_dataset["vars"].to_numpy()[:, GATE_VAR_SLICE]
         V_data = train_xr_dataset["vars"].to_numpy()[:, V_VAR_SLICE]
 
-        preprocessor.fit(train_gate_data)
         logger.info("Transforming training dataset...")
         transformed_gate = preprocessor.transform(train_gate_data)
         train = np.concatenate((V_data, transformed_gate), axis=1)
         logger.critical(train)
-        logger.info("Fitting preprocessor...")
+        return train
 
+    def _get_control_input(self, train_xr_dataset, model_cfg):
         if model_cfg.sel_train_u == "I_ext":
-            u = train_xr_dataset["I_ext"].to_numpy()
+            return train_xr_dataset["I_ext"].to_numpy()
         elif model_cfg.sel_train_u == "soma":
-            u = train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
+            return train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
+        raise ValueError(f"Invalid sel_train_u configuration: {model_cfg.sel_train_u}")
+
+    def run(self):
+        conf = CommonConfig()
+        model_cfg = OmegaConf.create(conf.model_cfg_yaml)
+        surrogate = hydra.utils.instantiate(model_cfg.surrogate)
+
+        loaded_data = self.load()
+        dataset_paths = loaded_data["data"]
+        preprocessor = loaded_data["preprocessor"]
+
+        train_xr_dataset = xr.open_dataset(dataset_paths["train"])
+        logger.trace(train_xr_dataset)
+
+        train = self._prepare_train_data(train_xr_dataset, preprocessor)
+        u = self._get_control_input(train_xr_dataset, model_cfg)
 
         logger.info("Fitting surrogate model...")
         surrogate.fit(
