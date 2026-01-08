@@ -1,7 +1,6 @@
 import os
 
 import gokart
-import gokart.file_processor
 import hydra
 import matplotlib.pyplot as plt
 import mlflow
@@ -11,11 +10,14 @@ from loguru import logger
 from omegaconf import OmegaConf
 
 from neurosurrogate.config import PROCESSED_DATA_DIR
+from neurosurrogate.utils.data_processing import (
+    GATE_VAR_SLICE,
+    V_VAR_SLICE,
+    _get_control_input,
+    _prepare_train_data,
+)
 
 from .utils import CommonConfig
-
-GATE_VAR_SLICE = slice(1, 4, None)
-V_VAR_SLICE = slice(0, 1, None)
 
 
 class TrainPreprocessorTask(gokart.TaskOnKart):
@@ -52,23 +54,6 @@ class TrainModelTask(gokart.TaskOnKart):
             "preprocessor": TrainPreprocessorTask(),
         }
 
-    def _prepare_train_data(self, train_xr_dataset, preprocessor):
-        train_gate_data = train_xr_dataset["vars"].to_numpy()[:, GATE_VAR_SLICE]
-        V_data = train_xr_dataset["vars"].to_numpy()[:, V_VAR_SLICE]
-
-        logger.info("Transforming training dataset...")
-        transformed_gate = preprocessor.transform(train_gate_data)
-        train = np.concatenate((V_data, transformed_gate), axis=1)
-        logger.critical(train)
-        return train
-
-    def _get_control_input(self, train_xr_dataset, model_cfg):
-        if model_cfg.sel_train_u == "I_ext":
-            return train_xr_dataset["I_ext"].to_numpy()
-        elif model_cfg.sel_train_u == "soma":
-            return train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
-        raise ValueError(f"Invalid sel_train_u configuration: {model_cfg.sel_train_u}")
-
     def run(self):
         conf = CommonConfig()
         model_cfg = OmegaConf.create(conf.model_cfg_yaml)
@@ -81,8 +66,8 @@ class TrainModelTask(gokart.TaskOnKart):
         train_xr_dataset = xr.open_dataset(dataset_paths["train"])
         logger.trace(train_xr_dataset)
 
-        train = self._prepare_train_data(train_xr_dataset, preprocessor)
-        u = self._get_control_input(train_xr_dataset, model_cfg)
+        train = _prepare_train_data(train_xr_dataset, preprocessor)
+        u = _get_control_input(train_xr_dataset, model_cfg)
 
         logger.info("Fitting surrogate model...")
         surrogate.fit(
@@ -135,7 +120,7 @@ class PreProcessTask(gokart.TaskOnKart):
         loaded_data = self.load()
         model_data = loaded_data["model"]
         dataset_paths = loaded_data["data"]
-        
+
         preprocessed_path_dict = {}
         # preprocess data
         for k, v in dataset_paths.items():
