@@ -38,10 +38,10 @@ class EvalTask(gokart.TaskOnKart):
         )
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         path_dict = {}
-        
+
         # PreProcessTask now returns the dictionary directly
         preprocessed_paths = loaded_data["preprocess_task"]
-        
+
         for k, v in preprocessed_paths.items():
             logger.info(f"{v} started to process")
             ds = xr.open_dataset(v).isel(time=slicer_time)
@@ -98,7 +98,7 @@ class EvalTask(gokart.TaskOnKart):
                 path_dict[k] = file_path
             except ValueError as e:
                 logger.error(f"Value Error: {e}")
-        self.dump({"path_dict": path_dict})
+        self.dump(path_dict)
 
 
 class LogEvalTask(gokart.TaskOnKart):
@@ -114,7 +114,7 @@ class LogEvalTask(gokart.TaskOnKart):
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
         with mlflow.start_run(run_id=conf.run_id):
             # EvalTask dumps {"path_dict": ...}
-            for k, v in loaded_data["eval_task"]["path_dict"].items():
+            for k, v in loaded_data["eval_task"].items():
                 data_type = datasets_cfg[k].data_type
                 # PreProcessTask dumps the dict directly
                 preprocessed_path = loaded_data["preprocess_task"][k]
