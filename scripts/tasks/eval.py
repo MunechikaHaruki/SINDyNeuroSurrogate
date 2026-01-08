@@ -29,8 +29,9 @@ class EvalTask(gokart.TaskOnKart):
         Load a registered model from MLflow and make a prediction.
         """
         conf = CommonConfig()
-        with mlflow.start_run(run_id=self.load()["run_id"]):
-            model = mlflow.pyfunc.load_model(f"runs:/{self.load()['run_id']}/model")
+        run_id = conf.run_id
+        with mlflow.start_run(run_id=run_id):
+            model = mlflow.pyfunc.load_model(f"runs:/{run_id}/model")
         slicer_time = hydra.utils.instantiate(
             OmegaConf.create(conf.eval_cfg_yaml).time_slice
         )
@@ -91,7 +92,7 @@ class EvalTask(gokart.TaskOnKart):
                 path_dict[k] = file_path
             except ValueError as e:
                 logger.error(f"Value Error: {e}")
-        self.dump({"run_id": self.load()["run_id"], "path_dict": path_dict})
+        self.dump({"path_dict": path_dict})
 
 
 class LogEvalTask(gokart.TaskOnKart):
@@ -105,8 +106,7 @@ class LogEvalTask(gokart.TaskOnKart):
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
-        run_id = loaded_data["eval_task"]["run_id"]
-        with mlflow.start_run(run_id=run_id):
+        with mlflow.start_run(run_id=conf.run_id):
             for k, v in loaded_data["eval_task"]["path_dict"].items():
                 data_type = datasets_cfg[k].data_type
                 preprocessed_path = loaded_data["preprocess_task"]["path_dict"][k]
@@ -136,7 +136,7 @@ class LogEvalTask(gokart.TaskOnKart):
                     )
                     plt.close(fig)
 
-        self.dump({"run_id": run_id})
+        self.dump(True)
 
     def plot_diff(self, u: np.ndarray, original: xr.DataArray, surrogate: xr.DataArray):
         num_features = len(original.features.values)

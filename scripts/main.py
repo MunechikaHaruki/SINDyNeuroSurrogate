@@ -6,6 +6,7 @@ import gokart
 import hydra
 import luigi
 import mlflow
+from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 
 from scripts.tasks.data import (
@@ -33,7 +34,11 @@ class LogAllConfTask(gokart.TaskOnKart):
         cfg = OmegaConf.create(self.cfg_yaml)
         dict_cfg = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
 
-        with mlflow.start_run(run_id=self.load()["log_eval_task"].get("run_id")):
+        from tasks.utils import CommonConfig
+
+        conf = CommonConfig()
+
+        with mlflow.start_run(run_id=conf.run_id):
             mlflow.log_dict(dict_cfg, "config.yaml")
 
             # --- Commit IDの取得 ---
@@ -54,6 +59,15 @@ class LogAllConfTask(gokart.TaskOnKart):
 def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
 
+    try:
+        run_name_prefix = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
+    except Exception:
+        run_name_prefix = "default_run"
+    mlflow.set_tracking_uri("file:./mlruns")
+    mlflow.set_experiment(cfg.experiment_name)
+    with mlflow.start_run(run_name=run_name_prefix) as run:
+        logger.info(f"run_id:{run.info.run_id}")
+
     luigi_config = luigi.configuration.get_config()
     luigi_config.set(
         "CommonConfig", "datasets_cfg_yaml", OmegaConf.to_yaml(cfg.datasets)
@@ -62,12 +76,7 @@ def main(cfg: DictConfig) -> None:
     luigi_config.set("CommonConfig", "model_cfg_yaml", OmegaConf.to_yaml(cfg.models))
     luigi_config.set("CommonConfig", "eval_cfg_yaml", OmegaConf.to_yaml(cfg.eval))
     luigi_config.set("CommonConfig", "seed", str(cfg.seed))
-    luigi_config.set("CommonConfig", "experiment_name", cfg.experiment_name)
-
-    try:
-        run_name_prefix = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
-    except Exception:
-        run_name_prefix = "default_run"
+    luigi_config.set("CommonConfig", "run_id", run.info.run_id)
 
     log_all_conf_task = LogAllConfTask(
         cfg_yaml=OmegaConf.to_yaml(cfg), run_name_prefix=run_name_prefix

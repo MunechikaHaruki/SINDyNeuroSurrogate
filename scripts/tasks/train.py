@@ -32,7 +32,7 @@ class TrainModelTask(gokart.TaskOnKart):
     def requires(self):
         from scripts.tasks.data import MakeDatasetTask
 
-        return MakeDatasetTask()
+        return MakeDatasetTask(seed=CommonConfig().seed)
 
     def run(self):
         conf = CommonConfig()
@@ -64,7 +64,7 @@ class TrainModelTask(gokart.TaskOnKart):
             t=train_xr_dataset["time"].to_numpy(),
         )
 
-        with mlflow.start_run(run_id=self.load()["run_id"]):
+        with mlflow.start_run(run_id=conf.run_id):
             mlflow.log_dict(
                 surrogate.sindy.equations(precision=3),
                 artifact_file="sindy_equations.txt",
@@ -86,6 +86,5 @@ class TrainModelTask(gokart.TaskOnKart):
             {
                 "preprocessor": preprocessor,
                 "path_dict": self.load()["path_dict"],
-                "run_id": self.load()["run_id"],
             }
         )

@@ -7,4 +7,4 @@ class CommonConfig(luigi.Config):
     model_cfg_yaml = luigi.Parameter()
     eval_cfg_yaml = luigi.Parameter()
     seed = luigi.IntParameter()
-    experiment_name = luigi.Parameter()
+    run_id = luigi.Parameter()

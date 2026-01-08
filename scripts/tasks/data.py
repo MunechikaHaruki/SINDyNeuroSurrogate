@@ -49,6 +49,8 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
 class MakeDatasetTask(gokart.TaskOnKart):
     """データセットの生成と前処理を行うタスク"""
 
+    seed = luigi.IntParameter()
+
     def requires(self):
         conf = CommonConfig()
         datasets = OmegaConf.create(conf.datasets_cfg_yaml)
@@ -57,29 +59,24 @@ class MakeDatasetTask(gokart.TaskOnKart):
             name: GenerateSingleDatasetTask(
                 dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
                 neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
-                seed=conf.seed + idx,
+                seed=self.seed + idx,
             )
             for idx, (name, dataset_cfg) in enumerate(datasets.items())
         }
 
     def run(self):
-        conf = CommonConfig()
-        mlflow.set_tracking_uri("file:./mlruns")
-        mlflow.set_experiment(conf.experiment_name)
-        with mlflow.start_run() as run:
-            logger.info(f"MLflow Run ID: {run.info.run_id}")
-            self.dump({"path_dict": self.load(), "run_id": run.info.run_id})
+        self.dump({"path_dict": self.load()})
 
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
     def requires(self):
-        return MakeDatasetTask()
+        return MakeDatasetTask(seed=CommonConfig().seed)
 
     def run(self):
         conf = CommonConfig()
         loaded_data = self.load()
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
-        with mlflow.start_run(run_id=loaded_data["run_id"]):
+        with mlflow.start_run(run_id=conf.run_id):
             for name, dataset_cfg in OmegaConf.create(conf.datasets_cfg_yaml).items():
                 with xr.open_dataset(loaded_data["path_dict"][name]) as xr_data:
                     fig = hydra.utils.instantiate(
@@ -129,9 +126,7 @@ class PreProcessTask(gokart.TaskOnKart):
             logger.info(transformed_gate.__repr__())
             preprocessed_path_dict[k] = PROCESSED_DATA_DIR / os.path.basename(v)
             transformed_xr.to_netcdf(preprocessed_path_dict[k])
-        self.dump(
-            {"path_dict": preprocessed_path_dict, "run_id": loaded_data["run_id"]}
-        )
+        self.dump({"path_dict": preprocessed_path_dict})
 
 
 class LogPreprocessDataTask(gokart.TaskOnKart):
@@ -140,16 +135,13 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
 
     def run(self):
         loaded_data = self.load()
-        run_id = loaded_data.get("run_id")
         path_dict = loaded_data.get("path_dict", {})
 
-        if not run_id:
-            raise KeyError("The key 'run_id' is missing from loaded_data.")
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
 
-        with mlflow.start_run(run_id=run_id):
+        with mlflow.start_run(run_id=conf.run_id):
             for key, file_path in path_dict.items():
                 self._process_and_log_dataset(key, file_path, datasets_cfg, neurons_cfg)
 
