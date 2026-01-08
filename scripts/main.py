@@ -14,6 +14,7 @@ from scripts.tasks.data import (
     LogPreprocessDataTask,
 )
 from scripts.tasks.eval import LogEvalTask
+from scripts.tasks.train import LogTrainModelTask
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -28,6 +29,7 @@ class LogAllConfTask(gokart.TaskOnKart):
             "log_dataset_task": LogMakeDatasetTask(),
             "log_preprocess_task": LogPreprocessDataTask(),
             "log_eval_task": LogEvalTask(),
+            "log_trainmodel_task": LogTrainModelTask(),
         }
 
     def run(self):

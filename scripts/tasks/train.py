@@ -65,6 +65,29 @@ class TrainModelTask(gokart.TaskOnKart):
         )
 
         with mlflow.start_run(run_id=conf.run_id):
+            mlflow.pyfunc.log_model(
+                name="model",
+                python_model=SindySurrogateWrapper(surrogate),
+                # input_example=input_data,
+            )
+
+        self.dump(
+            {
+                "surrogate": surrogate,
+                "preprocessor": preprocessor,
+                "path_dict": self.load()["path_dict"],
+            }
+        )
+
+
+class LogTrainModelTask(gokart.TaskOnKart):
+    def requires(self):
+        return TrainModelTask()
+
+    def run(self):
+        conf = CommonConfig()
+        surrogate = self.load()["surrogate"]
+        with mlflow.start_run(run_id=conf.run_id):
             mlflow.log_dict(
                 surrogate.sindy.equations(precision=3),
                 artifact_file="sindy_equations.txt",
@@ -76,15 +99,4 @@ class TrainModelTask(gokart.TaskOnKart):
             feature_names = surrogate.sindy.get_feature_names()
             mlflow.log_text("\n".join(feature_names), artifact_file="feature_names.txt")
             mlflow.log_param("sindy_params", str(surrogate.sindy.optimizer.get_params))
-            mlflow.pyfunc.log_model(
-                name="model",
-                python_model=SindySurrogateWrapper(surrogate),
-                # input_example=input_data,
-            )
-
-        self.dump(
-            {
-                "preprocessor": preprocessor,
-                "path_dict": self.load()["path_dict"],
-            }
-        )
+        self.dump(True)
