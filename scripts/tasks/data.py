@@ -44,9 +44,11 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
 
         # Preprocess the simulation data
         data_type = dataset_cfg["data_type"]
-        processed_info = preprocess_dataset(data_type, temp_h5_path, params)
+        processed_dataset = preprocess_dataset(data_type, temp_h5_path, params)
+        netcdf_path = temp_h5_path.with_suffix(".nc")
+        processed_dataset.to_netcdf(netcdf_path)
 
-        self.dump(processed_info)
+        self.dump(netcdf_path)
 
     def _set_random_seeds(self):
         random.seed(self.seed)
@@ -115,7 +117,7 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
                 )
                 plt.close(fig)
         logger.info(f"Logged dataset: {self.dataset_name}")
-        self.dump(self.dataset_name)
+        self.dump(True)
 
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
@@ -123,11 +125,6 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
         conf = CommonConfig()
         datasets = OmegaConf.create(conf.datasets_cfg_yaml)
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
-
-        run_id = getattr(conf, "run_id", None)
-        if run_id is None:
-            with mlflow.start_run() as run:
-                run_id = run.info.run_id
 
         tasks = []
         seed = CommonConfig().seed
@@ -140,9 +137,8 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
                         neurons_cfg[dataset_cfg.data_type]
                     ),
                     seed=seed + idx,
-                    run_id=run_id,
+                    run_id=conf.run_id,
                 )
             )
         yield tasks
         self.dump(True)
-

@@ -96,6 +96,6 @@ def preprocess_dataset(model_type: str, file_path: Path, params):
                 [I_pre, I_post, I_soma], dim="direction"
             ).assign_coords(direction=["pre", "post", "soma"])
 
-    netcdf_path = file_path.with_suffix(".nc")
-    dataset.to_netcdf(netcdf_path)
-    return netcdf_path
+    # netcdf_path = file_path.with_suffix(".nc")
+    # dataset.to_netcdf(netcdf_path)
+    return dataset
