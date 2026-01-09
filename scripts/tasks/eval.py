@@ -76,8 +76,8 @@ class EvalTask(gokart.TaskOnKart):
 
             try:
                 logger.critical(f"{k}")
-                # TrainModelTask returns a dict with "surrogate" key
-                prediction = loaded_data["trainmodel_task"]["surrogate"].predict(
+                # TrainModelTask returns the surrogate model directly
+                prediction = loaded_data["trainmodel_task"].predict(
                     **input_data
                 )
                 logger.info(f"key:{k} prediction_result:{prediction}")

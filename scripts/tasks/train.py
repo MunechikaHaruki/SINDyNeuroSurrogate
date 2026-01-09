@@ -76,12 +76,7 @@ class TrainModelTask(gokart.TaskOnKart):
             t=train_xr_dataset["time"].to_numpy(),
         )
 
-        self.dump(
-            {
-                "surrogate": surrogate,
-                "preprocessor": preprocessor,
-            }
-        )
+        self.dump(surrogate)
 
 
 class LogTrainModelTask(gokart.TaskOnKart):
@@ -90,7 +85,7 @@ class LogTrainModelTask(gokart.TaskOnKart):
 
     def run(self):
         conf = CommonConfig()
-        surrogate = self.load()["surrogate"]
+        surrogate = self.load()
         with mlflow.start_run(run_id=conf.run_id):
             mlflow.log_dict(
                 surrogate.sindy.equations(precision=3),
@@ -109,16 +104,15 @@ class LogTrainModelTask(gokart.TaskOnKart):
 class PreProcessTask(gokart.TaskOnKart):
     def requires(self):
         from scripts.tasks.data import MakeDatasetTask
-        from scripts.tasks.train import TrainModelTask
 
         return {
-            "model": TrainModelTask(),
+            "preprocessor": TrainPreprocessorTask(),
             "data": MakeDatasetTask(seed=CommonConfig().seed),
         }
 
     def run(self):
         loaded_data = self.load()
-        model_data = loaded_data["model"]
+        preprocessor = loaded_data["preprocessor"]
         dataset_paths = loaded_data["data"]
 
         preprocessed_path_dict = {}
@@ -126,7 +120,7 @@ class PreProcessTask(gokart.TaskOnKart):
         for k, v in dataset_paths.items():
             xr_data = xr.open_dataset(v)
             transformed_xr = transform_dataset_with_preprocessor(
-                xr_data, model_data["preprocessor"]
+                xr_data, preprocessor
             )
             logger.info(f"Transformed xr dataset: {k}")
             preprocessed_path_dict[k] = PROCESSED_DATA_DIR / os.path.basename(v)
