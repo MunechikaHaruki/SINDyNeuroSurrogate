@@ -1,5 +1,3 @@
-from datetime import datetime
-
 import gokart
 import hydra
 import luigi
@@ -12,9 +10,9 @@ from omegaconf import OmegaConf
 
 from neurosurrogate.config import (
     DATA_DIR,
-    SURROGATE_DATA_DIR,
 )
 
+from .train import PreProcessDataTask, TrainModelTask
 from .utils import CommonConfig
 
 
@@ -22,8 +20,6 @@ class SingleEvalTask(gokart.TaskOnKart):
     dataset_key = luigi.Parameter()
 
     def requires(self):
-        from .train import PreProcessDataTask, TrainModelTask
-
         return {
             "preprocess_task": PreProcessDataTask(),
             "trainmodel_task": TrainModelTask(),
@@ -70,55 +66,44 @@ class SingleEvalTask(gokart.TaskOnKart):
         }
         logger.info(f"input:{input_data}")
 
-        try:
-            logger.critical(f"{k}")
-            # TrainModelTask returns the surrogate model directly
-            prediction = loaded_data["trainmodel_task"].predict(**input_data)
-            logger.info(f"key:{k} prediction_result:{prediction}")
-            if mode == "ThreeComp":
-                from neurosurrogate.dataset_utils._base import (
-                    calc_ThreeComp_internal,
-                )
+        logger.critical(f"{k}")
+        # TrainModelTask returns the surrogate model directly
+        prediction = loaded_data["trainmodel_task"].predict(**input_data)
+        logger.info(f"key:{k} prediction_result:{prediction}")
+        if mode == "ThreeComp":
+            from neurosurrogate.dataset_utils._base import (
+                calc_ThreeComp_internal,
+            )
 
-                calc_ThreeComp_internal(prediction, neuron_cfg.params)
+            calc_ThreeComp_internal(prediction, neuron_cfg.params)
 
-            logger.trace(prediction)
-
-            file_path = SURROGATE_DATA_DIR / f"{datetime.now()}_{k}.npy"
-            prediction.to_netcdf(file_path)
-            self.dump(str(file_path))
-        except ValueError as e:
-            logger.error(f"Value Error: {e}")
-            self.dump(None)
+        logger.trace(prediction)
+        self.dump(prediction)
 
 
 class EvalTask(gokart.TaskOnKart):
-    def requires(self):
-        from .train import PreProcessDataTask
+    """
+    PreProcessDataTaskの結果を受け取り、データセットごとにSingleEvalTaskを実行して集計する。
+    """
 
+    # 必要に応じてパラメータ化し、requiresで利用できるようにする
+    # model_name = gokart.Parameter()
+
+    def requires(self):
         return PreProcessDataTask()
 
     def run(self):
-        """
-        Load a registered model from MLflow and make a prediction.
-        """
         preprocessed_datasets = self.load()
-        tasks = [SingleEvalTask(dataset_key=k) for k in preprocessed_datasets.keys()]
-        yield tasks
 
-        path_dict = {}
-        for task in tasks:
-            path = task.output().load()
-            if path:
-                path_dict[task.dataset_key] = path
+        tasks = {k: SingleEvalTask(dataset_key=k) for k in preprocessed_datasets.keys()}
+        yield list(tasks.values())
+        data_dict = {k: task.output().load() for k, task in tasks.items()}
 
-        self.dump(path_dict)
+        self.dump(data_dict)
 
 
 class LogEvalTask(gokart.TaskOnKart):
     def requires(self):
-        from .train import PreProcessDataTask
-
         return {"eval_task": EvalTask(), "preprocess_task": PreProcessDataTask()}
 
     def run(self):
@@ -128,34 +113,31 @@ class LogEvalTask(gokart.TaskOnKart):
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
         with mlflow.start_run(run_id=conf.run_id):
             # EvalTask dumps {"path_dict": ...}
-            for k, v in loaded_data["eval_task"].items():
+            for k, surrogate_result in loaded_data["eval_task"].items():
                 data_type = datasets_cfg[k].data_type
                 # PreProcessDataTask dumps the dict directly
                 preprocessed_result = loaded_data["preprocess_task"][k]
 
-                with (
-                    xr.open_dataset(v) as surrogate_result,
-                ):
-                    u = preprocessed_result["I_ext"].to_numpy()
-                    fig = self.plot_diff(
-                        u, preprocessed_result["vars"], surrogate_result["vars"]
-                    )
-                    mlflow.log_figure(fig, f"compare/{data_type}/{k}.png")
+                u = preprocessed_result["I_ext"].to_numpy()
+                fig = self.plot_diff(
+                    u, preprocessed_result["vars"], surrogate_result["vars"]
+                )
+                mlflow.log_figure(fig, f"compare/{data_type}/{k}.png")
 
-                    self._debug_show_image(fig)
+                self._debug_show_image(fig)
 
-                    plt.close(fig)
-                    fig = hydra.utils.instantiate(
-                        neurons_cfg[datasets_cfg[k].data_type].plot,
-                        xr=surrogate_result,
-                        surrogate=True,
-                    )
+                plt.close(fig)
+                fig = hydra.utils.instantiate(
+                    neurons_cfg[datasets_cfg[k].data_type].plot,
+                    xr=surrogate_result,
+                    surrogate=True,
+                )
 
-                    mlflow.log_figure(
-                        fig,
-                        f"surrogate_result/{data_type}/{k}.png",
-                    )
-                    plt.close(fig)
+                mlflow.log_figure(
+                    fig,
+                    f"surrogate_result/{data_type}/{k}.png",
+                )
+                plt.close(fig)
 
         self.dump(True)
 
