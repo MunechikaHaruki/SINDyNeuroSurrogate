@@ -11,10 +11,10 @@ from omegaconf import OmegaConf
 
 from neurosurrogate.config import PROCESSED_DATA_DIR
 from neurosurrogate.utils.data_processing import (
-    GATE_VAR_SLICE,
-    V_VAR_SLICE,
     _get_control_input,
     _prepare_train_data,
+    get_gate_data,
+    transform_dataset_with_preprocessor,
 )
 
 from .utils import CommonConfig
@@ -36,7 +36,7 @@ class TrainPreprocessorTask(gokart.TaskOnKart):
         # MakeDatasetTask returns the path dictionary
         dataset_paths = self.load()
         train_xr_dataset = xr.open_dataset(dataset_paths["train"])
-        train_gate_data = train_xr_dataset["vars"].to_numpy()[:, GATE_VAR_SLICE]
+        train_gate_data = get_gate_data(train_xr_dataset)
 
         logger.info("Fitting preprocessor...")
         preprocessor.fit(train_gate_data)
@@ -125,24 +125,10 @@ class PreProcessTask(gokart.TaskOnKart):
         # preprocess data
         for k, v in dataset_paths.items():
             xr_data = xr.open_dataset(v)
-            xr_gate = xr_data["vars"].to_numpy()[:, GATE_VAR_SLICE]
-            transformed_gate = model_data["preprocessor"].transform(xr_gate)
-            V_data = xr_data["vars"][:, V_VAR_SLICE].to_numpy().reshape(-1, 1)
-            new_vars = np.concatenate((V_data, transformed_gate), axis=1)
-            new_feature_names = ["V"] + [
-                f"latent{i + 1}" for i in range(transformed_gate.shape[1])
-            ]
-            transformed_xr = xr_data.copy().drop_vars("vars").drop_vars("features")
-            transformed_xr["vars"] = xr.DataArray(
-                new_vars,
-                coords={
-                    "time": xr_data.coords["time"],
-                    "features": new_feature_names,  # 新しい次元と座標
-                },
-                dims=["time", "features"],  # 新しい次元名
+            transformed_xr = transform_dataset_with_preprocessor(
+                xr_data, model_data["preprocessor"]
             )
             logger.info(f"Transformed xr dataset: {k}")
-            logger.info(transformed_gate.__repr__())
             preprocessed_path_dict[k] = PROCESSED_DATA_DIR / os.path.basename(v)
             transformed_xr.to_netcdf(preprocessed_path_dict[k])
         self.dump(preprocessed_path_dict)
