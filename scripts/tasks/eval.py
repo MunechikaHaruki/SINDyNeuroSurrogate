@@ -2,6 +2,7 @@ from datetime import datetime
 
 import gokart
 import hydra
+import luigi
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
@@ -17,7 +18,9 @@ from neurosurrogate.config import (
 from .utils import CommonConfig
 
 
-class EvalTask(gokart.TaskOnKart):
+class SingleEvalTask(gokart.TaskOnKart):
+    dataset_key = luigi.Parameter()
+
     def requires(self):
         from .train import PreProcessDataTask, TrainModelTask
 
@@ -27,65 +30,88 @@ class EvalTask(gokart.TaskOnKart):
         }
 
     def run(self):
-        """
-        Load a registered model from MLflow and make a prediction.
-        """
         loaded_data = self.load()
+        k = self.dataset_key
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
-        path_dict = {}
+        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
 
         # PreProcessDataTask now returns the dictionary directly
         preprocessed_datasets = loaded_data["preprocess_task"]
-        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
-        for k, ds in preprocessed_datasets.items():
-            data_type = datasets_cfg[k].data_type
-            neuron_cfg = neurons_cfg[data_type]
-            logger.info(f"{ds} started to process")
-            if data_type == "hh":
+        ds = preprocessed_datasets[k]
+
+        data_type = datasets_cfg[k].data_type
+        neuron_cfg = neurons_cfg[data_type]
+        logger.info(f"{ds} started to process")
+
+        if data_type == "hh":
+            mode = "SingleComp"
+            u = ds["I_ext"].to_numpy()
+            if conf.eval_cfg["onlyThreeComp"] is True:
+                logger.info(f"{k} is passed")
+                self.dump(None)
+                return
+        elif data_type == "hh3":
+            mode = "ThreeComp"
+            u = ds["I_ext"].to_numpy()
+            if conf.eval_cfg["direct"] is True:
+                logger.info("Using direct ThreeComp mode")
+
+                u_dic = neuron_cfg.transform.u
+                u = ds[u_dic.ind].sel(u_dic.sel).to_numpy()
                 mode = "SingleComp"
-                u = ds["I_ext"].to_numpy()
-                if conf.eval_cfg["onlyThreeComp"] is True:
-                    logger.info(f"{k} is passed")
-                    continue
-            elif data_type == "hh3":
-                mode = "ThreeComp"
-                u = ds["I_ext"].to_numpy()
-                if conf.eval_cfg["direct"] is True:
-                    logger.info("Using direct ThreeComp mode")
 
-                    u_dic = neuron_cfg.transform.u
-                    u = ds[u_dic.ind].sel(u_dic.sel).to_numpy()
-                    mode = "SingleComp"
+        input_data = {
+            "init": ds["vars"][0],
+            "dt": 0.01,
+            "iter": len(ds["time"].to_numpy()),
+            "u": u,
+            "mode": mode,
+        }
+        logger.info(f"input:{input_data}")
 
-            input_data = {
-                "init": ds["vars"][0],
-                "dt": 0.01,
-                "iter": len(ds["time"].to_numpy()),
-                "u": u,
-                "mode": mode,
-            }
-            logger.info(f"input:{input_data}")
+        try:
+            logger.critical(f"{k}")
+            # TrainModelTask returns the surrogate model directly
+            prediction = loaded_data["trainmodel_task"].predict(**input_data)
+            logger.info(f"key:{k} prediction_result:{prediction}")
+            if mode == "ThreeComp":
+                from neurosurrogate.dataset_utils._base import (
+                    calc_ThreeComp_internal,
+                )
 
-            try:
-                logger.critical(f"{k}")
-                # TrainModelTask returns the surrogate model directly
-                prediction = loaded_data["trainmodel_task"].predict(**input_data)
-                logger.info(f"key:{k} prediction_result:{prediction}")
-                if mode == "ThreeComp":
-                    from neurosurrogate.dataset_utils._base import (
-                        calc_ThreeComp_internal,
-                    )
+                calc_ThreeComp_internal(prediction, neuron_cfg.params)
 
-                    calc_ThreeComp_internal(prediction, neuron_cfg.params)
+            logger.trace(prediction)
 
-                logger.trace(prediction)
+            file_path = SURROGATE_DATA_DIR / f"{datetime.now()}_{k}.npy"
+            prediction.to_netcdf(file_path)
+            self.dump(str(file_path))
+        except ValueError as e:
+            logger.error(f"Value Error: {e}")
+            self.dump(None)
 
-                file_path = SURROGATE_DATA_DIR / f"{datetime.now()}_{k}.npy"
-                prediction.to_netcdf(file_path)
-                path_dict[k] = file_path
-            except ValueError as e:
-                logger.error(f"Value Error: {e}")
+
+class EvalTask(gokart.TaskOnKart):
+    def requires(self):
+        from .train import PreProcessDataTask
+
+        return PreProcessDataTask()
+
+    def run(self):
+        """
+        Load a registered model from MLflow and make a prediction.
+        """
+        preprocessed_datasets = self.load()
+        tasks = [SingleEvalTask(dataset_key=k) for k in preprocessed_datasets.keys()]
+        yield tasks
+
+        path_dict = {}
+        for task in tasks:
+            path = task.output().load()
+            if path:
+                path_dict[task.dataset_key] = path
+
         self.dump(path_dict)
 
 
