@@ -91,8 +91,7 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
     def run(self):
         targets = self.input()
-        dataset_path_mapping = {name: target.path() for name, target in targets.items()}
-        self.dump(dataset_path_mapping)
+        self.dump(targets)
 
 
 class LogSingleDatasetTask(gokart.TaskOnKart):
