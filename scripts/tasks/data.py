@@ -1,3 +1,4 @@
+import hashlib
 import random
 import tempfile
 from pathlib import Path
@@ -61,7 +62,8 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
             self.dump(processed_dataset)
 
     def _set_random_seeds(self):
-        task_seed = (self.seed + hash(self.dataset_cfg_yaml)) % 100000000
+        hash_digest = hashlib.md5(self.dataset_cfg_yaml.encode()).hexdigest()
+        task_seed = (self.seed + int(hash_digest, 16)) % 100000000
         logger.debug(task_seed)
         random.seed(task_seed)
         np.random.seed(task_seed)
