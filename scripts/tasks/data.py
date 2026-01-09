@@ -28,7 +28,7 @@ class NetCDFProcessor(gokart.file_processor.FileProcessor):
             return ds.load()
 
     def dump(self, obj, output_file):
-        obj.to_netcdf(output_file.path, engine="h5netcdf")
+        obj.to_netcdf(output_file.name, engine="h5netcdf")
 
 
 class GenerateSingleDatasetTask(gokart.TaskOnKart):
@@ -38,7 +38,7 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
 
     dataset_cfg_yaml = luigi.Parameter()
     neuron_cfg_yaml = luigi.Parameter()
-    seed = luigi.IntParameter()
+    seed = luigi.IntParameter(default=CommonConfig().seed)
 
     def output(self):
         return self.make_target("dataset.nc", processor=NetCDFProcessor())
@@ -61,8 +61,10 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
             self.dump(processed_dataset)
 
     def _set_random_seeds(self):
-        random.seed(self.seed)
-        np.random.seed(self.seed)
+        task_seed = (self.seed + hash(self.dataset_cfg_yaml)) % 100000000
+        logger.debug(task_seed)
+        random.seed(task_seed)
+        np.random.seed(task_seed)
 
     def _run_simulation(self, file_path: Path, dataset_cfg, neuron_cfg, params):
         with h5py.File(file_path, "w") as fp:
@@ -73,8 +75,6 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
 class MakeDatasetTask(gokart.TaskOnKart):
     """データセットの生成と前処理を行うタスク"""
 
-    seed = luigi.IntParameter()
-
     def requires(self):
         conf = CommonConfig()
         datasets = OmegaConf.create(conf.datasets_cfg_yaml)
@@ -83,9 +83,8 @@ class MakeDatasetTask(gokart.TaskOnKart):
             name: GenerateSingleDatasetTask(
                 dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
                 neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
-                seed=self.seed + idx,
             )
-            for idx, (name, dataset_cfg) in enumerate(datasets.items())
+            for name, dataset_cfg in datasets.items()
         }
 
     def run(self):
@@ -98,14 +97,12 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
     dataset_name = luigi.Parameter()
     dataset_cfg_yaml = luigi.Parameter()
     neuron_cfg_yaml = luigi.Parameter()
-    seed = luigi.IntParameter()
     run_id = luigi.Parameter()
 
     def requires(self):
         return GenerateSingleDatasetTask(
             dataset_cfg_yaml=self.dataset_cfg_yaml,
             neuron_cfg_yaml=self.neuron_cfg_yaml,
-            seed=self.seed,
         )
 
     def run(self):
@@ -130,8 +127,7 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
 
         tasks = []
-        seed = CommonConfig().seed
-        for idx, (name, dataset_cfg) in enumerate(datasets.items()):
+        for name, dataset_cfg in datasets.items():
             tasks.append(
                 LogSingleDatasetTask(
                     dataset_name=name,
@@ -139,7 +135,6 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
                     neuron_cfg_yaml=OmegaConf.to_yaml(
                         neurons_cfg[dataset_cfg.data_type]
                     ),
-                    seed=seed + idx,
                     run_id=conf.run_id,
                 )
             )

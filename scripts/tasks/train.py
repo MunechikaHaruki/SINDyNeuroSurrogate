@@ -22,7 +22,7 @@ class TrainPreprocessorTask(gokart.TaskOnKart):
     """前処理器（Preprocessor）の学習を行うタスク"""
 
     def requires(self):
-        return MakeDatasetTask(seed=CommonConfig().seed)
+        return MakeDatasetTask()
 
     def run(self):
         conf = CommonConfig()
@@ -46,7 +46,7 @@ class TrainModelTask(gokart.TaskOnKart):
         from scripts.tasks.data import MakeDatasetTask
 
         return {
-            "data": MakeDatasetTask(seed=CommonConfig().seed),
+            "data": MakeDatasetTask(),
             "preprocessor": TrainPreprocessorTask(),
         }
 
@@ -103,7 +103,7 @@ class PreProcessDataTask(gokart.TaskOnKart):
 
         return {
             "preprocessor": TrainPreprocessorTask(),
-            "data": MakeDatasetTask(seed=CommonConfig().seed),
+            "data": MakeDatasetTask(),
         }
 
     def run(self):
