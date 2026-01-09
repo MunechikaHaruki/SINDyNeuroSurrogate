@@ -32,33 +32,26 @@ class EvalTask(gokart.TaskOnKart):
         """
         loaded_data = self.load()
         conf = CommonConfig()
-
-        slicer_time = hydra.utils.instantiate(
-            OmegaConf.create(conf.eval_cfg_yaml).time_slice
-        )
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         path_dict = {}
 
         # PreProcessDataTask now returns the dictionary directly
         preprocessed_datasets = loaded_data["preprocess_task"]
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
-        for k, v in preprocessed_datasets.items():
+        for k, ds in preprocessed_datasets.items():
             data_type = datasets_cfg[k].data_type
-
             neuron_cfg = neurons_cfg[data_type]
-
-            logger.info(f"{v} started to process")
-            ds = v.isel(time=slicer_time)
+            logger.info(f"{ds} started to process")
             if data_type == "hh":
                 mode = "SingleComp"
                 u = ds["I_ext"].to_numpy()
-                if OmegaConf.create(conf.eval_cfg_yaml).onlyThreeComp is True:
+                if conf.eval_cfg["onlyThreeComp"] is True:
                     logger.info(f"{k} is passed")
                     continue
             elif data_type == "hh3":
                 mode = "ThreeComp"
                 u = ds["I_ext"].to_numpy()
-                if OmegaConf.create(conf.eval_cfg_yaml).direct is True:
+                if conf.eval_cfg["direct"] is True:
                     logger.info("Using direct ThreeComp mode")
 
                     u_dic = neuron_cfg.transform.u

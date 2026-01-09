@@ -11,9 +11,6 @@ hydra:
 seed: 6
 
 eval:
-  time_slice:
-    _target_: builtins.slice
-    _args_: [null, null, 1]
   direct: False
   onlyThreeComp : ${sc}
 

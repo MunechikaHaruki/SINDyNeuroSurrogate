@@ -1,3 +1,5 @@
+import json
+
 import gokart
 import hydra
 import luigi
@@ -25,11 +27,16 @@ def main(cfg: DictConfig) -> None:
     luigi_config.set(
         "CommonConfig", "datasets_cfg_yaml", OmegaConf.to_yaml(cfg.datasets)
     )
+
+    # set dataset_dict
     luigi_config.set("CommonConfig", "neurons_cfg_yaml", OmegaConf.to_yaml(cfg.neurons))
     luigi_config.set("CommonConfig", "model_cfg_yaml", OmegaConf.to_yaml(cfg.models))
-    luigi_config.set("CommonConfig", "eval_cfg_yaml", OmegaConf.to_yaml(cfg.eval))
     luigi_config.set("CommonConfig", "seed", str(cfg.seed))
+
+    # set CommonConfig
     luigi_config.set("CommonConfig", "run_id", run.info.run_id)
+
+    luigi_config.set("CommonConfig", "eval_cfg", json.dumps(dict(cfg.eval)))
 
     log_all_conf_task = RunAllLogging(
         cfg_yaml=OmegaConf.to_yaml(cfg), run_name_prefix=run_name_prefix
