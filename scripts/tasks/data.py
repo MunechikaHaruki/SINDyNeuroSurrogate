@@ -30,6 +30,7 @@ class NetCDFProcessor(gokart.file_processor.FileProcessor):
 
     def dump(self, obj, output_file):
         obj.to_netcdf(output_file.name, engine="h5netcdf")
+        logger.debug(f"{output_file.name} is dumped")
 
 
 class GenerateSingleDatasetTask(gokart.TaskOnKart):
@@ -62,7 +63,8 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
             self.dump(processed_dataset)
 
     def _set_random_seeds(self):
-        hash_digest = hashlib.md5(self.dataset_cfg_yaml.encode()).hexdigest()
+        combined_cfg = self.dataset_cfg_yaml + self.neuron_cfg_yaml
+        hash_digest = hashlib.md5(combined_cfg.encode()).hexdigest()
         task_seed = (self.seed + int(hash_digest, 16)) % 100000000
         logger.debug(task_seed)
         random.seed(task_seed)
@@ -122,22 +124,20 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
 
 
 class LogMakeDatasetTask(gokart.TaskOnKart):
-    def run(self):
+    def requires(self):
         conf = CommonConfig()
         datasets = OmegaConf.create(conf.datasets_cfg_yaml)
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
 
-        tasks = []
-        for name, dataset_cfg in datasets.items():
-            tasks.append(
-                LogSingleDatasetTask(
-                    dataset_name=name,
-                    dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
-                    neuron_cfg_yaml=OmegaConf.to_yaml(
-                        neurons_cfg[dataset_cfg.data_type]
-                    ),
-                    run_id=conf.run_id,
-                )
+        return {
+            name: LogSingleDatasetTask(
+                dataset_name=name,
+                dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
+                neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
+                run_id=conf.run_id,
             )
-        yield tasks
+            for name, dataset_cfg in datasets.items()
+        }
+
+    def run(self):
         self.dump(True)
