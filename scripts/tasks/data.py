@@ -19,6 +19,18 @@ from neurosurrogate.dataset_utils._base import preprocess_dataset
 from .utils import CommonConfig
 
 
+class NetCDFProcessor(gokart.file_processor.FileProcessor):
+    def format(self):
+        return luigi.format.Nop
+
+    def load(self, input_file):
+        with xr.open_dataset(input_file, engine="h5netcdf") as ds:
+            return ds.load()
+
+    def dump(self, obj, output_file):
+        obj.to_netcdf(output_file.name, engine="h5netcdf")
+
+
 class GenerateSingleDatasetTask(gokart.TaskOnKart):
     """
     Simulates a neuron model based on configurations and preprocesses the result into a dataset.
@@ -27,6 +39,9 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
     dataset_cfg_yaml = luigi.Parameter()
     neuron_cfg_yaml = luigi.Parameter()
     seed = luigi.IntParameter()
+
+    def output(self):
+        return self.make_target("dataset.nc", processor=NetCDFProcessor())
 
     def run(self):
         # Configuration setup
@@ -43,22 +58,11 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
             # Preprocess the simulation data
             data_type = dataset_cfg["data_type"]
             processed_dataset = preprocess_dataset(data_type, temp_h5_path, params)
-            netcdf_path = self._get_nc_file_path()
-            processed_dataset.to_netcdf(netcdf_path)
-
-        self.dump(netcdf_path)
+            self.dump(processed_dataset)
 
     def _set_random_seeds(self):
         random.seed(self.seed)
         np.random.seed(self.seed)
-
-    def _get_nc_file_path(self) -> Path:
-        target = self.make_target(
-            "data.nc", processor=gokart.file_processor.BinaryFileProcessor()
-        )
-        path = Path(target.path())
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
 
     def _run_simulation(self, file_path: Path, dataset_cfg, neuron_cfg, params):
         with h5py.File(file_path, "w") as fp:
@@ -105,15 +109,14 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
     def run(self):
         dataset_cfg = OmegaConf.create(self.dataset_cfg_yaml)
         neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
-        file_path = self.load()
 
         with mlflow.start_run(run_id=self.run_id):
-            with xr.open_dataset(Path(file_path)) as xr_data:
-                fig = hydra.utils.instantiate(neuron_cfg.plot, xr=xr_data)
-                mlflow.log_figure(
-                    fig, f"original/{dataset_cfg.data_type}/{self.dataset_name}.png"
-                )
-                plt.close(fig)
+            xr_data = self.load()
+            fig = hydra.utils.instantiate(neuron_cfg.plot, xr=xr_data)
+            mlflow.log_figure(
+                fig, f"original/{dataset_cfg.data_type}/{self.dataset_name}.png"
+            )
+            plt.close(fig)
         logger.info(f"Logged dataset: {self.dataset_name}")
         self.dump(True)
 

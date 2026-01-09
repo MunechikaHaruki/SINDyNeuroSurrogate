@@ -27,6 +27,7 @@ dependencies = [
     "gokart>=1.10.2",
     "jinja2>=3.1.6",
     "scipy>=1.16.2",
+    "h5netcdf>=1.7.3",
 ]
     #"torch>=2.7.1",
     #"torchvision>=0.22.1",

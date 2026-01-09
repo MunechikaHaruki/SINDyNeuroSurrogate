@@ -1,15 +1,11 @@
-import os
-
 import gokart
 import hydra
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
-import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
-from neurosurrogate.config import PROCESSED_DATA_DIR
 from neurosurrogate.utils.data_processing import (
     _get_control_input,
     _prepare_train_data,
@@ -17,6 +13,7 @@ from neurosurrogate.utils.data_processing import (
     transform_dataset_with_preprocessor,
 )
 
+from .data import MakeDatasetTask
 from .utils import CommonConfig
 
 
@@ -24,8 +21,6 @@ class TrainPreprocessorTask(gokart.TaskOnKart):
     """前処理器（Preprocessor）の学習を行うタスク"""
 
     def requires(self):
-        from scripts.tasks.data import MakeDatasetTask
-
         return MakeDatasetTask(seed=CommonConfig().seed)
 
     def run(self):
@@ -35,7 +30,7 @@ class TrainPreprocessorTask(gokart.TaskOnKart):
 
         # MakeDatasetTask returns the path dictionary
         dataset_paths = self.load()
-        train_xr_dataset = xr.open_dataset(dataset_paths["train"])
+        train_xr_dataset = dataset_paths["train"]
         train_gate_data = get_gate_data(train_xr_dataset)
 
         logger.info("Fitting preprocessor...")
@@ -60,20 +55,19 @@ class TrainModelTask(gokart.TaskOnKart):
         surrogate = hydra.utils.instantiate(model_cfg.surrogate)
 
         loaded_data = self.load()
-        dataset_paths = loaded_data["data"]
+        train_dataset = loaded_data["data"]["train"]
         preprocessor = loaded_data["preprocessor"]
 
-        train_xr_dataset = xr.open_dataset(dataset_paths["train"])
-        logger.trace(train_xr_dataset)
+        logger.trace(train_dataset)
 
-        train = _prepare_train_data(train_xr_dataset, preprocessor)
-        u = _get_control_input(train_xr_dataset, model_cfg)
+        train = _prepare_train_data(train_dataset, preprocessor)
+        u = _get_control_input(train_dataset, model_cfg)
 
         logger.info("Fitting surrogate model...")
         surrogate.fit(
             train=train,
             u=u,
-            t=train_xr_dataset["time"].to_numpy(),
+            t=train_dataset["time"].to_numpy(),
         )
 
         self.dump(surrogate)
@@ -101,7 +95,7 @@ class LogTrainModelTask(gokart.TaskOnKart):
         self.dump(True)
 
 
-class PreProcessTask(gokart.TaskOnKart):
+class PreProcessDataTask(gokart.TaskOnKart):
     def requires(self):
         from scripts.tasks.data import MakeDatasetTask
 
@@ -115,22 +109,18 @@ class PreProcessTask(gokart.TaskOnKart):
         preprocessor = loaded_data["preprocessor"]
         dataset_paths = loaded_data["data"]
 
-        preprocessed_path_dict = {}
+        preprocessed_datasets = {}
         # preprocess data
-        for k, v in dataset_paths.items():
-            xr_data = xr.open_dataset(v)
-            transformed_xr = transform_dataset_with_preprocessor(
-                xr_data, preprocessor
-            )
+        for k, xr_data in dataset_paths.items():
+            transformed_xr = transform_dataset_with_preprocessor(xr_data, preprocessor)
             logger.info(f"Transformed xr dataset: {k}")
-            preprocessed_path_dict[k] = PROCESSED_DATA_DIR / os.path.basename(v)
-            transformed_xr.to_netcdf(preprocessed_path_dict[k])
-        self.dump(preprocessed_path_dict)
+            preprocessed_datasets[k] = transformed_xr
+        self.dump(preprocessed_datasets)
 
 
 class LogPreprocessDataTask(gokart.TaskOnKart):
     def requires(self):
-        return PreProcessTask()
+        return PreProcessDataTask()
 
     def run(self):
         path_dict = self.load()
@@ -140,21 +130,20 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
 
         with mlflow.start_run(run_id=conf.run_id):
-            for key, file_path in path_dict.items():
-                self._process_and_log_dataset(key, file_path, datasets_cfg, neurons_cfg)
+            for key, data in path_dict.items():
+                self._process_and_log_dataset(key, data, datasets_cfg, neurons_cfg)
 
         self.dump(True)
 
-    def _process_and_log_dataset(self, key, file_path, datasets_cfg, neurons_cfg):
+    def _process_and_log_dataset(self, key, xr_data, datasets_cfg, neurons_cfg):
         """1つのデータセットに対して処理とログ出力を行う"""
-        with xr.open_dataset(file_path) as xr_data:
-            dataset_type = datasets_cfg[key].data_type
-            u_cfg = neurons_cfg[dataset_type].transform.u
-            data_vars = xr_data["vars"]
-            external_input = xr_data[u_cfg.ind].sel(u_cfg.sel)
-            fig = self._create_figure(data_vars, external_input)
-            mlflow.log_figure(fig, f"preprocessed/{dataset_type}/{key}.png")
-            plt.close(fig)
+        dataset_type = datasets_cfg[key].data_type
+        u_cfg = neurons_cfg[dataset_type].transform.u
+        data_vars = xr_data["vars"]
+        external_input = xr_data[u_cfg.ind].sel(u_cfg.sel)
+        fig = self._create_figure(data_vars, external_input)
+        mlflow.log_figure(fig, f"preprocessed/{dataset_type}/{key}.png")
+        plt.close(fig)
 
     @staticmethod
     def _create_figure(data_vars, external_input):

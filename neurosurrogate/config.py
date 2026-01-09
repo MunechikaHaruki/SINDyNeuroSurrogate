@@ -7,13 +7,11 @@ PROJ_ROOT = Path(__file__).resolve().parents[1]
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
 DATA_DIR = PROJ_ROOT / "data"
-PROCESSED_DATA_DIR = DATA_DIR / "processed"
 SURROGATE_DATA_DIR = DATA_DIR / "surrogate"
 PYX_DATA_DIR = DATA_DIR / "pyx"
 
 
 for dir in [
-    PROCESSED_DATA_DIR,
     SURROGATE_DATA_DIR,
     PYX_DATA_DIR,
 ]:

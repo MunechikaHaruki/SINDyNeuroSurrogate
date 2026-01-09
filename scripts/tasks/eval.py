@@ -19,10 +19,10 @@ from .utils import CommonConfig
 
 class EvalTask(gokart.TaskOnKart):
     def requires(self):
-        from .train import PreProcessTask, TrainModelTask
+        from .train import PreProcessDataTask, TrainModelTask
 
         return {
-            "preprocess_task": PreProcessTask(),
+            "preprocess_task": PreProcessDataTask(),
             "trainmodel_task": TrainModelTask(),
         }
 
@@ -39,16 +39,16 @@ class EvalTask(gokart.TaskOnKart):
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
         path_dict = {}
 
-        # PreProcessTask now returns the dictionary directly
-        preprocessed_paths = loaded_data["preprocess_task"]
+        # PreProcessDataTask now returns the dictionary directly
+        preprocessed_datasets = loaded_data["preprocess_task"]
         neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
-        for k, v in preprocessed_paths.items():
+        for k, v in preprocessed_datasets.items():
             data_type = datasets_cfg[k].data_type
 
             neuron_cfg = neurons_cfg[data_type]
 
             logger.info(f"{v} started to process")
-            ds = xr.open_dataset(v).isel(time=slicer_time)
+            ds = v.isel(time=slicer_time)
             if data_type == "hh":
                 mode = "SingleComp"
                 u = ds["I_ext"].to_numpy()
@@ -77,9 +77,7 @@ class EvalTask(gokart.TaskOnKart):
             try:
                 logger.critical(f"{k}")
                 # TrainModelTask returns the surrogate model directly
-                prediction = loaded_data["trainmodel_task"].predict(
-                    **input_data
-                )
+                prediction = loaded_data["trainmodel_task"].predict(**input_data)
                 logger.info(f"key:{k} prediction_result:{prediction}")
                 if mode == "ThreeComp":
                     from neurosurrogate.dataset_utils._base import (
@@ -100,9 +98,9 @@ class EvalTask(gokart.TaskOnKart):
 
 class LogEvalTask(gokart.TaskOnKart):
     def requires(self):
-        from .train import PreProcessTask
+        from .train import PreProcessDataTask
 
-        return {"eval_task": EvalTask(), "preprocess_task": PreProcessTask()}
+        return {"eval_task": EvalTask(), "preprocess_task": PreProcessDataTask()}
 
     def run(self):
         loaded_data = self.load()
@@ -113,12 +111,11 @@ class LogEvalTask(gokart.TaskOnKart):
             # EvalTask dumps {"path_dict": ...}
             for k, v in loaded_data["eval_task"].items():
                 data_type = datasets_cfg[k].data_type
-                # PreProcessTask dumps the dict directly
-                preprocessed_path = loaded_data["preprocess_task"][k]
+                # PreProcessDataTask dumps the dict directly
+                preprocessed_result = loaded_data["preprocess_task"][k]
 
                 with (
                     xr.open_dataset(v) as surrogate_result,
-                    xr.open_dataset(preprocessed_path) as preprocessed_result,
                 ):
                     u = preprocessed_result["I_ext"].to_numpy()
                     fig = self.plot_diff(
