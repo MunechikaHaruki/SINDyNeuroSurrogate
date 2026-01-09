@@ -3,6 +3,7 @@ import hydra
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
+import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
@@ -29,9 +30,9 @@ class TrainPreprocessorTask(gokart.TaskOnKart):
         preprocessor = hydra.utils.instantiate(model_cfg.preprocessor)
 
         # MakeDatasetTask returns the path dictionary
-        dataset_paths = self.load()
-        train_xr_dataset = dataset_paths["train"]
-        train_gate_data = get_gate_data(train_xr_dataset)
+        train_path = self.load()["train"]
+        with xr.open_dataset(train_path) as train_xr_dataset:
+            train_gate_data = get_gate_data(train_xr_dataset)
 
         logger.info("Fitting preprocessor...")
         preprocessor.fit(train_gate_data)
@@ -55,13 +56,14 @@ class TrainModelTask(gokart.TaskOnKart):
         surrogate = hydra.utils.instantiate(model_cfg.surrogate)
 
         loaded_data = self.load()
-        train_dataset = loaded_data["data"]["train"]
+        train_dataset_path = loaded_data["data"]["train"]
         preprocessor = loaded_data["preprocessor"]
 
-        logger.trace(train_dataset)
+        with xr.open_dataset(train_dataset_path) as train_dataset:
+            logger.trace(train_dataset)
 
-        train = _prepare_train_data(train_dataset, preprocessor)
-        u = _get_control_input(train_dataset, model_cfg)
+            train = _prepare_train_data(train_dataset, preprocessor)
+            u = _get_control_input(train_dataset, model_cfg)
 
         logger.info("Fitting surrogate model...")
         surrogate.fit(
@@ -111,10 +113,13 @@ class PreProcessDataTask(gokart.TaskOnKart):
 
         preprocessed_datasets = {}
         # preprocess data
-        for k, xr_data in dataset_paths.items():
-            transformed_xr = transform_dataset_with_preprocessor(xr_data, preprocessor)
-            logger.info(f"Transformed xr dataset: {k}")
-            preprocessed_datasets[k] = transformed_xr
+        for k, xr_data_path in dataset_paths.items():
+            with xr.open_dataset(xr_data_path) as xr_data:
+                transformed_xr = transform_dataset_with_preprocessor(
+                    xr_data, preprocessor
+                )
+                logger.info(f"Transformed xr dataset: {k}")
+                preprocessed_datasets[k] = transformed_xr
         self.dump(preprocessed_datasets)
 
 

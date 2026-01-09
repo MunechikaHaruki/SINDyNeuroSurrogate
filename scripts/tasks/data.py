@@ -28,7 +28,7 @@ class NetCDFProcessor(gokart.file_processor.FileProcessor):
             return ds.load()
 
     def dump(self, obj, output_file):
-        obj.to_netcdf(output_file.name, engine="h5netcdf")
+        obj.to_netcdf(output_file.path, engine="h5netcdf")
 
 
 class GenerateSingleDatasetTask(gokart.TaskOnKart):
@@ -89,7 +89,9 @@ class MakeDatasetTask(gokart.TaskOnKart):
         }
 
     def run(self):
-        self.dump(self.load())
+        targets = self.input()
+        dataset_path_mapping = {name: target.path() for name, target in targets.items()}
+        self.dump(dataset_path_mapping)
 
 
 class LogSingleDatasetTask(gokart.TaskOnKart):
