@@ -38,8 +38,8 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
     Simulates a neuron model based on configurations and preprocesses the result into a dataset.
     """
 
-    dataset_cfg_yaml = luigi.Parameter()
-    neuron_cfg_yaml = luigi.Parameter()
+    dataset_cfg = luigi.DictParameter()
+    neuron_cfg = luigi.DictParameter()
     seed = luigi.IntParameter(default=CommonConfig().seed)
 
     def output(self):
@@ -47,8 +47,8 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
 
     def run(self):
         # Configuration setup
-        dataset_cfg = OmegaConf.create(self.dataset_cfg_yaml)
-        neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
+        dataset_cfg = OmegaConf.create(recursive_to_dict(self.dataset_cfg))
+        neuron_cfg = OmegaConf.create(recursive_to_dict(self.neuron_cfg))
         params = hydra.utils.instantiate(neuron_cfg["params"])
 
         # Set random seeds for reproducibility
@@ -63,7 +63,7 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
             self.dump(processed_dataset)
 
     def _set_random_seeds(self):
-        combined_cfg = self.dataset_cfg_yaml + self.neuron_cfg_yaml
+        combined_cfg = str(self.dataset_cfg) + str(self.neuron_cfg)
         hash_digest = hashlib.md5(combined_cfg.encode()).hexdigest()
         task_seed = (self.seed + int(hash_digest, 16)) % 100000000
         logger.debug(task_seed)
@@ -81,14 +81,13 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
     def requires(self):
         conf = CommonConfig()
-        datasets = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
         neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
         return {
             name: GenerateSingleDatasetTask(
-                dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
-                neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
+                dataset_cfg=conf.datasets_dict[name],
+                neuron_cfg=neurons_cfg[conf.datasets_dict[name]["data_type"]],
             )
-            for name, dataset_cfg in datasets.items()
+            for name in conf.datasets_dict.keys()
         }
 
     def run(self):
@@ -98,26 +97,23 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
 class LogSingleDatasetTask(gokart.TaskOnKart):
     dataset_name = luigi.Parameter()
-    dataset_cfg_yaml = luigi.Parameter()
-    neuron_cfg_yaml = luigi.Parameter()
+    dataset_cfg = luigi.DictParameter()
+    neuron_cfg = luigi.DictParameter()
     run_id = luigi.Parameter()
 
     def requires(self):
         return GenerateSingleDatasetTask(
-            dataset_cfg_yaml=self.dataset_cfg_yaml,
-            neuron_cfg_yaml=self.neuron_cfg_yaml,
+            dataset_cfg=self.dataset_cfg,
+            neuron_cfg=self.neuron_cfg,
         )
 
     def run(self):
-        dataset_cfg = OmegaConf.create(self.dataset_cfg_yaml)
-        neuron_cfg = OmegaConf.create(self.neuron_cfg_yaml)
-
+        neuron_cfg = OmegaConf.create(recursive_to_dict(self.neuron_cfg))
+        data_type = self.dataset_cfg["data_type"]
         with mlflow.start_run(run_id=self.run_id):
             xr_data = self.load()
             fig = hydra.utils.instantiate(neuron_cfg.plot, xr=xr_data)
-            mlflow.log_figure(
-                fig, f"original/{dataset_cfg.data_type}/{self.dataset_name}.png"
-            )
+            mlflow.log_figure(fig, f"original/{data_type}/{self.dataset_name}.png")
             plt.close(fig)
         logger.info(f"Logged dataset: {self.dataset_name}")
         self.dump(True)
@@ -126,17 +122,15 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
 class LogMakeDatasetTask(gokart.TaskOnKart):
     def requires(self):
         conf = CommonConfig()
-        datasets = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
-        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
 
         return {
             name: LogSingleDatasetTask(
                 dataset_name=name,
-                dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
-                neuron_cfg_yaml=OmegaConf.to_yaml(neurons_cfg[dataset_cfg.data_type]),
+                dataset_cfg=conf.datasets_dict[name],
+                neuron_cfg=conf.neurons_dict[conf.datasets_dict[name]["data_type"]],
                 run_id=conf.run_id,
             )
-            for name, dataset_cfg in datasets.items()
+            for name in conf.datasets_dict.keys()
         }
 
     def run(self):
