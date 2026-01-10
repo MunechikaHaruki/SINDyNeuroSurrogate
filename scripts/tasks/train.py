@@ -25,7 +25,7 @@ class TrainPreprocessorTask(gokart.TaskOnKart):
 
     def run(self):
         conf = CommonConfig()
-        model_cfg = OmegaConf.create(conf.model_cfg_yaml)
+        model_cfg = OmegaConf.create(recursive_to_dict(conf.model_cfg_dict))
         preprocessor = hydra.utils.instantiate(model_cfg.preprocessor)
 
         # MakeDatasetTask returns the path dictionary
@@ -50,7 +50,7 @@ class TrainModelTask(gokart.TaskOnKart):
 
     def run(self):
         conf = CommonConfig()
-        model_cfg = OmegaConf.create(conf.model_cfg_yaml)
+        model_cfg = OmegaConf.create(recursive_to_dict(conf.model_cfg_dict))
         surrogate = hydra.utils.instantiate(model_cfg.surrogate)
 
         loaded_data = self.load()
