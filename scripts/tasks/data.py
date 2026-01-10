@@ -15,7 +15,7 @@ import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
-from neurosurrogate.dataset_utils import PARAMS_REGISTRY
+from neurosurrogate.dataset_utils import PARAMS_REGISTRY, SIMULATOR_REGISTRY
 from neurosurrogate.dataset_utils._base import preprocess_dataset
 
 from .utils import CommonConfig, recursive_to_dict
@@ -49,8 +49,6 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
     def run(self):
         # Configuration setup
         data_type = self.dataset_cfg["data_type"]
-        dataset_cfg = OmegaConf.create(recursive_to_dict(self.dataset_cfg))
-        neuron_cfg = OmegaConf.create(recursive_to_dict(self.neuron_cfg))
         params_dict = self.neuron_cfg["params"]
 
         if params_dict is None:
@@ -61,11 +59,14 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
         # Set random seeds for reproducibility
         self._set_random_seeds()
 
+        dataset_cfg = OmegaConf.create(recursive_to_dict(self.dataset_cfg))
         with tempfile.TemporaryDirectory() as tmp_dir:
             temp_h5_path = Path(tmp_dir) / "sim_interim.h5"
-            self._run_simulation(temp_h5_path, dataset_cfg, neuron_cfg, params)
+
+            with h5py.File(temp_h5_path, "w") as fp:
+                hydra.utils.instantiate(dataset_cfg["current"], fp=fp, dt=params.DT)
+                SIMULATOR_REGISTRY[data_type](fp=fp, params=params)
             # Preprocess the simulation data
-            data_type = dataset_cfg["data_type"]
             processed_dataset = preprocess_dataset(data_type, temp_h5_path, params)
             self.dump(processed_dataset)
 
@@ -76,11 +77,6 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
         logger.debug(task_seed)
         random.seed(task_seed)
         np.random.seed(task_seed)
-
-    def _run_simulation(self, file_path: Path, dataset_cfg, neuron_cfg, params):
-        with h5py.File(file_path, "w") as fp:
-            hydra.utils.instantiate(dataset_cfg["current"], fp=fp, dt=params.DT)
-            hydra.utils.instantiate(neuron_cfg["simulator"], fp=fp, params=params)
 
 
 class MakeDatasetTask(gokart.TaskOnKart):

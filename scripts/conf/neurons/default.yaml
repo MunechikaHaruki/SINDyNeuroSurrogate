@@ -1,7 +1,5 @@
 hh:
   params:
-  simulator:
-    _target_: neurosurrogate.dataset_utils.hh.hh_simulator.hh_simulate
   plot:
     _target_: neurosurrogate.plots.plot_hh
   transform:
@@ -17,8 +15,7 @@ hh3:
     E_LEAK: -54.4
     C: 1.0
     DT: 0.01
-  simulator:
-    _target_: neurosurrogate.dataset_utils.hh.hh_simulator.threecomp_simulate
+
   plot:
     _target_: neurosurrogate.plots.plot_3comp_hh
   transform:
