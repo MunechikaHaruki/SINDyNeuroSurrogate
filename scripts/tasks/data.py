@@ -95,11 +95,10 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
     def requires(self):
         conf = CommonConfig()
-        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
         return {
             name: GenerateSingleDatasetTask(
                 dataset_cfg=conf.datasets_dict[name],
-                neuron_cfg=neurons_cfg[conf.datasets_dict[name]["data_type"]],
+                neuron_cfg=conf.neurons_dict[conf.datasets_dict[name]["data_type"]],
             )
             for name in conf.datasets_dict.keys()
         }
