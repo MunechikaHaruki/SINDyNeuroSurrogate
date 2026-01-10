@@ -81,7 +81,7 @@ class MakeDatasetTask(gokart.TaskOnKart):
 
     def requires(self):
         conf = CommonConfig()
-        datasets = OmegaConf.create(conf.datasets_cfg_yaml)
+        datasets = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
         neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
         return {
             name: GenerateSingleDatasetTask(
@@ -126,7 +126,7 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
 class LogMakeDatasetTask(gokart.TaskOnKart):
     def requires(self):
         conf = CommonConfig()
-        datasets = OmegaConf.create(conf.datasets_cfg_yaml)
+        datasets = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
         neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
 
         return {

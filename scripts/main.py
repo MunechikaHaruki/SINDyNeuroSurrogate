@@ -25,7 +25,9 @@ def main(cfg: DictConfig) -> None:
 
     luigi_config = luigi.configuration.get_config()
     luigi_config.set(
-        "CommonConfig", "datasets_cfg_yaml", OmegaConf.to_yaml(cfg.datasets)
+        "CommonConfig",
+        "datasets_dict",
+        json.dumps(OmegaConf.to_container(cfg.datasets, resolve=True)),
     )
 
     # set dataset_dict

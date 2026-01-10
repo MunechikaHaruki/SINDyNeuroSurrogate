@@ -126,7 +126,7 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
         path_dict = self.load()
 
         conf = CommonConfig()
-        datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
+        datasets_cfg = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
         neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
 
         with mlflow.start_run(run_id=conf.run_id):

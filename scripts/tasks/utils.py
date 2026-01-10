@@ -59,7 +59,7 @@ class RunAllLogging(gokart.TaskOnKart):
 
 
 class CommonConfig(luigi.Config):
-    datasets_cfg_yaml = luigi.Parameter()
+    datasets_dict = luigi.DictParameter()
     neurons_dict = luigi.DictParameter()
     model_cfg_yaml = luigi.Parameter()
     eval_cfg = luigi.DictParameter()
