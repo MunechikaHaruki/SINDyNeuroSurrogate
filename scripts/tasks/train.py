@@ -42,8 +42,6 @@ class TrainModelTask(gokart.TaskOnKart):
     """モデルの学習を行うタスク"""
 
     def requires(self):
-        from scripts.tasks.data import MakeDatasetTask
-
         return {
             "data": MakeDatasetTask(),
             "preprocessor": TrainPreprocessorTask(),
@@ -98,8 +96,6 @@ class LogTrainModelTask(gokart.TaskOnKart):
 
 class PreProcessDataTask(gokart.TaskOnKart):
     def requires(self):
-        from scripts.tasks.data import MakeDatasetTask
-
         return {
             "preprocessor": TrainPreprocessorTask(),
             "data": MakeDatasetTask(),
@@ -121,7 +117,7 @@ class PreProcessDataTask(gokart.TaskOnKart):
 
 
 class LogPreprocessDataTask(gokart.TaskOnKart):
-    run_id = luigi.Parameter(CommonConfig().run_id)
+    run_id = luigi.Parameter(default=CommonConfig().run_id)
 
     def requires(self):
         return PreProcessDataTask()

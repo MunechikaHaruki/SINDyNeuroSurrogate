@@ -103,7 +103,7 @@ class EvalTask(gokart.TaskOnKart):
 
 
 class LogEvalTask(gokart.TaskOnKart):
-    run_id = luigi.Parameter(default=CommonConfig().seed)
+    run_id = luigi.Parameter(default=CommonConfig().run_id)
 
     def requires(self):
         return {"eval_task": EvalTask(), "preprocess_task": PreProcessDataTask()}
