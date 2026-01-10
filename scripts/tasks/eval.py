@@ -13,7 +13,7 @@ from neurosurrogate.config import (
 )
 
 from .train import PreProcessDataTask, TrainModelTask
-from .utils import CommonConfig
+from .utils import CommonConfig, recursive_to_dict
 
 
 class SingleEvalTask(gokart.TaskOnKart):
@@ -30,7 +30,7 @@ class SingleEvalTask(gokart.TaskOnKart):
         k = self.dataset_key
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
-        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
+        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
 
         # PreProcessDataTask now returns the dictionary directly
         preprocessed_datasets = loaded_data["preprocess_task"]
@@ -110,7 +110,7 @@ class LogEvalTask(gokart.TaskOnKart):
         loaded_data = self.load()
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
-        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
+        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
         with mlflow.start_run(run_id=conf.run_id):
             # EvalTask dumps {"path_dict": ...}
             for k, surrogate_result in loaded_data["eval_task"].items():

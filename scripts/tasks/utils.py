@@ -1,9 +1,18 @@
 import subprocess
+from collections.abc import Mapping
 
 import gokart
 import luigi
 import mlflow
 from omegaconf import OmegaConf
+
+
+def recursive_to_dict(obj):
+    if isinstance(obj, (list, tuple)):
+        return [recursive_to_dict(x) for x in obj]
+    if isinstance(obj, Mapping):
+        return {k: recursive_to_dict(v) for k, v in obj.items()}
+    return obj
 
 
 class RunAllLogging(gokart.TaskOnKart):
@@ -51,7 +60,7 @@ class RunAllLogging(gokart.TaskOnKart):
 
 class CommonConfig(luigi.Config):
     datasets_cfg_yaml = luigi.Parameter()
-    neurons_cfg_yaml = luigi.Parameter()
+    neurons_dict = luigi.DictParameter()
     model_cfg_yaml = luigi.Parameter()
     eval_cfg = luigi.DictParameter()
     seed = luigi.IntParameter()

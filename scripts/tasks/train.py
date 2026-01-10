@@ -14,7 +14,7 @@ from neurosurrogate.utils.data_processing import (
 )
 
 from .data import MakeDatasetTask
-from .utils import CommonConfig
+from .utils import CommonConfig, recursive_to_dict
 
 
 class TrainPreprocessorTask(gokart.TaskOnKart):
@@ -127,7 +127,7 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
 
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(conf.datasets_cfg_yaml)
-        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
+        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
 
         with mlflow.start_run(run_id=conf.run_id):
             for key, data in path_dict.items():

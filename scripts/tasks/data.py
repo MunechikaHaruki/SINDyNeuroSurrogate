@@ -17,7 +17,7 @@ from omegaconf import OmegaConf
 
 from neurosurrogate.dataset_utils._base import preprocess_dataset
 
-from .utils import CommonConfig
+from .utils import CommonConfig, recursive_to_dict
 
 
 class NetCDFProcessor(gokart.file_processor.FileProcessor):
@@ -82,7 +82,7 @@ class MakeDatasetTask(gokart.TaskOnKart):
     def requires(self):
         conf = CommonConfig()
         datasets = OmegaConf.create(conf.datasets_cfg_yaml)
-        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
+        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
         return {
             name: GenerateSingleDatasetTask(
                 dataset_cfg_yaml=OmegaConf.to_yaml(dataset_cfg),
@@ -127,7 +127,7 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
     def requires(self):
         conf = CommonConfig()
         datasets = OmegaConf.create(conf.datasets_cfg_yaml)
-        neurons_cfg = OmegaConf.create(conf.neurons_cfg_yaml)
+        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
 
         return {
             name: LogSingleDatasetTask(

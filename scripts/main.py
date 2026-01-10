@@ -29,7 +29,11 @@ def main(cfg: DictConfig) -> None:
     )
 
     # set dataset_dict
-    luigi_config.set("CommonConfig", "neurons_cfg_yaml", OmegaConf.to_yaml(cfg.neurons))
+    luigi_config.set(
+        "CommonConfig",
+        "neurons_dict",
+        json.dumps(OmegaConf.to_container(cfg.neurons, resolve=True)),
+    )
     luigi_config.set("CommonConfig", "model_cfg_yaml", OmegaConf.to_yaml(cfg.models))
     luigi_config.set("CommonConfig", "seed", str(cfg.seed))
 
