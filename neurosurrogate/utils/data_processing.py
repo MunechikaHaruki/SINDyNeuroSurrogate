@@ -13,11 +13,11 @@ def get_gate_data(xr_dataset):
 def transform_dataset_with_preprocessor(xr_data, preprocessor):
     """
     Transforms the dataset using the preprocessor on the gate variables.
-    
+
     Args:
         xr_data (xr.Dataset): The input xarray dataset.
         preprocessor: The fitted preprocessor (e.g., PCA or Autoencoder).
-        
+
     Returns:
         xr.Dataset: A new xarray dataset with transformed variables.
     """
@@ -51,9 +51,8 @@ def _prepare_train_data(train_xr_dataset, preprocessor):
     return train
 
 
-def _get_control_input(train_xr_dataset, model_cfg):
-    if model_cfg.sel_train_u == "I_ext":
+def _get_control_input(train_xr_dataset, data_type):
+    if data_type == "hh":
         return train_xr_dataset["I_ext"].to_numpy()
-    elif model_cfg.sel_train_u == "soma":
+    elif data_type == "hh3":
         return train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
-    raise ValueError(f"Invalid sel_train_u configuration: {model_cfg.sel_train_u}")

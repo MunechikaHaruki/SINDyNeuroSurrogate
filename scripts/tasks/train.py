@@ -21,13 +21,18 @@ from .utils import CommonConfig, recursive_to_dict
 class TrainPreprocessorTask(gokart.TaskOnKart):
     """前処理器（Preprocessor）の学習を行うタスク"""
 
+    preprocessor_model_cfg = luigi.DictParameter(
+        default=CommonConfig().model_cfg_dict["preprocessor"]
+    )
+
     def requires(self):
         return MakeDatasetTask()
 
     def run(self):
-        conf = CommonConfig()
-        model_cfg = OmegaConf.create(recursive_to_dict(conf.model_cfg_dict))
-        preprocessor = hydra.utils.instantiate(model_cfg.preprocessor)
+        preprocessor_model_cfg = OmegaConf.create(
+            recursive_to_dict(self.preprocessor_model_cfg)
+        )
+        preprocessor = hydra.utils.instantiate(preprocessor_model_cfg)
 
         # MakeDatasetTask returns the path dictionary
         train_xr_dataset = self.load()["train"].load()
@@ -41,6 +46,13 @@ class TrainPreprocessorTask(gokart.TaskOnKart):
 class TrainModelTask(gokart.TaskOnKart):
     """モデルの学習を行うタスク"""
 
+    surrogate_model_cfg = luigi.DictParameter(
+        default=CommonConfig().model_cfg_dict["surrogate"]
+    )
+    train_dataset_type = luigi.DictParameter(
+        default=CommonConfig().datasets_dict["train"]["data_type"]
+    )
+
     def requires(self):
         return {
             "data": MakeDatasetTask(),
@@ -48,18 +60,19 @@ class TrainModelTask(gokart.TaskOnKart):
         }
 
     def run(self):
-        conf = CommonConfig()
-        model_cfg = OmegaConf.create(recursive_to_dict(conf.model_cfg_dict))
-        surrogate = hydra.utils.instantiate(model_cfg.surrogate)
+        surrogate_model_cfg = OmegaConf.create(
+            recursive_to_dict(self.surrogate_model_cfg)
+        )
+        surrogate = hydra.utils.instantiate(surrogate_model_cfg)
 
         loaded_data = self.load()
         train_dataset = loaded_data["data"]["train"].load()
         preprocessor = loaded_data["preprocessor"]
 
-        logger.trace(train_dataset)
+        logger.debug(f"train_dataset {train_dataset}")
 
         train = _prepare_train_data(train_dataset, preprocessor)
-        u = _get_control_input(train_dataset, model_cfg)
+        u = _get_control_input(train_dataset, data_type=self.train_dataset_type)
 
         logger.info("Fitting surrogate model...")
         surrogate.fit(
