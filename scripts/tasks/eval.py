@@ -103,6 +103,8 @@ class EvalTask(gokart.TaskOnKart):
 
 
 class LogEvalTask(gokart.TaskOnKart):
+    run_id = luigi.Parameter(default=CommonConfig().seed)
+
     def requires(self):
         return {"eval_task": EvalTask(), "preprocess_task": PreProcessDataTask()}
 
@@ -111,7 +113,7 @@ class LogEvalTask(gokart.TaskOnKart):
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
         neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
-        with mlflow.start_run(run_id=conf.run_id):
+        with mlflow.start_run(run_id=self.run_id):
             # EvalTask dumps {"path_dict": ...}
             for k, surrogate_result in loaded_data["eval_task"].items():
                 data_type = datasets_cfg[k].data_type

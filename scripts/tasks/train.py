@@ -1,5 +1,6 @@
 import gokart
 import hydra
+import luigi
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
@@ -73,13 +74,14 @@ class TrainModelTask(gokart.TaskOnKart):
 
 
 class LogTrainModelTask(gokart.TaskOnKart):
+    run_id = luigi.Parameter(default=CommonConfig().run_id)
+
     def requires(self):
         return TrainModelTask()
 
     def run(self):
-        conf = CommonConfig()
         surrogate = self.load()
-        with mlflow.start_run(run_id=conf.run_id):
+        with mlflow.start_run(run_id=self.run_id):
             mlflow.log_dict(
                 surrogate.sindy.equations(precision=3),
                 artifact_file="sindy_equations.txt",
@@ -119,6 +121,8 @@ class PreProcessDataTask(gokart.TaskOnKart):
 
 
 class LogPreprocessDataTask(gokart.TaskOnKart):
+    run_id = luigi.Parameter(CommonConfig().run_id)
+
     def requires(self):
         return PreProcessDataTask()
 
@@ -129,7 +133,7 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
         datasets_cfg = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
         neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
 
-        with mlflow.start_run(run_id=conf.run_id):
+        with mlflow.start_run(run_id=self.run_id):
             for key, data in path_dict.items():
                 self._process_and_log_dataset(key, data, datasets_cfg, neurons_cfg)
 
