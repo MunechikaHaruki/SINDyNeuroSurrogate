@@ -15,6 +15,7 @@ import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
+from neurosurrogate.dataset_utils import PARAMS_REGISTRY
 from neurosurrogate.dataset_utils._base import preprocess_dataset
 
 from .utils import CommonConfig, recursive_to_dict
@@ -47,9 +48,15 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
 
     def run(self):
         # Configuration setup
+        data_type = self.dataset_cfg["data_type"]
         dataset_cfg = OmegaConf.create(recursive_to_dict(self.dataset_cfg))
         neuron_cfg = OmegaConf.create(recursive_to_dict(self.neuron_cfg))
-        params = hydra.utils.instantiate(neuron_cfg["params"])
+        params_dict = self.neuron_cfg["params"]
+
+        if params_dict is None:
+            params = PARAMS_REGISTRY[data_type]()
+        else:
+            params = PARAMS_REGISTRY[data_type](**params_dict)
 
         # Set random seeds for reproducibility
         self._set_random_seeds()
