@@ -71,12 +71,23 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
             self.dump(processed_dataset)
 
     def _set_random_seeds(self):
-        combined_cfg = str(self.dataset_cfg) + str(self.neuron_cfg)
-        hash_digest = hashlib.md5(combined_cfg.encode()).hexdigest()
-        task_seed = (self.seed + int(hash_digest, 16)) % 100000000
-        logger.debug(task_seed)
+        import json
+
+        cfg_json = json.dumps(
+            {
+                "dataset": recursive_to_dict(self.dataset_cfg),
+                "neuron": recursive_to_dict(self.neuron_cfg),
+            },
+            sort_keys=True,
+        )
+
+        hash_digest = hashlib.md5(cfg_json.encode()).hexdigest()
+        # 16進数文字列を適切に処理
+        task_seed = (self.seed + int(hash_digest, 16)) % (2**32)
+
         random.seed(task_seed)
         np.random.seed(task_seed)
+        logger.info(f"Seed set to: {task_seed}")
 
 
 class MakeDatasetTask(gokart.TaskOnKart):
