@@ -112,7 +112,7 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
     dataset_name = luigi.Parameter()
     dataset_cfg = luigi.DictParameter()
     neuron_cfg = luigi.DictParameter()
-    run_id = luigi.Parameter()
+    run_id = luigi.Parameter(default=CommonConfig().run_id)
 
     def requires(self):
         return GenerateSingleDatasetTask(
@@ -141,7 +141,6 @@ class LogMakeDatasetTask(gokart.TaskOnKart):
                 dataset_name=name,
                 dataset_cfg=conf.datasets_dict[name],
                 neuron_cfg=conf.neurons_dict[conf.datasets_dict[name]["data_type"]],
-                run_id=conf.run_id,
             )
             for name in conf.datasets_dict.keys()
         }

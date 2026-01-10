@@ -49,7 +49,7 @@ class TrainModelTask(gokart.TaskOnKart):
     surrogate_model_cfg = luigi.DictParameter(
         default=CommonConfig().model_cfg_dict["surrogate"]
     )
-    train_dataset_type = luigi.DictParameter(
+    train_dataset_type = luigi.Parameter(
         default=CommonConfig().datasets_dict["train"]["data_type"]
     )
 
