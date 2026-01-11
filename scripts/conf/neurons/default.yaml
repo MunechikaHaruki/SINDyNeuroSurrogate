@@ -2,10 +2,7 @@ hh:
   params:
   plot:
     _target_: neurosurrogate.plots.plot_hh
-  transform:
-    u:
-      ind: "I_ext"
-      sel: {}
+
 
 hh3:
   params:
@@ -18,8 +15,3 @@ hh3:
 
   plot:
     _target_: neurosurrogate.plots.plot_3comp_hh
-  transform:
-    u:
-      ind: "I_internal"
-      sel:
-        direction: "soma"
