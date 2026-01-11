@@ -1,8 +1,5 @@
 hh:
   params:
-  plot:
-    _target_: neurosurrogate.plots.plot_hh
-
 
 hh3:
   params:
@@ -12,6 +9,3 @@ hh3:
     E_LEAK: -54.4
     C: 1.0
     DT: 0.01
-
-  plot:
-    _target_: neurosurrogate.plots.plot_3comp_hh

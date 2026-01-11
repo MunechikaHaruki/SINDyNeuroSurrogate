@@ -1,11 +1,11 @@
 import gokart
-import hydra
 import luigi
 import matplotlib.pyplot as plt
 import mlflow
 from loguru import logger
 from omegaconf import OmegaConf
 
+from neurosurrogate import PLOTTER_REGISTRY
 from neurosurrogate.config import (
     DATA_DIR,
 )
@@ -109,7 +109,6 @@ class LogEvalTask(gokart.TaskOnKart):
         loaded_data = self.load()
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
-        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
         with mlflow.start_run(run_id=self.run_id):
             # EvalTask dumps {"path_dict": ...}
             for k, surrogate_result in loaded_data["eval_task"].items():
@@ -126,9 +125,8 @@ class LogEvalTask(gokart.TaskOnKart):
                 self._debug_show_image(fig)
 
                 plt.close(fig)
-                fig = hydra.utils.instantiate(
-                    neurons_cfg[datasets_cfg[k].data_type].plot,
-                    xr=surrogate_result,
+                fig = PLOTTER_REGISTRY[data_type](
+                    surrogate_result,
                     surrogate=True,
                 )
 

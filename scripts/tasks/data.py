@@ -15,6 +15,7 @@ import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
+from neurosurrogate import PLOTTER_REGISTRY
 from neurosurrogate.dataset_utils import PARAMS_REGISTRY, SIMULATOR_REGISTRY
 from neurosurrogate.dataset_utils._base import preprocess_dataset
 
@@ -121,11 +122,10 @@ class LogSingleDatasetTask(gokart.TaskOnKart):
         )
 
     def run(self):
-        neuron_cfg = OmegaConf.create(recursive_to_dict(self.neuron_cfg))
         data_type = self.dataset_cfg["data_type"]
         with mlflow.start_run(run_id=self.run_id):
             xr_data = self.load()
-            fig = hydra.utils.instantiate(neuron_cfg.plot, xr=xr_data)
+            fig = PLOTTER_REGISTRY[data_type](xr_data)
             mlflow.log_figure(fig, f"original/{data_type}/{self.dataset_name}.png")
             plt.close(fig)
         logger.info(f"Logged dataset: {self.dataset_name}")
