@@ -141,20 +141,18 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
 
         conf = CommonConfig()
         datasets_cfg = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
-        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
 
         with mlflow.start_run(run_id=self.run_id):
             for key, data in path_dict.items():
-                self._process_and_log_dataset(key, data, datasets_cfg, neurons_cfg)
+                dataset_type = datasets_cfg[key].data_type
+                self._process_and_log_dataset(key, data, dataset_type)
 
         self.dump(True)
 
-    def _process_and_log_dataset(self, key, xr_data, datasets_cfg, neurons_cfg):
+    def _process_and_log_dataset(self, key, xr_data, dataset_type):
         """1つのデータセットに対して処理とログ出力を行う"""
-        dataset_type = datasets_cfg[key].data_type
-        u_cfg = neurons_cfg[dataset_type].transform.u
         data_vars = xr_data["vars"]
-        external_input = xr_data[u_cfg.ind].sel(u_cfg.sel)
+        external_input = _get_control_input(xr_data, dataset_type)
         fig = _create_figure(data_vars, external_input)
         mlflow.log_figure(fig, f"preprocessed/{dataset_type}/{key}.png")
         plt.close(fig)

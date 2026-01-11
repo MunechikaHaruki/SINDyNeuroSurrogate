@@ -135,7 +135,7 @@ def _create_figure(data_vars, external_input):
     )
 
     # 外部入力のプロット
-    axs[0].plot(external_input.time, external_input, label="I_ext(t)")
+    axs[0].plot(external_input, label="I_ext(t)")
     axs[0].set_ylabel("I_ext(t)")
     axs[0].legend()
 

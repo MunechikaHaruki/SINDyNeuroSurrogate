@@ -51,8 +51,8 @@ def _prepare_train_data(train_xr_dataset, preprocessor):
     return train
 
 
-def _get_control_input(train_xr_dataset, data_type):
-    if data_type == "hh":
-        return train_xr_dataset["I_ext"].to_numpy()
-    elif data_type == "hh3":
+def _get_control_input(train_xr_dataset, data_type, direct=False):
+    if data_type == "hh3" and direct is True:
         return train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
+    else:
+        return train_xr_dataset["I_ext"].to_numpy()

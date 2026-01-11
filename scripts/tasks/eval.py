@@ -10,6 +10,7 @@ from neurosurrogate.config import (
     DATA_DIR,
 )
 from neurosurrogate.plots import plot_diff
+from neurosurrogate.utils.data_processing import _get_control_input
 
 from .train import PreProcessDataTask, TrainModelTask
 from .utils import CommonConfig, recursive_to_dict
@@ -39,21 +40,18 @@ class SingleEvalTask(gokart.TaskOnKart):
         neuron_cfg = neurons_cfg[data_type]
         logger.info(f"{ds} started to process")
 
+        u = _get_control_input(ds, data_type=data_type)
         if data_type == "hh":
             mode = "SingleComp"
-            u = ds["I_ext"].to_numpy()
             if conf.eval_cfg["onlyThreeComp"] is True:
                 logger.info(f"{k} is passed")
                 self.dump(None)
                 return
         elif data_type == "hh3":
             mode = "ThreeComp"
-            u = ds["I_ext"].to_numpy()
             if conf.eval_cfg["direct"] is True:
                 logger.info("Using direct ThreeComp mode")
-
-                u_dic = neuron_cfg.transform.u
-                u = ds[u_dic.ind].sel(u_dic.sel).to_numpy()
+                u = _get_control_input(ds, data_type=data_type, direct=True)
                 mode = "SingleComp"
 
         input_data = {
