@@ -7,6 +7,7 @@ import numpy as np
 from loguru import logger
 from omegaconf import OmegaConf
 
+from neurosurrogate.plots import _create_figure
 from neurosurrogate.utils.data_processing import (
     _get_control_input,
     _prepare_train_data,
@@ -154,37 +155,6 @@ class LogPreprocessDataTask(gokart.TaskOnKart):
         u_cfg = neurons_cfg[dataset_type].transform.u
         data_vars = xr_data["vars"]
         external_input = xr_data[u_cfg.ind].sel(u_cfg.sel)
-        fig = self._create_figure(data_vars, external_input)
+        fig = _create_figure(data_vars, external_input)
         mlflow.log_figure(fig, f"preprocessed/{dataset_type}/{key}.png")
         plt.close(fig)
-
-    @staticmethod
-    def _create_figure(data_vars, external_input):
-        """matplotlib の描画ロジックをカプセル化"""
-        features = data_vars.features.values
-        num_features = len(features)
-
-        fig, axs = plt.subplots(
-            nrows=1 + num_features,
-            ncols=1,
-            figsize=(10, 4 * (1 + num_features)),
-            sharex=True,
-            layout="constrained",  # タイトルの重なり防止
-        )
-
-        # 外部入力のプロット
-        axs[0].plot(external_input.time, external_input, label="I_ext(t)")
-        axs[0].set_ylabel("I_ext(t)")
-        axs[0].legend()
-
-        # 各特徴量のプロット
-        for i, feature_name in enumerate(features):
-            ax = axs[i + 1]
-            ax.plot(
-                data_vars.time, data_vars.sel(features=feature_name), label=feature_name
-            )
-            ax.set_ylabel(feature_name)
-            ax.legend()
-
-        axs[-1].set_xlabel("Time step")
-        return fig

@@ -3,14 +3,13 @@ import hydra
 import luigi
 import matplotlib.pyplot as plt
 import mlflow
-import numpy as np
-import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
 from neurosurrogate.config import (
     DATA_DIR,
 )
+from neurosurrogate.plots import plot_diff
 
 from .train import PreProcessDataTask, TrainModelTask
 from .utils import CommonConfig, recursive_to_dict
@@ -121,7 +120,7 @@ class LogEvalTask(gokart.TaskOnKart):
                 preprocessed_result = loaded_data["preprocess_task"][k]
 
                 u = preprocessed_result["I_ext"].to_numpy()
-                fig = self.plot_diff(
+                fig = plot_diff(
                     u, preprocessed_result["vars"], surrogate_result["vars"]
                 )
                 mlflow.log_figure(fig, f"compare/{data_type}/{k}.png")
@@ -142,48 +141,6 @@ class LogEvalTask(gokart.TaskOnKart):
                 plt.close(fig)
 
         self.dump(True)
-
-    def plot_diff(self, u: np.ndarray, original: xr.DataArray, surrogate: xr.DataArray):
-        num_features = len(original.features.values)
-
-        fig, axs = plt.subplots(
-            1 + 2 * num_features,
-            1,
-            figsize=(10, 4 * (1 + num_features)),
-            sharex=False,
-        )
-
-        # plot external_input (I_ext)
-        axs[0].plot(u, label="I_ext(t)", color="gold")
-        axs[0].set_ylabel("I_ext(t)")
-        axs[0].legend()
-
-        # 各 feature についてループ
-        for i, feature in enumerate(original.features.values):
-            # 1. 元のデータをプロット (引数 'oridginal' から)
-            axs[2 * i + 1].plot(
-                original.time,
-                original.sel(features=feature),
-                color="blue",
-                label=f"Original {feature}",
-            )
-            axs[2 * i + 1].set_ylabel(feature)
-            axs[2 * i + 1].legend()
-
-            # 2. サロゲートモデルのデータをプロット (引数 'surrogate' から)
-            #    surrogate も 'time' と 'features' の座標を持つと仮定
-            axs[2 * i + 2].plot(
-                surrogate.time,
-                surrogate.sel(features=feature),
-                color="red",
-                label=f"Surrogate {feature}",
-            )
-            axs[2 * i + 2].set_ylabel(f"Surrogate {feature}")
-            axs[2 * i + 2].legend()
-
-        axs[-1].set_xlabel("Time step")
-        fig.tight_layout()  # レイアウトを自動調整
-        return fig
 
     def _debug_show_image(self, fig):
         import subprocess
