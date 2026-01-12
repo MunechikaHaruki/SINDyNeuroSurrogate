@@ -15,7 +15,7 @@ from neurosurrogate.utils.data_processing import (
     transform_dataset_with_preprocessor,
 )
 
-from .data import MakeDatasetTask
+from .data import MakeDatasetTask, GenerateSingleDatasetTask, NetCDFProcessor
 from .utils import CommonConfig, recursive_to_dict
 
 
@@ -108,25 +108,47 @@ class LogTrainModelTask(gokart.TaskOnKart):
         self.dump(True)
 
 
-class PreProcessDataTask(gokart.TaskOnKart):
+class PreProcessSingleDataTask(gokart.TaskOnKart):
+    dataset_name = luigi.Parameter()
+
     def requires(self):
+        conf = CommonConfig()
+        dataset_cfg = conf.datasets_dict[self.dataset_name]
+        neuron_cfg = conf.neurons_dict[dataset_cfg["data_type"]]
+
         return {
             "preprocessor": TrainPreprocessorTask(),
-            "data": MakeDatasetTask(),
+            "data": GenerateSingleDatasetTask(
+                dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg
+            ),
+        }
+
+    def output(self):
+        return self.make_target(
+            f"preprocessed_{self.dataset_name}.nc", processor=NetCDFProcessor()
+        )
+
+    def run(self):
+        inputs = self.load()
+        preprocessor = inputs["preprocessor"]
+        xr_data = inputs["data"]
+
+        transformed_xr = transform_dataset_with_preprocessor(xr_data, preprocessor)
+        logger.info(f"Transformed xr dataset: {self.dataset_name}")
+        self.dump(transformed_xr)
+
+
+class PreProcessDataTask(gokart.TaskOnKart):
+    def requires(self):
+        conf = CommonConfig()
+        return {
+            name: PreProcessSingleDataTask(dataset_name=name)
+            for name in conf.datasets_dict.keys()
         }
 
     def run(self):
-        loaded_data = self.load()
-        preprocessor = loaded_data["preprocessor"]
-        dataset_targets = loaded_data["data"]
-
-        preprocessed_datasets = {}
-        # preprocess data
-        for k, target in dataset_targets.items():
-            xr_data = target.load()
-            transformed_xr = transform_dataset_with_preprocessor(xr_data, preprocessor)
-            logger.info(f"Transformed xr dataset: {k}")
-            preprocessed_datasets[k] = transformed_xr
+        targets = self.input()
+        preprocessed_datasets = {k: v.load() for k, v in targets.items()}
         self.dump(preprocessed_datasets)
 
 
