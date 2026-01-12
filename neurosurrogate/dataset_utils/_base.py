@@ -64,11 +64,11 @@ MODEL_CONFIG: Dict[str, Dict[str, Any]] = {
 }
 
 
-def calc_ThreeComp_internal(dataset, params):
-    I_pre = params.G_12 * (
+def calc_ThreeComp_internal(dataset, G_12, G_23):
+    I_pre = G_12 * (
         dataset["vars"].sel(features="V_pre") - dataset["vars"].sel(features="V")
     )
-    I_post = params.G_23 * (
+    I_post = G_23 * (
         dataset["vars"].sel(features="V") - dataset["vars"].sel(features="V_post")
     )
     I_soma = I_pre - I_post
@@ -98,6 +98,6 @@ def preprocess_dataset(model_type: str, file_path: Path, params):
         )
 
         if model_type == "hh3":
-            calc_ThreeComp_internal(dataset, params)
+            calc_ThreeComp_internal(dataset, params.G_12, params.G_23)
 
     return dataset

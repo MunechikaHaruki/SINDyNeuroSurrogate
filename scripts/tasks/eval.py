@@ -33,7 +33,6 @@ class SingleEvalTask(gokart.TaskOnKart):
     def run(self):
         loaded_data = self.load()
         dataset_cfg = OmegaConf.create(recursive_to_dict(self.dataset_cfg))
-        neuron_cfg = OmegaConf.create(recursive_to_dict(self.neuron_cfg))
         # PreProcessSingleDataTask returns the dataset directly
         ds = loaded_data["preprocess_single_task"]
 
@@ -69,7 +68,11 @@ class SingleEvalTask(gokart.TaskOnKart):
                 calc_ThreeComp_internal,
             )
 
-            calc_ThreeComp_internal(prediction, neuron_cfg.params)
+            calc_ThreeComp_internal(
+                prediction,
+                self.neuron_cfg["params"]["G_12"],
+                self.neuron_cfg["params"]["G_23"],
+            )
 
         logger.trace(prediction)
         self.dump(prediction)
