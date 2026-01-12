@@ -15,25 +15,20 @@ from neurosurrogate.utils.data_processing import (
     transform_dataset_with_preprocessor,
 )
 
-from .data import MakeDatasetTask, GenerateSingleDatasetTask, NetCDFProcessor
+from .data import GenerateSingleDatasetTask, MakeDatasetTask, NetCDFProcessor
 from .utils import CommonConfig, recursive_to_dict
 
 
 class TrainPreprocessorTask(gokart.TaskOnKart):
     """前処理器（Preprocessor）の学習を行うタスク"""
 
-    preprocessor_model_cfg = luigi.DictParameter(
-        default=CommonConfig().model_cfg_dict["preprocessor"]
-    )
-
     def requires(self):
         return MakeDatasetTask()
 
     def run(self):
-        preprocessor_model_cfg = OmegaConf.create(
-            recursive_to_dict(self.preprocessor_model_cfg)
-        )
-        preprocessor = hydra.utils.instantiate(preprocessor_model_cfg)
+        from sklearn.decomposition import PCA
+
+        preprocessor = PCA(n_components=1)
 
         # MakeDatasetTask returns the path dictionary
         train_xr_dataset = self.load()["train"].load()

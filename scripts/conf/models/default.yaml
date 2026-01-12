@@ -1,6 +1,3 @@
-preprocessor:
-  _target_: sklearn.decomposition.PCA
-  n_components: 1
 surrogate:
   _target_: neurosurrogate.modeling.surrogate.SINDySurrogate
   feature_lib:
@@ -17,5 +14,3 @@ surrogate:
     G_12: ${neurons.hh3.params.G_12}
     G_23: ${neurons.hh3.params.G_23}
     DT: ${neurons.hh3.params.DT}
-
-sel_train_u: I_ext
