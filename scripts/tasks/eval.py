@@ -12,44 +12,43 @@ from neurosurrogate.config import (
 from neurosurrogate.plots import plot_diff
 from neurosurrogate.utils.data_processing import _get_control_input
 
-from .train import PreProcessDataTask, TrainModelTask
+from .train import PreProcessDataTask, PreProcessSingleDataTask, TrainModelTask
 from .utils import CommonConfig, recursive_to_dict
 
 
 class SingleEvalTask(gokart.TaskOnKart):
     dataset_key = luigi.Parameter()
+    dataset_cfg = luigi.DictParameter()
+    neuron_cfg = luigi.DictParameter()
+    eval_cfg = luigi.DictParameter()
 
     def requires(self):
         return {
-            "preprocess_task": PreProcessDataTask(),
+            "preprocess_single_task": PreProcessSingleDataTask(
+                dataset_name=self.dataset_key
+            ),
             "trainmodel_task": TrainModelTask(),
         }
 
     def run(self):
         loaded_data = self.load()
-        k = self.dataset_key
-        conf = CommonConfig()
-        datasets_cfg = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
-        neurons_cfg = OmegaConf.create(recursive_to_dict(conf.neurons_dict))
+        dataset_cfg = OmegaConf.create(recursive_to_dict(self.dataset_cfg))
+        neuron_cfg = OmegaConf.create(recursive_to_dict(self.neuron_cfg))
+        # PreProcessSingleDataTask returns the dataset directly
+        ds = loaded_data["preprocess_single_task"]
 
-        # PreProcessDataTask now returns the dictionary directly
-        preprocessed_datasets = loaded_data["preprocess_task"]
-        ds = preprocessed_datasets[k]
-
-        data_type = datasets_cfg[k].data_type
-        neuron_cfg = neurons_cfg[data_type]
+        data_type = dataset_cfg.data_type
         logger.info(f"{ds} started to process")
 
         u = _get_control_input(ds, data_type=data_type)
         if data_type == "hh":
             mode = "SingleComp"
-            if conf.eval_cfg["onlyThreeComp"] is True:
-                logger.info(f"{k} is passed")
+            if self.eval_cfg["onlyThreeComp"] is True:
                 self.dump(None)
                 return
         elif data_type == "hh3":
             mode = "ThreeComp"
-            if conf.eval_cfg["direct"] is True:
+            if self.eval_cfg["direct"] is True:
                 logger.info("Using direct ThreeComp mode")
                 u = _get_control_input(ds, data_type=data_type, direct=True)
                 mode = "SingleComp"
@@ -62,11 +61,9 @@ class SingleEvalTask(gokart.TaskOnKart):
             "mode": mode,
         }
         logger.info(f"input:{input_data}")
-
-        logger.critical(f"{k}")
         # TrainModelTask returns the surrogate model directly
         prediction = loaded_data["trainmodel_task"].predict(**input_data)
-        logger.info(f"key:{k} prediction_result:{prediction}")
+        logger.info(f"prediction_result:{prediction}")
         if mode == "ThreeComp":
             from neurosurrogate.dataset_utils._base import (
                 calc_ThreeComp_internal,
@@ -80,22 +77,31 @@ class SingleEvalTask(gokart.TaskOnKart):
 
 class EvalTask(gokart.TaskOnKart):
     """
-    PreProcessDataTaskの結果を受け取り、データセットごとにSingleEvalTaskを実行して集計する。
+    CommonConfigからキーを取得し、データセットごとにSingleEvalTaskを実行して集計する。
     """
 
-    # 必要に応じてパラメータ化し、requiresで利用できるようにする
-    # model_name = gokart.Parameter()
-
     def requires(self):
-        return PreProcessDataTask()
+        conf = CommonConfig()
+        tasks = {}
+        for k, dataset_cfg in conf.datasets_dict.items():
+            data_type = dataset_cfg["data_type"]
+            neuron_cfg = conf.neurons_dict[data_type]
+
+            tasks[k] = SingleEvalTask(
+                dataset_key=k,
+                dataset_cfg=dataset_cfg,
+                neuron_cfg=neuron_cfg,
+                eval_cfg=conf.eval_cfg,
+            )
+        return tasks
 
     def run(self):
-        preprocessed_datasets = self.load()
-
-        tasks = {k: SingleEvalTask(dataset_key=k) for k in preprocessed_datasets.keys()}
-        yield list(tasks.values())
-        data_dict = {k: task.output().load() for k, task in tasks.items()}
-
+        targets = self.input()
+        data_dict = {
+            k: target.load()
+            for k, target in targets.items()
+            if target.load() is not None
+        }
         self.dump(data_dict)
 
 
