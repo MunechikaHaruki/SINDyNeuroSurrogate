@@ -3,7 +3,6 @@ import luigi
 import matplotlib.pyplot as plt
 import mlflow
 from loguru import logger
-from omegaconf import OmegaConf
 
 from neurosurrogate import PLOTTER_REGISTRY
 from neurosurrogate.config import (
@@ -12,15 +11,15 @@ from neurosurrogate.config import (
 from neurosurrogate.plots import plot_diff
 from neurosurrogate.utils.data_processing import _get_control_input
 
-from .train import PreProcessDataTask, PreProcessSingleDataTask, TrainModelTask
-from .utils import CommonConfig, recursive_to_dict
+from .train import PreProcessSingleDataTask, TrainModelTask
+from .utils import CommonConfig
 
 
 class SingleEvalTask(gokart.TaskOnKart):
     dataset_key = luigi.Parameter()
-    data_type = luigi.Parameter()
-    neuron_cfg = luigi.DictParameter(default=CommonConfig().neurons_dict["hh3"])
-    eval_cfg = luigi.DictParameter(default=CommonConfig().eval_cfg)
+    dataset_cfg = luigi.DictParameter()
+    neuron_cfg = luigi.DictParameter()
+    eval_cfg = luigi.DictParameter()
 
     def requires(self):
         return {
@@ -36,17 +35,18 @@ class SingleEvalTask(gokart.TaskOnKart):
         ds = loaded_data["preprocess_single_task"]
         logger.info(f"{ds} started to process")
 
-        u = _get_control_input(ds, data_type=self.data_type)
-        if self.data_type == "hh":
+        data_type = self.dataset_cfg["data_type"]
+        u = _get_control_input(ds, data_type=data_type)
+        if data_type == "hh":
             mode = "SingleComp"
             if self.eval_cfg["onlyThreeComp"] is True:
                 self.dump(None)
                 return
-        elif self.data_type == "hh3":
+        elif data_type == "hh3":
             mode = "ThreeComp"
             if self.eval_cfg["direct"] is True:
                 logger.info("Using direct ThreeComp mode")
-                u = _get_control_input(ds, data_type=self.data_type, direct=True)
+                u = _get_control_input(ds, data_type=data_type, direct=True)
                 mode = "SingleComp"
 
         input_data = {
@@ -85,8 +85,14 @@ class EvalTask(gokart.TaskOnKart):
         tasks = {}
         for k, dataset_cfg in conf.datasets_dict.items():
             data_type = dataset_cfg["data_type"]
+            neuron_cfg = conf.neurons_dict[data_type]
 
-            tasks[k] = SingleEvalTask(dataset_key=k, data_type=data_type)
+            tasks[k] = SingleEvalTask(
+                dataset_key=k,
+                dataset_cfg=dataset_cfg,
+                neuron_cfg=neuron_cfg,
+                eval_cfg=conf.eval_cfg,
+            )
         return tasks
 
     def run(self):
@@ -99,42 +105,55 @@ class EvalTask(gokart.TaskOnKart):
         self.dump(data_dict)
 
 
-class LogEvalTask(gokart.TaskOnKart):
+class LogSingleEvalTask(gokart.TaskOnKart):
+    dataset_key = luigi.Parameter()
+    dataset_cfg = luigi.DictParameter()
+    neuron_cfg = luigi.DictParameter()
+    eval_cfg = luigi.DictParameter()
     run_id = luigi.Parameter(default=CommonConfig().run_id)
 
     def requires(self):
-        return {"eval_task": EvalTask(), "preprocess_task": PreProcessDataTask()}
+        return {
+            "eval_result": SingleEvalTask(
+                dataset_key=self.dataset_key,
+                dataset_cfg=self.dataset_cfg,
+                neuron_cfg=self.neuron_cfg,
+                eval_cfg=self.eval_cfg,
+            ),
+            "preprocess_result": PreProcessSingleDataTask(
+                dataset_name=self.dataset_key
+            ),
+        }
 
     def run(self):
-        loaded_data = self.load()
-        conf = CommonConfig()
-        datasets_cfg = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
+        inputs = self.load()
+        surrogate_result = inputs["eval_result"]
+
+        if surrogate_result is None:
+            self.dump(True)
+            return
+
+        preprocessed_result = inputs["preprocess_result"]
+        data_type = self.dataset_cfg["data_type"]
+
         with mlflow.start_run(run_id=self.run_id):
-            # EvalTask dumps {"path_dict": ...}
-            for k, surrogate_result in loaded_data["eval_task"].items():
-                data_type = datasets_cfg[k].data_type
-                # PreProcessDataTask dumps the dict directly
-                preprocessed_result = loaded_data["preprocess_task"][k]
+            u = preprocessed_result["I_ext"].to_numpy()
+            fig = plot_diff(u, preprocessed_result["vars"], surrogate_result["vars"])
+            mlflow.log_figure(fig, f"compare/{data_type}/{self.dataset_key}.png")
 
-                u = preprocessed_result["I_ext"].to_numpy()
-                fig = plot_diff(
-                    u, preprocessed_result["vars"], surrogate_result["vars"]
-                )
-                mlflow.log_figure(fig, f"compare/{data_type}/{k}.png")
+            self._debug_show_image(fig)
 
-                self._debug_show_image(fig)
+            plt.close(fig)
+            fig = PLOTTER_REGISTRY[data_type](
+                surrogate_result,
+                surrogate=True,
+            )
 
-                plt.close(fig)
-                fig = PLOTTER_REGISTRY[data_type](
-                    surrogate_result,
-                    surrogate=True,
-                )
-
-                mlflow.log_figure(
-                    fig,
-                    f"surrogate_result/{data_type}/{k}.png",
-                )
-                plt.close(fig)
+            mlflow.log_figure(
+                fig,
+                f"surrogate_result/{data_type}/{self.dataset_key}.png",
+            )
+            plt.close(fig)
 
         self.dump(True)
 
@@ -144,3 +163,23 @@ class LogEvalTask(gokart.TaskOnKart):
         TMP = DATA_DIR / "debug.png"
         fig.savefig(TMP)
         subprocess.run(["wezterm", "imgcat", TMP])
+
+
+class LogEvalTask(gokart.TaskOnKart):
+    run_id = luigi.Parameter(default=CommonConfig().run_id)
+
+    def requires(self):
+        conf = CommonConfig()
+        return {
+            k: LogSingleEvalTask(
+                dataset_key=k,
+                dataset_cfg=conf.datasets_dict[k],
+                neuron_cfg=conf.neurons_dict[conf.datasets_dict[k]["data_type"]],
+                eval_cfg=conf.eval_cfg,
+                run_id=self.run_id,
+            )
+            for k in conf.datasets_dict.keys()
+        }
+
+    def run(self):
+        self.dump(True)
