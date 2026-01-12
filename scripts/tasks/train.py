@@ -155,29 +155,39 @@ class PreProcessDataTask(gokart.TaskOnKart):
         self.dump(preprocessed_datasets)
 
 
-class LogPreprocessDataTask(gokart.TaskOnKart):
+class LogSinglePreprocessDataTask(gokart.TaskOnKart):
+    dataset_key = luigi.Parameter()
+    dataset_type = luigi.Parameter()
     run_id = luigi.Parameter(default=CommonConfig().run_id)
 
     def requires(self):
-        return PreProcessDataTask()
+        return PreProcessSingleDataTask(dataset_name=self.dataset_key)
 
     def run(self):
-        path_dict = self.load()
-
-        conf = CommonConfig()
-        datasets_cfg = OmegaConf.create(recursive_to_dict(conf.datasets_dict))
-
+        xr_data = self.load()
         with mlflow.start_run(run_id=self.run_id):
-            for key, data in path_dict.items():
-                dataset_type = datasets_cfg[key].data_type
-                self._process_and_log_dataset(key, data, dataset_type)
+            """1つのデータセットに対して処理とログ出力を行う"""
+            external_input = _get_control_input(xr_data, self.dataset_type)
+            fig = _create_figure(xr_data["vars"], external_input)
+            mlflow.log_figure(
+                fig, f"preprocessed/{self.dataset_type}/{self.dataset_key}.png"
+            )
+            plt.close(fig)
 
         self.dump(True)
 
-    def _process_and_log_dataset(self, key, xr_data, dataset_type):
-        """1つのデータセットに対して処理とログ出力を行う"""
-        data_vars = xr_data["vars"]
-        external_input = _get_control_input(xr_data, dataset_type)
-        fig = _create_figure(data_vars, external_input)
-        mlflow.log_figure(fig, f"preprocessed/{dataset_type}/{key}.png")
-        plt.close(fig)
+
+class LogPreprocessDataTask(gokart.TaskOnKart):
+    def requires(self):
+        conf = CommonConfig()
+
+        return {
+            name: LogSinglePreprocessDataTask(
+                dataset_key=name,
+                dataset_type=conf.datasets_dict[name]["data_type"],
+            )
+            for name in conf.datasets_dict.keys()
+        }
+
+    def run(self):
+        self.dump(True)
