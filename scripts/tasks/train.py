@@ -15,7 +15,7 @@ from neurosurrogate.utils.data_processing import (
     transform_dataset_with_preprocessor,
 )
 
-from .data import GenerateSingleDatasetTask, MakeDatasetTask, NetCDFProcessor
+from .data import GenerateSingleDatasetTask, NetCDFProcessor
 from .utils import CommonConfig, recursive_to_dict
 
 
@@ -23,7 +23,10 @@ class TrainPreprocessorTask(gokart.TaskOnKart):
     """前処理器（Preprocessor）の学習を行うタスク"""
 
     def requires(self):
-        return MakeDatasetTask()
+        conf = CommonConfig()
+        dataset_cfg = conf.datasets_dict["train"]
+        neuron_cfg = conf.neurons_dict[dataset_cfg["data_type"]]
+        return GenerateSingleDatasetTask(dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg)
 
     def run(self):
         from sklearn.decomposition import PCA
@@ -31,7 +34,7 @@ class TrainPreprocessorTask(gokart.TaskOnKart):
         preprocessor = PCA(n_components=1)
 
         # MakeDatasetTask returns the path dictionary
-        train_xr_dataset = self.load()["train"].load()
+        train_xr_dataset = self.load()
         train_gate_data = get_gate_data(train_xr_dataset)
 
         logger.info("Fitting preprocessor...")
@@ -50,8 +53,13 @@ class TrainModelTask(gokart.TaskOnKart):
     )
 
     def requires(self):
+        conf = CommonConfig()
+        dataset_cfg = conf.datasets_dict["train"]
+        neuron_cfg = conf.neurons_dict[dataset_cfg["data_type"]]
         return {
-            "data": MakeDatasetTask(),
+            "data": GenerateSingleDatasetTask(
+                dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg
+            ),
             "preprocessor": TrainPreprocessorTask(),
         }
 
@@ -62,7 +70,7 @@ class TrainModelTask(gokart.TaskOnKart):
         surrogate = hydra.utils.instantiate(surrogate_model_cfg)
 
         loaded_data = self.load()
-        train_dataset = loaded_data["data"]["train"].load()
+        train_dataset = loaded_data["data"]
         preprocessor = loaded_data["preprocessor"]
 
         logger.debug(f"train_dataset {train_dataset}")
