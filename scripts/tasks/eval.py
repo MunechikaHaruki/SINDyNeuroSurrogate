@@ -8,6 +8,7 @@ from neurosurrogate import PLOTTER_REGISTRY
 from neurosurrogate.config import (
     DATA_DIR,
 )
+from neurosurrogate.dataset_utils._base import calc_ThreeComp_internal
 from neurosurrogate.plots import plot_diff
 from neurosurrogate.utils.data_processing import _get_control_input
 
@@ -34,20 +35,7 @@ class SingleEvalTask(gokart.TaskOnKart):
         # PreProcessSingleDataTask returns the dataset directly
         ds = loaded_data["preprocess_single_task"]
         logger.info(f"{ds} started to process")
-
-        data_type = self.dataset_cfg["data_type"]
-        u = _get_control_input(ds, data_type=data_type)
-        if data_type == "hh":
-            mode = "SingleComp"
-            if self.eval_cfg["onlyThreeComp"] is True:
-                self.dump(None)
-                return
-        elif data_type == "hh3":
-            mode = "ThreeComp"
-            if self.eval_cfg["direct"] is True:
-                logger.info("Using direct ThreeComp mode")
-                u = _get_control_input(ds, data_type=data_type, direct=True)
-                mode = "SingleComp"
+        mode, u = self._prepare_inference_params(ds)
 
         input_data = {
             "init": ds["vars"][0],
@@ -61,10 +49,6 @@ class SingleEvalTask(gokart.TaskOnKart):
         prediction = loaded_data["trainmodel_task"].predict(**input_data)
         logger.info(f"prediction_result:{prediction}")
         if mode == "ThreeComp":
-            from neurosurrogate.dataset_utils._base import (
-                calc_ThreeComp_internal,
-            )
-
             calc_ThreeComp_internal(
                 prediction,
                 self.neuron_cfg["params"]["G_12"],
@@ -73,6 +57,24 @@ class SingleEvalTask(gokart.TaskOnKart):
 
         logger.trace(prediction)
         self.dump(prediction)
+
+    def _prepare_inference_params(self, ds):
+        """推論に必要なモードと制御入力を決定するヘルパーメソッド"""
+        data_type = self.dataset_cfg.get("data_type")
+        direct = self.eval_cfg.get("direct", False)
+
+        if data_type == "hh":
+            return "SingleComp", _get_control_input(ds, data_type=data_type)
+
+        if data_type == "hh3":
+            if direct:
+                logger.info("Using direct ThreeComp mode")
+                return "SingleComp", _get_control_input(
+                    ds, data_type=data_type, direct=True
+                )
+            return "ThreeComp", _get_control_input(ds, data_type=data_type)
+
+        raise ValueError(f"Unknown data_type: {data_type}")
 
 
 class EvalTask(gokart.TaskOnKart):
