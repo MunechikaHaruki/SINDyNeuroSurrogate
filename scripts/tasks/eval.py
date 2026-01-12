@@ -18,9 +18,9 @@ from .utils import CommonConfig, recursive_to_dict
 
 class SingleEvalTask(gokart.TaskOnKart):
     dataset_key = luigi.Parameter()
-    dataset_cfg = luigi.DictParameter()
-    neuron_cfg = luigi.DictParameter()
-    eval_cfg = luigi.DictParameter()
+    data_type = luigi.Parameter()
+    neuron_cfg = luigi.DictParameter(default=CommonConfig().neurons_dict["hh3"])
+    eval_cfg = luigi.DictParameter(default=CommonConfig().eval_cfg)
 
     def requires(self):
         return {
@@ -32,24 +32,21 @@ class SingleEvalTask(gokart.TaskOnKart):
 
     def run(self):
         loaded_data = self.load()
-        dataset_cfg = OmegaConf.create(recursive_to_dict(self.dataset_cfg))
         # PreProcessSingleDataTask returns the dataset directly
         ds = loaded_data["preprocess_single_task"]
-
-        data_type = dataset_cfg.data_type
         logger.info(f"{ds} started to process")
 
-        u = _get_control_input(ds, data_type=data_type)
-        if data_type == "hh":
+        u = _get_control_input(ds, data_type=self.data_type)
+        if self.data_type == "hh":
             mode = "SingleComp"
             if self.eval_cfg["onlyThreeComp"] is True:
                 self.dump(None)
                 return
-        elif data_type == "hh3":
+        elif self.data_type == "hh3":
             mode = "ThreeComp"
             if self.eval_cfg["direct"] is True:
                 logger.info("Using direct ThreeComp mode")
-                u = _get_control_input(ds, data_type=data_type, direct=True)
+                u = _get_control_input(ds, data_type=self.data_type, direct=True)
                 mode = "SingleComp"
 
         input_data = {
@@ -88,14 +85,8 @@ class EvalTask(gokart.TaskOnKart):
         tasks = {}
         for k, dataset_cfg in conf.datasets_dict.items():
             data_type = dataset_cfg["data_type"]
-            neuron_cfg = conf.neurons_dict[data_type]
 
-            tasks[k] = SingleEvalTask(
-                dataset_key=k,
-                dataset_cfg=dataset_cfg,
-                neuron_cfg=neuron_cfg,
-                eval_cfg=conf.eval_cfg,
-            )
+            tasks[k] = SingleEvalTask(dataset_key=k, data_type=data_type)
         return tasks
 
     def run(self):
