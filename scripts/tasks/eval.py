@@ -18,8 +18,8 @@ from .utils import CommonConfig
 class SingleEvalTask(gokart.TaskOnKart):
     dataset_key = luigi.Parameter()
     dataset_cfg = luigi.DictParameter()
-    neuron_cfg = luigi.DictParameter()
-    eval_cfg = luigi.DictParameter()
+    neuron_cfg = luigi.DictParameter(default=CommonConfig().neurons_dict["hh3"])
+    eval_cfg = luigi.DictParameter(default=CommonConfig().eval_cfg)
 
     def requires(self):
         return {
@@ -84,14 +84,9 @@ class EvalTask(gokart.TaskOnKart):
         conf = CommonConfig()
         tasks = {}
         for k, dataset_cfg in conf.datasets_dict.items():
-            data_type = dataset_cfg["data_type"]
-            neuron_cfg = conf.neurons_dict[data_type]
-
             tasks[k] = SingleEvalTask(
                 dataset_key=k,
                 dataset_cfg=dataset_cfg,
-                neuron_cfg=neuron_cfg,
-                eval_cfg=conf.eval_cfg,
             )
         return tasks
 
@@ -108,8 +103,6 @@ class EvalTask(gokart.TaskOnKart):
 class LogSingleEvalTask(gokart.TaskOnKart):
     dataset_key = luigi.Parameter()
     dataset_cfg = luigi.DictParameter()
-    neuron_cfg = luigi.DictParameter()
-    eval_cfg = luigi.DictParameter()
     run_id = luigi.Parameter(default=CommonConfig().run_id)
 
     def requires(self):
@@ -117,8 +110,6 @@ class LogSingleEvalTask(gokart.TaskOnKart):
             "eval_result": SingleEvalTask(
                 dataset_key=self.dataset_key,
                 dataset_cfg=self.dataset_cfg,
-                neuron_cfg=self.neuron_cfg,
-                eval_cfg=self.eval_cfg,
             ),
             "preprocess_result": PreProcessSingleDataTask(
                 dataset_name=self.dataset_key
@@ -174,9 +165,6 @@ class LogEvalTask(gokart.TaskOnKart):
             k: LogSingleEvalTask(
                 dataset_key=k,
                 dataset_cfg=conf.datasets_dict[k],
-                neuron_cfg=conf.neurons_dict[conf.datasets_dict[k]["data_type"]],
-                eval_cfg=conf.eval_cfg,
-                run_id=self.run_id,
             )
             for k in conf.datasets_dict.keys()
         }
