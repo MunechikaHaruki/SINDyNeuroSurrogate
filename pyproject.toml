@@ -25,6 +25,7 @@ dependencies = [
     "h5netcdf>=1.7.3",
     "numba>=0.63.1",
     "dagster>=1.12.10",
+    "prefect>=3.6.10",
 ]
     #"torch>=2.7.1",
     #"torchvision>=0.22.1",
