@@ -15,9 +15,9 @@ import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 
-from neurosurrogate import PLOTTER_REGISTRY
 from neurosurrogate.dataset_utils import PARAMS_REGISTRY, SIMULATOR_REGISTRY
 from neurosurrogate.dataset_utils._base import preprocess_dataset
+from neurosurrogate.utils import PLOTTER_REGISTRY
 
 from .utils import CommonConfig, recursive_to_dict
 

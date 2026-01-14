@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 import mlflow
 from loguru import logger
 
-from neurosurrogate import PLOTTER_REGISTRY
 from neurosurrogate.dataset_utils._base import calc_ThreeComp_internal
-from neurosurrogate.plots import plot_diff
+from neurosurrogate.utils import PLOTTER_REGISTRY
 from neurosurrogate.utils.data_processing import _get_control_input
+from neurosurrogate.utils.plots import plot_diff
 
 from .train import PreProcessSingleDataTask, TrainModelTask
 from .utils import CommonConfig

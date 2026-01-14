@@ -6,13 +6,13 @@ import numpy as np
 from loguru import logger
 from omegaconf import OmegaConf
 
-from neurosurrogate.plots import _create_figure
 from neurosurrogate.utils.data_processing import (
     _get_control_input,
     _prepare_train_data,
     get_gate_data,
     transform_dataset_with_preprocessor,
 )
+from neurosurrogate.utils.plots import _create_figure
 
 from .data import GenerateSingleDatasetTask, NetCDFProcessor
 from .utils import CommonConfig, recursive_to_dict

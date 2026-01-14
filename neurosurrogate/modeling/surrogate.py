@@ -28,7 +28,7 @@ class SINDySurrogate:
         if data_type == "hh3":
             logger.info("hh3のサロゲートモデルをテストします")
             init = np.array([init[0], init[1], -65, -65])  # v,隠れ変数,v_pre,v_post
-            from .simulate_numba import simulate_three_comp_numba
+            from .surrogate_numba import simulate_three_comp_numba
 
             var = simulate_three_comp_numba(
                 init,
@@ -44,7 +44,7 @@ class SINDySurrogate:
             features = ["V", "latent1", "V_pre", "V_post"]
         elif data_type == "hh":
             logger.info("hhのサロゲートモデルをテストします")
-            from .simulate_numba import simulate_sindy
+            from .surrogate_numba import simulate_sindy
 
             var = simulate_sindy(init, u, self.sindy.coefficients(), dt)
             features = ["V", "latent1"]
