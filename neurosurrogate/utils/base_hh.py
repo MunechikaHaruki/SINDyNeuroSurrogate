@@ -1,45 +1,67 @@
 import numpy as np
 import pysindy as ps
+from numba import njit
 
 
+@njit
 def a_m(v):
     return 0.1 * (25 - v) / (np.exp((25 - v) / 10.0) - 1)
 
 
+@njit
 def b_m(v):
     return 4.0 * np.exp(-v / 18.0)
 
 
+@njit
 def a_h(v):
     return 0.07 * np.exp(-v / 20.0)
 
 
+@njit
 def b_h(v):
     return 1.0 / (np.exp((30 - v) / 10.0) + 1)
 
 
+@njit
 def a_n(v):
     return 0.01 * (10 - v) / (np.exp((10 - v) / 10.0) - 1 + 0.001)  # ゼロ除算回避
 
 
+@njit
 def b_n(v):
     return 0.125 * np.exp(-v / 80.0)
 
 
-def derivative_gate(alpha, beta, gate):
-    return alpha * (1 - gate) - (beta * gate)
-
-
-def derivative_m(cls, v, m):
-    return cls.derivative_gate(cls.a_m(v), cls.b_m(v), m)
-
-
-def derivative_h(cls, v, h):
-    return cls.derivative_gate(cls.a_h(v), cls.b_h(v), h)
-
-
-def derivative_n(cls, v, n):
-    return cls.derivative_gate(cls.a_n(v), cls.b_n(v), n)
+@njit
+def compute_theta(x0, x1, u0):
+    return np.array(
+        [
+            a_m(x0),
+            a_h(x0),
+            a_n(x0),
+            a_m(x0) * x1,
+            b_m(x0) * x1,
+            a_h(x0) * x1,
+            b_h(x0) * x1,
+            a_n(x0) * x1,
+            b_n(x0) * x1,
+            (x0 * x0 * x0 * x1 * u0),
+            (x0 * x0 * x0 * x1),
+            (x0 * x0 * x0 * u0),
+            (x1 * x1 * x1 * u0),
+            (x0 * x0 * x0 * x0 * x1),
+            (x0 * x0 * x0 * x0 * u0),
+            (x1 * x1 * x1 * x1 * u0),
+            (x0 * x0 * x0 * x0),
+            (x1 * x1 * x1 * x1),
+            (u0 * u0 * u0 * u0),
+            x0,
+            x1,
+            u0,
+            1,
+        ]
+    )
 
 
 gate = ps.CustomLibrary(
