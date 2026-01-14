@@ -76,31 +76,6 @@ class SingleEvalTask(gokart.TaskOnKart):
         raise ValueError(f"Unknown data_type: {data_type}")
 
 
-class EvalTask(gokart.TaskOnKart):
-    """
-    CommonConfigからキーを取得し、データセットごとにSingleEvalTaskを実行して集計する。
-    """
-
-    def requires(self):
-        conf = CommonConfig()
-        tasks = {}
-        for k, dataset_cfg in conf.datasets_dict.items():
-            tasks[k] = SingleEvalTask(
-                dataset_key=k,
-                dataset_cfg=dataset_cfg,
-            )
-        return tasks
-
-    def run(self):
-        targets = self.input()
-        data_dict = {
-            k: target.load()
-            for k, target in targets.items()
-            if target.load() is not None
-        }
-        self.dump(data_dict)
-
-
 class LogSingleEvalTask(gokart.TaskOnKart):
     dataset_key = luigi.Parameter()
     dataset_cfg = luigi.DictParameter()

@@ -91,24 +91,6 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
         logger.info(f"Seed set to: {task_seed}")
 
 
-class MakeDatasetTask(gokart.TaskOnKart):
-    """データセットの生成と前処理を行うタスク"""
-
-    def requires(self):
-        conf = CommonConfig()
-        return {
-            name: GenerateSingleDatasetTask(
-                dataset_cfg=conf.datasets_dict[name],
-                neuron_cfg=conf.neurons_dict[conf.datasets_dict[name]["data_type"]],
-            )
-            for name in conf.datasets_dict.keys()
-        }
-
-    def run(self):
-        targets = self.input()
-        self.dump(targets)
-
-
 class LogSingleDatasetTask(gokart.TaskOnKart):
     dataset_name = luigi.Parameter()
     dataset_cfg = luigi.DictParameter()
