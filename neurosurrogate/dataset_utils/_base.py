@@ -68,13 +68,13 @@ def calc_ThreeComp_internal(dataset, G_12, G_23):
     ).assign_coords(direction=["pre", "post", "soma"])
 
 
-def preprocess_dataset(model_type: str, file_path: Path, params):
+def preprocess_dataset(model_type: str, file_path: Path, params: Dict):
     with h5py.File(file_path, "r") as f:
         dataset = create_xr(
             f["vars"], f["time"], u=f["I_ext"], features=MODEL_FEATURES[model_type]
         )
 
         if model_type == "hh3":
-            calc_ThreeComp_internal(dataset, params.G_12, params.G_23)
+            calc_ThreeComp_internal(dataset, params["G_12"], params["G_23"])
 
     return dataset

@@ -68,7 +68,7 @@ class GenerateSingleDatasetTask(gokart.TaskOnKart):
                 hydra.utils.instantiate(dataset_cfg["current"], fp=fp, dt=params.DT)
                 SIMULATOR_REGISTRY[data_type](fp=fp, params=params)
             # Preprocess the simulation data
-            processed_dataset = preprocess_dataset(data_type, temp_h5_path, params)
+            processed_dataset = preprocess_dataset(data_type, temp_h5_path, params_dict)
             self.dump(processed_dataset)
 
     def _set_random_seeds(self):
