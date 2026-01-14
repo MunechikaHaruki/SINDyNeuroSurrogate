@@ -1,7 +1,6 @@
 # mypy: ignore-errors
 
 import numpy as np
-import pysindy as ps
 import xarray as xr
 from loguru import logger
 
@@ -11,37 +10,9 @@ class SINDySurrogate:
     単純なSINDyによるシングルコンパートメント・ニューロンサロゲーター
     """
 
-    def __init__(self, feature_lib, optimizer, params):
-        self.feature_lib = feature_lib
-        self.optimizer = optimizer
+    def __init__(self, sindy, params):
+        self.sindy = sindy
         self.params = params
-
-    def fit(self, train: np.ndarray, u: np.ndarray, t: np.ndarray):
-        self.init = train[0]
-
-        self.sindy = ps.SINDy(
-            feature_library=self.feature_lib,
-            optimizer=self.optimizer,
-            # feature_names=feature_names,
-        )
-        try:
-            self.sindy.fit(
-                train,
-                u=u,
-                t=t,
-            )
-        except ValueError as e:
-            raise ValueError(
-                f"SINDyモデルへのフィッティングで、ValueErrorが発生: {e}"
-            ) from e
-        except np.linalg.LinAlgError as e:
-            raise np.linalg.LinAlgError(
-                f"LinAlgError:SINDyモデルへのフィッテングの際、LinAlgErrorが発生しました: {e}"
-            ) from e
-        except Exception as e:
-            raise Exception(
-                f"SINDyモデルへのフィッティングの際、予期せぬエラーが発生しました: {e}"
-            ) from e
 
     def predict(self, init, dt, iter, u, mode=None):
         if hasattr(init, "to_numpy"):

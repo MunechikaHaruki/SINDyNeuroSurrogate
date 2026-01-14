@@ -117,12 +117,8 @@ base = ps.CustomLibrary(
 )
 
 
-def base_hh():
-    """
-    GeneralizedLibrary を使用して、各ライブラリが参照する変数の列（インデックス）を指定します。
-    仮定: 列0=V, 列1=m, 列2=h, 列3=n
-    """
-    return ps.GeneralizedLibrary(
+hh_sindy = ps.SINDy(
+    feature_library=ps.GeneralizedLibrary(
         [gate, gate_product, volt_base, base],
         inputs_per_library=[
             [0],
@@ -130,4 +126,7 @@ def base_hh():
             [0, 1, 2],  # gate_product に V, m, h を渡す
             [0, 1, 2],  # base に V, m, h を渡す
         ],
-    )
+    ),
+    optimizer=ps.optimizers.STLSQ(threshold=0.01, normalize_columns=False, alpha=2.0),
+)
+input_features = ["v", "g", "u"]

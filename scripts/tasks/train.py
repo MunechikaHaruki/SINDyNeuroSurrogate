@@ -1,5 +1,4 @@
 import gokart
-import hydra
 import luigi
 import matplotlib.pyplot as plt
 import mlflow
@@ -67,24 +66,23 @@ class TrainModelTask(gokart.TaskOnKart):
         surrogate_model_cfg = OmegaConf.create(
             recursive_to_dict(self.surrogate_model_cfg)
         )
-        surrogate = hydra.utils.instantiate(surrogate_model_cfg)
+        from neurosurrogate.modeling.surrogate import SINDySurrogate
+        from neurosurrogate.utils.base_hh import hh_sindy, input_features
 
         loaded_data = self.load()
         train_dataset = loaded_data["data"]
         preprocessor = loaded_data["preprocessor"]
-
-        logger.debug(f"train_dataset {train_dataset}")
-
         train = _prepare_train_data(train_dataset, preprocessor)
         u = _get_control_input(train_dataset, data_type=self.train_dataset_type)
-
-        logger.info("Fitting surrogate model...")
-        surrogate.fit(
-            train=train,
+        hh_sindy.fit(
+            train,
             u=u,
             t=train_dataset["time"].to_numpy(),
+            feature_names=input_features,
         )
-
+        surrogate = SINDySurrogate(hh_sindy, params=surrogate_model_cfg["params"])
+        logger.debug(f"train_dataset {train_dataset}")
+        logger.info("Fitting surrogate model...")
         self.dump(surrogate)
 
 

@@ -24,14 +24,6 @@ neurons:
 
 models:
   surrogate:
-    _target_: neurosurrogate.modeling.surrogate.SINDySurrogate
-    feature_lib:
-      _target_: neurosurrogate.utils.base_hh.base_hh
-    optimizer:
-      _target_: pysindy.optimizers.STLSQ
-      threshold: 0.01
-      normalize_columns: false
-      alpha: 2.0
     params:
       G_LEAK: ${neurons.hh3.params.G_LEAK}
       E_LEAK: ${neurons.hh3.params.E_LEAK}
