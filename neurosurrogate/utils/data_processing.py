@@ -10,6 +10,22 @@ def get_gate_data(xr_dataset):
     return xr_dataset["vars"].to_numpy()[:, GATE_VAR_SLICE]
 
 
+def create_xr(var, time, u, features):
+    return xr.Dataset(
+        {
+            "vars": (
+                ("time", "features"),
+                var,
+            ),
+            "I_ext": (("time"), u),
+        },
+        coords={
+            "time": time,
+            "features": features,
+        },
+    )
+
+
 def transform_dataset_with_preprocessor(xr_data, preprocessor):
     """
     Transforms the dataset using the preprocessor on the gate variables.
@@ -28,16 +44,12 @@ def transform_dataset_with_preprocessor(xr_data, preprocessor):
     new_feature_names = ["V"] + [
         f"latent{i + 1}" for i in range(transformed_gate.shape[1])
     ]
-    transformed_xr = xr_data.copy().drop_vars("vars").drop_vars("features")
-    transformed_xr["vars"] = xr.DataArray(
-        new_vars,
-        coords={
-            "time": xr_data.coords["time"],
-            "features": new_feature_names,
-        },
-        dims=["time", "features"],
+    return create_xr(
+        var=new_vars,
+        time=xr_data.coords["time"],
+        u=xr_data["I_ext"].data,
+        features=new_feature_names,
     )
-    return transformed_xr
 
 
 def _prepare_train_data(train_xr_dataset, preprocessor):

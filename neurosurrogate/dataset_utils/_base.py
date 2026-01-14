@@ -6,6 +6,8 @@ import numpy as np
 import xarray as xr
 from tqdm import tqdm
 
+from ..utils.data_processing import create_xr
+
 CHUNK_SIZE = 10000
 
 
@@ -45,22 +47,10 @@ def run_simulation(
         dset[start_index:end_index] = remaining_chunk
 
 
-MODEL_CONFIG: Dict[str, Dict[str, Any]] = {
-    "hh": {
-        "features": ["V", "M", "H", "N"],
-        "dims": (["time", "features"], ["time"]),
-        "compartments": False,
-    },
-    "hh3": {
-        "features": ["V", "M", "H", "N", "V_pre", "V_post"],
-        "dims": (["time", "features"], ["time"]),
-        "compartments": False,
-    },
-    "traub": {
-        "features": ["V", "XI", "M", "S", "N", "C", "A", "H", "R", "B", "Q"],
-        "dims": (["time", "features", "compartments"], ["time", "compartments"]),
-        "compartments": True,
-    },
+MODEL_FEATURES: Dict[str, Dict[str, Any]] = {
+    "hh": ["V", "M", "H", "N"],
+    "hh3": ["V", "M", "H", "N", "V_pre", "V_post"],
+    "traub": ["V", "XI", "M", "S", "N", "C", "A", "H", "R", "B", "Q"],
 }
 
 
@@ -79,22 +69,9 @@ def calc_ThreeComp_internal(dataset, G_12, G_23):
 
 
 def preprocess_dataset(model_type: str, file_path: Path, params):
-    config = MODEL_CONFIG[model_type]
-
     with h5py.File(file_path, "r") as f:
-        coords: Dict[str, Any] = {
-            "time": f["time"],
-            "features": config["features"],
-        }
-        if config["compartments"]:
-            coords["compartments"] = np.arange(f["vars"].shape[-1])
-
-        dataset = xr.Dataset(
-            {
-                "vars": (config["dims"][0], f["vars"]),
-                "I_ext": (config["dims"][1], f["I_ext"]),
-            },
-            coords=coords,
+        dataset = create_xr(
+            f["vars"], f["time"], u=f["I_ext"], features=MODEL_FEATURES[model_type]
         )
 
         if model_type == "hh3":

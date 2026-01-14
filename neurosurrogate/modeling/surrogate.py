@@ -1,8 +1,9 @@
 # mypy: ignore-errors
 
 import numpy as np
-import xarray as xr
 from loguru import logger
+
+from ..utils.data_processing import create_xr
 
 
 class SINDySurrogate:
@@ -29,45 +30,25 @@ class SINDySurrogate:
             init = np.array([init[0], init[1], -65, -65])  # v,隠れ変数,v_pre,v_post
             from .simulate_numba import simulate_three_comp_numba
 
-            return xr.Dataset(
-                {
-                    "vars": (
-                        ("time", "features"),
-                        simulate_three_comp_numba(
-                            init,
-                            u,
-                            self.sindy.coefficients(),
-                            dt,
-                            G_12=self.params["G_12"],
-                            G_23=self.params["G_23"],
-                            G_LEAK=self.params["G_LEAK"],
-                            E_LEAK=self.params["E_LEAK"],
-                            C=self.params["C"],
-                        ),
-                    ),
-                    "I_ext": (("time"), u),
-                },
-                coords={
-                    "time": np.arange(0, iter * dt, dt),
-                    "features": ["V", "latent1", "V_pre", "V_post"],
-                },
+            var = simulate_three_comp_numba(
+                init,
+                u,
+                self.sindy.coefficients(),
+                dt,
+                G_12=self.params["G_12"],
+                G_23=self.params["G_23"],
+                G_LEAK=self.params["G_LEAK"],
+                E_LEAK=self.params["E_LEAK"],
+                C=self.params["C"],
             )
+            features = ["V", "latent1", "V_pre", "V_post"]
         elif mode == "SingleComp":
             logger.info("SingleCompモードで予測を実行します")
             from .simulate_numba import simulate_sindy
 
-            return xr.Dataset(
-                {
-                    "vars": (
-                        ("time", "features"),
-                        simulate_sindy(init, u, self.sindy.coefficients(), dt),
-                    ),
-                    "I_ext": (("time"), u),
-                },
-                coords={
-                    "time": np.arange(0, iter * dt, dt),
-                    "features": ["V", "latent1"],
-                },
-            )
+            var = simulate_sindy(init, u, self.sindy.coefficients(), dt)
+            features = ["V", "latent1"]
         else:
             raise ValueError(f"未知のmodeが指定されました: {mode}")
+        time = np.arange(0, iter * dt, dt)
+        return create_xr(var, time, u, features)
