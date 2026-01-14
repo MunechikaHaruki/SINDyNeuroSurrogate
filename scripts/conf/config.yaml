@@ -32,11 +32,6 @@ models:
       G_23: ${neurons.hh3.params.G_23}
       DT: ${neurons.hh3.params.DT}
 
-eval:
-  direct: False
-  onlyThreeComp : ${sc}
-
-
 # alias
 sc: False
 g_12: 1

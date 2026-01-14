@@ -15,7 +15,7 @@ class SINDySurrogate:
         self.sindy = sindy
         self.params = params
 
-    def predict(self, init, dt, iter, u, mode=None):
+    def predict(self, init, dt, iter, u, data_type=None):
         if hasattr(init, "to_numpy"):
             init = init.to_numpy()
         if hasattr(u, "to_numpy"):
@@ -25,8 +25,8 @@ class SINDySurrogate:
         if u is not None:
             u = np.asarray(u)
 
-        if mode == "ThreeComp":
-            logger.info("ThreeCompモードで予測を実行します")
+        if data_type == "hh3":
+            logger.info("hh3のサロゲートモデルをテストします")
             init = np.array([init[0], init[1], -65, -65])  # v,隠れ変数,v_pre,v_post
             from .simulate_numba import simulate_three_comp_numba
 
@@ -42,13 +42,13 @@ class SINDySurrogate:
                 C=self.params["C"],
             )
             features = ["V", "latent1", "V_pre", "V_post"]
-        elif mode == "SingleComp":
-            logger.info("SingleCompモードで予測を実行します")
+        elif data_type == "hh":
+            logger.info("hhのサロゲートモデルをテストします")
             from .simulate_numba import simulate_sindy
 
             var = simulate_sindy(init, u, self.sindy.coefficients(), dt)
             features = ["V", "latent1"]
         else:
-            raise ValueError(f"未知のmodeが指定されました: {mode}")
+            raise ValueError(f"未知のmodeが指定されました: {data_type}")
         time = np.arange(0, iter * dt, dt)
         return create_xr(var, time, u, features)

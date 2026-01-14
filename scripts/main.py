@@ -52,11 +52,8 @@ def main(cfg: DictConfig) -> None:
         json.dumps(OmegaConf.to_container(cfg.models, resolve=True)),
     )
     luigi_config.set("CommonConfig", "seed", str(cfg.seed))
-
     # set CommonConfig
     luigi_config.set("CommonConfig", "run_id", run.info.run_id)
-
-    luigi_config.set("CommonConfig", "eval_cfg", json.dumps(dict(cfg.eval)))
 
     log_all_conf_task = RunAllLogging(
         cfg_yaml=OmegaConf.to_yaml(cfg), run_name_prefix=run_name_prefix

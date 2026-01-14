@@ -19,7 +19,6 @@ class SingleEvalTask(gokart.TaskOnKart):
     dataset_key = luigi.Parameter()
     dataset_cfg = luigi.DictParameter()
     neuron_cfg = luigi.DictParameter(default=CommonConfig().neurons_dict["hh3"])
-    eval_cfg = luigi.DictParameter(default=CommonConfig().eval_cfg)
 
     def requires(self):
         return {
@@ -34,20 +33,20 @@ class SingleEvalTask(gokart.TaskOnKart):
         # PreProcessSingleDataTask returns the dataset directly
         ds = loaded_data["preprocess_single_task"]
         logger.info(f"{ds} started to process")
-        mode, u = self._prepare_inference_params(ds)
+        data_type = self.dataset_cfg.get("data_type")
 
         input_data = {
             "init": ds["vars"][0],
             "dt": 0.01,
             "iter": len(ds["time"].to_numpy()),
-            "u": u,
-            "mode": mode,
+            "u": _get_control_input(ds, data_type=data_type),
+            "data_type": data_type,
         }
         logger.info(f"input:{input_data}")
         # TrainModelTask returns the surrogate model directly
         prediction = loaded_data["trainmodel_task"].predict(**input_data)
         logger.info(f"prediction_result:{prediction}")
-        if mode == "ThreeComp":
+        if data_type == "hh3":
             calc_ThreeComp_internal(
                 prediction,
                 self.neuron_cfg["params"]["G_12"],
@@ -56,24 +55,6 @@ class SingleEvalTask(gokart.TaskOnKart):
 
         logger.trace(prediction)
         self.dump(prediction)
-
-    def _prepare_inference_params(self, ds):
-        """推論に必要なモードと制御入力を決定するヘルパーメソッド"""
-        data_type = self.dataset_cfg.get("data_type")
-        direct = self.eval_cfg.get("direct", False)
-
-        if data_type == "hh":
-            return "SingleComp", _get_control_input(ds, data_type=data_type)
-
-        if data_type == "hh3":
-            if direct:
-                logger.info("Using direct ThreeComp mode")
-                return "SingleComp", _get_control_input(
-                    ds, data_type=data_type, direct=True
-                )
-            return "ThreeComp", _get_control_input(ds, data_type=data_type)
-
-        raise ValueError(f"Unknown data_type: {data_type}")
 
 
 class LogSingleEvalTask(gokart.TaskOnKart):

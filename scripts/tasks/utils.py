@@ -62,6 +62,5 @@ class CommonConfig(luigi.Config):
     datasets_dict = luigi.DictParameter()
     neurons_dict = luigi.DictParameter()
     model_cfg_dict = luigi.DictParameter()
-    eval_cfg = luigi.DictParameter()
     seed = luigi.IntParameter()
     run_id = luigi.Parameter()
