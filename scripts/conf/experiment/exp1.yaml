@@ -2,8 +2,6 @@
 
 defaults:
   - /datasets: default
-  - /neurons: default
-  - /models: default
   - _self_
 
 experiment_name: exp1-hh_rand_pulse
