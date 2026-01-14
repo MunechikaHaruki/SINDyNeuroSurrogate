@@ -1,3 +1,5 @@
+import tempfile
+
 import gokart
 import luigi
 import matplotlib.pyplot as plt
@@ -5,9 +7,6 @@ import mlflow
 from loguru import logger
 
 from neurosurrogate import PLOTTER_REGISTRY
-from neurosurrogate.config import (
-    DATA_DIR,
-)
 from neurosurrogate.dataset_utils._base import calc_ThreeComp_internal
 from neurosurrogate.plots import plot_diff
 from neurosurrogate.utils.data_processing import _get_control_input
@@ -151,11 +150,13 @@ class LogSingleEvalTask(gokart.TaskOnKart):
         self.dump(True)
 
     def _debug_show_image(self, fig):
-        import subprocess
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            import subprocess
+            from pathlib import Path
 
-        TMP = DATA_DIR / "debug.png"
-        fig.savefig(TMP)
-        subprocess.run(["wezterm", "imgcat", TMP])
+            TMP = Path(tmp_dir) / "debug.png"
+            fig.savefig(TMP)
+            subprocess.run(["wezterm", "imgcat", TMP])
 
 
 class LogEvalTask(gokart.TaskOnKart):
