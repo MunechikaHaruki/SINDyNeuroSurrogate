@@ -20,8 +20,7 @@ clean-log:
 	rm -rf ./mlruns
 
 clean:
-	rm -rf ./resources
-	rm -rf ./data
+	rm -rf ~/.prefect
 
 
 #Format source code with ruff

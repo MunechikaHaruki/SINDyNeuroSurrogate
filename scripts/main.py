@@ -5,7 +5,12 @@ from omegaconf import DictConfig, OmegaConf
 from prefect import flow
 from prefect.task_runners import ConcurrentTaskRunner
 
-from scripts.tasks.data import generate_single_dataset, log_single_dataset
+from scripts.tasks.data import (
+    compute_task_seed,
+    generate_single_dataset,
+    log_plot_to_mlflow,
+    log_single_dataset,
+)
 from scripts.tasks.eval import log_single_eval, single_eval
 from scripts.tasks.train import (
     log_single_preprocess_data,
@@ -27,26 +32,28 @@ def main_flow(cfg: DictConfig, run_id: str, run_name_prefix: str):
         mlflow.set_tag("mlflow.runName", run_name)
 
         # 1. Generate Datasets
-        dataset_futures = {}
-        for name, dataset_cfg in cfg.datasets.items():
-            neuron_cfg = cfg.neurons.get(dataset_cfg.data_type)
-            if neuron_cfg is None:
-                logger.warning(f"Neuron config for {dataset_cfg.data_type} not found.")
-                continue
-            future = generate_single_dataset.submit(
-                dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, seed=cfg.seed
-            )
-            dataset_futures[name] = future
-
         generated_datasets = {}
-        for name, future in dataset_futures.items():
-            ds = future.result()
-            generated_datasets[name] = ds
-            log_single_dataset(
-                dataset_name=name,
-                dataset_cfg=cfg.datasets[name],
-                xr_data=ds,
+        for name, dataset_cfg in cfg.datasets.items():
+            data_type = dataset_cfg.data_type
+            neuron_cfg = cfg.neurons.get(data_type)
+            if neuron_cfg is None:
+                logger.warning(f"Neuron config for {data_type} not found.")
+                continue
+            base_seed = cfg.seed
+            task_seed = compute_task_seed(
+                dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, base_seed=base_seed
             )
+            ds = generate_single_dataset(
+                dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, task_seed=task_seed
+            )
+            generated_datasets[name] = ds
+
+            buf = log_single_dataset(
+                data_type=data_type,
+                xr_data=ds,
+                task_seed=task_seed,
+            )
+            log_plot_to_mlflow(buf, f"original/{data_type}/{name}.png")
 
         # 2. Train Preprocessor
         if "train" not in generated_datasets:

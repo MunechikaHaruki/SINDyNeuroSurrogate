@@ -1,4 +1,5 @@
 import hashlib
+import io
 import random
 import tempfile
 from pathlib import Path
@@ -8,8 +9,8 @@ import hydra
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
-from loguru import logger
 from omegaconf import OmegaConf
+from PIL import Image
 from prefect import task
 
 from neurosurrogate.dataset_utils import PARAMS_REGISTRY, SIMULATOR_REGISTRY
@@ -19,8 +20,29 @@ from neurosurrogate.utils import PLOTTER_REGISTRY
 from .utils import recursive_to_dict
 
 
-@task
-def generate_single_dataset(dataset_cfg, neuron_cfg, seed):
+def compute_task_seed(dataset_cfg, neuron_cfg, base_seed) -> int:
+    import json
+
+    cfg_json = json.dumps(
+        {
+            "dataset": recursive_to_dict(dataset_cfg),
+            "neuron": recursive_to_dict(neuron_cfg),
+        },
+        sort_keys=True,
+    )
+
+    hash_digest = hashlib.md5(cfg_json.encode()).hexdigest()
+    # 16進数文字列を適切に処理
+    return (base_seed + int(hash_digest, 16)) % (2**32)
+
+
+def generate_single_dataset_key_fn(context, params):
+    seed = params.get("task_seed")
+    return f"{seed}"
+
+
+@task(cache_key_fn=generate_single_dataset_key_fn, persist_result=True)
+def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed):
     """
     Simulates a neuron model based on configurations and preprocesses the result into a dataset.
     """
@@ -34,7 +56,8 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, seed):
         params = PARAMS_REGISTRY[data_type](**params_dict)
 
     # Set random seeds for reproducibility
-    _set_random_seeds(dataset_cfg, neuron_cfg, seed)
+    random.seed(task_seed)
+    np.random.seed(task_seed)
 
     dataset_cfg_obj = OmegaConf.create(recursive_to_dict(dataset_cfg))
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -50,30 +73,20 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, seed):
         return processed_dataset
 
 
-def _set_random_seeds(dataset_cfg, neuron_cfg, seed):
-    import json
-
-    cfg_json = json.dumps(
-        {
-            "dataset": recursive_to_dict(dataset_cfg),
-            "neuron": recursive_to_dict(neuron_cfg),
-        },
-        sort_keys=True,
-    )
-
-    hash_digest = hashlib.md5(cfg_json.encode()).hexdigest()
-    # 16進数文字列を適切に処理
-    task_seed = (seed + int(hash_digest, 16)) % (2**32)
-
-    random.seed(task_seed)
-    np.random.seed(task_seed)
-    logger.info(f"Seed set to: {task_seed}")
+def log_single_dataset_key_fn(context, params):
+    seed = params.get("task_seed")
+    return f"log-{seed}"
 
 
-@task
-def log_single_dataset(dataset_name, dataset_cfg, xr_data):
-    data_type = dataset_cfg["data_type"]
+@task(cache_key_fn=log_single_dataset_key_fn, persist_result=True)
+def log_single_dataset(data_type, xr_data, task_seed):
     fig = PLOTTER_REGISTRY[data_type](xr_data)
-    mlflow.log_figure(fig, f"original/{data_type}/{dataset_name}.png")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
     plt.close(fig)
-    logger.info(f"Logged dataset: {dataset_name}")
+    return buf.getvalue()
+
+
+def log_plot_to_mlflow(img_bytes, artifact_path):
+    img = Image.open(io.BytesIO(img_bytes))
+    mlflow.log_image(img, artifact_path)
