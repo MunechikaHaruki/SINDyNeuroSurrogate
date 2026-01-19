@@ -1,20 +1,21 @@
-import tempfile
+import hashlib
 
-import matplotlib.pyplot as plt
-import mlflow
+import numpy as np
 from loguru import logger
 from prefect import task
+from prefect.tasks import task_input_hash
 
 from neurosurrogate.dataset_utils._base import calc_ThreeComp_internal
 from neurosurrogate.utils import PLOTTER_REGISTRY
 from neurosurrogate.utils.data_processing import _get_control_input
 from neurosurrogate.utils.plots import plot_diff
 
+from .utils import fig_to_buff
+
 
 @task
-def single_eval(dataset_key, dataset_cfg, neuron_cfg, preprocessed_ds, surrogate_model):
+def single_eval(data_type, neuron_cfg, preprocessed_ds, surrogate_model):
     logger.info(f"{preprocessed_ds} started to process")
-    data_type = dataset_cfg.get("data_type")
 
     input_data = {
         "init": preprocessed_ds["vars"][0],
@@ -39,40 +40,36 @@ def single_eval(dataset_key, dataset_cfg, neuron_cfg, preprocessed_ds, surrogate
     return prediction
 
 
-@task
-def log_single_eval(dataset_key, dataset_cfg, surrogate_result, preprocessed_result):
-    if surrogate_result is None:
-        return
+def log_diff_eval_key_fn(context, params):
+    def array_to_quick_hash(arr: np.ndarray) -> str:
+        # 1. メタデータ（形状と型）
+        meta = f"{arr.shape}-{arr.dtype}"
 
-    data_type = dataset_cfg["data_type"]
+        # 2. 最初と最後、中央の数要素だけを抽出してハッシュ化
+        # ※ データの中身が「端だけ同じで中身が違う」場合には衝突するので注意
+        sample = arr.flat[:: max(1, arr.size // 10)]  # 全体の10要素程度をサンプリング
 
+        combined = f"{meta}-{sample.tobytes()}"
+        return hashlib.md5(combined.encode()).hexdigest()
+
+    surrogate_hash = array_to_quick_hash(params["surrogate_result"]["vars"].to_numpy())
+    preprocessed_hash = array_to_quick_hash(
+        params["preprocessed_result"]["vars"].to_numpy()
+    )
+    return surrogate_hash + preprocessed_hash
+
+
+@task(cache_key_fn=log_diff_eval_key_fn, persist_result=True)
+def log_diff_eval(surrogate_result, preprocessed_result):
     u = preprocessed_result["I_ext"].to_numpy()
     fig = plot_diff(u, preprocessed_result["vars"], surrogate_result["vars"])
-    mlflow.log_figure(fig, f"compare/{data_type}/{dataset_key}.png")
+    return fig_to_buff(fig)
 
-    _debug_show_image(fig)
 
-    plt.close(fig)
+@task(cache_key_fn=task_input_hash, persist_result=True)
+def log_single_eval(data_type, surrogate_result):
     fig = PLOTTER_REGISTRY[data_type](
         surrogate_result,
         surrogate=True,
     )
-
-    mlflow.log_figure(
-        fig,
-        f"surrogate_result/{data_type}/{dataset_key}.png",
-    )
-    plt.close(fig)
-
-
-def _debug_show_image(fig):
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        import subprocess
-        from pathlib import Path
-
-        TMP = Path(tmp_dir) / "debug.png"
-        fig.savefig(TMP)
-        try:
-            subprocess.run(["wezterm", "imgcat", TMP], check=False)
-        except Exception:
-            pass
+    return fig_to_buff(fig)

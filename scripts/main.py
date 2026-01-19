@@ -8,10 +8,9 @@ from prefect.task_runners import ConcurrentTaskRunner
 from scripts.tasks.data import (
     compute_task_seed,
     generate_single_dataset,
-    log_plot_to_mlflow,
     log_single_dataset,
 )
-from scripts.tasks.eval import log_single_eval, single_eval
+from scripts.tasks.eval import log_diff_eval, log_single_eval, single_eval
 from scripts.tasks.train import (
     log_single_preprocess_data,
     log_train_model,
@@ -19,7 +18,7 @@ from scripts.tasks.train import (
     train_model,
     train_preprocessor,
 )
-from scripts.tasks.utils import get_commit_id
+from scripts.tasks.utils import get_commit_id, log_plot_to_mlflow
 
 
 @flow(task_runner=ConcurrentTaskRunner())
@@ -83,34 +82,33 @@ def main_flow(cfg: DictConfig, run_id: str, run_name_prefix: str):
         for name, future in preprocess_futures.items():
             transformed_ds = future.result()
             preprocessed_datasets[name] = transformed_ds
-            log_single_preprocess_data(
+            dataset_type = cfg.datasets[name]["data_type"]
+            buf = log_single_preprocess_data(
                 dataset_key=name,
-                dataset_type=cfg.datasets[name]["data_type"],
+                dataset_type=dataset_type,
                 xr_data=transformed_ds,
             )
+            log_plot_to_mlflow(buf, f"preprocessed/{dataset_type}/{name}.png")
 
         # 5. Evaluate
-        eval_futures = {}
+        eval_result = {}
         for name, transformed_ds in preprocessed_datasets.items():
-            dataset_cfg = cfg.datasets[name]
-            neuron_cfg = cfg.neurons.get(dataset_cfg.data_type)
-            future = single_eval.submit(
-                dataset_key=name,
-                dataset_cfg=dataset_cfg,
-                neuron_cfg=neuron_cfg,
+            data_type = cfg.datasets[name].data_type
+            eval_result = single_eval(
+                data_type=data_type,
+                neuron_cfg=cfg.neurons.get(dataset_cfg.data_type),
                 preprocessed_ds=transformed_ds,
                 surrogate_model=surrogate_model,
             )
-            eval_futures[name] = future
 
-        for name, future in eval_futures.items():
-            prediction = future.result()
-            log_single_eval(
-                dataset_key=name,
-                dataset_cfg=cfg.datasets[name],
-                surrogate_result=prediction,
-                preprocessed_result=preprocessed_datasets[name],
+            buf = log_single_eval(data_type=data_type, surrogate_result=eval_result)
+            log_plot_to_mlflow(buf, f"surrogate/{data_type}/{name}.png")
+            buf = log_diff_eval(
+                surrogate_result=eval_result,
+                preprocessed_result=transformed_ds,
             )
+
+            log_plot_to_mlflow(buf, f"compare/{data_type}/{name}.png")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")

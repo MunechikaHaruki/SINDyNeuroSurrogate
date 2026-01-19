@@ -1,23 +1,19 @@
 import hashlib
-import io
 import random
 import tempfile
 from pathlib import Path
 
 import h5py
 import hydra
-import matplotlib.pyplot as plt
-import mlflow
 import numpy as np
 from omegaconf import OmegaConf
-from PIL import Image
 from prefect import task
 
 from neurosurrogate.dataset_utils import PARAMS_REGISTRY, SIMULATOR_REGISTRY
 from neurosurrogate.dataset_utils._base import preprocess_dataset
 from neurosurrogate.utils import PLOTTER_REGISTRY
 
-from .utils import recursive_to_dict
+from .utils import fig_to_buff, recursive_to_dict
 
 
 def compute_task_seed(dataset_cfg, neuron_cfg, base_seed) -> int:
@@ -81,12 +77,4 @@ def log_single_dataset_key_fn(context, params):
 @task(cache_key_fn=log_single_dataset_key_fn, persist_result=True)
 def log_single_dataset(data_type, xr_data, task_seed):
     fig = PLOTTER_REGISTRY[data_type](xr_data)
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
-    plt.close(fig)
-    return buf.getvalue()
-
-
-def log_plot_to_mlflow(img_bytes, artifact_path):
-    img = Image.open(io.BytesIO(img_bytes))
-    mlflow.log_image(img, artifact_path)
+    return fig_to_buff(fig)
