@@ -35,9 +35,7 @@ def train_model(
     train_xr_dataset, preprocessor, surrogate_model_cfg, train_dataset_type
 ):
     """モデルの学習を行うタスク"""
-    surrogate_model_cfg = OmegaConf.create(
-        recursive_to_dict(surrogate_model_cfg)
-    )
+    surrogate_model_cfg = OmegaConf.create(recursive_to_dict(surrogate_model_cfg))
     from neurosurrogate.modeling.surrogate import SINDySurrogate
     from neurosurrogate.utils.base_hh import hh_sindy, input_features
 
@@ -82,7 +80,5 @@ def log_single_preprocess_data(dataset_key, dataset_type, xr_data):
     """1つのデータセットに対して処理とログ出力を行う"""
     external_input = _get_control_input(xr_data, dataset_type)
     fig = _create_figure(xr_data["vars"], external_input)
-    mlflow.log_figure(
-        fig, f"preprocessed/{dataset_type}/{dataset_key}.png"
-    )
+    mlflow.log_figure(fig, f"preprocessed/{dataset_type}/{dataset_key}.png")
     plt.close(fig)

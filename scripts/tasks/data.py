@@ -8,7 +8,6 @@ import hydra
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
-import xarray as xr
 from loguru import logger
 from omegaconf import OmegaConf
 from prefect import task

@@ -40,9 +40,7 @@ def single_eval(dataset_key, dataset_cfg, neuron_cfg, preprocessed_ds, surrogate
 
 
 @task
-def log_single_eval(
-    dataset_key, dataset_cfg, surrogate_result, preprocessed_result
-):
+def log_single_eval(dataset_key, dataset_cfg, surrogate_result, preprocessed_result):
     if surrogate_result is None:
         return
 

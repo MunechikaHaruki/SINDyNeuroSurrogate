@@ -4,7 +4,6 @@ from typing import Any, Dict
 import h5py
 import numpy as np
 import xarray as xr
-from tqdm import tqdm
 
 from ..utils.data_processing import create_xr
 
@@ -27,7 +26,7 @@ def run_simulation(
 
     chunk_num = NT // CHUNK_SIZE
 
-    for cn in tqdm(range(chunk_num)):
+    for cn in range(chunk_num):
         start_index = CHUNK_SIZE * cn
         end_index = start_index + CHUNK_SIZE
 

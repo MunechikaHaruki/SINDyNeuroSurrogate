@@ -3,6 +3,7 @@ import mlflow
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from prefect import flow
+from prefect.task_runners import ConcurrentTaskRunner
 
 from scripts.tasks.data import generate_single_dataset, log_single_dataset
 from scripts.tasks.eval import log_single_eval, single_eval
@@ -16,7 +17,7 @@ from scripts.tasks.train import (
 from scripts.tasks.utils import get_commit_id
 
 
-@flow
+@flow(task_runner=ConcurrentTaskRunner())
 def main_flow(cfg: DictConfig, run_id: str, run_name_prefix: str):
     with mlflow.start_run(run_id=run_id):
         # Log config
@@ -26,99 +27,88 @@ def main_flow(cfg: DictConfig, run_id: str, run_name_prefix: str):
         mlflow.set_tag("mlflow.runName", run_name)
 
         # 1. Generate Datasets
-        generated_datasets = {}
-
-        for dataset_name, dataset_cfg in cfg.datasets.items():
-            data_type = dataset_cfg.data_type
-            # Access neuron config safely
-            neuron_cfg = cfg.neurons.get(data_type)
+        dataset_futures = {}
+        for name, dataset_cfg in cfg.datasets.items():
+            neuron_cfg = cfg.neurons.get(dataset_cfg.data_type)
             if neuron_cfg is None:
-                # Fallback or error? Original code assumed it exists.
-                logger.warning(f"Neuron config for {data_type} not found.")
+                logger.warning(f"Neuron config for {dataset_cfg.data_type} not found.")
                 continue
-
-            ds = generate_single_dataset(
+            future = generate_single_dataset.submit(
                 dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, seed=cfg.seed
             )
-            generated_datasets[dataset_name] = ds
+            dataset_futures[name] = future
 
+        generated_datasets = {}
+        for name, future in dataset_futures.items():
+            ds = future.result()
+            generated_datasets[name] = ds
             log_single_dataset(
-                dataset_name=dataset_name,
-                dataset_cfg=dataset_cfg,
+                dataset_name=name,
+                dataset_cfg=cfg.datasets[name],
                 xr_data=ds,
             )
 
-        # 2. Train Preprocessor (using "train" dataset)
+        # 2. Train Preprocessor
         if "train" not in generated_datasets:
             logger.error("Train dataset not found in generated datasets.")
             return
-
         train_ds = generated_datasets["train"]
         preprocessor = train_preprocessor(train_xr_dataset=train_ds)
 
         # 3. Train Model
-        surrogate_model_cfg = cfg.models["surrogate"]
-        train_dataset_cfg = cfg.datasets["train"]
-        train_dataset_type = train_dataset_cfg["data_type"]
-
         surrogate_model = train_model(
             train_xr_dataset=train_ds,
             preprocessor=preprocessor,
-            surrogate_model_cfg=surrogate_model_cfg,
-            train_dataset_type=train_dataset_type,
+            surrogate_model_cfg=cfg.models["surrogate"],
+            train_dataset_type=cfg.datasets["train"]["data_type"],
         )
-
         log_train_model(surrogate=surrogate_model)
 
         # 4. Preprocess all datasets
-        preprocessed_datasets = {}
-        for dataset_name, ds in generated_datasets.items():
-            transformed_ds = preprocess_single_data(
-                dataset_name=dataset_name, preprocessor=preprocessor, xr_data=ds
+        preprocess_futures = {}
+        for name, ds in generated_datasets.items():
+            future = preprocess_single_data.submit(
+                dataset_name=name, preprocessor=preprocessor, xr_data=ds
             )
-            preprocessed_datasets[dataset_name] = transformed_ds
+            preprocess_futures[name] = future
 
+        preprocessed_datasets = {}
+        for name, future in preprocess_futures.items():
+            transformed_ds = future.result()
+            preprocessed_datasets[name] = transformed_ds
             log_single_preprocess_data(
-                dataset_key=dataset_name,
-                dataset_type=cfg.datasets[dataset_name]["data_type"],
+                dataset_key=name,
+                dataset_type=cfg.datasets[name]["data_type"],
                 xr_data=transformed_ds,
             )
 
         # 5. Evaluate
-        for dataset_name, transformed_ds in preprocessed_datasets.items():
-            dataset_cfg = cfg.datasets[dataset_name]
-            data_type = dataset_cfg.data_type
-            neuron_cfg = cfg.neurons.get(data_type)
-
-            prediction = single_eval(
-                dataset_key=dataset_name,
+        eval_futures = {}
+        for name, transformed_ds in preprocessed_datasets.items():
+            dataset_cfg = cfg.datasets[name]
+            neuron_cfg = cfg.neurons.get(dataset_cfg.data_type)
+            future = single_eval.submit(
+                dataset_key=name,
                 dataset_cfg=dataset_cfg,
                 neuron_cfg=neuron_cfg,
                 preprocessed_ds=transformed_ds,
                 surrogate_model=surrogate_model,
             )
+            eval_futures[name] = future
 
+        for name, future in eval_futures.items():
+            prediction = future.result()
             log_single_eval(
-                dataset_key=dataset_name,
-                dataset_cfg=dataset_cfg,
+                dataset_key=name,
+                dataset_cfg=cfg.datasets[name],
                 surrogate_result=prediction,
-                preprocessed_result=transformed_ds,
+                preprocessed_result=preprocessed_datasets[name],
             )
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
-    # If tqdm is installed, configure loguru with tqdm.write
-    try:
-        from tqdm import tqdm
-
-        logger.remove(0)
-        logger.add(lambda msg: tqdm.write(msg, end=""), colorize=True)
-    except ModuleNotFoundError:
-        pass
-
     OmegaConf.resolve(cfg)
-
     try:
         run_name_prefix = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
     except Exception:
