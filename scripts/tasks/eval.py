@@ -14,7 +14,7 @@ from .utils import fig_to_buff
 
 
 @task
-def single_eval(data_type, neuron_cfg, preprocessed_ds, surrogate_model):
+def single_eval(data_type, params, preprocessed_ds, surrogate_model):
     logger.info(f"{preprocessed_ds} started to process")
 
     input_data = {
@@ -29,7 +29,6 @@ def single_eval(data_type, neuron_cfg, preprocessed_ds, surrogate_model):
     prediction = surrogate_model.predict(**input_data)
     logger.info(f"prediction_result:{prediction}")
     if data_type == "hh3":
-        params = neuron_cfg.get("params", {}) if neuron_cfg else {}
         calc_ThreeComp_internal(
             prediction,
             params.get("G_12"),

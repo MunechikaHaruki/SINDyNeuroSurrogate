@@ -96,7 +96,7 @@ def main_flow(cfg: DictConfig, run_id: str, run_name_prefix: str):
             data_type = cfg.datasets[name].data_type
             eval_result = single_eval(
                 data_type=data_type,
-                neuron_cfg=cfg.neurons.get(dataset_cfg.data_type),
+                params=cfg.neurons[data_type]["params"],
                 preprocessed_ds=transformed_ds,
                 surrogate_model=surrogate_model,
             )
