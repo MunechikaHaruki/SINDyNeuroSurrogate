@@ -3,7 +3,6 @@
 PROJECT_NAME := "neurosurrogate"
 VIRTUAL_ENV := "uv run"
 # port numbering
-STREAMLIT_PORT := "5101"
 MLFLOW_PORT := "5100"
 
 # Delete all compiled Python files
@@ -54,23 +53,6 @@ radon:
 	{{VIRTUAL_ENV}} radon cc ./neurosurrogate ./scripts -s -a
 	{{VIRTUAL_ENV}} radon mi ./neurosurrogate ./scripts -s
 
-#visualize code structure
-viz:
-	{{VIRTUAL_ENV}} pyreverse -o svg -p {{PROJECT_NAME}} ./neurosurrogate ./scripts
-	mv classes_{{PROJECT_NAME}}.svg figures/
-	mv packages_{{PROJECT_NAME}}.svg figures/
-
-	{{VIRTUAL_ENV}} pydeps neurosurrogate
-	mv neurosurrogate.svg figures/dependencies_neurosurrogate.svg
-	
-	{{VIRTUAL_ENV}} pydeps scripts
-	mv scripts.svg figures/dependencies_scripts.svg
-
-	{{VIRTUAL_ENV}} pyan3 scripts/*.py --grouped --annotated --svg >figures/pyan3_scripts.svg
-	{{VIRTUAL_ENV}} pyan3 neurosurrogate/**/*.py --grouped --annotated --svg >figures/pyan3_neurosurrogate.svg
-	
-	{{VIRTUAL_ENV}} code2flow ./neurosurrogate ./scripts -o figures/code2flow.svg
-
 #################################################################################
 # PROJECT RULES                                                                 #
 #################################################################################
@@ -81,10 +63,10 @@ rebuild:
 	rm -rf ./build
 	{{VIRTUAL_ENV}} python setup.py build_ext --inplace
 
-# activate visualization server
-streamlit:
-    @lsof -t -i:{{STREAMLIT_PORT}} | xargs kill -9 || true
-    {{VIRTUAL_ENV}} streamlit run scripts/neurosurrogate.utils/streamlit.py --server.port {{STREAMLIT_PORT}}
+# activate prefect server
+prefect:
+	{{VIRTUAL_ENV}} prefect server start
+
 # activate logging server
 mlflow:
     @lsof -t -i:{{MLFLOW_PORT}} | xargs kill -9 || true
