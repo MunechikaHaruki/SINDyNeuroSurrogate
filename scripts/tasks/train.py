@@ -56,19 +56,18 @@ def train_model(
 
 
 @task
-def log_train_model(surrogate, run_id):
-    with mlflow.start_run(run_id=run_id):
-        mlflow.log_dict(
-            surrogate.sindy.equations(precision=3),
-            artifact_file="sindy_equations.txt",
-        )
-        mlflow.log_text(
-            np.array2string(surrogate.sindy.optimizer.coef_, precision=3),
-            artifact_file="coef.txt",
-        )
-        feature_names = surrogate.sindy.get_feature_names()
-        mlflow.log_text("\n".join(feature_names), artifact_file="feature_names.txt")
-        mlflow.log_param("sindy_params", str(surrogate.sindy.optimizer.get_params))
+def log_train_model(surrogate):
+    mlflow.log_dict(
+        surrogate.sindy.equations(precision=3),
+        artifact_file="sindy_equations.txt",
+    )
+    mlflow.log_text(
+        np.array2string(surrogate.sindy.optimizer.coef_, precision=3),
+        artifact_file="coef.txt",
+    )
+    feature_names = surrogate.sindy.get_feature_names()
+    mlflow.log_text("\n".join(feature_names), artifact_file="feature_names.txt")
+    mlflow.log_param("sindy_params", str(surrogate.sindy.optimizer.get_params))
 
 
 @task
@@ -79,12 +78,11 @@ def preprocess_single_data(dataset_name, preprocessor, xr_data):
 
 
 @task
-def log_single_preprocess_data(dataset_key, dataset_type, run_id, xr_data):
-    with mlflow.start_run(run_id=run_id):
-        """1つのデータセットに対して処理とログ出力を行う"""
-        external_input = _get_control_input(xr_data, dataset_type)
-        fig = _create_figure(xr_data["vars"], external_input)
-        mlflow.log_figure(
-            fig, f"preprocessed/{dataset_type}/{dataset_key}.png"
-        )
-        plt.close(fig)
+def log_single_preprocess_data(dataset_key, dataset_type, xr_data):
+    """1つのデータセットに対して処理とログ出力を行う"""
+    external_input = _get_control_input(xr_data, dataset_type)
+    fig = _create_figure(xr_data["vars"], external_input)
+    mlflow.log_figure(
+        fig, f"preprocessed/{dataset_type}/{dataset_key}.png"
+    )
+    plt.close(fig)

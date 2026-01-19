@@ -72,10 +72,9 @@ def _set_random_seeds(dataset_cfg, neuron_cfg, seed):
 
 
 @task
-def log_single_dataset(dataset_name, dataset_cfg, run_id, xr_data):
+def log_single_dataset(dataset_name, dataset_cfg, xr_data):
     data_type = dataset_cfg["data_type"]
-    with mlflow.start_run(run_id=run_id):
-        fig = PLOTTER_REGISTRY[data_type](xr_data)
-        mlflow.log_figure(fig, f"original/{data_type}/{dataset_name}.png")
-        plt.close(fig)
+    fig = PLOTTER_REGISTRY[data_type](xr_data)
+    mlflow.log_figure(fig, f"original/{data_type}/{dataset_name}.png")
+    plt.close(fig)
     logger.info(f"Logged dataset: {dataset_name}")

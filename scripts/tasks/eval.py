@@ -41,31 +41,30 @@ def single_eval(dataset_key, dataset_cfg, neuron_cfg, preprocessed_ds, surrogate
 
 @task
 def log_single_eval(
-    dataset_key, dataset_cfg, run_id, surrogate_result, preprocessed_result
+    dataset_key, dataset_cfg, surrogate_result, preprocessed_result
 ):
     if surrogate_result is None:
         return
 
     data_type = dataset_cfg["data_type"]
 
-    with mlflow.start_run(run_id=run_id):
-        u = preprocessed_result["I_ext"].to_numpy()
-        fig = plot_diff(u, preprocessed_result["vars"], surrogate_result["vars"])
-        mlflow.log_figure(fig, f"compare/{data_type}/{dataset_key}.png")
+    u = preprocessed_result["I_ext"].to_numpy()
+    fig = plot_diff(u, preprocessed_result["vars"], surrogate_result["vars"])
+    mlflow.log_figure(fig, f"compare/{data_type}/{dataset_key}.png")
 
-        _debug_show_image(fig)
+    _debug_show_image(fig)
 
-        plt.close(fig)
-        fig = PLOTTER_REGISTRY[data_type](
-            surrogate_result,
-            surrogate=True,
-        )
+    plt.close(fig)
+    fig = PLOTTER_REGISTRY[data_type](
+        surrogate_result,
+        surrogate=True,
+    )
 
-        mlflow.log_figure(
-            fig,
-            f"surrogate_result/{data_type}/{dataset_key}.png",
-        )
-        plt.close(fig)
+    mlflow.log_figure(
+        fig,
+        f"surrogate_result/{data_type}/{dataset_key}.png",
+    )
+    plt.close(fig)
 
 
 def _debug_show_image(fig):
