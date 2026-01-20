@@ -2,6 +2,7 @@ import io
 import subprocess
 from collections.abc import Mapping
 
+import hydra
 import matplotlib.pyplot as plt
 import mlflow
 from omegaconf import OmegaConf
@@ -28,6 +29,14 @@ def get_commit_id():
     except subprocess.CalledProcessError:
         commit_id = "unknown"
     return commit_id
+
+
+def get_hydra_overrides():
+    try:
+        run_name_prefix = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
+    except Exception:
+        run_name_prefix = "default_run"
+    return run_name_prefix
 
 
 def log_plot_to_mlflow(img_bytes, artifact_path):

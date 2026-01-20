@@ -18,7 +18,7 @@ from scripts.tasks.train import (
     train_model,
     train_preprocessor,
 )
-from scripts.tasks.utils import get_commit_id, log_plot_to_mlflow
+from scripts.tasks.utils import get_commit_id, get_hydra_overrides, log_plot_to_mlflow
 
 
 @flow(task_runner=ConcurrentTaskRunner())
@@ -106,11 +106,8 @@ def main_flow(cfg: DictConfig):
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
-    try:
-        run_name_prefix = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
-    except Exception:
-        run_name_prefix = "default_run"
 
+    run_name_prefix = get_hydra_overrides()
     mlflow.set_tracking_uri("file:./mlruns")
     mlflow.set_experiment(cfg.experiment_name)
     # Create run to generate ID
