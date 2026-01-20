@@ -3,7 +3,6 @@ import mlflow
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from prefect import flow
-from prefect.task_runners import ConcurrentTaskRunner
 
 from scripts.tasks.data import (
     compute_task_seed,
@@ -21,37 +20,80 @@ from scripts.tasks.train import (
 from scripts.tasks.utils import get_commit_id, get_hydra_overrides, log_plot_to_mlflow
 
 
-@flow(task_runner=ConcurrentTaskRunner())
-def main_flow(cfg: DictConfig):
-    # 1. Generate Datasets
-    generated_datasets = {}
-    for name, dataset_cfg in cfg.datasets.items():
-        data_type = dataset_cfg.data_type
-        neuron_cfg = cfg.neurons.get(data_type)
-        if neuron_cfg is None:
-            logger.warning(f"Neuron config for {data_type} not found.")
-            continue
-        base_seed = cfg.seed
-        task_seed = compute_task_seed(
-            dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, base_seed=base_seed
-        )
-        ds = generate_single_dataset(
-            dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, task_seed=task_seed
-        )
-        generated_datasets[name] = ds
+def eval_flow(
+    name: str,
+    dataset_cfg: DictConfig,
+    neuron_cfg: DictConfig,
+    base_seed: int,
+    preprocessor,
+    surrogate_model,
+):
+    data_type = dataset_cfg.data_type
+    task_seed = compute_task_seed(
+        dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, base_seed=base_seed
+    )
+    ds = generate_single_dataset(
+        dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, task_seed=task_seed
+    )
+    buf = log_single_dataset(
+        data_type=data_type,
+        xr_data=ds,
+        task_seed=task_seed,
+    )
+    log_plot_to_mlflow(buf, f"original/{data_type}/{name}.png")
 
-        buf = log_single_dataset(
-            data_type=data_type,
-            xr_data=ds,
-            task_seed=task_seed,
-        )
-        log_plot_to_mlflow(buf, f"original/{data_type}/{name}.png")
+    transformed_ds = preprocess_single_data(
+        dataset_name=name, preprocessor=preprocessor, xr_data=ds
+    )
+    buf = log_single_preprocess_data(
+        dataset_key=name,
+        dataset_type=data_type,
+        xr_data=transformed_ds,
+    )
+    log_plot_to_mlflow(buf, f"preprocessed/{data_type}/{name}.png")
+
+    eval_result = single_eval(
+        data_type=data_type,
+        params=neuron_cfg["params"],
+        preprocessed_ds=transformed_ds,
+        surrogate_model=surrogate_model,
+    )
+    buf = log_single_eval(data_type=data_type, surrogate_result=eval_result)
+    log_plot_to_mlflow(buf, f"surrogate/{data_type}/{name}.png")
+    buf = log_diff_eval(
+        surrogate_result=eval_result,
+        preprocessed_result=transformed_ds,
+    )
+    log_plot_to_mlflow(buf, f"compare/{data_type}/{name}.png")
+
+
+def train_flow(cfg):
+    # 1. Generate Train Dataset
+    train_dataset_cfg = cfg.datasets["train"]
+    train_data_type = train_dataset_cfg.data_type
+    train_neuron_cfg = cfg.neurons.get(train_data_type)
+    if train_neuron_cfg is None:
+        logger.error(f"Neuron config for {train_data_type} not found.")
+        return
+    base_seed = cfg.seed
+    task_seed = compute_task_seed(
+        dataset_cfg=train_dataset_cfg,
+        neuron_cfg=train_neuron_cfg,
+        base_seed=base_seed,
+    )
+    train_ds = generate_single_dataset(
+        dataset_cfg=train_dataset_cfg,
+        neuron_cfg=train_neuron_cfg,
+        task_seed=task_seed,
+    )
+    buf = log_single_dataset(
+        data_type=train_data_type,
+        xr_data=train_ds,
+        task_seed=task_seed,
+    )
+    log_plot_to_mlflow(buf, f"train_{train_data_type}.png")
 
     # 2. Train Preprocessor
-    if "train" not in generated_datasets:
-        logger.error("Train dataset not found in generated datasets.")
-        return
-    train_ds = generated_datasets["train"]
     preprocessor = train_preprocessor(train_xr_dataset=train_ds)
 
     # 3. Train Model
@@ -59,48 +101,31 @@ def main_flow(cfg: DictConfig):
         train_xr_dataset=train_ds,
         preprocessor=preprocessor,
         surrogate_model_cfg=cfg.models["surrogate"],
-        train_dataset_type=cfg.datasets["train"]["data_type"],
+        train_dataset_type=train_data_type,
     )
     log_train_model(surrogate=surrogate_model)
+    return preprocessor, surrogate_model
 
-    # 4. Preprocess all datasets
-    preprocess_futures = {}
-    for name, ds in generated_datasets.items():
-        future = preprocess_single_data.submit(
-            dataset_name=name, preprocessor=preprocessor, xr_data=ds
-        )
-        preprocess_futures[name] = future
 
-    preprocessed_datasets = {}
-    for name, future in preprocess_futures.items():
-        transformed_ds = future.result()
-        preprocessed_datasets[name] = transformed_ds
-        dataset_type = cfg.datasets[name]["data_type"]
-        buf = log_single_preprocess_data(
-            dataset_key=name,
-            dataset_type=dataset_type,
-            xr_data=transformed_ds,
-        )
-        log_plot_to_mlflow(buf, f"preprocessed/{dataset_type}/{name}.png")
+@flow
+def main_flow(cfg: DictConfig):
+    preprocessor, surrogate_model = train_flow(cfg)
 
-    # 5. Evaluate
-    for name, transformed_ds in preprocessed_datasets.items():
-        data_type = cfg.datasets[name].data_type
-        eval_result = single_eval(
-            data_type=data_type,
-            params=cfg.neurons[data_type]["params"],
-            preprocessed_ds=transformed_ds,
+    # 4. Process other datasets
+    for name, dataset_cfg in cfg.datasets.items():
+        data_type = dataset_cfg.data_type
+        neuron_cfg = cfg.neurons.get(data_type)
+        if neuron_cfg is None:
+            logger.warning(f"Neuron config for {data_type} not found.")
+            continue
+        eval_flow(
+            name=name,
+            dataset_cfg=dataset_cfg,
+            neuron_cfg=neuron_cfg,
+            base_seed=cfg.seed,
+            preprocessor=preprocessor,
             surrogate_model=surrogate_model,
         )
-
-        buf = log_single_eval(data_type=data_type, surrogate_result=eval_result)
-        log_plot_to_mlflow(buf, f"surrogate/{data_type}/{name}.png")
-        buf = log_diff_eval(
-            surrogate_result=eval_result,
-            preprocessed_result=transformed_ds,
-        )
-
-        log_plot_to_mlflow(buf, f"compare/{data_type}/{name}.png")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
