@@ -13,7 +13,7 @@ from neurosurrogate.dataset_utils import PARAMS_REGISTRY, SIMULATOR_REGISTRY
 from neurosurrogate.dataset_utils._base import preprocess_dataset
 from neurosurrogate.utils import PLOTTER_REGISTRY
 
-from .utils import fig_to_buff, recursive_to_dict
+from .utils import fig_to_buff, log_plot_to_mlflow, recursive_to_dict
 
 
 def compute_task_seed(dataset_cfg, neuron_cfg, base_seed) -> int:
@@ -70,6 +70,33 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed):
 
 
 @task
-def log_single_dataset(data_type, xr_data, task_seed):
+def log_single_dataset(data_type, xr_data):
     fig = PLOTTER_REGISTRY[data_type](xr_data)
     return fig_to_buff(fig)
+
+
+def generate_dataset_flow(dataset_key, cfg):
+    dataset_cfg = cfg.datasets[dataset_key]
+    data_type = dataset_cfg.data_type
+    neuron_cfg = cfg.neurons.get(data_type)
+    base_seed = cfg.seed
+
+    task_seed = compute_task_seed(
+        dataset_cfg=dataset_cfg,
+        neuron_cfg=neuron_cfg,
+        base_seed=base_seed,
+    )
+    ds = generate_single_dataset(
+        dataset_cfg=dataset_cfg,
+        neuron_cfg=neuron_cfg,
+        task_seed=task_seed,
+    )
+
+    log_plot_to_mlflow(
+        log_single_dataset(
+            data_type=data_type,
+            xr_data=ds,
+        ),
+        f"original/{data_type}/{dataset_key}.png",
+    )
+    return ds

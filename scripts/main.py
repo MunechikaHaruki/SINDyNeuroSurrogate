@@ -8,9 +8,7 @@ from omegaconf import DictConfig, OmegaConf
 from prefect import flow
 
 from scripts.tasks.data import (
-    compute_task_seed,
-    generate_single_dataset,
-    log_single_dataset,
+    generate_dataset_flow,
 )
 from scripts.tasks.eval import log_diff_eval, log_single_eval, single_eval
 from scripts.tasks.train import (
@@ -27,33 +25,24 @@ def eval_flow(
     name: str,
     dataset_cfg: DictConfig,
     neuron_cfg: DictConfig,
-    base_seed: int,
     preprocessor,
     surrogate_model,
+    cfg,
 ):
     data_type = dataset_cfg.data_type
-    task_seed = compute_task_seed(
-        dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, base_seed=base_seed
-    )
-    ds = generate_single_dataset(
-        dataset_cfg=dataset_cfg, neuron_cfg=neuron_cfg, task_seed=task_seed
-    )
-    buf = log_single_dataset(
-        data_type=data_type,
-        xr_data=ds,
-        task_seed=task_seed,
-    )
-    log_plot_to_mlflow(buf, f"original/{data_type}/{name}.png")
+    ds = generate_dataset_flow(name, cfg)
 
     transformed_ds = preprocess_single_data(
         dataset_name=name, preprocessor=preprocessor, xr_data=ds
     )
-    buf = log_single_preprocess_data(
-        dataset_key=name,
-        dataset_type=data_type,
-        xr_data=transformed_ds,
+    log_plot_to_mlflow(
+        log_single_preprocess_data(
+            dataset_key=name,
+            dataset_type=data_type,
+            xr_data=transformed_ds,
+        ),
+        f"preprocessed/{data_type}/{name}.png",
     )
-    log_plot_to_mlflow(buf, f"preprocessed/{data_type}/{name}.png")
 
     eval_result = single_eval(
         data_type=data_type,
@@ -61,40 +50,23 @@ def eval_flow(
         preprocessed_ds=transformed_ds,
         surrogate_model=surrogate_model,
     )
-    buf = log_single_eval(data_type=data_type, surrogate_result=eval_result)
-    log_plot_to_mlflow(buf, f"surrogate/{data_type}/{name}.png")
-    buf = log_diff_eval(
-        surrogate_result=eval_result,
-        preprocessed_result=transformed_ds,
+
+    log_plot_to_mlflow(
+        log_single_eval(data_type=data_type, surrogate_result=eval_result),
+        f"surrogate/{data_type}/{name}.png",
     )
-    log_plot_to_mlflow(buf, f"compare/{data_type}/{name}.png")
+    log_plot_to_mlflow(
+        log_diff_eval(
+            surrogate_result=eval_result,
+            preprocessed_result=transformed_ds,
+        ),
+        f"compare/{data_type}/{name}.png",
+    )
 
 
 def train_flow(cfg):
     # 1. Generate Train Dataset
-    train_dataset_cfg = cfg.datasets["train"]
-    train_data_type = train_dataset_cfg.data_type
-    train_neuron_cfg = cfg.neurons.get(train_data_type)
-    if train_neuron_cfg is None:
-        logger.error(f"Neuron config for {train_data_type} not found.")
-        return
-    base_seed = cfg.seed
-    task_seed = compute_task_seed(
-        dataset_cfg=train_dataset_cfg,
-        neuron_cfg=train_neuron_cfg,
-        base_seed=base_seed,
-    )
-    train_ds = generate_single_dataset(
-        dataset_cfg=train_dataset_cfg,
-        neuron_cfg=train_neuron_cfg,
-        task_seed=task_seed,
-    )
-    buf = log_single_dataset(
-        data_type=train_data_type,
-        xr_data=train_ds,
-        task_seed=task_seed,
-    )
-    log_plot_to_mlflow(buf, f"train_{train_data_type}.png")
+    train_ds = generate_dataset_flow("train", cfg)
 
     # 2. Train Preprocessor
     preprocessor = train_preprocessor(train_xr_dataset=train_ds)
@@ -104,7 +76,7 @@ def train_flow(cfg):
         train_xr_dataset=train_ds,
         preprocessor=preprocessor,
         surrogate_model_cfg=cfg.models["surrogate"],
-        train_dataset_type=train_data_type,
+        train_dataset_type=cfg.datasets["train"].data_type,
     )
     log_train_model(surrogate=surrogate_model)
     return preprocessor, surrogate_model
@@ -128,9 +100,9 @@ def main_flow(cfg: DictConfig):
             name=name,
             dataset_cfg=dataset_cfg,
             neuron_cfg=neuron_cfg,
-            base_seed=cfg.seed,
             preprocessor=preprocessor,
             surrogate_model=surrogate_model,
+            cfg=cfg,
         )
 
 
