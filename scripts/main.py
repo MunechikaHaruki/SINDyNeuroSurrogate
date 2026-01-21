@@ -18,6 +18,11 @@ from scripts.tasks.train import (
 )
 from scripts.tasks.utils import get_commit_id, get_hydra_overrides
 
+# プロキシ設定を一時的に無効化
+os.environ["HTTP_PROXY"] = ""
+os.environ["HTTPS_PROXY"] = ""
+os.environ["NO_PROXY"] = "localhost,127.0.0.1"
+
 
 @flow
 def main_flow(cfg: DictConfig):
