@@ -1,0 +1,35 @@
+# paper.mplstyle
+
+# Figure (Standard single-column width)
+figure.figsize: 3.5, 2.625
+figure.dpi: 300
+savefig.bbox: tight
+savefig.pad_inches: 0.05
+savefig.format: pdf
+
+# Font (Academic standard)
+font.family: serif
+font.serif: Times New Roman
+font.size: 8
+axes.titlesize: 10
+axes.labelsize: 9
+xtick.labelsize: 8
+ytick.labelsize: 8
+
+# Lines & Markers (Precise)
+lines.linewidth: 1.0
+lines.markersize: 4
+patch.linewidth: 0.5
+
+# Axes & Ticks
+axes.linewidth: 0.8
+xtick.major.width: 0.6
+ytick.major.width: 0.6
+xtick.direction: in
+ytick.direction: in
+
+# Legend
+legend.fontsize: 7
+legend.frameon: False
+legend.numpoints: 1
+legend.loc: upper right

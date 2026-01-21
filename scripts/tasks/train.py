@@ -3,7 +3,6 @@ import numpy as np
 from loguru import logger
 from omegaconf import OmegaConf
 from prefect import task
-from prefect.tasks import task_input_hash
 
 from neurosurrogate.utils.data_processing import (
     _get_control_input,
@@ -68,14 +67,14 @@ def log_train_model(surrogate):
     mlflow.log_param("sindy_params", str(surrogate.sindy.optimizer.get_params))
 
 
-@task(cache_key_fn=task_input_hash, persist_result=True)
+@task
 def preprocess_single_data(dataset_name, preprocessor, xr_data):
     transformed_xr = transform_dataset_with_preprocessor(xr_data, preprocessor)
     logger.info(f"Transformed xr dataset: {dataset_name}")
     return transformed_xr
 
 
-@task(cache_key_fn=task_input_hash, persist_result=True)
+@task
 def log_single_preprocess_data(dataset_key, dataset_type, xr_data):
     """1つのデータセットに対して処理とログ出力を行う"""
     external_input = _get_control_input(xr_data, dataset_type)

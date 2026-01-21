@@ -69,12 +69,7 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed):
         return processed_dataset
 
 
-def log_single_dataset_key_fn(context, params):
-    seed = params.get("task_seed")
-    return f"log-{seed}"
-
-
-@task(cache_key_fn=log_single_dataset_key_fn, persist_result=True)
+@task
 def log_single_dataset(data_type, xr_data, task_seed):
     fig = PLOTTER_REGISTRY[data_type](xr_data)
     return fig_to_buff(fig)

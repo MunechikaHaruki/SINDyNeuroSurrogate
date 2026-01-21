@@ -32,6 +32,8 @@ models:
       G_23: ${neurons.hh3.params.G_23}
       DT: ${neurons.hh3.params.DT}
 
+matplotlib_style: paper
+
 # alias
 sc: False
 g_12: 1

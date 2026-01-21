@@ -1,0 +1,31 @@
+# presentation.mplstyle
+
+# Figure
+figure.figsize: 10, 6
+figure.dpi: 100
+figure.facecolor: white
+
+# Font
+font.family: sans-serif
+font.size: 20
+axes.titlesize: 24
+axes.labelsize: 22
+xtick.labelsize: 18
+ytick.labelsize: 18
+
+# Lines & Markers
+lines.linewidth: 1.5
+lines.markersize: 10
+lines.antialiased: True
+
+# Axes & Grid
+axes.linewidth: 2.5
+axes.grid: True
+grid.linewidth: 1.5
+grid.linestyle: --
+grid.alpha: 0.6
+
+# Legend
+legend.fontsize: 13
+legend.frameon: True
+logend.loc: upper right

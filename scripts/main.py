@@ -1,4 +1,7 @@
+import os
+
 import hydra
+import matplotlib.pyplot as plt
 import mlflow
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
@@ -109,6 +112,9 @@ def train_flow(cfg):
 
 @flow
 def main_flow(cfg: DictConfig):
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    STYLE_PATH = os.path.join(BASE_DIR, f"./conf/style/{cfg.matplotlib_style}.mplstyle")
+    plt.style.use(STYLE_PATH)
     preprocessor, surrogate_model = train_flow(cfg)
 
     # 4. Process other datasets
