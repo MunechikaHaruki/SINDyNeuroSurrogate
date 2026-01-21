@@ -8,11 +8,9 @@ from neurosurrogate.utils.data_processing import (
     _get_control_input,
     _prepare_train_data,
     get_gate_data,
-    transform_dataset_with_preprocessor,
 )
-from neurosurrogate.utils.plots import _create_figure
 
-from .utils import fig_to_buff, recursive_to_dict
+from .utils import recursive_to_dict
 
 
 @task
@@ -67,16 +65,16 @@ def log_train_model(surrogate):
     mlflow.log_param("sindy_params", str(surrogate.sindy.optimizer.get_params))
 
 
-@task
-def preprocess_single_data(dataset_name, preprocessor, xr_data):
-    transformed_xr = transform_dataset_with_preprocessor(xr_data, preprocessor)
-    logger.info(f"Transformed xr dataset: {dataset_name}")
-    return transformed_xr
+def train_flow(cfg, train_ds):
+    # 2. Train Preprocessor
+    preprocessor = train_preprocessor(train_xr_dataset=train_ds)
 
-
-@task
-def log_single_preprocess_data(dataset_key, dataset_type, xr_data):
-    """1つのデータセットに対して処理とログ出力を行う"""
-    external_input = _get_control_input(xr_data, dataset_type)
-    fig = _create_figure(xr_data["vars"], external_input)
-    return fig_to_buff(fig)
+    # 3. Train Model
+    surrogate_model = train_model(
+        train_xr_dataset=train_ds,
+        preprocessor=preprocessor,
+        surrogate_model_cfg=cfg.models["surrogate"],
+        train_dataset_type=cfg.datasets["train"].data_type,
+    )
+    log_train_model(surrogate=surrogate_model)
+    return preprocessor, surrogate_model
