@@ -1,11 +1,11 @@
 from loguru import logger
 from prefect import task
 
-from neurosurrogate.dataset_utils._base import calc_ThreeComp_internal
 from neurosurrogate.utils import PLOTTER_REGISTRY
 from neurosurrogate.utils.data_processing import (
     _get_control_input,
     transform_dataset_with_preprocessor,
+    calc_ThreeComp_internal,
 )
 from neurosurrogate.utils.plots import _create_figure, plot_diff
 

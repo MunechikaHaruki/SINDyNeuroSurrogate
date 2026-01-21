@@ -1,3 +1,7 @@
+from pathlib import Path
+from typing import Any, Dict
+
+import h5py
 import numpy as np
 import xarray as xr
 from loguru import logger
@@ -68,3 +72,36 @@ def _get_control_input(train_xr_dataset, data_type, direct=False):
         return train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
     else:
         return train_xr_dataset["I_ext"].to_numpy()
+
+
+MODEL_FEATURES: Dict[str, Dict[str, Any]] = {
+    "hh": ["V", "M", "H", "N"],
+    "hh3": ["V", "M", "H", "N", "V_pre", "V_post"],
+    "traub": ["V", "XI", "M", "S", "N", "C", "A", "H", "R", "B", "Q"],
+}
+
+
+def calc_ThreeComp_internal(dataset, G_12, G_23):
+    I_pre = G_12 * (
+        dataset["vars"].sel(features="V_pre") - dataset["vars"].sel(features="V")
+    )
+    I_post = G_23 * (
+        dataset["vars"].sel(features="V") - dataset["vars"].sel(features="V_post")
+    )
+    I_soma = I_pre - I_post
+
+    dataset["I_internal"] = xr.concat(
+        [I_pre, I_post, I_soma], dim="direction"
+    ).assign_coords(direction=["pre", "post", "soma"])
+
+
+def preprocess_dataset(model_type: str, file_path: Path, params: Dict):
+    with h5py.File(file_path, "r") as f:
+        dataset = create_xr(
+            f["vars"], f["time"], u=f["I_ext"], features=MODEL_FEATURES[model_type]
+        )
+
+        if model_type == "hh3":
+            calc_ThreeComp_internal(dataset, params["G_12"], params["G_23"])
+
+    return dataset

@@ -9,8 +9,8 @@ import numpy as np
 from omegaconf import OmegaConf
 from prefect import task
 
-from neurosurrogate.dataset_utils import PARAMS_REGISTRY, SIMULATOR_REGISTRY
-from neurosurrogate.dataset_utils._base import preprocess_dataset
+from neurosurrogate.modeling import PARAMS_REGISTRY, SIMULATOR_REGISTRY
+from neurosurrogate.utils.data_processing import preprocess_dataset
 from neurosurrogate.utils import PLOTTER_REGISTRY
 
 from .utils import fig_to_buff, log_plot_to_mlflow, recursive_to_dict
@@ -44,12 +44,31 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed):
     """
     # Configuration setup
     data_type = dataset_cfg["data_type"]
-    params_dict = neuron_cfg.get("params")
+    original_params_dict = neuron_cfg.get("params")
 
-    if params_dict is None:
+    if original_params_dict is None:
         params = PARAMS_REGISTRY[data_type]()
     else:
-        params = PARAMS_REGISTRY[data_type](**params_dict)
+        # Create a mutable copy of the DictConfig
+        mutable_params_dict = OmegaConf.to_container(original_params_dict, resolve=True)
+
+        if data_type == "hh3":
+            # Extract specific parameters for ThreeComp_Params_numba
+            g_12 = mutable_params_dict.get("G_12", 0.1) # Default values if not specified
+            g_23 = mutable_params_dict.get("G_23", 0.05)
+
+            # Create HH_Params_numba instance using relevant parameters
+            hh_params_for_instance = {}
+            hh_param_names = ["E_REST", "C", "G_LEAK", "E_LEAK", "G_NA", "E_NA", "G_K", "E_K", "DT"]
+            for param_name in hh_param_names:
+                if param_name in mutable_params_dict:
+                    hh_params_for_instance[param_name] = mutable_params_dict[param_name]
+            
+            # Since params_dict is an OmegaConf.DictConfig, convert to a dict before passing to **
+            hh_instance = PARAMS_REGISTRY["hh"](**hh_params_for_instance)
+            params = PARAMS_REGISTRY[data_type](hh=hh_instance, G_12=g_12, G_23=g_23)
+        else:
+            params = PARAMS_REGISTRY[data_type](**mutable_params_dict)
 
     # Set random seeds for reproducibility
     random.seed(task_seed)
@@ -63,10 +82,12 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed):
             hydra.utils.instantiate(dataset_cfg_obj["current"], fp=fp, dt=params.DT)
             SIMULATOR_REGISTRY[data_type](fp=fp, params=params)
         # Preprocess the simulation data
-        processed_dataset = preprocess_dataset(data_type, temp_h5_path, params_dict)
+        processed_dataset = preprocess_dataset(data_type, temp_h5_path, original_params_dict) # Use original_params_dict for preprocess_dataset
         # Load into memory to return
         processed_dataset.load()
         return processed_dataset
+
+
 
 
 @task

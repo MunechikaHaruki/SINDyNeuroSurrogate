@@ -9,10 +9,9 @@ MLFLOW_PORT := "5100"
 clean-cache:
 	find . -type f -name "*.py[co]" -delete
 	find . -type d -name "__pycache__" -delete
-	rm -rf ./mypy_cache
-	rm -rf ./ruff_cache
-	rm -rf ./resources
-	rm -rf ./data
+	rm -rf ./.mypy_cache
+	rm -rf ./.ruff_cache
+	rm -rf ./.pytest_cache
 
 clean-log:
 	rm -rf ./hydra-multiruns
