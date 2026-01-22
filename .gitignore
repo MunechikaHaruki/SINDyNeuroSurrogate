@@ -1,26 +1,16 @@
-*.ipynb
-
 # personal settings
 .vscode
-
-# Cython build
-*.so
-/build/
-
+tmp/
+# pkg info
+neurosurrogate.egg-info/
+# cache
+**/__pycache__/**
+**/resources/**
+**/__marimo__/**
 # logged artifacts
 **/mlruns/**
 **/hydra-multiruns/**
 **/hydra-outputs/**/
 
-# cache
-**/__pycache__/**
-/data
-**/resources/**
-
-# pkg info
-neurosurrogate.egg-info/
-
 .DS_Store
 **/.DS_Store
-
-tmp/

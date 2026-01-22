@@ -6,17 +6,16 @@ import mlflow
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from prefect import flow
-
-from scripts.tasks.data import (
+from tasks.data import (
     generate_dataset_flow,
 )
-from scripts.tasks.eval import (
+from tasks.eval import (
     eval_flow,
 )
-from scripts.tasks.train import (
+from tasks.train import (
     train_flow,
 )
-from scripts.tasks.utils import get_commit_id, get_hydra_overrides
+from tasks.utils import get_commit_id, get_hydra_overrides
 
 # プロキシ設定を一時的に無効化
 os.environ["HTTP_PROXY"] = ""
