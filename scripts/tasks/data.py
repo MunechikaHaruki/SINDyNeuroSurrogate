@@ -92,7 +92,11 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed):
 
         with h5py.File(temp_h5_path, "w") as fp:
             hydra.utils.instantiate(dataset_cfg_obj["current"], fp=fp, dt=params.DT)
-            SIMULATOR_REGISTRY[data_type](fp=fp, params=params)
+            i_ext = fp["I_ext"][:]
+            results = SIMULATOR_REGISTRY[data_type](i_ext, params)
+            dset_shape = results.shape
+            dset = fp.create_dataset("vars", shape=dset_shape, dtype="float64")
+            dset[:] = results[:]
         # Preprocess the simulation data
         processed_dataset = preprocess_dataset(
             data_type, temp_h5_path, original_params_dict

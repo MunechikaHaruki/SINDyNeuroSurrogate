@@ -1,7 +1,6 @@
 import numpy as np
 from numba import float64, jit
 from numba.experimental import jitclass
-from tqdm import tqdm
 
 # jitclass for HH parameters
 hh_params_spec = [
@@ -222,43 +221,3 @@ def hh3_simulate_numba(i_ext, p):
         solve_euler_threecomp_unified(var, i_ext[i], p)
         results[i, :] = var
     return results
-
-
-# Wrapper functions for numba simulators
-CHUNK_SIZE = 10000
-
-
-def hh_simulate_numba_wrapper(fp, params):
-    i_ext = fp["I_ext"][:]
-    results = hh_simulate_numba(i_ext, params)
-    dset_shape = results.shape
-    dset_chunks = (CHUNK_SIZE, dset_shape[1])
-    dset = fp.create_dataset(
-        "vars", shape=dset_shape, dtype="float64", chunks=dset_chunks
-    )
-
-    start_idx = 0
-    with tqdm(total=len(i_ext)) as pbar:
-        while start_idx < len(i_ext):
-            end_idx = min(start_idx + CHUNK_SIZE, len(i_ext))
-            dset[start_idx:end_idx] = results[start_idx:end_idx]
-            pbar.update(end_idx - start_idx)
-            start_idx = end_idx
-
-
-def hh3_simulate_numba_wrapper(fp, params):
-    i_ext = fp["I_ext"][:]
-    results = hh3_simulate_numba(i_ext, params)
-    dset_shape = results.shape
-    dset_chunks = (CHUNK_SIZE, dset_shape[1])
-    dset = fp.create_dataset(
-        "vars", shape=dset_shape, dtype="float64", chunks=dset_chunks
-    )
-
-    start_idx = 0
-    with tqdm(total=len(i_ext)) as pbar:
-        while start_idx < len(i_ext):
-            end_idx = min(start_idx + CHUNK_SIZE, len(i_ext))
-            dset[start_idx:end_idx] = results[start_idx:end_idx]
-            pbar.update(end_idx - start_idx)
-            start_idx = end_idx
