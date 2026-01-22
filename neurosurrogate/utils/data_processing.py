@@ -12,7 +12,7 @@ def get_gate_data(xr_dataset):
     return xr_dataset["vars"].to_numpy()[:, GATE_VAR_SLICE]
 
 
-def create_xr(var, time, u, features):
+def _create_xr(var, time, u, features):
     return xr.Dataset(
         {
             "vars": (
@@ -46,7 +46,7 @@ def transform_dataset_with_preprocessor(xr_data, preprocessor):
     new_feature_names = ["V"] + [
         f"latent{i + 1}" for i in range(transformed_gate.shape[1])
     ]
-    return create_xr(
+    return _create_xr(
         var=new_vars,
         time=xr_data.coords["time"],
         u=xr_data["I_ext"].data,
@@ -78,27 +78,32 @@ MODEL_FEATURES: Dict[str, Dict[str, Any]] = {
     "traub": ["V", "XI", "M", "S", "N", "C", "A", "H", "R", "B", "Q"],
 }
 
-
-def calc_ThreeComp_internal(dataset, G_12, G_23):
-    I_pre = G_12 * (
-        dataset["vars"].sel(features="V_pre") - dataset["vars"].sel(features="V")
-    )
-    I_post = G_23 * (
-        dataset["vars"].sel(features="V") - dataset["vars"].sel(features="V_post")
-    )
-    I_soma = I_pre - I_post
-
-    dataset["I_internal"] = xr.concat(
-        [I_pre, I_post, I_soma], dim="direction"
-    ).assign_coords(direction=["pre", "post", "soma"])
+SURROGATE_FEATURES = {
+    "hh": ["V", "latent1"],
+    "hh3": ["V", "latent1", "V_pre", "V_post"],
+}
 
 
-def preprocess_dataset(model_type: str, i_ext, results, params: Dict, time_array):
-    dataset = create_xr(
-        results, time_array, u=i_ext, features=MODEL_FEATURES[model_type]
-    )
+def preprocess_dataset(
+    model_type: str, i_ext, results, params: Dict, time_array, surrogate=False
+):
+    if surrogate is False:
+        FEATURES = MODEL_FEATURES
+    elif surrogate is True:
+        FEATURES = SURROGATE_FEATURES
 
+    dataset = _create_xr(results, time_array, u=i_ext, features=FEATURES[model_type])
     if model_type == "hh3":
-        calc_ThreeComp_internal(dataset, params["G_12"], params["G_23"])
+        I_pre = params["G_12"] * (
+            dataset["vars"].sel(features="V_pre") - dataset["vars"].sel(features="V")
+        )
+        I_post = params["G_23"] * (
+            dataset["vars"].sel(features="V") - dataset["vars"].sel(features="V_post")
+        )
+        I_soma = I_pre - I_post
+
+        dataset["I_internal"] = xr.concat(
+            [I_pre, I_post, I_soma], dim="direction"
+        ).assign_coords(direction=["pre", "post", "soma"])
 
     return dataset

@@ -5,7 +5,6 @@ from neurosurrogate.modeling import predict
 from neurosurrogate.utils import PLOTTER_REGISTRY
 from neurosurrogate.utils.data_processing import (
     _get_control_input,
-    calc_ThreeComp_internal,
     transform_dataset_with_preprocessor,
 )
 from neurosurrogate.utils.plots import _create_figure, plot_diff
@@ -27,12 +26,6 @@ def single_eval(data_type, params_dict, preprocessed_ds, surrogate_model):
         sindy=surrogate_model,
     )
     logger.info(f"prediction_result:{prediction}")
-    if data_type == "hh3":
-        calc_ThreeComp_internal(
-            prediction,
-            params_dict.get("G_12"),
-            params_dict.get("G_23"),
-        )
 
     logger.trace(prediction)
     return prediction

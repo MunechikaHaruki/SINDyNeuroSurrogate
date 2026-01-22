@@ -4,7 +4,7 @@ from numba import types
 from numba.typed import Dict
 from omegaconf import OmegaConf
 
-from ..utils.data_processing import create_xr, preprocess_dataset
+from ..utils.data_processing import preprocess_dataset
 from ._simulater import (
     HH_Params_numba,
     ThreeComp_Params_numba,
@@ -47,10 +47,9 @@ def simulater(
     results = SIMULATOR_REGISTRY[data_type](i_ext, params, DT)
     time_array = np.arange(len(i_ext)) * DT
     # Preprocess the simulation data
-    processed_dataset = preprocess_dataset(
-        data_type, i_ext, results, neuron_cfg, time_array
+    return preprocess_dataset(
+        data_type, i_ext, results, neuron_cfg, time_array, surrogate=False
     )
-    return processed_dataset
 
 
 def predict(init, dt, iter, u, sindy, data_type=None, params_dict=None):
@@ -66,9 +65,7 @@ def predict(init, dt, iter, u, sindy, data_type=None, params_dict=None):
     if data_type == "hh3":
         logger.info("hh3のサロゲートモデルをテストします")
         init = np.array([init[0], init[1], -65, -65])  # v,隠れ変数,v_pre,v_post
-
         params = instantiate_OmegaConf_params(params_dict, data_type=data_type)
-
         var = simulate_three_comp_numba(
             init=init,
             u=u,
@@ -76,13 +73,17 @@ def predict(init, dt, iter, u, sindy, data_type=None, params_dict=None):
             params=params,
             dt=dt,
         )
-        features = ["V", "latent1", "V_pre", "V_post"]
     elif data_type == "hh":
         logger.info("hhのサロゲートモデルをテストします")
-
         var = simulate_sindy(init, u, sindy.coefficients(), dt)
-        features = ["V", "latent1"]
     else:
         raise ValueError(f"未知のmodeが指定されました: {data_type}")
     time = np.arange(0, iter * dt, dt)
-    return create_xr(var, time, u, features)
+    return preprocess_dataset(
+        model_type=data_type,
+        i_ext=u,
+        results=var,
+        params=params_dict,
+        time_array=time,
+        surrogate=True,
+    )

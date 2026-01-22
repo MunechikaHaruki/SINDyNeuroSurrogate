@@ -26,7 +26,7 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed, DT):
     # Configuration setup
     data_type = dataset_cfg["data_type"]
     i_ext = hydra.utils.instantiate(dataset_cfg["current"])
-    simulater(neuron_cfg=neuron_cfg, data_type=data_type, DT=DT, i_ext=i_ext)
+    return simulater(neuron_cfg=neuron_cfg, data_type=data_type, DT=DT, i_ext=i_ext)
 
 
 @task
