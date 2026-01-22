@@ -17,9 +17,8 @@ from .utils import fig_to_buff, log_plot_to_mlflow
 def single_eval(data_type, params_dict, preprocessed_ds, surrogate_model):
     logger.info(f"{preprocessed_ds} started to process")
     prediction = predict(
-        init=preprocessed_ds["vars"][0],
+        init=preprocessed_ds["vars"][0].to_numpy(),
         dt=0.01,
-        iter=len(preprocessed_ds["time"].to_numpy()),
         u=_get_control_input(preprocessed_ds, data_type=data_type),
         data_type=data_type,
         params_dict=params_dict,

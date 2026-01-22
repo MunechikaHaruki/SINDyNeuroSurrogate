@@ -85,8 +85,9 @@ SURROGATE_FEATURES = {
 
 
 def preprocess_dataset(
-    model_type: str, i_ext, results, params: Dict, time_array, surrogate=False
+    model_type: str, i_ext, results, params: Dict, dt, surrogate=False
 ):
+    time_array = np.arange(len(i_ext)) * dt
     if surrogate is False:
         FEATURES = MODEL_FEATURES
     elif surrogate is True:

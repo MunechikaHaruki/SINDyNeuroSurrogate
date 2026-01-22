@@ -46,23 +46,20 @@ def simulater(
 ):
     params = instantiate_OmegaConf_params(neuron_cfg, data_type=data_type)
     results = SIMULATOR_REGISTRY[data_type](i_ext, params, DT)
-    time_array = np.arange(len(i_ext)) * DT
     # Preprocess the simulation data
     return preprocess_dataset(
-        data_type, i_ext, results, neuron_cfg, time_array, surrogate=False
+        model_type=data_type,
+        i_ext=i_ext,
+        results=results,
+        params=neuron_cfg,
+        dt=DT,
+        surrogate=False,
     )
 
 
-def predict(init, dt, iter, u, sindy, params_dict, data_type):
+def predict(init, dt, u, sindy, params_dict, data_type):
     logger.info(f"{data_type}のサロゲートモデルをテスト")
-    if hasattr(init, "to_numpy"):
-        init = init.to_numpy()
-    if hasattr(u, "to_numpy"):
-        u = u.to_numpy()
-    # # ensure they are numpy arrays
-    init = np.asarray(init)
     params = instantiate_OmegaConf_params(params_dict, data_type=data_type)
-
     var = SURROGATER_REGISTRY[data_type](
         init=init,
         u=u,
@@ -71,12 +68,11 @@ def predict(init, dt, iter, u, sindy, params_dict, data_type):
         dt=dt,
     )
 
-    time = np.arange(0, iter * dt, dt)
     return preprocess_dataset(
         model_type=data_type,
         i_ext=u,
         results=var,
         params=params_dict,
-        time_array=time,
+        dt=dt,
         surrogate=True,
     )
