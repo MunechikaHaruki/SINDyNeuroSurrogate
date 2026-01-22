@@ -21,6 +21,7 @@ SIMULATOR_REGISTRY = {
     "hh": hh_simulate_numba,
     "hh3": hh3_simulate_numba,
 }
+SURROGATER_REGISTRY = {"hh": simulate_sindy, "hh3": simulate_three_comp_numba}
 
 
 def instantiate_OmegaConf_params(cfg, data_type):
@@ -52,32 +53,24 @@ def simulater(
     )
 
 
-def predict(init, dt, iter, u, sindy, data_type=None, params_dict=None):
+def predict(init, dt, iter, u, sindy, params_dict, data_type):
+    logger.info(f"{data_type}のサロゲートモデルをテスト")
     if hasattr(init, "to_numpy"):
         init = init.to_numpy()
     if hasattr(u, "to_numpy"):
         u = u.to_numpy()
-    # ensure they are numpy arrays
+    # # ensure they are numpy arrays
     init = np.asarray(init)
-    if u is not None:
-        u = np.asarray(u)
+    params = instantiate_OmegaConf_params(params_dict, data_type=data_type)
 
-    if data_type == "hh3":
-        logger.info("hh3のサロゲートモデルをテストします")
-        init = np.array([init[0], init[1], -65, -65])  # v,隠れ変数,v_pre,v_post
-        params = instantiate_OmegaConf_params(params_dict, data_type=data_type)
-        var = simulate_three_comp_numba(
-            init=init,
-            u=u,
-            xi_matrix=sindy.coefficients(),
-            params=params,
-            dt=dt,
-        )
-    elif data_type == "hh":
-        logger.info("hhのサロゲートモデルをテストします")
-        var = simulate_sindy(init, u, sindy.coefficients(), dt)
-    else:
-        raise ValueError(f"未知のmodeが指定されました: {data_type}")
+    var = SURROGATER_REGISTRY[data_type](
+        init=init,
+        u=u,
+        xi_matrix=sindy.coefficients(),
+        params=params,
+        dt=dt,
+    )
+
     time = np.arange(0, iter * dt, dt)
     return preprocess_dataset(
         model_type=data_type,
