@@ -54,16 +54,28 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed):
 
         if data_type == "hh3":
             # Extract specific parameters for ThreeComp_Params_numba
-            g_12 = mutable_params_dict.get("G_12", 0.1) # Default values if not specified
+            g_12 = mutable_params_dict.get(
+                "G_12", 0.1
+            )  # Default values if not specified
             g_23 = mutable_params_dict.get("G_23", 0.05)
 
             # Create HH_Params_numba instance using relevant parameters
             hh_params_for_instance = {}
-            hh_param_names = ["E_REST", "C", "G_LEAK", "E_LEAK", "G_NA", "E_NA", "G_K", "E_K", "DT"]
+            hh_param_names = [
+                "E_REST",
+                "C",
+                "G_LEAK",
+                "E_LEAK",
+                "G_NA",
+                "E_NA",
+                "G_K",
+                "E_K",
+                "DT",
+            ]
             for param_name in hh_param_names:
                 if param_name in mutable_params_dict:
                     hh_params_for_instance[param_name] = mutable_params_dict[param_name]
-            
+
             # Since params_dict is an OmegaConf.DictConfig, convert to a dict before passing to **
             hh_instance = PARAMS_REGISTRY["hh"](**hh_params_for_instance)
             params = PARAMS_REGISTRY[data_type](hh=hh_instance, G_12=g_12, G_23=g_23)
@@ -82,12 +94,12 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed):
             hydra.utils.instantiate(dataset_cfg_obj["current"], fp=fp, dt=params.DT)
             SIMULATOR_REGISTRY[data_type](fp=fp, params=params)
         # Preprocess the simulation data
-        processed_dataset = preprocess_dataset(data_type, temp_h5_path, original_params_dict) # Use original_params_dict for preprocess_dataset
+        processed_dataset = preprocess_dataset(
+            data_type, temp_h5_path, original_params_dict
+        )  # Use original_params_dict for preprocess_dataset
         # Load into memory to return
         processed_dataset.load()
         return processed_dataset
-
-
 
 
 @task

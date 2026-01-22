@@ -63,78 +63,87 @@ class ThreeComp_Params_numba:
 
 
 @jit(nopython=True)
-def alpha_m(v, p):
-    return (2.5 - 0.1 * (v - p.E_REST)) / (np.exp(2.5 - 0.1 * (v - p.E_REST)) - 1.0)
+def alpha_m(v):
+    return (2.5 - 0.1 * v) / (np.exp(2.5 - 0.1 * v) - 1.0)
 
 
 @jit(nopython=True)
-def beta_m(v, p):
-    return 4.0 * np.exp(-(v - p.E_REST) / 18.0)
+def beta_m(v):
+    return 4.0 * np.exp(-v / 18.0)
 
 
 @jit(nopython=True)
-def alpha_h(v, p):
-    return 0.07 * np.exp(-(v - p.E_REST) / 20.0)
+def alpha_h(v):
+    return 0.07 * np.exp(-v / 20.0)
 
 
 @jit(nopython=True)
-def beta_h(v, p):
-    return 1.0 / (np.exp(3.0 - 0.1 * (v - p.E_REST)) + 1.0)
+def beta_h(v):
+    return 1.0 / (np.exp(3.0 - 0.1 * v) + 1.0)
 
 
 @jit(nopython=True)
-def alpha_n(v, p):
-    return (0.1 - 0.01 * (v - p.E_REST)) / (np.exp(1 - 0.1 * (v - p.E_REST)) - 1.0)
+def alpha_n(v):
+    return (0.1 - 0.01 * v) / (np.exp(1 - 0.1 * v) - 1.0)
 
 
 @jit(nopython=True)
-def beta_n(v, p):
-    return 0.125 * np.exp(-(v - p.E_REST) / 80.0)
+def beta_n(v):
+    return 0.125 * np.exp(-v / 80.0)
 
 
 @jit(nopython=True)
-def m0(v, p):
-    return alpha_m(v, p) / (alpha_m(v, p) + beta_m(v, p))
+def m0(v_rel):
+    a_m = alpha_m(v_rel)
+    b_m = beta_m(v_rel)
+    return a_m / (a_m + b_m)
 
 
 @jit(nopython=True)
-def h0(v, p):
-    return alpha_h(v, p) / (alpha_h(v, p) + beta_h(v, p))
+def h0(v_rel):
+    a_h = alpha_h(v_rel)
+    b_h = beta_h(v_rel)
+    return a_h / (a_h + b_h)
 
 
 @jit(nopython=True)
-def n0(v, p):
-    return alpha_n(v, p) / (alpha_n(v, p) + beta_n(v, p))
+def n0(v_rel):
+    a_n = alpha_n(v_rel)
+    b_n = beta_n(v_rel)
+    return a_n / (a_n + b_n)
 
 
 @jit(nopython=True)
-def tau_m(v, p):
-    return 1.0 / (alpha_m(v, p) + beta_m(v, p))
+def tau_m(v_rel):
+    return 1.0 / (alpha_m(v_rel) + beta_m(v_rel))
 
 
 @jit(nopython=True)
-def tau_h(v, p):
-    return 1.0 / (alpha_h(v, p) + beta_h(v, p))
+def tau_h(v_rel):
+    return 1.0 / (alpha_h(v_rel) + beta_h(v_rel))
 
 
 @jit(nopython=True)
-def tau_n(v, p):
-    return 1.0 / (alpha_n(v, p) + beta_n(v, p))
+def tau_n(v_rel):
+    return 1.0 / (alpha_n(v_rel) + beta_n(v_rel))
 
 
 @jit(nopython=True)
 def dmdt(v, m, p):
-    return (1.0 / tau_m(v, p)) * (-m + m0(v, p))
+    v_rel = v - p.E_REST
+    return (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
 
 
 @jit(nopython=True)
 def dhdt(v, h, p):
-    return (1.0 / tau_h(v, p)) * (-h + h0(v, p))
+    v_rel = v - p.E_REST
+    return (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
 
 
 @jit(nopython=True)
 def dndt(v, n, p):
-    return (1.0 / tau_n(v, p)) * (-n + n0(v, p))
+    v_rel = v - p.E_REST
+    return (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
 
 
 @jit(nopython=True)
@@ -151,9 +160,10 @@ def dvdt(v, m, h, n, i_ext, p):
 def initialize_hh(var, p):
     v = p.E_REST
     var[0] = v
-    var[1] = m0(v, p)
-    var[2] = h0(v, p)
-    var[3] = n0(v, p)
+    v_rel = v - p.E_REST
+    var[1] = m0(v_rel)
+    var[2] = h0(v_rel)
+    var[3] = n0(v_rel)
 
 
 @jit(nopython=True)
