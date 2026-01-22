@@ -5,8 +5,10 @@ import numpy as np
 
 DEFAULT_ITER = 80000
 
+CURRENT_GENERATER = {}
 
-def hh_current_decorator(func):
+
+def current_decorator(func):
     """HHモデル用の関数ラッパー"""
 
     def wrapper(*args, **kwargs):
@@ -15,10 +17,12 @@ def hh_current_decorator(func):
         func(dset_i_ext, iteration, *args, **kwargs)
         return dset_i_ext
 
+    CURRENT_GENERATER[func.__name__] = wrapper
+
     return wrapper
 
 
-@hh_current_decorator
+@current_decorator
 def hh_rand_pulse(
     dset_i_ext,
     iteration,
@@ -32,13 +36,13 @@ def hh_rand_pulse(
         dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = np.full(pulse_step, v)
 
 
-@hh_current_decorator
+@current_decorator
 def hh_steady(dset_i_ext, iteration, value: float):
     """一定の電流を生成する"""
     dset_i_ext[:] = np.full(iteration, value)
 
 
-@hh_current_decorator
+@current_decorator
 def hh_gauss_rand_pulse(
     dset_i_ext,
     iteration,
@@ -58,7 +62,7 @@ def hh_gauss_rand_pulse(
         dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = np.full(pulse_step, v)
 
 
-@hh_current_decorator
+@current_decorator
 def hh_discretized(
     dset_i_ext,
     iteration,
@@ -73,7 +77,7 @@ def hh_discretized(
         dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = np.full(pulse_step, chosen)
 
 
-@hh_current_decorator
+@current_decorator
 def hh_variable_width(
     dset_i_ext,
     iteration,

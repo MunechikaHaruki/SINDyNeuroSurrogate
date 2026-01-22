@@ -1,5 +1,5 @@
 import numpy as np
-from numba import float64, jit
+from numba import float64, njit
 from numba.experimental import jitclass
 
 # jitclass for HH parameters
@@ -48,93 +48,93 @@ class ThreeComp_Params_numba:
 # G_12=0.1, G_23=0.05
 
 
-@jit(nopython=True)
+@njit
 def alpha_m(v):
     return (2.5 - 0.1 * v) / (np.exp(2.5 - 0.1 * v) - 1.0)
 
 
-@jit(nopython=True)
+@njit
 def beta_m(v):
     return 4.0 * np.exp(-v / 18.0)
 
 
-@jit(nopython=True)
+@njit
 def alpha_h(v):
     return 0.07 * np.exp(-v / 20.0)
 
 
-@jit(nopython=True)
+@njit
 def beta_h(v):
     return 1.0 / (np.exp(3.0 - 0.1 * v) + 1.0)
 
 
-@jit(nopython=True)
+@njit
 def alpha_n(v):
     return (0.1 - 0.01 * v) / (np.exp(1 - 0.1 * v) - 1.0)
 
 
-@jit(nopython=True)
+@njit
 def beta_n(v):
     return 0.125 * np.exp(-v / 80.0)
 
 
-@jit(nopython=True)
+@njit
 def m0(v_rel):
     a_m = alpha_m(v_rel)
     b_m = beta_m(v_rel)
     return a_m / (a_m + b_m)
 
 
-@jit(nopython=True)
+@njit
 def h0(v_rel):
     a_h = alpha_h(v_rel)
     b_h = beta_h(v_rel)
     return a_h / (a_h + b_h)
 
 
-@jit(nopython=True)
+@njit
 def n0(v_rel):
     a_n = alpha_n(v_rel)
     b_n = beta_n(v_rel)
     return a_n / (a_n + b_n)
 
 
-@jit(nopython=True)
+@njit
 def tau_m(v_rel):
     return 1.0 / (alpha_m(v_rel) + beta_m(v_rel))
 
 
-@jit(nopython=True)
+@njit
 def tau_h(v_rel):
     return 1.0 / (alpha_h(v_rel) + beta_h(v_rel))
 
 
-@jit(nopython=True)
+@njit
 def tau_n(v_rel):
     return 1.0 / (alpha_n(v_rel) + beta_n(v_rel))
 
 
-@jit(nopython=True)
+@njit
 def dmdt(v_rel, m):
     return (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
 
 
-@jit(nopython=True)
+@njit
 def dhdt(v_rel, h):
     return (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
 
 
-@jit(nopython=True)
+@njit
 def dndt(v_rel, n):
     return (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
 
 
-@jit(nopython=True)
+@njit
 def dvdt(i_leak, i_na, i_k, i_ext, c):
     return (-i_leak - i_na - i_k + i_ext) / c
 
 
-@jit(nopython=True)
+@njit
 def initialize_hh(var, p):
     v = p.E_REST
     var[0] = v
@@ -144,7 +144,7 @@ def initialize_hh(var, p):
     var[3] = n0(v_rel)
 
 
-@jit(nopython=True)
+@njit
 def solve_euler_hh(var, i_inj, p, DT):
     v = var[0]
     m = var[1]
@@ -162,7 +162,7 @@ def solve_euler_hh(var, i_inj, p, DT):
     var[3] += dndt(v_rel, n) * DT
 
 
-@jit(nopython=True)
+@njit
 def hh_simulate_numba(i_ext, p, DT):
     n_vars = 4
     nt = len(i_ext)
@@ -175,14 +175,14 @@ def hh_simulate_numba(i_ext, p, DT):
     return results
 
 
-@jit(nopython=True)
+@njit
 def threecomp_initialize_unified(var, p):
     initialize_hh(var, p.hh)
     var[4] = p.hh.E_REST
     var[5] = p.hh.E_REST
 
 
-@jit(nopython=True)
+@njit
 def solve_euler_threecomp_unified(var, i_inj, p, DT):
     v_soma = var[0]
     v_pre = var[4]
@@ -197,7 +197,7 @@ def solve_euler_threecomp_unified(var, i_inj, p, DT):
     var[5] += (-p.hh.G_LEAK * (v_post - p.hh.E_LEAK) + i_post) / p.hh.C * DT
 
 
-@jit(nopython=True)
+@njit
 def hh3_simulate_numba(i_ext, p, DT):
     n_vars = 6
     nt = len(i_ext)
