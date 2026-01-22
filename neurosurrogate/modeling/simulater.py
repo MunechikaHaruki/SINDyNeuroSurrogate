@@ -129,31 +129,23 @@ def tau_n(v_rel):
 
 
 @jit(nopython=True)
-def dmdt(v, m, p):
-    v_rel = v - p.E_REST
+def dmdt(v_rel, m):
     return (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
 
 
 @jit(nopython=True)
-def dhdt(v, h, p):
-    v_rel = v - p.E_REST
+def dhdt(v_rel, h):
     return (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
 
 
 @jit(nopython=True)
-def dndt(v, n, p):
-    v_rel = v - p.E_REST
+def dndt(v_rel, n):
     return (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
 
 
 @jit(nopython=True)
-def dvdt(v, m, h, n, i_ext, p):
-    return (
-        -p.G_LEAK * (v - p.E_LEAK)
-        - p.G_NA * m * m * m * h * (v - p.E_NA)
-        - p.G_K * n * n * n * n * (v - p.E_K)
-        + i_ext
-    ) / p.C
+def dvdt(i_leak, i_na, i_k, i_ext, c):
+    return (-i_leak - i_na - i_k + i_ext) / c
 
 
 @jit(nopython=True)
@@ -172,10 +164,16 @@ def solve_euler_hh(var, i_inj, p):
     m = var[1]
     h = var[2]
     n = var[3]
-    var[0] += dvdt(v, m, h, n, i_inj, p) * p.DT
-    var[1] += dmdt(v, m, p) * p.DT
-    var[2] += dhdt(v, h, p) * p.DT
-    var[3] += dndt(v, n, p) * p.DT
+
+    v_rel = v - p.E_REST
+
+    i_leak = p.G_LEAK * (v - p.E_LEAK)
+    i_na = p.G_NA * m * m * m * h * (v - p.E_NA)
+    i_k = p.G_K * n * n * n * n * (v - p.E_K)
+    var[0] += dvdt(i_leak, i_na, i_k, i_inj, p.C) * p.DT
+    var[1] += dmdt(v_rel, m) * p.DT
+    var[2] += dhdt(v_rel, h) * p.DT
+    var[3] += dndt(v_rel, n) * p.DT
 
 
 @jit(nopython=True)
