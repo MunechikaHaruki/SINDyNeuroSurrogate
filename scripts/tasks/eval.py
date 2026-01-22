@@ -1,7 +1,7 @@
 from loguru import logger
 from prefect import task
 
-from neurosurrogate.modeling.surrogate import predict
+from neurosurrogate.modeling import predict
 from neurosurrogate.utils import PLOTTER_REGISTRY
 from neurosurrogate.utils.data_processing import (
     _get_control_input,

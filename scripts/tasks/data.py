@@ -4,12 +4,8 @@ import hydra
 import numpy as np
 from prefect import task
 
-from neurosurrogate.modeling import (
-    SIMULATOR_REGISTRY,
-    instantiate_OmegaConf_params,
-)
+from neurosurrogate.modeling import simulater
 from neurosurrogate.utils import PLOTTER_REGISTRY
-from neurosurrogate.utils.data_processing import preprocess_dataset
 
 from .utils import fig_to_buff, generate_complex_hash, log_plot_to_mlflow
 
@@ -24,23 +20,13 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed, DT):
     """
     Simulates a neuron model based on configurations and preprocesses the result into a dataset.
     """
-    # Configuration setup
-    data_type = dataset_cfg["data_type"]
-
-    params = instantiate_OmegaConf_params(neuron_cfg, data_type=data_type)
-
     # Set random seeds for reproducibility
     random.seed(task_seed)
     np.random.seed(task_seed)
-
+    # Configuration setup
+    data_type = dataset_cfg["data_type"]
     i_ext = hydra.utils.instantiate(dataset_cfg["current"])
-    results = SIMULATOR_REGISTRY[data_type](i_ext, params, DT)
-    time_array = np.arange(len(i_ext)) * DT
-    # Preprocess the simulation data
-    processed_dataset = preprocess_dataset(
-        data_type, i_ext, results, neuron_cfg, time_array
-    )
-    return processed_dataset
+    simulater(neuron_cfg=neuron_cfg, data_type=data_type, DT=DT, i_ext=i_ext)
 
 
 @task
