@@ -9,23 +9,11 @@ DEFAULT_ITER = 80000
 def hh_current_decorator(func):
     """HHモデル用の関数ラッパー"""
 
-    def wrapper(fp, dt, *args, **kwargs):
+    def wrapper(*args, **kwargs):
         iteration = kwargs.pop("iteration", DEFAULT_ITER)
-        # Time dataset
-        fp.create_dataset(
-            "time",
-            data=np.arange(0, iteration * dt, dt),
-            dtype="float64",
-            chunks=(iteration,),
-        )
-
-        dset_i_ext = fp.create_dataset(
-            "I_ext",
-            shape=(iteration,),
-            dtype="float64",
-            chunks=(iteration,),
-        )
+        dset_i_ext = np.zeros(shape=(iteration,))
         func(dset_i_ext, iteration, *args, **kwargs)
+        return dset_i_ext
 
     return wrapper
 

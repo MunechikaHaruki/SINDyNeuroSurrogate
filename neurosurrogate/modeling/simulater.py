@@ -18,27 +18,15 @@ hh_params_spec = [
 
 @jitclass(hh_params_spec)
 class HH_Params_numba:
-    def __init__(
-        self,
-        E_REST=-65.0,
-        C=1.0,
-        G_LEAK=0.3,
-        E_LEAK=10.6 - 65.0,
-        G_NA=120.0,
-        E_NA=115.0 - 65.0,
-        G_K=36.0,
-        E_K=-12.0 - 65.0,
-        DT=0.01,
-    ):
-        self.E_REST = E_REST
-        self.C = C
-        self.G_LEAK = G_LEAK
-        self.E_LEAK = E_LEAK
-        self.G_NA = G_NA
-        self.E_NA = E_NA
-        self.G_K = G_K
-        self.E_K = E_K
-        self.DT = DT
+    def __init__(self, params_dict):
+        self.E_REST = params_dict.get("E_REST", -65.0)
+        self.C = params_dict.get("C", 1.0)
+        self.G_LEAK = params_dict.get("G_LEAK", 0.3)
+        self.E_LEAK = params_dict.get("E_LEAK", 10.6 - 65.0)
+        self.G_NA = params_dict.get("G_NA", 120.0)
+        self.E_NA = params_dict.get("E_NA", 115.0 - 65.0)
+        self.G_K = params_dict.get("G_K", 36.0)
+        self.E_K = params_dict.get("E_K", -12.0 - 65.0)
 
 
 # jitclass for Three-compartment model parameters
@@ -51,14 +39,13 @@ threecomp_params_spec = [
 
 @jitclass(threecomp_params_spec)
 class ThreeComp_Params_numba:
-    def __init__(self, hh, G_12=0.1, G_23=0.05):
-        self.hh = hh
-        self.G_12 = G_12
-        self.G_23 = G_23
+    def __init__(self, params_dict):
+        self.hh = HH_Params_numba(params_dict)
+        self.G_12 = params_dict.get("G_12", 1)
+        self.G_23 = params_dict.get("G_23", 0.7)
 
-    @property
-    def DT(self):
-        return self.hh.DT
+
+# G_12=0.1, G_23=0.05
 
 
 @jit(nopython=True)
@@ -158,7 +145,7 @@ def initialize_hh(var, p):
 
 
 @jit(nopython=True)
-def solve_euler_hh(var, i_inj, p):
+def solve_euler_hh(var, i_inj, p, DT):
     v = var[0]
     m = var[1]
     h = var[2]
@@ -169,21 +156,21 @@ def solve_euler_hh(var, i_inj, p):
     i_leak = p.G_LEAK * (v - p.E_LEAK)
     i_na = p.G_NA * m * m * m * h * (v - p.E_NA)
     i_k = p.G_K * n * n * n * n * (v - p.E_K)
-    var[0] += dvdt(i_leak, i_na, i_k, i_inj, p.C) * p.DT
-    var[1] += dmdt(v_rel, m) * p.DT
-    var[2] += dhdt(v_rel, h) * p.DT
-    var[3] += dndt(v_rel, n) * p.DT
+    var[0] += dvdt(i_leak, i_na, i_k, i_inj, p.C) * DT
+    var[1] += dmdt(v_rel, m) * DT
+    var[2] += dhdt(v_rel, h) * DT
+    var[3] += dndt(v_rel, n) * DT
 
 
 @jit(nopython=True)
-def hh_simulate_numba(i_ext, p):
+def hh_simulate_numba(i_ext, p, DT):
     n_vars = 4
     nt = len(i_ext)
     results = np.zeros((nt, n_vars))
     var = np.zeros(n_vars)
     initialize_hh(var, p)
     for i in range(nt):
-        solve_euler_hh(var, i_ext[i], p)
+        solve_euler_hh(var, i_ext[i], p, DT)
         results[i, :] = var
     return results
 
@@ -196,7 +183,7 @@ def threecomp_initialize_unified(var, p):
 
 
 @jit(nopython=True)
-def solve_euler_threecomp_unified(var, i_inj, p):
+def solve_euler_threecomp_unified(var, i_inj, p, DT):
     v_soma = var[0]
     v_pre = var[4]
     v_post = var[5]
@@ -204,20 +191,20 @@ def solve_euler_threecomp_unified(var, i_inj, p):
     i_pre = p.G_12 * (v_pre - v_soma)
     i_post = p.G_23 * (v_soma - v_post)
 
-    solve_euler_hh(var, i_pre - i_post, p.hh)
+    solve_euler_hh(var, i_pre - i_post, p.hh, DT)
 
-    var[4] += (-p.hh.G_LEAK * (v_pre - p.hh.E_LEAK) - i_pre + i_inj) / p.hh.C * p.hh.DT
-    var[5] += (-p.hh.G_LEAK * (v_post - p.hh.E_LEAK) + i_post) / p.hh.C * p.hh.DT
+    var[4] += (-p.hh.G_LEAK * (v_pre - p.hh.E_LEAK) - i_pre + i_inj) / p.hh.C * DT
+    var[5] += (-p.hh.G_LEAK * (v_post - p.hh.E_LEAK) + i_post) / p.hh.C * DT
 
 
 @jit(nopython=True)
-def hh3_simulate_numba(i_ext, p):
+def hh3_simulate_numba(i_ext, p, DT):
     n_vars = 6
     nt = len(i_ext)
     results = np.zeros((nt, n_vars))
     var = np.zeros(n_vars)
     threecomp_initialize_unified(var, p)
     for i in range(nt):
-        solve_euler_threecomp_unified(var, i_ext[i], p)
+        solve_euler_threecomp_unified(var, i_ext[i], p, DT)
         results[i, :] = var
     return results

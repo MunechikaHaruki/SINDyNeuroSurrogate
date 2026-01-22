@@ -1,11 +1,12 @@
 from loguru import logger
 from prefect import task
 
+from neurosurrogate.modeling.surrogate import predict
 from neurosurrogate.utils import PLOTTER_REGISTRY
 from neurosurrogate.utils.data_processing import (
     _get_control_input,
-    transform_dataset_with_preprocessor,
     calc_ThreeComp_internal,
+    transform_dataset_with_preprocessor,
 )
 from neurosurrogate.utils.plots import _create_figure, plot_diff
 
@@ -14,25 +15,23 @@ from .utils import fig_to_buff, log_plot_to_mlflow
 
 
 @task
-def single_eval(data_type, params, preprocessed_ds, surrogate_model):
+def single_eval(data_type, params_dict, preprocessed_ds, surrogate_model):
     logger.info(f"{preprocessed_ds} started to process")
-
-    input_data = {
-        "init": preprocessed_ds["vars"][0],
-        "dt": 0.01,
-        "iter": len(preprocessed_ds["time"].to_numpy()),
-        "u": _get_control_input(preprocessed_ds, data_type=data_type),
-        "data_type": data_type,
-    }
-    logger.info(f"input:{input_data}")
-
-    prediction = surrogate_model.predict(**input_data)
+    prediction = predict(
+        init=preprocessed_ds["vars"][0],
+        dt=0.01,
+        iter=len(preprocessed_ds["time"].to_numpy()),
+        u=_get_control_input(preprocessed_ds, data_type=data_type),
+        data_type=data_type,
+        params_dict=params_dict,
+        sindy=surrogate_model,
+    )
     logger.info(f"prediction_result:{prediction}")
     if data_type == "hh3":
         calc_ThreeComp_internal(
             prediction,
-            params.get("G_12"),
-            params.get("G_23"),
+            params_dict.get("G_12"),
+            params_dict.get("G_23"),
         )
 
     logger.trace(prediction)
@@ -96,7 +95,7 @@ def eval_flow(
 
     eval_result = single_eval(
         data_type=data_type,
-        params=neuron_cfg["params"],
+        params_dict=neuron_cfg,
         preprocessed_ds=transformed_ds,
         surrogate_model=surrogate_model,
     )

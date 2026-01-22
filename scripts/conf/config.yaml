@@ -12,25 +12,16 @@ seed: 6
 
 neurons:
   hh:
-    params:
   hh3:
-    params:
-      G_12: ${g_12}
-      G_23: ${g_23}
-      G_LEAK: 0.3
-      E_LEAK: -54.4
-      C: 1.0
-      DT: 0.01
+    G_12: ${g_12}
+    G_23: ${g_23}
+
+simulater_dt: 0.01
 
 models:
   surrogate:
     params:
-      G_LEAK: ${neurons.hh3.params.G_LEAK}
-      E_LEAK: ${neurons.hh3.params.E_LEAK}
-      C: ${neurons.hh3.params.C}
-      G_12: ${neurons.hh3.params.G_12}
-      G_23: ${neurons.hh3.params.G_23}
-      DT: ${neurons.hh3.params.DT}
+      DT: ${simulater_dt}
 
 matplotlib_style: paper
 

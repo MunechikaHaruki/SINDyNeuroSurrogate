@@ -31,7 +31,7 @@ def simulate_sindy(init, u, xi_matrix, dt):
 
 
 @njit
-def simulate_three_comp_numba(init, u, xi_matrix, dt, G_12, G_23, G_LEAK, E_LEAK, C):
+def simulate_three_comp_numba(init, u, xi_matrix, dt, params):
     """
     init: [v_soma, latent, v_pre, v_post]
     xi_matrix: SINDyの係数行列
@@ -49,8 +49,8 @@ def simulate_three_comp_numba(init, u, xi_matrix, dt, G_12, G_23, G_LEAK, E_LEAK
         v_post = x[nt, 3]
 
         # 1. コンパートメント間の電流計算
-        I_pre = G_12 * (v_pre - v_soma)
-        I_post = G_23 * (v_soma - v_post)
+        I_pre = params.G_12 * (v_pre - v_soma)
+        I_post = params.G_23 * (v_soma - v_post)
 
         # 2. SINDyモデルによる微分値の計算 (dx = Xi @ Theta)
         theta = compute_theta(v_soma, latent, I_pre - I_post)
@@ -58,7 +58,17 @@ def simulate_three_comp_numba(init, u, xi_matrix, dt, G_12, G_23, G_LEAK, E_LEAK
         # Euler法による更新
         x[nt + 1, 0] = v_soma + dt * xi_matrix[0] @ theta
         x[nt + 1, 1] = latent + dt * xi_matrix[1] @ theta
-        x[nt + 1, 2] = v_pre + dt * (-G_LEAK * (v_pre - E_LEAK) - I_pre + u[nt]) / C
-        x[nt + 1, 3] = v_post + dt * (-G_LEAK * (v_post - E_LEAK) + I_post) / C
+        x[nt + 1, 2] = (
+            v_pre
+            + dt
+            * (-params.hh.G_LEAK * (v_pre - params.hh.E_LEAK) - I_pre + u[nt])
+            / params.hh.C
+        )
+        x[nt + 1, 3] = (
+            v_post
+            + dt
+            * (-params.hh.G_LEAK * (v_post - params.hh.E_LEAK) + I_post)
+            / params.hh.C
+        )
 
     return x
