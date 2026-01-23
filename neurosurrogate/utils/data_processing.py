@@ -22,15 +22,15 @@ SURROGATE_FEATURES = {
 
 
 def _create_xr(
-    time, model_type: str = None, surrogate: bool = False, custom_features=None
+    time,
+    model_type: str,
+    surrogate: bool = False,
+    custom_features=None,
+    params_dict={},
 ):
     if custom_features is not None:
         features = custom_features
     else:
-        if model_type is None:
-            raise ValueError(
-                "model_type must be provided if custom_features is not used."
-            )
         if surrogate is False:
             FEATURES_DICT = MODEL_FEATURES
         elif surrogate is True:
@@ -41,6 +41,7 @@ def _create_xr(
         "model_type": model_type,
         "surrogate": surrogate,
         "gate_features": GATE_VARS[model_type],
+        "params": params_dict,
     }
 
     shape_vars = (len(time), len(features))
@@ -66,7 +67,9 @@ def preprocess_dataset(
 ):
     time_array = np.arange(len(i_ext)) * dt
     # The FEATURES logic is moved to _create_xr
-    dataset = _create_xr(time_array, model_type=model_type, surrogate=surrogate)
+    dataset = _create_xr(
+        time_array, model_type=model_type, surrogate=surrogate, params_dict=params
+    )
     dataset["vars"].data = results
     dataset["I_ext"].data = i_ext
     if model_type == "hh3":
@@ -104,11 +107,12 @@ def transform_dataset_with_preprocessor(xr_data, preprocessor):
     new_feature_names = ["V"] + [
         f"latent{i + 1}" for i in range(transformed_gate.shape[1])
     ]
+
     dataset = _create_xr(
         time=xr_data.coords["time"],
         model_type=xr_data.attrs.get("model_type"),
-        surrogate=True,
         custom_features=new_feature_names,
+        params_dict=xr_data.attrs["params"],
     )
     dataset["vars"].data = new_vars
     dataset["I_ext"].data = xr_data["I_ext"].data
