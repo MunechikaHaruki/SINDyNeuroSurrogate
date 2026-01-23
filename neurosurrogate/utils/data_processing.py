@@ -4,28 +4,87 @@ import numpy as np
 import xarray as xr
 from loguru import logger
 
-GATE_VAR_SLICE = slice(1, 4, None)
-V_VAR_SLICE = slice(0, 1, None)
+GATE_VARS: Dict[str, list[str]] = {
+    "hh": ["M", "H", "N"],
+    "hh3": ["M", "H", "N"],
+}
 
 
 def get_gate_data(xr_dataset):
-    return xr_dataset["vars"].to_numpy()[:, GATE_VAR_SLICE]
+    model_type = xr_dataset.attrs["model_type"]
+    gate_vars = GATE_VARS[model_type]
+    return xr_dataset["vars"].sel(features=gate_vars).to_numpy()
 
 
-def _create_xr(var, time, u, features):
+MODEL_FEATURES: Dict[str, Dict[str, Any]] = {
+    "hh": ["V", "M", "H", "N"],
+    "hh3": ["V", "M", "H", "N", "V_pre", "V_post"],
+}
+
+SURROGATE_FEATURES = {
+    "hh": ["V", "latent1"],
+    "hh3": ["V", "latent1", "V_pre", "V_post"],
+}
+
+
+def _create_xr(
+    time, model_type: str = None, surrogate: bool = False, custom_features=None
+):
+    if custom_features is not None:
+        features = custom_features
+    else:
+        if model_type is None:
+            raise ValueError(
+                "model_type must be provided if custom_features is not used."
+            )
+        if surrogate is False:
+            FEATURES_DICT = MODEL_FEATURES
+        elif surrogate is True:
+            FEATURES_DICT = SURROGATE_FEATURES
+        features = FEATURES_DICT[model_type]
+
+    attrs = {"model_type": model_type, "surrogate": surrogate}
+
+    shape_vars = (len(time), len(features))
+    shape_u = (len(time),)
     return xr.Dataset(
         {
             "vars": (
                 ("time", "features"),
-                var,
+                np.empty(shape_vars),
             ),
-            "I_ext": (("time"), u),
+            "I_ext": (("time"), np.empty(shape_u)),
         },
         coords={
             "time": time,
             "features": features,
         },
+        attrs=attrs,
     )
+
+
+def preprocess_dataset(
+    model_type: str, i_ext, results, params: Dict, dt, surrogate=False
+):
+    time_array = np.arange(len(i_ext)) * dt
+    # The FEATURES logic is moved to _create_xr
+    dataset = _create_xr(time_array, model_type=model_type, surrogate=surrogate)
+    dataset["vars"].data = results
+    dataset["I_ext"].data = i_ext
+    if model_type == "hh3":
+        I_pre = params["G_12"] * (
+            dataset["vars"].sel(features="V_pre") - dataset["vars"].sel(features="V")
+        )
+        I_post = params["G_23"] * (
+            dataset["vars"].sel(features="V") - dataset["vars"].sel(features="V_post")
+        )
+        I_soma = I_pre - I_post
+
+        dataset["I_internal"] = xr.concat(
+            [I_pre, I_post, I_soma], dim="direction"
+        ).assign_coords(direction=["pre", "post", "soma"])
+
+    return dataset
 
 
 def transform_dataset_with_preprocessor(xr_data, preprocessor):
@@ -41,22 +100,25 @@ def transform_dataset_with_preprocessor(xr_data, preprocessor):
     """
     xr_gate = get_gate_data(xr_data)
     transformed_gate = preprocessor.transform(xr_gate)
-    V_data = xr_data["vars"][:, V_VAR_SLICE].to_numpy().reshape(-1, 1)
+    V_data = xr_data["vars"].sel(features="V").to_numpy().reshape(-1, 1)
     new_vars = np.concatenate((V_data, transformed_gate), axis=1)
     new_feature_names = ["V"] + [
         f"latent{i + 1}" for i in range(transformed_gate.shape[1])
     ]
-    return _create_xr(
-        var=new_vars,
+    dataset = _create_xr(
         time=xr_data.coords["time"],
-        u=xr_data["I_ext"].data,
-        features=new_feature_names,
+        model_type=xr_data.attrs.get("model_type"),
+        surrogate=True,
+        custom_features=new_feature_names,
     )
+    dataset["vars"].data = new_vars
+    dataset["I_ext"].data = xr_data["I_ext"].data
+    return dataset
 
 
 def _prepare_train_data(train_xr_dataset, preprocessor):
     train_gate_data = get_gate_data(train_xr_dataset)
-    V_data = train_xr_dataset["vars"].to_numpy()[:, V_VAR_SLICE]
+    V_data = train_xr_dataset["vars"].sel(features="V").to_numpy().reshape(-1, 1)
 
     logger.info("Transforming training dataset...")
     transformed_gate = preprocessor.transform(train_gate_data)
@@ -70,41 +132,3 @@ def _get_control_input(train_xr_dataset, data_type, direct=False):
         return train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
     else:
         return train_xr_dataset["I_ext"].to_numpy()
-
-
-MODEL_FEATURES: Dict[str, Dict[str, Any]] = {
-    "hh": ["V", "M", "H", "N"],
-    "hh3": ["V", "M", "H", "N", "V_pre", "V_post"],
-    "traub": ["V", "XI", "M", "S", "N", "C", "A", "H", "R", "B", "Q"],
-}
-
-SURROGATE_FEATURES = {
-    "hh": ["V", "latent1"],
-    "hh3": ["V", "latent1", "V_pre", "V_post"],
-}
-
-
-def preprocess_dataset(
-    model_type: str, i_ext, results, params: Dict, dt, surrogate=False
-):
-    time_array = np.arange(len(i_ext)) * dt
-    if surrogate is False:
-        FEATURES = MODEL_FEATURES
-    elif surrogate is True:
-        FEATURES = SURROGATE_FEATURES
-
-    dataset = _create_xr(results, time_array, u=i_ext, features=FEATURES[model_type])
-    if model_type == "hh3":
-        I_pre = params["G_12"] * (
-            dataset["vars"].sel(features="V_pre") - dataset["vars"].sel(features="V")
-        )
-        I_post = params["G_23"] * (
-            dataset["vars"].sel(features="V") - dataset["vars"].sel(features="V_post")
-        )
-        I_soma = I_pre - I_post
-
-        dataset["I_internal"] = xr.concat(
-            [I_pre, I_post, I_soma], dim="direction"
-        ).assign_coords(direction=["pre", "post", "soma"])
-
-    return dataset
