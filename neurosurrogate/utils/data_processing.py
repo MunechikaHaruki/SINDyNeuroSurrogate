@@ -10,12 +10,6 @@ GATE_VARS: Dict[str, list[str]] = {
 }
 
 
-def get_gate_data(xr_dataset):
-    model_type = xr_dataset.attrs["model_type"]
-    gate_vars = GATE_VARS[model_type]
-    return xr_dataset["vars"].sel(features=gate_vars).to_numpy()
-
-
 MODEL_FEATURES: Dict[str, Dict[str, Any]] = {
     "hh": ["V", "M", "H", "N"],
     "hh3": ["V", "M", "H", "N", "V_pre", "V_post"],
@@ -43,7 +37,11 @@ def _create_xr(
             FEATURES_DICT = SURROGATE_FEATURES
         features = FEATURES_DICT[model_type]
 
-    attrs = {"model_type": model_type, "surrogate": surrogate}
+    attrs = {
+        "model_type": model_type,
+        "surrogate": surrogate,
+        "gate_features": GATE_VARS[model_type],
+    }
 
     shape_vars = (len(time), len(features))
     shape_u = (len(time),)
@@ -98,7 +96,8 @@ def transform_dataset_with_preprocessor(xr_data, preprocessor):
     Returns:
         xr.Dataset: A new xarray dataset with transformed variables.
     """
-    xr_gate = get_gate_data(xr_data)
+    gate_features = xr_data.attrs["gate_features"]
+    xr_gate = xr_data["vars"].sel(features=gate_features).to_numpy()
     transformed_gate = preprocessor.transform(xr_gate)
     V_data = xr_data["vars"].sel(features="V").to_numpy().reshape(-1, 1)
     new_vars = np.concatenate((V_data, transformed_gate), axis=1)
@@ -117,7 +116,8 @@ def transform_dataset_with_preprocessor(xr_data, preprocessor):
 
 
 def _prepare_train_data(train_xr_dataset, preprocessor):
-    train_gate_data = get_gate_data(train_xr_dataset)
+    gate_features = train_xr_dataset.attrs["gate_features"]
+    train_gate_data = train_xr_dataset["vars"].sel(features=gate_features).to_numpy()
     V_data = train_xr_dataset["vars"].sel(features="V").to_numpy().reshape(-1, 1)
 
     logger.info("Transforming training dataset...")
