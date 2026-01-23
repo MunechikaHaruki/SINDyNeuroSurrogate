@@ -4,7 +4,6 @@ from prefect import task
 from neurosurrogate.utils import PLOTTER_REGISTRY
 from neurosurrogate.utils.data_processing import (
     _get_control_input,
-    transform_dataset_with_preprocessor,
 )
 from neurosurrogate.utils.plots import _create_figure, plot_diff
 
@@ -42,7 +41,7 @@ def log_single_eval(data_type, surrogate_result):
 
 @task
 def preprocess_single_data(dataset_name, preprocessor, xr_data):
-    transformed_xr = transform_dataset_with_preprocessor(xr_data, preprocessor)
+    transformed_xr = preprocessor.transform(xr_data)
     logger.info(f"Transformed xr dataset: {dataset_name}")
     return transformed_xr
 

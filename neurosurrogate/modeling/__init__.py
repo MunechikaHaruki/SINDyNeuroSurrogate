@@ -1,11 +1,13 @@
+import numpy as np
 from loguru import logger
 from numba import types
 from numba.typed import Dict
 from omegaconf import OmegaConf
+from sklearn.decomposition import PCA
 
 from ..utils.data_processing import (
+    _create_xr,
     _get_control_input,
-    _prepare_train_data,
     preprocess_dataset,
 )
 from ._simulater import (
@@ -58,6 +60,52 @@ def simulater(
         dt=DT,
         surrogate=False,
     )
+
+
+class PCAPreProcessorWrapper:
+    def __init__(self):
+        self.pca = PCA(n_components=1)
+
+    def fit(self, train_xr_dataset):
+        gate_features = train_xr_dataset.attrs["gate_features"]
+        train_gate_data = (
+            train_xr_dataset["vars"].sel(features=gate_features).to_numpy()
+        )
+        logger.info("Fitting preprocessor...")
+        self.pca.fit(train_gate_data)
+
+    def transform(self, xr_data):
+        logger.critical(type(xr_data))
+        gate_features = xr_data.attrs["gate_features"]
+        xr_gate = xr_data["vars"].sel(features=gate_features).to_numpy()
+        transformed_gate = self.pca.transform(xr_gate)
+        V_data = xr_data["vars"].sel(features="V").to_numpy().reshape(-1, 1)
+        new_vars = np.concatenate((V_data, transformed_gate), axis=1)
+        new_feature_names = ["V"] + [
+            f"latent{i + 1}" for i in range(transformed_gate.shape[1])
+        ]
+
+        dataset = _create_xr(
+            time=xr_data.coords["time"],
+            model_type=xr_data.attrs.get("model_type"),
+            custom_features=new_feature_names,
+            params_dict=xr_data.attrs["params"],
+        )
+        dataset["vars"].data = new_vars
+        dataset["I_ext"].data = xr_data["I_ext"].data
+        return dataset
+
+
+def _prepare_train_data(train_xr_dataset, preprocessor):
+    gate_features = train_xr_dataset.attrs["gate_features"]
+    train_gate_data = train_xr_dataset["vars"].sel(features=gate_features).to_numpy()
+    V_data = train_xr_dataset["vars"].sel(features="V").to_numpy().reshape(-1, 1)
+
+    logger.info("Transforming training dataset...")
+    transformed_gate = preprocessor.pca.transform(train_gate_data)
+    train = np.concatenate((V_data, transformed_gate), axis=1)
+    logger.debug(train)
+    return train
 
 
 class SINDySurrogateWrapper:

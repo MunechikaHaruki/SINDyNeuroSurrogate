@@ -3,19 +3,14 @@ import numpy as np
 from loguru import logger
 from prefect import task
 
-from neurosurrogate.modeling import SINDySurrogateWrapper
+from neurosurrogate.modeling import PCAPreProcessorWrapper, SINDySurrogateWrapper
 
 
 @task
 def train_preprocessor(train_xr_dataset):
     """前処理器（Preprocessor）の学習を行うタスク"""
-    from sklearn.decomposition import PCA
-
-    preprocessor = PCA(n_components=1)
-    gate_features = train_xr_dataset.attrs["gate_features"]
-    train_gate_data = train_xr_dataset["vars"].sel(features=gate_features).to_numpy()
-    logger.info("Fitting preprocessor...")
-    preprocessor.fit(train_gate_data)
+    preprocessor = PCAPreProcessorWrapper()
+    preprocessor.fit(train_xr_dataset=train_xr_dataset)
     return preprocessor
 
 

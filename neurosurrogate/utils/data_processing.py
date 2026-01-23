@@ -2,7 +2,6 @@ from typing import Any, Dict
 
 import numpy as np
 import xarray as xr
-from loguru import logger
 
 GATE_VARS: Dict[str, list[str]] = {
     "hh": ["M", "H", "N"],
@@ -87,49 +86,6 @@ def preprocess_dataset(
         ).assign_coords(direction=["pre", "post", "soma"])
 
     return dataset
-
-
-def transform_dataset_with_preprocessor(xr_data, preprocessor):
-    """
-    Transforms the dataset using the preprocessor on the gate variables.
-
-    Args:
-        xr_data (xr.Dataset): The input xarray dataset.
-        preprocessor: The fitted preprocessor (e.g., PCA or Autoencoder).
-
-    Returns:
-        xr.Dataset: A new xarray dataset with transformed variables.
-    """
-    gate_features = xr_data.attrs["gate_features"]
-    xr_gate = xr_data["vars"].sel(features=gate_features).to_numpy()
-    transformed_gate = preprocessor.transform(xr_gate)
-    V_data = xr_data["vars"].sel(features="V").to_numpy().reshape(-1, 1)
-    new_vars = np.concatenate((V_data, transformed_gate), axis=1)
-    new_feature_names = ["V"] + [
-        f"latent{i + 1}" for i in range(transformed_gate.shape[1])
-    ]
-
-    dataset = _create_xr(
-        time=xr_data.coords["time"],
-        model_type=xr_data.attrs.get("model_type"),
-        custom_features=new_feature_names,
-        params_dict=xr_data.attrs["params"],
-    )
-    dataset["vars"].data = new_vars
-    dataset["I_ext"].data = xr_data["I_ext"].data
-    return dataset
-
-
-def _prepare_train_data(train_xr_dataset, preprocessor):
-    gate_features = train_xr_dataset.attrs["gate_features"]
-    train_gate_data = train_xr_dataset["vars"].sel(features=gate_features).to_numpy()
-    V_data = train_xr_dataset["vars"].sel(features="V").to_numpy().reshape(-1, 1)
-
-    logger.info("Transforming training dataset...")
-    transformed_gate = preprocessor.transform(train_gate_data)
-    train = np.concatenate((V_data, transformed_gate), axis=1)
-    logger.debug(train)
-    return train
 
 
 def _get_control_input(train_xr_dataset, data_type, direct=False):
