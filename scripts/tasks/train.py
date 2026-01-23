@@ -3,10 +3,7 @@ import numpy as np
 from loguru import logger
 from prefect import task
 
-from neurosurrogate.utils.data_processing import (
-    _get_control_input,
-    _prepare_train_data,
-)
+from neurosurrogate.modeling import SINDySurrogateWrapper
 
 
 @task
@@ -23,39 +20,34 @@ def train_preprocessor(train_xr_dataset):
 
 
 @task
-def train_model(
-    train_xr_dataset, preprocessor, surrogate_model_cfg, train_dataset_type
-):
+def train_model(train_xr_dataset, preprocessor, surrogate_model_cfg):
     """モデルの学習を行うタスク"""
-    from neurosurrogate.utils.base_hh import hh_sindy, input_features
 
-    train = _prepare_train_data(train_xr_dataset, preprocessor)
-    u = _get_control_input(train_xr_dataset, data_type=train_dataset_type)
-    hh_sindy.fit(
-        train,
-        u=u,
-        t=train_xr_dataset["time"].to_numpy(),
-        feature_names=input_features,
-    )
+    surrogater = SINDySurrogateWrapper(surrogate_model_cfg, preprocessor)
+    surrogater.fit(train_xr_dataset)
+
     logger.debug(f"train_dataset {train_xr_dataset}")
     logger.info("Fitting surrogate model...")
-    return hh_sindy
+    return surrogater
 
 
 @task
 def log_train_model(surrogate):
-    sindy = surrogate
+    summary = surrogate.get_loggable_summary()
     mlflow.log_dict(
-        sindy.equations(precision=3),
+        summary["equations"],
         artifact_file="sindy_equations.txt",
     )
     mlflow.log_text(
-        np.array2string(sindy.optimizer.coef_, precision=3),
+        np.array2string(summary["coefficients"], precision=3),
         artifact_file="coef.txt",
     )
-    feature_names = sindy.get_feature_names()
+    feature_names = summary["feature_names"]
     mlflow.log_text("\n".join(feature_names), artifact_file="feature_names.txt")
-    mlflow.log_param("sindy_params", str(sindy.optimizer.get_params))
+    mlflow.log_param(
+        "model_params",
+        summary["model_params"],
+    )
 
 
 def train_flow(cfg, train_ds):
@@ -67,7 +59,6 @@ def train_flow(cfg, train_ds):
         train_xr_dataset=train_ds,
         preprocessor=preprocessor,
         surrogate_model_cfg=cfg.models["surrogate"],
-        train_dataset_type=cfg.datasets["train"].data_type,
     )
     log_train_model(surrogate=surrogate_model)
     return preprocessor, surrogate_model

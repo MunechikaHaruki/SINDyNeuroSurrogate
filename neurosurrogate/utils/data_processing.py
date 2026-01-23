@@ -42,6 +42,7 @@ def _create_xr(
         "surrogate": surrogate,
         "gate_features": GATE_VARS[model_type],
         "params": params_dict,
+        "dt": time[1] - time[0],
     }
 
     shape_vars = (len(time), len(features))
