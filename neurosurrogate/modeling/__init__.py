@@ -95,38 +95,35 @@ class PCAPreProcessorWrapper:
         return dataset
 
 
-def _prepare_train_data(train_xr_dataset, preprocessor):
-    gate_features = train_xr_dataset.attrs["gate_features"]
-    train_gate_data = train_xr_dataset["vars"].sel(features=gate_features).to_numpy()
-    V_data = train_xr_dataset["vars"].sel(features="V").to_numpy().reshape(-1, 1)
-
-    logger.info("Transforming training dataset...")
-    transformed_gate = preprocessor.pca.transform(train_gate_data)
-    train = np.concatenate((V_data, transformed_gate), axis=1)
-    logger.debug(train)
-    return train
-
-
 class SINDySurrogateWrapper:
     def __init__(self, cfg, preprocessor):
         self.cfg = cfg
         self.preprocessor = preprocessor
 
-    def fit(self, train_xr_dataset):
+    def _prepare_train_data(self, train_xr_dataset):
         data_type = train_xr_dataset.attrs["model_type"]
+        gate_features = train_xr_dataset.attrs["gate_features"]
+        train_gate_data = (
+            train_xr_dataset["vars"].sel(features=gate_features).to_numpy()
+        )
+        V_data = train_xr_dataset["vars"].sel(features="V").to_numpy().reshape(-1, 1)
+
+        logger.info("Transforming training dataset...")
+        transformed_gate = self.preprocessor.pca.transform(train_gate_data)
+        train = np.concatenate((V_data, transformed_gate), axis=1)
+        logger.debug(train)
+        if data_type == "hh3" and self.cfg.direct is True:
+            u = train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
+        else:
+            u = train_xr_dataset["I_ext"].to_numpy()
+        return train, u
+
+    def fit(self, train_xr_dataset):
         # fit
         from neurosurrogate.utils.base_hh import hh_sindy, input_features
 
         self.sindy = hh_sindy
-
-        def _get_control_input(train_xr_dataset, data_type, direct=False):
-            if data_type == "hh3" and direct is True:
-                return train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
-            else:
-                return train_xr_dataset["I_ext"].to_numpy()
-
-        train = _prepare_train_data(train_xr_dataset, self.preprocessor)
-        u = _get_control_input(train_xr_dataset, data_type=data_type)
+        train, u = self._prepare_train_data(train_xr_dataset)
         hh_sindy.fit(
             train,
             u=u,
@@ -135,9 +132,7 @@ class SINDySurrogateWrapper:
         )
 
     def predict(self, init, dt, u, data_type, params_dict):
-        print(f"{type(init)},{type(dt)},{type(u)},{type(data_type)}")
         logger.info(f"{data_type}のサロゲートモデルをテスト")
-        logger.critical(type(u))
         params = instantiate_OmegaConf_params(params_dict, data_type=data_type)
         var = SURROGATER_REGISTRY[data_type](
             init=init,
