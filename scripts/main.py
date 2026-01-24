@@ -1,5 +1,9 @@
 import os
 
+import matplotlib
+
+matplotlib.use("Agg")
+
 import hydra
 import matplotlib.pyplot as plt
 import mlflow

@@ -1,11 +1,11 @@
+import mlflow
 from loguru import logger
 from prefect import task
 
 from neurosurrogate.utils import PLOTTER_REGISTRY
-from neurosurrogate.utils.plots import _create_figure, plot_diff
+from neurosurrogate.utils.plots import create_preprocessed_figure, plot_diff
 
 from .data import generate_dataset_flow
-from .utils import fig_to_buff, log_plot_to_mlflow
 
 
 @task
@@ -18,39 +18,6 @@ def single_eval(preprocessed_ds, surrogate_model):
     return prediction
 
 
-@task
-def log_diff_eval(surrogate_result, preprocessed_result):
-    u = preprocessed_result["I_ext"].to_numpy()
-    fig = plot_diff(u, preprocessed_result["vars"], surrogate_result["vars"])
-    return fig_to_buff(fig)
-
-
-@task
-def log_single_eval(data_type, surrogate_result):
-    logger.critical("jfoisadjf")
-    fig = PLOTTER_REGISTRY[data_type](
-        surrogate_result,
-        surrogate=True,
-    )
-    logger.critical("kljdgla")
-    return fig_to_buff(fig)
-
-
-@task
-def preprocess_single_data(dataset_name, preprocessor, xr_data):
-    transformed_xr = preprocessor.transform(xr_data)
-    logger.info(f"Transformed xr dataset: {dataset_name}")
-    return transformed_xr
-
-
-@task
-def log_single_preprocess_data(xr_data):
-    """1つのデータセットに対して処理とログ出力を行う"""
-    external_input = xr_data["I_ext"].to_numpy()
-    fig = _create_figure(xr_data["vars"], external_input)
-    return fig_to_buff(fig)
-
-
 def eval_flow(
     name: str,
     preprocessor,
@@ -60,31 +27,23 @@ def eval_flow(
     dataset_cfg = cfg.datasets[name]
     data_type = dataset_cfg.data_type
 
+    # generate_dataset
     ds = generate_dataset_flow(name, cfg)
+    transformed_ds = task(preprocessor.transform)(ds)
+    logger.info(f"Transformed xr: {name}")
 
-    transformed_ds = preprocess_single_data(
-        dataset_name=name, preprocessor=preprocessor, xr_data=ds
-    )
-    log_plot_to_mlflow(
-        log_single_preprocess_data(
-            xr_data=transformed_ds,
-        ),
-        f"preprocessed/{data_type}/{name}.png",
-    )
+    fig = task(create_preprocessed_figure)(transformed_ds)
+    mlflow.log_figure(fig, artifact_file=f"preprocessed/{data_type}/{name}.png")
 
     eval_result = single_eval(
         preprocessed_ds=transformed_ds,
         surrogate_model=surrogate_model,
     )
 
-    log_plot_to_mlflow(
-        log_single_eval(data_type=data_type, surrogate_result=eval_result),
-        f"surrogate/{data_type}/{name}.png",
+    fig = PLOTTER_REGISTRY[data_type](
+        eval_result,
+        surrogate=True,
     )
-    log_plot_to_mlflow(
-        log_diff_eval(
-            surrogate_result=eval_result,
-            preprocessed_result=transformed_ds,
-        ),
-        f"compare/{data_type}/{name}.png",
-    )
+    mlflow.log_figure(fig, artifact_file=f"surrogate/{data_type}/{name}.png")
+    fig = plot_diff(transformed_ds, eval_result)
+    mlflow.log_figure(fig, artifact_file=f"compare/{data_type}/{name}.png")

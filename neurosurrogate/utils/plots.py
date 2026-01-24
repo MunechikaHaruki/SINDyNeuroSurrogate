@@ -1,12 +1,11 @@
 # mypy: ignore-errors
-
-import matplotlib.pyplot as plt
-import numpy as np
 import xarray as xr
+from matplotlib.figure import Figure
 
 
 def plot_hh(xr, surrogate=False):
-    fig, axs = plt.subplots(3, 1, sharex=False)
+    fig = Figure()
+    axs = fig.subplots(nrows=3, ncols=1, sharex=False)
     data = xr["vars"]
     i_ext = xr["I_ext"]
 
@@ -30,7 +29,8 @@ def plot_hh(xr, surrogate=False):
 
 
 def plot_3comp_hh(xr, surrogate=False):
-    fig, axs = plt.subplots(4, 1, sharex=False)
+    fig = Figure()
+    axs = fig.subplots(nrows=4, ncols=1, sharex=False)
     data = xr["vars"]
     i_ext = xr["I_ext"]
     i_ext_internal = xr["I_internal"]
@@ -62,44 +62,61 @@ def plot_3comp_hh(xr, surrogate=False):
     return fig
 
 
-def _create_figure(data_vars, external_input):
-    """matplotlib の描画ロジックをカプセル化"""
+def create_preprocessed_figure(preprocessed_xr, axes=None):
+    """
+    xarrayデータから特徴量ごとの時系列プロットを作成する。
+
+    Args:
+        preprocessed_xr: プロット対象のxarray.Dataset
+        axes: 描画先のAxes配列 (省略時は新規Figureを作成)
+    Returns:
+        Figureオブジェクト (axes経由で渡された場合はその親Figure)
+    """
+    external_input = preprocessed_xr["I_ext"].to_numpy()
+    data_vars = preprocessed_xr["vars"]
     features = data_vars.features.values
     num_features = len(features)
+    total_rows = 1 + num_features
 
-    fig, axs = plt.subplots(
-        nrows=1 + num_features,
-        ncols=1,
-        figsize=(10, 4 * (1 + num_features)),
-        sharex=True,
-        layout="constrained",  # タイトルの重なり防止
-    )
+    # --- 1. Figure/Axesの準備 (副作用の制御) ---
+    if axes is None:
+        # plt.subplotsではなくFigureを直接生成（plt.close不要の設計）
+        fig = Figure(figsize=(10, 4 * total_rows), layout="constrained")
+        axs = fig.subplots(nrows=total_rows, ncols=1, sharex=True)
+    else:
+        # 外部から渡された場合はそれを使う（副作用は呼び出し側に帰属）
+        if len(axes) != total_rows:
+            raise ValueError(f"axes needs length {total_rows}, but got {len(axes)}")
+        axs = axes
+        fig = axs[0].get_figure()
 
-    # 外部入力のプロット
+    # --- 2. 描画ロジック (データの可視化) ---
+    # 外部入力
     axs[0].plot(external_input, label="I_ext(t)")
     axs[0].set_ylabel("I_ext(t)")
+    axs[0].legend(loc="upper right")
 
-    # 各特徴量のプロット
+    # 各特徴量
     for i, feature_name in enumerate(features):
         ax = axs[i + 1]
-        ax.plot(
-            data_vars.time, data_vars.sel(features=feature_name), label=feature_name
-        )
+        # xarrayのプロット機能をそのまま使う（座標やラベルを自動活用できるため）
+        data_vars.sel(features=feature_name).plot(ax=ax)
+        ax.set_title("")  # デフォルトのタイトルを消して整理
         ax.set_ylabel(feature_name)
 
     axs[-1].set_xlabel("Time step")
+
     return fig
 
 
-def plot_diff(u: np.ndarray, original: xr.DataArray, surrogate: xr.DataArray):
-    num_features = len(original.features.values)
+def plot_diff(original: xr.Dataset, surrogate: xr.Dataset):
+    u = surrogate["I_ext"].to_numpy()
+    original = original["vars"]
+    surrogate = surrogate["vars"]
 
-    fig, axs = plt.subplots(
-        1 + 2 * num_features,
-        1,
-        figsize=(10, 4 * (1 + num_features)),
-        sharex=False,
-    )
+    num_features = len(original.features.values)
+    fig = Figure(figsize=(10, 4 * (1 + num_features)))
+    axs = fig.subplots(nrows=1 + 2 * num_features, ncols=1, sharex=False)
 
     # plot external_input (I_ext)
     axs[0].plot(u, label="I_ext(t)", color="gold")

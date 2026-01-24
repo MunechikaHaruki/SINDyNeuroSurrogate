@@ -1,14 +1,10 @@
 import hashlib
-import io
 import json
 import subprocess
 from typing import Any
 
 import hydra
-import matplotlib.pyplot as plt
-import mlflow
 from omegaconf import DictConfig, OmegaConf
-from PIL import Image
 
 
 def to_stable_obj(obj: Any) -> Any:
@@ -66,15 +62,3 @@ def get_hydra_overrides():
     except Exception:
         run_name_prefix = "default_run"
     return run_name_prefix
-
-
-def log_plot_to_mlflow(img_bytes, artifact_path):
-    img = Image.open(io.BytesIO(img_bytes))
-    mlflow.log_image(img, artifact_path)
-
-
-def fig_to_buff(fig):
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
-    plt.close(fig)
-    return buf.getvalue()

@@ -1,13 +1,14 @@
 import random
 
 import hydra
+import mlflow
 import numpy as np
 from prefect import task
 
 from neurosurrogate.modeling import simulater
 from neurosurrogate.utils import PLOTTER_REGISTRY
 
-from .utils import fig_to_buff, generate_complex_hash, log_plot_to_mlflow
+from .utils import generate_complex_hash
 
 
 def generate_single_dataset_key_fn(context, params):
@@ -29,12 +30,6 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed, DT):
     return simulater(neuron_cfg=neuron_cfg, data_type=data_type, DT=DT, i_ext=i_ext)
 
 
-@task
-def log_single_dataset(data_type, xr_data):
-    fig = PLOTTER_REGISTRY[data_type](xr_data)
-    return fig_to_buff(fig)
-
-
 def generate_dataset_flow(dataset_key, cfg):
     dataset_cfg = cfg.datasets[dataset_key]
     data_type = dataset_cfg.data_type
@@ -52,11 +47,6 @@ def generate_dataset_flow(dataset_key, cfg):
         DT=cfg.simulater_dt,
     )
 
-    log_plot_to_mlflow(
-        log_single_dataset(
-            data_type=data_type,
-            xr_data=ds,
-        ),
-        f"original/{data_type}/{dataset_key}.png",
-    )
+    fig = PLOTTER_REGISTRY[data_type](ds)
+    mlflow.log_figure(fig, artifact_file=f"original/{data_type}/{dataset_key}.png")
     return ds
