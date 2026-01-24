@@ -7,7 +7,6 @@ from sklearn.decomposition import PCA
 
 from ..utils.data_processing import (
     _create_xr,
-    _get_control_input,
     preprocess_dataset,
 )
 from ._simulater import (
@@ -120,6 +119,12 @@ class SINDySurrogateWrapper:
 
         self.sindy = hh_sindy
 
+        def _get_control_input(train_xr_dataset, data_type, direct=False):
+            if data_type == "hh3" and direct is True:
+                return train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
+            else:
+                return train_xr_dataset["I_ext"].to_numpy()
+
         train = _prepare_train_data(train_xr_dataset, self.preprocessor)
         u = _get_control_input(train_xr_dataset, data_type=data_type)
         hh_sindy.fit(
@@ -156,9 +161,7 @@ class SINDySurrogateWrapper:
         return self.predict(
             init=test_preprocessed_ds["vars"][0].to_numpy(),
             dt=float(test_preprocessed_ds.attrs["dt"]),
-            u=_get_control_input(
-                test_preprocessed_ds, data_type=test_preprocessed_ds.attrs["model_type"]
-            ),
+            u=test_preprocessed_ds["I_ext"].to_numpy(),
             data_type=test_preprocessed_ds.attrs["model_type"],
             params_dict=test_preprocessed_ds.attrs["params"],
         )

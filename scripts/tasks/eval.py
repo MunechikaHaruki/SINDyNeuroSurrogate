@@ -2,9 +2,6 @@ from loguru import logger
 from prefect import task
 
 from neurosurrogate.utils import PLOTTER_REGISTRY
-from neurosurrogate.utils.data_processing import (
-    _get_control_input,
-)
 from neurosurrogate.utils.plots import _create_figure, plot_diff
 
 from .data import generate_dataset_flow
@@ -47,9 +44,9 @@ def preprocess_single_data(dataset_name, preprocessor, xr_data):
 
 
 @task
-def log_single_preprocess_data(dataset_key, dataset_type, xr_data):
+def log_single_preprocess_data(xr_data):
     """1つのデータセットに対して処理とログ出力を行う"""
-    external_input = _get_control_input(xr_data, dataset_type)
+    external_input = xr_data["I_ext"].to_numpy()
     fig = _create_figure(xr_data["vars"], external_input)
     return fig_to_buff(fig)
 
@@ -70,8 +67,6 @@ def eval_flow(
     )
     log_plot_to_mlflow(
         log_single_preprocess_data(
-            dataset_key=name,
-            dataset_type=data_type,
             xr_data=transformed_ds,
         ),
         f"preprocessed/{data_type}/{name}.png",
