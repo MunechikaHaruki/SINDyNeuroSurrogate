@@ -3,66 +3,83 @@ import xarray as xr
 from matplotlib.figure import Figure
 
 
-def plot_hh(xr, surrogate=False):
-    fig = Figure()
-    axs = fig.subplots(nrows=3, ncols=1, sharex=False)
-    data = xr["vars"]
-    i_ext = xr["I_ext"]
+def draw_time_series(plot_configs):
+    # 描画処理
+    n_rows = len(plot_configs)
+    fig = Figure(figsize=(8, 2 * n_rows))
+    axs = fig.subplots(nrows=n_rows, ncols=1, sharex=True)  # sharex=Trueを推奨
 
-    axs[0].plot(i_ext.time, i_ext, label="I_ext(t)")
-    axs[0].set_ylabel("I_ext(t)")
+    for i, config in enumerate(plot_configs):
+        ax = axs[i]
+        d = config["data"]
 
-    axs[1].plot(data.time, data.sel(features="V"), label="V(t)")
-    axs[1].set_ylabel("V(t)")
+        if isinstance(d, list):
+            for line, lbl in zip(d, config.get("legend", [])):
+                ax.plot(line.time, line, label=lbl)
+        else:
+            ax.plot(d.time, d)
 
-    if not surrogate:
-        axs[2].plot(data.time, data.sel(features=["M", "H", "N"]))
-        axs[2].legend(["M", "H", "N"])
-        axs[2].set_ylabel("gates")
-        axs[2].set_xlabel("Time step")
-    else:
-        axs[2].plot(data.time, data.sel(features=["latent1"]))
-        axs[2].set_ylabel("g'")
-        axs[2].set_xlabel("Time step")
+        ax.set_ylabel(config["ylabel"])
 
-    return fig
-
-
-def plot_3comp_hh(xr, surrogate=False):
-    fig = Figure()
-    axs = fig.subplots(nrows=4, ncols=1, sharex=False)
-    data = xr["vars"]
-    i_ext = xr["I_ext"]
-    i_ext_internal = xr["I_internal"]
-
-    axs[0].plot(i_ext.time, i_ext, label="I_ext(t)")
-    axs[0].set_ylabel("I_ext(t)")
-
-    axs[1].plot(i_ext_internal.time, i_ext_internal.sel(direction="pre"), label="dend")
-    axs[1].plot(i_ext_internal.time, i_ext_internal.sel(direction="soma"), label="soma")
-    axs[1].plot(i_ext_internal.time, i_ext_internal.sel(direction="post"), label="axon")
-    axs[1].legend()
-    axs[1].set_ylabel("I_internal")
-
-    axs[2].plot(data.time, data.sel(features=["V_pre", "V", "V_post"]))
-    axs[2].legend()
-    axs[2].set_ylabel("V(t)")
-
-    if not surrogate:
-        axs[3].plot(data.time, data.sel(features=["M", "H", "N"]))
-        axs[3].legend(["M", "H", "N"])
-        axs[3].set_ylabel("gates")
-        axs[3].set_xlabel("Time [ms]")
-    else:
-        axs[3].plot(data.time, data.sel(features=["latent1"]))
-        axs[3].legend(["latent1"])
-        axs[3].set_ylabel("gates")
-        axs[3].set_xlabel("Time [ms]")
+        leg = config.get("legend")
+        if leg is not None:
+            ax.legend()
+        if config.get("xlabel"):
+            ax.set_xlabel(config["xlabel"])
+    fig.tight_layout()
 
     return fig
 
 
-def create_preprocessed_figure(preprocessed_xr, axes=None):
+def plot_simple(xr):
+    # 属性の取得
+    surrogate = xr.attrs.get("surrogate", False)
+    model_type = xr.attrs.get("model_type", "hh")
+    data = xr["vars"]
+    i_ext = xr["I_ext"]
+
+    # プロット構成の決定
+    plot_configs = []
+
+    # 1. 外部入力 (共通)
+    plot_configs.append({"data": i_ext, "ylabel": "I_ext(t)"})
+
+    # 2. 内部電流 (hh3のみ)
+    if model_type == "hh3":
+        i_int = xr["I_internal"]
+        plot_configs.append(
+            {
+                "data": [i_int.sel(direction=d) for d in i_int.direction.values],
+                "legend": i_int.direction.values,
+                "ylabel": "I_internal",
+            }
+        )
+
+    # 3. 電位 (V)
+    v_features = ["V_pre", "V", "V_post"] if model_type == "hh3" else ["V"]
+    plot_configs.append(
+        {
+            "data": data.sel(features=v_features),
+            "ylabel": "V(t)",
+            "legend": v_features if len(v_features) > 1 else None,
+        }
+    )
+
+    # 4. ゲート変数 / 潜在変数
+    gate_features = ["latent1"] if surrogate else ["M", "H", "N"]
+    plot_configs.append(
+        {
+            "data": data.sel(features=gate_features),
+            "ylabel": "g'" if surrogate and model_type == "hh" else "gates",
+            "legend": gate_features,
+            "xlabel": "Time [ms]",  # 単位は統一することを推奨
+        }
+    )
+    fig = draw_time_series(plot_configs)
+    return fig
+
+
+def plot_preprocessed(preprocessed_xr, axes=None):
     """
     xarrayデータから特徴量ごとの時系列プロットを作成する。
 
@@ -94,7 +111,6 @@ def create_preprocessed_figure(preprocessed_xr, axes=None):
     # 外部入力
     axs[0].plot(external_input, label="I_ext(t)")
     axs[0].set_ylabel("I_ext(t)")
-    axs[0].legend(loc="upper right")
 
     # 各特徴量
     for i, feature_name in enumerate(features):
@@ -105,7 +121,7 @@ def create_preprocessed_figure(preprocessed_xr, axes=None):
         ax.set_ylabel(feature_name)
 
     axs[-1].set_xlabel("Time step")
-
+    fig.tight_layout()
     return fig
 
 
@@ -144,5 +160,5 @@ def plot_diff(original: xr.Dataset, surrogate: xr.Dataset):
         axs[2 * i + 2].set_ylabel(f"Surrogate {feature}")
 
     axs[-1].set_xlabel("Time step")
-    fig.tight_layout()  # レイアウトを自動調整
+    fig.tight_layout()
     return fig

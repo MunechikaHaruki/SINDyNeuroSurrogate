@@ -6,7 +6,7 @@ import numpy as np
 from prefect import task
 
 from neurosurrogate.modeling import simulater
-from neurosurrogate.utils import PLOTTER_REGISTRY
+from neurosurrogate.utils.plots import plot_simple
 
 from .utils import generate_complex_hash
 
@@ -46,7 +46,6 @@ def generate_dataset_flow(dataset_key, cfg):
         task_seed=int(task_seed, 16) % (2**32),
         DT=cfg.simulater_dt,
     )
-
-    fig = PLOTTER_REGISTRY[data_type](ds)
+    fig = plot_simple(ds)
     mlflow.log_figure(fig, artifact_file=f"original/{data_type}/{dataset_key}.png")
     return ds

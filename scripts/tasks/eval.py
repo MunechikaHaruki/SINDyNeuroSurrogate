@@ -2,8 +2,11 @@ import mlflow
 from loguru import logger
 from prefect import task
 
-from neurosurrogate.utils import PLOTTER_REGISTRY
-from neurosurrogate.utils.plots import create_preprocessed_figure, plot_diff
+from neurosurrogate.utils.plots import (
+    plot_diff,
+    plot_preprocessed,
+    plot_simple,
+)
 
 from .data import generate_dataset_flow
 
@@ -32,7 +35,7 @@ def eval_flow(
     transformed_ds = task(preprocessor.transform)(ds)
     logger.info(f"Transformed xr: {name}")
 
-    fig = task(create_preprocessed_figure)(transformed_ds)
+    fig = task(plot_preprocessed)(transformed_ds)
     mlflow.log_figure(fig, artifact_file=f"preprocessed/{data_type}/{name}.png")
 
     eval_result = single_eval(
@@ -40,10 +43,7 @@ def eval_flow(
         surrogate_model=surrogate_model,
     )
 
-    fig = PLOTTER_REGISTRY[data_type](
-        eval_result,
-        surrogate=True,
-    )
+    fig = plot_simple(eval_result)
     mlflow.log_figure(fig, artifact_file=f"surrogate/{data_type}/{name}.png")
     fig = plot_diff(transformed_ds, eval_result)
     mlflow.log_figure(fig, artifact_file=f"compare/{data_type}/{name}.png")
