@@ -20,58 +20,37 @@ SURROGATE_FEATURES = {
 }
 
 
-def _create_xr(
-    time,
-    model_type: str,
-    surrogate: bool = False,
-    custom_features=None,
-    params_dict={},
+def preprocess_dataset(
+    model_type: str, i_ext, results, params: Dict, dt, surrogate=False
 ):
-    if custom_features is not None:
-        features = custom_features
-    else:
-        if surrogate is False:
-            FEATURES_DICT = MODEL_FEATURES
-        elif surrogate is True:
-            FEATURES_DICT = SURROGATE_FEATURES
-        features = FEATURES_DICT[model_type]
+    if surrogate is False:
+        FEATURES_DICT = MODEL_FEATURES
+    elif surrogate is True:
+        FEATURES_DICT = SURROGATE_FEATURES
+    features = FEATURES_DICT[model_type]
 
     attrs = {
         "model_type": model_type,
         "surrogate": surrogate,
         "gate_features": GATE_VARS[model_type],
-        "params": params_dict,
-        "dt": time[1] - time[0],
+        "params": params,
+        "dt": dt,
     }
-
-    shape_vars = (len(time), len(features))
-    shape_u = (len(time),)
-    return xr.Dataset(
+    dataset = xr.Dataset(
         {
             "vars": (
                 ("time", "features"),
-                np.empty(shape_vars),
+                results,
             ),
-            "I_ext": (("time"), np.empty(shape_u)),
+            "I_ext": (("time"), i_ext),
         },
         coords={
-            "time": time,
+            "time": np.arange(len(i_ext)) * dt,
             "features": features,
         },
         attrs=attrs,
     )
 
-
-def preprocess_dataset(
-    model_type: str, i_ext, results, params: Dict, dt, surrogate=False
-):
-    time_array = np.arange(len(i_ext)) * dt
-    # The FEATURES logic is moved to _create_xr
-    dataset = _create_xr(
-        time_array, model_type=model_type, surrogate=surrogate, params_dict=params
-    )
-    dataset["vars"].data = results
-    dataset["I_ext"].data = i_ext
     if model_type == "hh3":
         I_pre = params["G_12"] * (
             dataset["vars"].sel(features="V_pre") - dataset["vars"].sel(features="V")

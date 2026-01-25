@@ -23,6 +23,8 @@ models:
     params:
       DT: ${simulater_dt}
 
+    direct: False
+
 matplotlib_style: paper
 
 # alias

@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+import xarray as xr
 from numba import types
 from numba.typed import Dict
 from omegaconf import OmegaConf
@@ -14,7 +15,6 @@ from ._simulater import (
 )
 from ._surrogate import simulate_sindy, simulate_three_comp_numba
 from .data_processing import (
-    _create_xr,
     preprocess_dataset,
 )
 
@@ -87,15 +87,20 @@ class PCAPreProcessorWrapper:
             f"latent{i + 1}" for i in range(transformed_gate.shape[1])
         ]
 
-        dataset = _create_xr(
-            time=xr_data.coords["time"],
-            model_type=xr_data.attrs.get("model_type"),
-            custom_features=new_feature_names,
-            params_dict=xr_data.attrs["params"],
+        return xr.Dataset(
+            {
+                "vars": (
+                    ("time", "features"),
+                    new_vars,
+                ),
+                "I_ext": (("time"), xr_data["I_ext"].to_numpy()),
+            },
+            coords={
+                "time": xr_data.time,
+                "features": new_feature_names,
+            },
+            attrs=xr_data.attrs,
         )
-        dataset["vars"].data = new_vars
-        dataset["I_ext"].data = xr_data["I_ext"].data
-        return dataset
 
 
 class SINDySurrogateWrapper:
@@ -104,9 +109,8 @@ class SINDySurrogateWrapper:
         self.preprocessor = preprocessor
 
     def _prepare_train_data(self, train_xr_dataset):
-        data_type = train_xr_dataset.attrs["model_type"]
         train = self.preprocessor.transform(train_xr_dataset)["vars"].to_numpy()
-        if data_type == "hh3" and self.cfg.direct is True:
+        if self.cfg.direct is True:
             u = train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
         else:
             u = train_xr_dataset["I_ext"].to_numpy()
