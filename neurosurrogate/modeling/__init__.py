@@ -5,10 +5,6 @@ from numba.typed import Dict
 from omegaconf import OmegaConf
 from sklearn.decomposition import PCA
 
-from ..utils.data_processing import (
-    _create_xr,
-    preprocess_dataset,
-)
 from ._simulater import (
     HH_Params_numba,
     ThreeComp_Params_numba,
@@ -16,6 +12,10 @@ from ._simulater import (
     hh_simulate_numba,
 )
 from ._surrogate import simulate_sindy, simulate_three_comp_numba
+from .data_processing import (
+    _create_xr,
+    preprocess_dataset,
+)
 
 PARAMS_REGISTRY = {
     "hh": HH_Params_numba,
@@ -102,16 +102,7 @@ class SINDySurrogateWrapper:
 
     def _prepare_train_data(self, train_xr_dataset):
         data_type = train_xr_dataset.attrs["model_type"]
-        gate_features = train_xr_dataset.attrs["gate_features"]
-        train_gate_data = (
-            train_xr_dataset["vars"].sel(features=gate_features).to_numpy()
-        )
-        V_data = train_xr_dataset["vars"].sel(features="V").to_numpy().reshape(-1, 1)
-
-        logger.info("Transforming training dataset...")
-        transformed_gate = self.preprocessor.pca.transform(train_gate_data)
-        train = np.concatenate((V_data, transformed_gate), axis=1)
-        logger.debug(train)
+        train = self.preprocessor.transform(train_xr_dataset)["vars"].to_numpy()
         if data_type == "hh3" and self.cfg.direct is True:
             u = train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
         else:

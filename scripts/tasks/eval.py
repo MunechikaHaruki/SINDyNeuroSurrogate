@@ -16,8 +16,6 @@ def single_eval(preprocessed_ds, surrogate_model):
     logger.info(f"{preprocessed_ds} started to process")
     prediction = surrogate_model.eval(preprocessed_ds)
     logger.info(f"prediction_result:{prediction}")
-
-    logger.trace(prediction)
     return prediction
 
 
