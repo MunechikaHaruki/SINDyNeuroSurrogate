@@ -65,7 +65,7 @@ def plot_simple(xr):
         )
 
     # 3. V(t)
-    v_feats = ["V_pre", "V", "V_post"] if model_type == "hh3" else ["V"]
+    v_feats = ["V_pre", "V_soma", "V_post"] if model_type == "hh3" else ["V_soma"]
     configs.append(
         {
             "data": [xr["vars"].sel(features=f) for f in v_feats],

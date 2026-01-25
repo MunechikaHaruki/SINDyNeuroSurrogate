@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -28,7 +29,18 @@ SIMULATOR_REGISTRY = {
     "hh": hh_simulate_numba,
     "hh3": hh3_simulate_numba,
 }
+
+SIMULATOR_FEATURES: Dict[str, Dict[str, Any]] = {
+    "hh": ["V_soma", "M", "H", "N"],
+    "hh3": ["V_soma", "M", "H", "N", "V_pre", "V_post"],
+}
+
 SURROGATER_REGISTRY = {"hh": simulate_sindy, "hh3": simulate_three_comp_numba}
+
+SURROGATER_FEATURES = {
+    "hh": ["V_soma", "latent1"],
+    "hh3": ["V_soma", "latent1", "V_pre", "V_post"],
+}
 
 
 def instantiate_OmegaConf_params(cfg, data_type):
@@ -58,6 +70,7 @@ def simulater(
         model_type=data_type,
         i_ext=i_ext,
         results=results,
+        features=SIMULATOR_FEATURES[data_type],
         params=neuron_cfg,
         dt=DT,
         surrogate=False,
@@ -81,9 +94,9 @@ class PCAPreProcessorWrapper:
         gate_features = xr_data.attrs["gate_features"]
         xr_gate = xr_data["vars"].sel(features=gate_features).to_numpy()
         transformed_gate = self.pca.transform(xr_gate)
-        V_data = xr_data["vars"].sel(features="V").to_numpy().reshape(-1, 1)
+        V_data = xr_data["vars"].sel(features="V_soma").to_numpy().reshape(-1, 1)
         new_vars = np.concatenate((V_data, transformed_gate), axis=1)
-        new_feature_names = ["V"] + [
+        new_feature_names = ["V_soma"] + [
             f"latent{i + 1}" for i in range(transformed_gate.shape[1])
         ]
 
@@ -144,6 +157,7 @@ class SINDySurrogateWrapper:
             model_type=data_type,
             i_ext=u,
             results=var,
+            features=SURROGATER_FEATURES[data_type],
             params=params_dict,
             dt=dt,
             surrogate=True,
