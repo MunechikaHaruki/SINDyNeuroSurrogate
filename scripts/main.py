@@ -3,13 +3,12 @@ import os
 import matplotlib
 
 matplotlib.use("Agg")
+import logging
 
 import hydra
 import matplotlib.pyplot as plt
 import mlflow
-from loguru import logger
 from omegaconf import DictConfig, OmegaConf
-from prefect import flow
 from tasks.data import (
     generate_dataset_flow,
 )
@@ -21,6 +20,13 @@ from tasks.train import (
 )
 from tasks.utils import get_commit_id, get_hydra_overrides
 
+# Prefectのインポートより前に環境変数を設定する
+os.environ["PREFECT_LOGGING_EXTRA_LOGGERS"] = "neurosurrogate"
+from prefect import flow, get_run_logger
+
+logger = logging.getLogger(__name__)
+
+
 # プロキシ設定を一時的に無効化
 os.environ["HTTP_PROXY"] = ""
 os.environ["HTTPS_PROXY"] = ""
@@ -29,10 +35,15 @@ os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 @flow
 def main_flow(cfg: DictConfig):
+    logger = get_run_logger()
+    logger.info("Start Flow")
+
+    logger.info("start generate train data")
     train_ds = generate_dataset_flow("train", cfg)
     preprocessor, surrogate_model = train_flow(cfg, train_ds)
 
     for name in cfg.datasets.keys():
+        logger.info("start to eval_flow")
         eval_flow(
             name=name,
             preprocessor=preprocessor,
@@ -43,6 +54,7 @@ def main_flow(cfg: DictConfig):
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
+    logger.info("Activate Script")
     OmegaConf.resolve(cfg)
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,6 +71,7 @@ def main(cfg: DictConfig) -> None:
         mlflow.set_tag("mlflow.runName", f"{run_name_prefix}_commit-{get_commit_id()}")
         # Prefect flow
         main_flow(cfg)
+    logger.info("Script ended")
 
 
 if __name__ == "__main__":

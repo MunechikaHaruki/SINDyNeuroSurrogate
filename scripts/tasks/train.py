@@ -1,7 +1,6 @@
 import mlflow
 import numpy as np
-from loguru import logger
-from prefect import task
+from prefect import get_run_logger, task
 
 from neurosurrogate.modeling import PCAPreProcessorWrapper, SINDySurrogateWrapper
 
@@ -17,6 +16,7 @@ def train_preprocessor(train_xr_dataset):
 @task
 def train_model(train_xr_dataset, preprocessor, surrogate_model_cfg):
     """モデルの学習を行うタスク"""
+    logger = get_run_logger()
 
     surrogater = SINDySurrogateWrapper(surrogate_model_cfg, preprocessor)
     surrogater.fit(train_xr_dataset)

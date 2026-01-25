@@ -1,5 +1,6 @@
+import logging
+
 import numpy as np
-from loguru import logger
 from numba import types
 from numba.typed import Dict
 from omegaconf import OmegaConf
@@ -16,6 +17,8 @@ from .data_processing import (
     _create_xr,
     preprocess_dataset,
 )
+
+logger = logging.getLogger(__name__)
 
 PARAMS_REGISTRY = {
     "hh": HH_Params_numba,
