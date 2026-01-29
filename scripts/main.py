@@ -50,6 +50,8 @@ def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_STYLE_PATH = os.path.join(BASE_DIR, "./conf/style/base.mplstyle")
+    plt.style.use(BASE_STYLE_PATH)
     STYLE_PATH = os.path.join(BASE_DIR, f"./conf/style/{cfg.matplotlib_style}.mplstyle")
     plt.style.use(STYLE_PATH)
 

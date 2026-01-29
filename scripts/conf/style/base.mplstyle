@@ -1,0 +1,12 @@
+# --- General Layout ---
+figure.dpi: 300
+savefig.bbox: tight
+savefig.pad_inches: 0.05
+
+# --- Lines & Markers ---
+lines.antialiased: True
+patch.linewidth: 0.5
+
+# --- Legend ---
+legend.loc: upper right
+legend.numpoints: 1
