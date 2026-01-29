@@ -19,3 +19,7 @@ datasets:
       _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
       iteration: 900000
       baseline: 0
+
+models:
+  surrogate:
+    direct: True
