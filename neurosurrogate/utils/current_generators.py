@@ -12,6 +12,10 @@ def current_decorator(func):
     """HHモデル用の関数ラッパー"""
 
     def wrapper(*args, **kwargs):
+        # Set random seeds for reproducibility
+        task_seed = kwargs.pop("task_seed", 0)
+        random.seed(task_seed)
+        np.random.seed(task_seed)
         iteration = kwargs.pop("iteration", DEFAULT_ITER)
         dset_i_ext = np.zeros(shape=(iteration,))
         func(dset_i_ext, iteration, *args, **kwargs)

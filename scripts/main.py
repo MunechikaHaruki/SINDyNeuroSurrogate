@@ -4,25 +4,16 @@ import matplotlib
 
 matplotlib.use("Agg")
 import logging
+import subprocess
 
 import hydra
 import matplotlib.pyplot as plt
 import mlflow
+from flow import main_flow
 from omegaconf import DictConfig, OmegaConf
-from tasks.data import (
-    generate_dataset_flow,
-)
-from tasks.eval import (
-    eval_flow,
-)
-from tasks.train import (
-    train_flow,
-)
-from tasks.utils import get_commit_id, get_hydra_overrides
 
 # Prefectのインポートより前に環境変数を設定する
 os.environ["PREFECT_LOGGING_EXTRA_LOGGERS"] = "neurosurrogate"
-from prefect import flow, get_run_logger
 
 logger = logging.getLogger(__name__)
 
@@ -33,23 +24,24 @@ os.environ["HTTPS_PROXY"] = ""
 os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 
-@flow
-def main_flow(cfg: DictConfig):
-    logger = get_run_logger()
-    logger.info("Start Flow")
-
-    logger.info("start generate train data")
-    train_ds = generate_dataset_flow("train", cfg)
-    preprocessor, surrogate_model = train_flow(cfg, train_ds)
-
-    for name in cfg.datasets.keys():
-        logger.info("start to eval_flow")
-        eval_flow(
-            name=name,
-            preprocessor=preprocessor,
-            surrogate_model=surrogate_model,
-            cfg=cfg,
+def get_commit_id():
+    try:
+        commit_id = (
+            subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+            .decode("utf-8")
+            .strip()
         )
+    except subprocess.CalledProcessError:
+        commit_id = "unknown"
+    return commit_id
+
+
+def get_hydra_overrides():
+    try:
+        run_name_prefix = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
+    except Exception:
+        run_name_prefix = "default_run"
+    return run_name_prefix
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
