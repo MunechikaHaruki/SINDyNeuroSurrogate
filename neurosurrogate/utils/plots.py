@@ -45,17 +45,17 @@ def draw_engine(plot_configs, figsize_width=10):
     return fig
 
 
-def plot_simple(xr):
-    surrogate = xr.attrs["surrogate"]
-    model_type = xr.attrs["model_type"]
+def plot_simple(ds):
+    surrogate = ds.attrs["surrogate"]
+    model_type = ds.attrs["model_type"]
     configs = []
 
     # 1. I_ext
-    configs.append({"data": xr["I_ext"], "ylabel": "I_ext(t)"})
+    configs.append({"data": ds["I_ext"], "ylabel": "I_ext(t)"})
 
     # 2. I_internal (hh3)
-    if model_type == "hh3" and "I_internal" in xr:
-        i_int = xr["I_internal"]
+    if model_type == "hh3" and "I_internal" in ds:
+        i_int = ds["I_internal"]
         configs.append(
             {
                 "data": [i_int.sel(direction=d) for d in i_int.direction.values],
@@ -68,7 +68,7 @@ def plot_simple(xr):
     v_feats = ["V_pre", "V_soma", "V_post"] if model_type == "hh3" else ["V_soma"]
     configs.append(
         {
-            "data": [xr["vars"].sel(features=f) for f in v_feats],
+            "data": [ds["vars"].sel(features=f) for f in v_feats],
             "legend": v_feats if len(v_feats) > 1 else None,
             "ylabel": "V(t)",
         }
@@ -78,7 +78,7 @@ def plot_simple(xr):
     g_feats = ["latent1"] if surrogate else ["M", "H", "N"]
     configs.append(
         {
-            "data": [xr["vars"].sel(features=f) for f in g_feats],
+            "data": [ds["vars"].sel(features=f) for f in g_feats],
             "legend": g_feats,
             "ylabel": "gates",
             "xlabel": "Time [ms]",
