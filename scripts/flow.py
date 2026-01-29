@@ -13,11 +13,7 @@ from neurosurrogate.modeling import (
     SINDySurrogateWrapper,
     simulater,
 )
-from neurosurrogate.utils.plots import (
-    plot_diff,
-    plot_preprocessed,
-    plot_simple,
-)
+from neurosurrogate.utils.plots import plot_simple
 
 
 def generate_complex_hash(*args, **kwargs) -> str:
@@ -81,6 +77,7 @@ def log_train_model(surrogate):
         "model_params",
         summary["model_params"],
     )
+    mlflow.log_figure(summary["train_figure"], artifact_file="train.png")
 
 
 def generate_dataset_flow(dataset_key, cfg):
@@ -121,26 +118,24 @@ def train_task(cfg, train_ds):
 
 def eval_flow(
     name: str,
-    preprocessor,
     surrogate_model,
     cfg,
 ):
-    dataset_cfg = cfg.datasets[name]
-    data_type = dataset_cfg.data_type
-
     # generate_dataset
     ds = generate_dataset_flow(name, cfg)
-    transformed_ds = preprocessor.transform(ds)
-
-    fig = plot_preprocessed(transformed_ds)
-    mlflow.log_figure(fig, artifact_file=f"preprocessed/{data_type}/{name}.png")
-
-    eval_result = surrogate_model.eval(transformed_ds)
-
-    fig = plot_simple(eval_result)
-    mlflow.log_figure(fig, artifact_file=f"surrogate/{data_type}/{name}.png")
-    fig = plot_diff(transformed_ds, eval_result)
-    mlflow.log_figure(fig, artifact_file=f"compare/{data_type}/{name}.png")
+    eval_result = surrogate_model.eval(ds)
+    data_type = ds.attrs["model_type"]
+    mlflow.log_figure(
+        eval_result["preprocessed"],
+        artifact_file=f"preprocessed/{data_type}/{name}.png",
+    )
+    mlflow.log_figure(
+        eval_result["surrogate_figure"],
+        artifact_file=f"surrogate/{data_type}/{name}.png",
+    )
+    mlflow.log_figure(
+        eval_result["diff"], artifact_file=f"compare/{data_type}/{name}.png"
+    )
 
 
 @flow
@@ -156,7 +151,6 @@ def main_flow(cfg: DictConfig):
         logger.info("start to eval_flow")
         eval_flow(
             name=name,
-            preprocessor=preprocessor,
             surrogate_model=surrogate_model,
             cfg=cfg,
         )

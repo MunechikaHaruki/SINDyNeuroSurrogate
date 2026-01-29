@@ -8,6 +8,7 @@ from numba.typed import Dict
 from omegaconf import OmegaConf
 from sklearn.decomposition import PCA
 
+from ..utils.plots import plot_compartment_behavior, plot_diff, plot_simple
 from ._simulater import (
     HH_Params_numba,
     ThreeComp_Params_numba,
@@ -15,9 +16,6 @@ from ._simulater import (
     hh_simulate_numba,
 )
 from ._surrogate import simulate_sindy, simulate_three_comp_numba
-from .data_processing import (
-    preprocess_dataset,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +39,55 @@ SURROGATER_FEATURES = {
     "hh": ["V_soma", "latent1"],
     "hh3": ["V_soma", "latent1", "V_pre", "V_post"],
 }
+
+
+def preprocess_dataset(
+    model_type: str,
+    i_ext,
+    results,
+    features,
+    params: Dict,
+    dt,
+    surrogate=False,
+):
+    attrs = {
+        "model_type": model_type,
+        "surrogate": surrogate,
+        "gate_features": ["M", "H", "N"],
+        "params": params,
+        "dt": dt,
+    }
+    dataset = xr.Dataset(
+        {
+            "vars": (
+                ("time", "features"),
+                results,
+            ),
+            "I_ext": (("time"), i_ext),
+        },
+        coords={
+            "time": np.arange(len(i_ext)) * dt,
+            "features": features,
+        },
+        attrs=attrs,
+    )
+
+    if model_type == "hh3":
+        I_pre = params["G_12"] * (
+            dataset["vars"].sel(features="V_pre")
+            - dataset["vars"].sel(features="V_soma")
+        )
+        I_post = params["G_23"] * (
+            dataset["vars"].sel(features="V_soma")
+            - dataset["vars"].sel(features="V_post")
+        )
+        I_soma = I_pre - I_post
+
+        dataset["I_internal"] = xr.concat(
+            [I_pre, I_post, I_soma], dim="direction"
+        ).assign_coords(direction=["pre", "post", "soma"])
+
+    return dataset
 
 
 def instantiate_OmegaConf_params(cfg, data_type):
@@ -100,18 +147,14 @@ class PCAPreProcessorWrapper:
             f"latent{i + 1}" for i in range(transformed_gate.shape[1])
         ]
 
-        return xr.Dataset(
-            {
-                "vars": (
-                    ("time", "features"),
-                    new_vars,
-                ),
-                "I_ext": (("time"), xr_data["I_ext"].to_numpy()),
-            },
+        return xr.DataArray(
+            data=new_vars,
+            dims=("time", "features"),
             coords={
                 "time": xr_data.time,
                 "features": new_feature_names,
             },
+            name="vars",
             attrs=xr_data.attrs,
         )
 
@@ -122,12 +165,12 @@ class SINDySurrogateWrapper:
         self.preprocessor = preprocessor
 
     def _prepare_train_data(self, train_xr_dataset):
-        train = self.preprocessor.transform(train_xr_dataset)["vars"].to_numpy()
+        self.train_dataarray = self.preprocessor.transform(train_xr_dataset)
         if self.cfg.direct is True:
-            u = train_xr_dataset["I_internal"].sel(direction="soma").to_numpy()
+            self.u_dataarray = train_xr_dataset["I_internal"].sel(direction="soma")
         else:
-            u = train_xr_dataset["I_ext"].to_numpy()
-        return train, u
+            self.u_dataarray = train_xr_dataset["I_ext"]
+        return self.train_dataarray.to_numpy(), self.u_dataarray.to_numpy()
 
     def fit(self, train_xr_dataset):
         # fit
@@ -164,14 +207,32 @@ class SINDySurrogateWrapper:
         )
         return sindy_result
 
-    def eval(self, test_preprocessed_ds):
-        return self.predict(
-            init=test_preprocessed_ds["vars"][0].to_numpy(),
-            dt=float(test_preprocessed_ds.attrs["dt"]),
-            u=test_preprocessed_ds["I_ext"].to_numpy(),
-            data_type=test_preprocessed_ds.attrs["model_type"],
-            params_dict=test_preprocessed_ds.attrs["params"],
+    def eval(self, original_ds):
+        transformed_dataarray = self.preprocessor.transform(original_ds)
+        predict_result = self.predict(
+            init=transformed_dataarray[0].to_numpy(),
+            dt=float(original_ds.attrs["dt"]),
+            u=original_ds["I_ext"].to_numpy(),
+            data_type=original_ds.attrs["model_type"],
+            params_dict=original_ds.attrs["params"],
         )
+
+        if original_ds.attrs["model_type"] == "hh":
+            u_inj = original_ds["I_ext"].to_numpy()
+        elif original_ds.attrs["model_type"] == "hh3":
+            u_inj = original_ds["I_internal"].sel(direction="soma")
+
+        return {
+            "surrogate_figure": plot_simple(predict_result),
+            "diff": plot_diff(
+                original=original_ds,
+                preprocessed=transformed_dataarray,
+                surrogate=predict_result,
+            ),
+            "preprocessed": plot_compartment_behavior(
+                u=u_inj, xarray=transformed_dataarray
+            ),
+        }
 
     def get_loggable_summary(self) -> dict:
         return {
@@ -179,4 +240,7 @@ class SINDySurrogateWrapper:
             "coefficients": self.sindy.optimizer.coef_,
             "feature_names": self.sindy.get_feature_names(),
             "model_params": str(self.sindy.optimizer.get_params),
+            "train_figure": plot_compartment_behavior(
+                xarray=self.train_dataarray, u=self.u_dataarray
+            ),
         }

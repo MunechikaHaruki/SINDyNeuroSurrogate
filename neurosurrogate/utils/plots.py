@@ -88,18 +88,18 @@ def plot_simple(xr):
     return draw_engine(configs)
 
 
-def plot_preprocessed(preprocessed_xr):
+def plot_compartment_behavior(xarray, u):
     """
     xarrayデータから特徴量ごとの時系列プロット用構成を生成し、描画する。
     """
     configs = []
 
     # 1. 外部入力 (I_ext)
-    configs.append({"data": preprocessed_xr["I_ext"], "ylabel": "I_ext(t)"})
+    configs.append({"data": u, "ylabel": "I_ext(t)"})
 
     # 2. 各特徴量を個別の段として追加
-    data_vars = preprocessed_xr["vars"]
-    for feature_name in data_vars.features.values:
+    data_vars = xarray
+    for feature_name in data_vars.coords["features"].values:
         configs.append(
             {"data": data_vars.sel(features=feature_name), "ylabel": str(feature_name)}
         )
@@ -110,7 +110,7 @@ def plot_preprocessed(preprocessed_xr):
     return draw_engine(configs)
 
 
-def plot_diff(original: xr.Dataset, surrogate: xr.Dataset):
+def plot_diff(original: xr.Dataset, preprocessed: xr.DataArray, surrogate: xr.Dataset):
     configs = []
     # I_ext
     configs.append(
@@ -118,11 +118,11 @@ def plot_diff(original: xr.Dataset, surrogate: xr.Dataset):
     )
 
     # 各特徴量の比較
-    for feature in original.vars.features.values:
+    for feature in preprocessed.coords["features"].values:
         configs.append(
             {
                 "data": [
-                    original.vars.sel(features=feature),
+                    preprocessed.sel(features=feature),
                     surrogate.vars.sel(features=feature),
                 ],
                 "legend": [f"Original {feature}", f"Surrogate {feature}"],
