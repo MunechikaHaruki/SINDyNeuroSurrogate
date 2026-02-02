@@ -67,10 +67,22 @@ def log_train_model(surrogate):
         summary["equations"],
         artifact_file="sindy_equations.txt",
     )
+    coef = summary["coefficients"]
     mlflow.log_text(
-        np.array2string(summary["coefficients"], precision=3),
+        np.array2string(coef, precision=3),
         artifact_file="coef.txt",
     )
+
+    nonzero_term_num = np.count_nonzero(coef)
+    nonzero_term_ratio = nonzero_term_num / coef.size
+
+    mlflow.log_metrics(
+        metrics={
+            "nonzero_term_num": nonzero_term_num,
+            "nonzero_term_ratio": nonzero_term_ratio,
+        }
+    )
+
     feature_names = summary["feature_names"]
     mlflow.log_text("\n".join(feature_names), artifact_file="feature_names.txt")
     mlflow.log_param(
@@ -113,7 +125,7 @@ def train_task(cfg, train_ds):
     )
     surrogate_model.fit(train_ds)
     log_train_model(surrogate=surrogate_model)
-    return preprocessor, surrogate_model
+    return surrogate_model
 
 
 def eval_flow(
@@ -145,7 +157,7 @@ def main_flow(cfg: DictConfig):
 
     logger.info("start generate train data")
     train_ds = generate_dataset_flow("train", cfg)
-    preprocessor, surrogate_model = train_task(cfg, train_ds)
+    surrogate_model = train_task(cfg, train_ds)
 
     for name in cfg.datasets.keys():
         logger.info("start to eval_flow")
