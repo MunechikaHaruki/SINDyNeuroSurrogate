@@ -115,13 +115,18 @@ def generate_dataset_flow(dataset_key, cfg):
 
 @task
 def train_task(cfg, train_ds):
+    from base_hh import compute_theta, hh_sindy
+
     # 2. Train Preprocessor
     preprocessor = PCAPreProcessorWrapper()
     preprocessor.fit(train_xr_dataset=train_ds)
 
     # 3. Train Model
     surrogate_model = SINDySurrogateWrapper(
-        cfg.models["surrogate"], preprocessor=preprocessor
+        cfg.models["surrogate"],
+        preprocessor=preprocessor,
+        sindy=hh_sindy,
+        compute_theta=compute_theta,
     )
     surrogate_model.fit(train_ds)
     log_train_model(surrogate=surrogate_model)

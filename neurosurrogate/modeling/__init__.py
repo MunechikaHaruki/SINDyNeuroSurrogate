@@ -160,7 +160,9 @@ class PCAPreProcessorWrapper:
 
 
 class SINDySurrogateWrapper:
-    def __init__(self, cfg, preprocessor):
+    def __init__(self, cfg, preprocessor, sindy, compute_theta):
+        self.sindy = sindy
+        self.compute_theta = compute_theta
         self.cfg = cfg
         self.preprocessor = preprocessor
 
@@ -170,17 +172,15 @@ class SINDySurrogateWrapper:
             self.u_dataarray = train_xr_dataset["I_internal"].sel(direction="soma")
         else:
             self.u_dataarray = train_xr_dataset["I_ext"]
-        return self.train_dataarray.to_numpy(), self.u_dataarray.to_numpy()
 
     def fit(self, train_xr_dataset):
-        # fit
-        from neurosurrogate.utils.base_hh import hh_sindy, input_features
+        self._prepare_train_data(train_xr_dataset)
+        input_features = self.train_dataarray.coords["features"].values.tolist() + ["u"]
+        logger.critical(input_features)
 
-        self.sindy = hh_sindy
-        train, u = self._prepare_train_data(train_xr_dataset)
-        hh_sindy.fit(
-            train,
-            u=u,
+        self.sindy.fit(
+            self.train_dataarray.to_numpy(),
+            u=self.u_dataarray.to_numpy(),
             t=train_xr_dataset["time"].to_numpy(),
             feature_names=input_features,
         )
@@ -194,6 +194,7 @@ class SINDySurrogateWrapper:
             xi_matrix=self.sindy.coefficients(),
             params=params,
             dt=dt,
+            compute_theta=self.compute_theta,
         )
         logger.critical(f"{var.shape}")
         sindy_result = preprocess_dataset(

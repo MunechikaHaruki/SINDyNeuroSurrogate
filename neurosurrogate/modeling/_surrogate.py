@@ -3,11 +3,9 @@
 import numpy as np
 from numba import njit
 
-from ..utils.base_hh import compute_theta
-
 
 @njit
-def simulate_sindy(init, u, xi_matrix, dt, params):
+def simulate_sindy(init, u, xi_matrix, dt, params, compute_theta):
     """
     xi_matrix: SINDyで得られた model.coefficients() (shape: [n_vars, n_features])
     """
@@ -33,7 +31,7 @@ def simulate_sindy(init, u, xi_matrix, dt, params):
 
 
 @njit
-def simulate_three_comp_numba(init, u, xi_matrix, dt, params):
+def simulate_three_comp_numba(init, u, xi_matrix, dt, params, compute_theta):
     """
     init: [v_soma, latent, v_pre, v_post]
     xi_matrix: SINDyの係数行列
