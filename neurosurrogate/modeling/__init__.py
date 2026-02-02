@@ -160,21 +160,43 @@ class PCAPreProcessorWrapper:
 
 
 class SINDySurrogateWrapper:
-    def __init__(self, cfg, preprocessor, sindy, compute_theta):
-        self.sindy = sindy
-        self.compute_theta = compute_theta
+    def __init__(self, cfg, preprocessor, target_module):
+        self.target_module = target_module
+        self.sindy = target_module.hh_sindy
         self.cfg = cfg
         self.preprocessor = preprocessor
 
-    def _prepare_train_data(self, train_xr_dataset):
+    @staticmethod
+    def extract_compute_theta_from_sindy(sindy_model, target_module):
+        """
+        SINDyオブジェクトから特徴量計算式を抽出し、
+        Numbaでコンパイルされた関数を生成する。
+        """
+        feature_names = sindy_model.get_feature_names()
+        input_features = ",".join(sindy_model.feature_names)
+        # ソースコードの組み立て
+        array_content = ",\n".join(feature_names)
+        source = f"""
+@njit
+def dynamic_compute_theta({input_features}):
+    return np.array([
+        {array_content}
+    ]
+    )
+"""
+        logger.info(source)
+        # 実行環境のglobals()を引き継ぎ、alpha_mなどの関数を参照可能にする
+        local_vars = {}
+        exec(source, vars(target_module), local_vars)
+        return local_vars["dynamic_compute_theta"]
+
+    def fit(self, train_xr_dataset):
         self.train_dataarray = self.preprocessor.transform(train_xr_dataset)
         if self.cfg.direct is True:
             self.u_dataarray = train_xr_dataset["I_internal"].sel(direction="soma")
         else:
             self.u_dataarray = train_xr_dataset["I_ext"]
 
-    def fit(self, train_xr_dataset):
-        self._prepare_train_data(train_xr_dataset)
         input_features = self.train_dataarray.coords["features"].values.tolist() + ["u"]
         logger.critical(input_features)
 
@@ -183,6 +205,9 @@ class SINDySurrogateWrapper:
             u=self.u_dataarray.to_numpy(),
             t=train_xr_dataset["time"].to_numpy(),
             feature_names=input_features,
+        )
+        self.compute_theta = self.extract_compute_theta_from_sindy(
+            self.sindy, self.target_module
         )
 
     def predict(self, init, dt, u, data_type, params_dict):

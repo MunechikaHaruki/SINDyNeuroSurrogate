@@ -68,38 +68,6 @@ base = ps.CustomLibrary(
     function_names=[lambda x: f"{x}", lambda: "1"],
 )
 
-
-@njit
-def compute_theta(x0, x1, u0):
-    return np.array(
-        [
-            alpha_m(x0),
-            alpha_h(x0),
-            a_n(x0),
-            alpha_m(x0) * x1,
-            beta_m(x0) * x1,
-            alpha_h(x0) * x1,
-            beta_h(x0) * x1,
-            a_n(x0) * x1,
-            beta_n(x0) * x1,
-            (x0 * x0 * x0 * x1 * u0),
-            (x0 * x0 * x0 * x1),
-            (x0 * x0 * x0 * u0),
-            (x1 * x1 * x1 * u0),
-            (x0 * x0 * x0 * x0 * x1),
-            (x0 * x0 * x0 * x0 * u0),
-            (x1 * x1 * x1 * x1 * u0),
-            (x0 * x0 * x0 * x0),
-            (x1 * x1 * x1 * x1),
-            (u0 * u0 * u0 * u0),
-            x0,
-            x1,
-            u0,
-            1,
-        ]
-    )
-
-
 hh_sindy = ps.SINDy(
     feature_library=ps.GeneralizedLibrary(
         [gate, gate_product, volt_base, base],
