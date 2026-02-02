@@ -160,10 +160,9 @@ class PCAPreProcessorWrapper:
 
 
 class SINDySurrogateWrapper:
-    def __init__(self, cfg, preprocessor, target_module):
+    def __init__(self, preprocessor, target_module, sindy_name):
         self.target_module = target_module
-        self.sindy = target_module.hh_sindy
-        self.cfg = cfg
+        self.sindy = getattr(target_module, sindy_name)
         self.preprocessor = preprocessor
 
     @staticmethod
@@ -190,11 +189,11 @@ def dynamic_compute_theta({input_features}):
         exec(source, vars(target_module), local_vars)
         return local_vars["dynamic_compute_theta"]
 
-    def fit(self, train_xr_dataset):
+    def fit(self, train_xr_dataset, direct=False):
         self.train_dataarray = self.preprocessor.transform(train_xr_dataset)
-        if self.cfg.direct is True:
+        if direct is True:
             self.u_dataarray = train_xr_dataset["I_internal"].sel(direction="soma")
-        else:
+        elif direct is False:
             self.u_dataarray = train_xr_dataset["I_ext"]
 
         input_features = self.train_dataarray.coords["features"].values.tolist() + ["u"]
