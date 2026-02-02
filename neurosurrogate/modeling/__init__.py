@@ -9,13 +9,14 @@ from omegaconf import OmegaConf
 from sklearn.decomposition import PCA
 
 from ..utils.plots import plot_compartment_behavior, plot_diff, plot_simple
-from ._simulater import (
+from .numba_core import (
     HH_Params_numba,
     ThreeComp_Params_numba,
     hh3_simulate_numba,
     hh_simulate_numba,
+    simulate_sindy,
+    simulate_three_comp_numba,
 )
-from ._surrogate import simulate_sindy, simulate_three_comp_numba
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,7 @@ def dynamic_compute_theta({input_features}):
         expの演算回数が~~~,+の演算回数が~~~みたいに計算
         """
 
-        result = {"exp": 0, "pow": 0, "*": 0, "+": 0, "/": 0}
+        result = {"exp": 0, "pow": 0, "dot": 0, "plus": 0, "divide": 0}
 
         cost_map = {
             "alpha": {

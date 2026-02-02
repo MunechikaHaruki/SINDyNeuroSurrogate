@@ -2,7 +2,7 @@ import numpy as np
 import pysindy as ps
 from numba import njit
 
-from neurosurrogate.modeling._simulater import (
+from neurosurrogate.modeling.numba_core import (
     alpha_h,
     alpha_m,
     beta_h,
