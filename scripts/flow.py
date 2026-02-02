@@ -74,17 +74,16 @@ def log_train_model(surrogate):
     )
 
     nonzero_term_num = np.count_nonzero(coef)
-    nonzero_term_ratio = nonzero_term_num / coef.size
-
     mlflow.log_metrics(
         metrics={
             "nonzero_term_num": nonzero_term_num,
-            "nonzero_term_ratio": nonzero_term_ratio,
+            "nonzero_term_ratio": nonzero_term_num / coef.size,
         }
     )
-
-    feature_names = summary["feature_names"]
-    mlflow.log_text("\n".join(feature_names), artifact_file="feature_names.txt")
+    mlflow.log_metrics(summary["static_calc_cost"])
+    mlflow.log_text(
+        "\n".join(summary["feature_names"]), artifact_file="feature_names.txt"
+    )
     mlflow.log_param(
         "model_params",
         summary["model_params"],

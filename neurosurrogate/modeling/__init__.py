@@ -165,30 +165,6 @@ class SINDySurrogateWrapper:
         self.sindy = getattr(target_module, sindy_name)
         self.preprocessor = preprocessor
 
-    @staticmethod
-    def extract_compute_theta_from_sindy(sindy_model, target_module):
-        """
-        SINDyオブジェクトから特徴量計算式を抽出し、
-        Numbaでコンパイルされた関数を生成する。
-        """
-        feature_names = sindy_model.get_feature_names()
-        input_features = ",".join(sindy_model.feature_names)
-        # ソースコードの組み立て
-        array_content = ",\n".join(feature_names)
-        source = f"""
-@njit
-def dynamic_compute_theta({input_features}):
-    return np.array([
-        {array_content}
-    ]
-    )
-"""
-        logger.info(source)
-        # 実行環境のglobals()を引き継ぎ、alpha_mなどの関数を参照可能にする
-        local_vars = {}
-        exec(source, vars(target_module), local_vars)
-        return local_vars["dynamic_compute_theta"]
-
     def fit(self, train_xr_dataset, direct=False):
         self.train_dataarray = self.preprocessor.transform(train_xr_dataset)
         if direct is True:
@@ -259,6 +235,60 @@ def dynamic_compute_theta({input_features}):
             ),
         }
 
+    @staticmethod
+    def extract_compute_theta_from_sindy(sindy_model, target_module):
+        """
+        SINDyオブジェクトから特徴量計算式を抽出し、
+        Numbaでコンパイルされた関数を生成する。
+        """
+        feature_names = sindy_model.get_feature_names()
+        input_features = ",".join(sindy_model.feature_names)
+        # ソースコードの組み立て
+        array_content = ",\n".join(feature_names)
+        source = f"""
+@njit
+def dynamic_compute_theta({input_features}):
+    return np.array([
+        {array_content}
+    ]
+    )
+"""
+        logger.info(source)
+        # 実行環境のglobals()を引き継ぎ、alpha_mなどの関数を参照可能にする
+        local_vars = {}
+        exec(source, vars(target_module), local_vars)
+        return local_vars["dynamic_compute_theta"]
+
+    @staticmethod
+    def static_calc_cost(sindy_model):
+        """ "
+        expの演算回数が~~~,+の演算回数が~~~みたいに計算
+        """
+
+        result = {"exp": 0, "pow": 0, "*": 0, "+": 0, "/": 0}
+
+        cost_map = {
+            "alpha": {
+                "exp": 1,
+                "+": 2,
+            },
+            "beta": {},
+        }
+
+        # 係数が非ゼロのインデックスを取得
+        coefs = sindy_model.coefficients()
+        # 各変数（v, m, h等）の微分方程式において、一つでも非ゼロ係数を持つ項のマスク
+        active_mask = np.any(coefs != 0, axis=0)
+
+        # すべての特徴量名を取得し、アクティブなものだけに絞り込む
+        all_features = sindy_model.get_feature_names()
+        active_features = [f for i, f in enumerate(all_features) if active_mask[i]]
+
+        for name in active_features:
+            pass
+
+        return result
+
     def get_loggable_summary(self) -> dict:
         return {
             "equations": self.sindy.equations(precision=3),
@@ -268,4 +298,5 @@ def dynamic_compute_theta({input_features}):
             "train_figure": plot_compartment_behavior(
                 xarray=self.train_dataarray, u=self.u_dataarray
             ),
+            "static_calc_cost": self.static_calc_cost(self.sindy),
         }
