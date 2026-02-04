@@ -45,9 +45,6 @@ class ThreeComp_Params_numba:
         self.G_23 = params_dict.get("G_23", 0.7)
 
 
-# G_12=0.1, G_23=0.05
-
-
 @njit
 def alpha_m(v):
     return (2.5 - 0.1 * v) / (np.exp(2.5 - 0.1 * v) - 1.0)
@@ -115,17 +112,21 @@ def tau_n(v_rel):
 
 
 @njit
-def initialize_hh(var, p):
+def initialize_hh(p):
     v = p.E_REST
-    var[0] = v
     v_rel = v - p.E_REST
-    var[1] = m0(v_rel)
-    var[2] = h0(v_rel)
-    var[3] = n0(v_rel)
+    return np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)])
 
 
 @njit
-def solve_euler_hh(var, i_inj, p, DT):
+def initialize_hh3(p):
+    init_hh = initialize_hh(p.hh)
+    init_passiv_comp = np.array([p.hh.E_REST, p.hh.E_REST])
+    return np.concatenate((init_hh, init_passiv_comp))
+
+
+@njit
+def calc_deriv_hh(var, i_inj, p, dvar):
     v = var[0]
     m = var[1]
     h = var[2]
@@ -136,21 +137,15 @@ def solve_euler_hh(var, i_inj, p, DT):
     i_leak = p.G_LEAK * (v - p.E_LEAK)
     i_na = p.G_NA * m * m * m * h * (v - p.E_NA)
     i_k = p.G_K * n * n * n * n * (v - p.E_K)
-    var[0] += (-i_leak - i_na - i_k + i_inj) / p.C * DT
-    var[1] += (1.0 / tau_m(v_rel)) * (-m + m0(v_rel)) * DT
-    var[2] += (1.0 / tau_h(v_rel)) * (-h + h0(v_rel)) * DT
-    var[3] += (1.0 / tau_n(v_rel)) * (-n + n0(v_rel)) * DT
+    
+    dvar[0] = (-i_leak - i_na - i_k + i_inj) / p.C
+    dvar[1] = (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
+    dvar[2] = (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
+    dvar[3] = (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
 
 
 @njit
-def threecomp_initialize_unified(var, p):
-    initialize_hh(var, p.hh)
-    var[4] = p.hh.E_REST
-    var[5] = p.hh.E_REST
-
-
-@njit
-def solve_euler_threecomp_unified(var, i_inj, p, DT):
+def calc_deriv_threecomp_unified(var, i_inj, p, dvar):
     v_soma = var[0]
     v_pre = var[4]
     v_post = var[5]
@@ -158,34 +153,35 @@ def solve_euler_threecomp_unified(var, i_inj, p, DT):
     i_pre = p.G_12 * (v_pre - v_soma)
     i_post = p.G_23 * (v_soma - v_post)
 
-    solve_euler_hh(var, i_pre - i_post, p.hh, DT)
+    # Call calc_deriv_hh with a slice of dvar
+    calc_deriv_hh(var, i_pre - i_post, p.hh, dvar[:4])
 
-    var[4] += (-p.hh.G_LEAK * (v_pre - p.hh.E_LEAK) - i_pre + i_inj) / p.hh.C * DT
-    var[5] += (-p.hh.G_LEAK * (v_post - p.hh.E_LEAK) + i_post) / p.hh.C * DT
+    dvar[4] = (-p.hh.G_LEAK * (v_pre - p.hh.E_LEAK) - i_pre + i_inj) / p.hh.C
+    dvar[5] = (-p.hh.G_LEAK * (v_post - p.hh.E_LEAK) + i_post) / p.hh.C
 
 
 @njit
 def hh_simulate_numba(i_ext, p, DT):
-    n_vars = 4
     nt = len(i_ext)
-    results = np.zeros((nt, n_vars))
-    var = np.zeros(n_vars)
-    initialize_hh(var, p)
+    var = initialize_hh(p)
+    results = np.zeros((nt, len(var)))
+    dvar = np.zeros_like(var) # Allocate dvar once
     for i in range(nt):
-        solve_euler_hh(var, i_ext[i], p, DT)
+        calc_deriv_hh(var, i_ext[i], p, dvar) # Pass dvar
+        var += dvar * DT
         results[i, :] = var
     return results
 
 
 @njit
 def hh3_simulate_numba(i_ext, p, DT):
-    n_vars = 6
     nt = len(i_ext)
-    results = np.zeros((nt, n_vars))
-    var = np.zeros(n_vars)
-    threecomp_initialize_unified(var, p)
+    var = initialize_hh3(p)
+    results = np.zeros((nt, len(var)))
+    dvar = np.zeros_like(var) # Allocate dvar once
     for i in range(nt):
-        solve_euler_threecomp_unified(var, i_ext[i], p, DT)
+        calc_deriv_threecomp_unified(var, i_ext[i], p, dvar) # Pass dvar
+        var += dvar * DT
         results[i, :] = var
     return results
 
@@ -201,15 +197,8 @@ def simulate_sindy(init, u, xi_matrix, dt, params, compute_theta):
 
     curr_x = init.copy()
     for t in range(n_steps):
-        # x0=V, x1=m, u0=I_ext と仮定
-        # 特徴量ベクトルを生成
         theta = compute_theta(curr_x[0], curr_x[1], u[t])
-
-        # 微係数の計算: dx/dt = Xi @ Theta
-        # numpy.dot は Numba 内で高度に最適化される
         dot_product = xi_matrix @ theta
-
-        # 更新（オイラー法）
         curr_x += dot_product * dt
         x_history[t] = curr_x
 
