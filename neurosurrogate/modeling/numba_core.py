@@ -126,11 +126,13 @@ def initialize_hh3(p):
 
 
 @njit
-def calc_deriv_hh(var, i_inj, p, dvar):
-    v = var[0]
-    m = var[1]
-    h = var[2]
-    n = var[3]
+def calc_deriv_hh(curr_x, u_t, model_args, dvar):
+    p = model_args[0]
+
+    v = curr_x[0]
+    m = curr_x[1]
+    h = curr_x[2]
+    n = curr_x[3]
 
     v_rel = v - p.E_REST
 
@@ -138,36 +140,41 @@ def calc_deriv_hh(var, i_inj, p, dvar):
     i_na = p.G_NA * m * m * m * h * (v - p.E_NA)
     i_k = p.G_K * n * n * n * n * (v - p.E_K)
 
-    dvar[0] = (-i_leak - i_na - i_k + i_inj) / p.C
+    dvar[0] = (-i_leak - i_na - i_k + u_t) / p.C
     dvar[1] = (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
     dvar[2] = (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
     dvar[3] = (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
 
 
 @njit
-def calc_deriv_hh3(var, i_inj, p, dvar):
-    v_soma = var[0]
-    v_pre = var[4]
-    v_post = var[5]
+def calc_deriv_hh3(curr_x, u_t, model_args, dvar):
+    p = model_args[0]
+
+    v_soma = curr_x[0]
+    v_pre = curr_x[4]
+    v_post = curr_x[5]
 
     i_pre = p.G_12 * (v_pre - v_soma)
     i_post = p.G_23 * (v_soma - v_post)
 
-    # Call calc_deriv_hh with a slice of dvar
-    calc_deriv_hh(var, i_pre - i_post, p.hh, dvar[:4])
+    soma_model_args = (p.hh,)
+    calc_deriv_hh(curr_x, i_pre - i_post, soma_model_args, dvar[:4])
 
-    dvar[4] = (-p.hh.G_LEAK * (v_pre - p.hh.E_LEAK) - i_pre + i_inj) / p.hh.C
+    dvar[4] = (-p.hh.G_LEAK * (v_pre - p.hh.E_LEAK) - i_pre + u_t) / p.hh.C
     dvar[5] = (-p.hh.G_LEAK * (v_post - p.hh.E_LEAK) + i_post) / p.hh.C
 
 
 @njit
-def calc_deriv_sindy(curr_x, u_t, xi_matrix, compute_theta, dvar):
+def calc_deriv_sindy(curr_x, u_t, model_args, dvar):
+    xi_matrix, compute_theta = model_args
     theta = compute_theta(curr_x[0], curr_x[1], u_t)
     dvar[:] = xi_matrix @ theta
 
 
 @njit
-def calc_deriv_sindy_hh3(curr_x, u_t, xi_matrix, params, compute_theta, dvar):
+def calc_deriv_sindy_hh3(curr_x, u_t, model_args, dvar):
+    xi_matrix, params, compute_theta = model_args
+
     v_soma = curr_x[0]
     latent = curr_x[1]
     v_pre = curr_x[2]
@@ -189,29 +196,39 @@ def calc_deriv_sindy_hh3(curr_x, u_t, xi_matrix, params, compute_theta, dvar):
 
 
 @njit
+def generic_euler_solver(deriv_func, init, u, dt, model_args):
+    n_steps = len(u)
+    n_vars = len(init)
+    x_history = np.zeros((n_steps, n_vars))
+
+    curr_x = init.copy()
+    x_history[0] = curr_x
+    dvar = np.zeros(n_vars)
+
+    for t in range(n_steps - 1):
+        # 微分計算関数の呼び出し。model_argsはタプル。
+        deriv_func(curr_x, u[t], model_args, dvar)
+
+        # 状態更新
+        for i in range(n_vars):
+            curr_x[i] += dvar[i] * dt
+        x_history[t + 1] = curr_x
+
+    return x_history
+
+
+@njit
 def hh_simulate_numba(i_ext, p, DT):
-    nt = len(i_ext)
-    var = initialize_hh(p)
-    results = np.zeros((nt, len(var)))
-    dvar = np.zeros_like(var)  # Allocate dvar once
-    for i in range(nt):
-        calc_deriv_hh(var, i_ext[i], p, dvar)  # Pass dvar
-        var += dvar * DT
-        results[i, :] = var
-    return results
+    init = initialize_hh(p)
+    model_args = (p,)
+    return generic_euler_solver(calc_deriv_hh, init, i_ext, DT, model_args)
 
 
 @njit
 def hh3_simulate_numba(i_ext, p, DT):
-    nt = len(i_ext)
-    var = initialize_hh3(p)
-    results = np.zeros((nt, len(var)))
-    dvar = np.zeros_like(var)  # Allocate dvar once
-    for i in range(nt):
-        calc_deriv_hh3(var, i_ext[i], p, dvar)  # Pass dvar
-        var += dvar * DT
-        results[i, :] = var
-    return results
+    init = initialize_hh3(p)
+    model_args = (p,)
+    return generic_euler_solver(calc_deriv_hh3, init, i_ext, DT, model_args)
 
 
 @njit
@@ -219,18 +236,8 @@ def simulate_sindy(init, u, xi_matrix, dt, params, compute_theta):
     """
     xi_matrix: SINDyで得られた model.coefficients() (shape: [n_vars, n_features])
     """
-    n_steps = len(u)
-    n_vars = len(init)
-    x_history = np.empty((n_steps, n_vars))
-
-    curr_x = init.copy()
-    dvar = np.zeros_like(curr_x)  # Allocate dvar once
-    for t in range(n_steps):
-        calc_deriv_sindy(curr_x, u[t], xi_matrix, compute_theta, dvar)
-        curr_x += dvar * dt  # Integration step
-        x_history[t] = curr_x
-
-    return x_history
+    model_args = (xi_matrix, compute_theta)
+    return generic_euler_solver(calc_deriv_sindy, init, u, dt, model_args)
 
 
 @njit
@@ -239,18 +246,6 @@ def simulate_three_comp_numba(init, u, xi_matrix, dt, params, compute_theta):
     init: [v_soma, latent, v_pre, v_post]
     xi_matrix: SINDyの係数行列
     """
-    init = np.array([init[0], init[1], -65, -65])  # v,隠れ変数,v_pre,v_post
-    n_steps = len(u)
-    n_vars = init.shape[0]
-    x = np.zeros((n_steps, n_vars))
-    x[0] = init
-
-    curr_x = init.copy()  # Use curr_x for current state
-    dvar = np.zeros_like(curr_x)  # Allocate dvar once
-
-    for nt in range(n_steps - 1):
-        calc_deriv_sindy_hh3(curr_x, u[nt], xi_matrix, params, compute_theta, dvar)
-        curr_x += dvar * dt
-        x[nt + 1] = curr_x
-
-    return x
+    init_state = np.array([init[0], init[1], -65, -65])
+    model_args = (xi_matrix, params, compute_theta)
+    return generic_euler_solver(calc_deriv_sindy_hh3, init_state, u, dt, model_args)
