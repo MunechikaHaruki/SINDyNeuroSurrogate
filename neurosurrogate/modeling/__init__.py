@@ -2,110 +2,12 @@ import logging
 
 import numpy as np
 import xarray as xr
-from numba import types
-from numba.typed import Dict
-from omegaconf import OmegaConf
 from sklearn.decomposition import PCA
 
 from ..utils.plots import plot_compartment_behavior, plot_diff, plot_simple
-from .numba_core import (
-    PARAMS_REGISTRY,
-    SIMULATER_CONFIGS,
-    SURROGATER_CONFIGS,
-    generic_euler_solver,
-)
+from .numba_core import unified_simulater
 
 logger = logging.getLogger(__name__)
-
-
-def preprocess_dataset(
-    model_type: str,
-    i_ext,
-    results,
-    features,
-    params: Dict,
-    dt,
-    surrogate=False,
-):
-    dataset = xr.Dataset(
-        {
-            "vars": (
-                ("time", "features"),
-                results,
-            ),
-            "I_ext": (("time"), i_ext),
-        },
-        coords={
-            "time": np.arange(len(i_ext)) * dt,
-            "features": features,
-        },
-        attrs={
-            "model_type": model_type,
-            "surrogate": surrogate,
-            "gate_features": ["M", "H", "N"],
-            "params": params,
-            "dt": dt,
-        },
-    )
-
-    if model_type == "hh3":
-        I_pre = params["G_12"] * (
-            dataset["vars"].sel(features="V_pre")
-            - dataset["vars"].sel(features="V_soma")
-        )
-        I_post = params["G_23"] * (
-            dataset["vars"].sel(features="V_soma")
-            - dataset["vars"].sel(features="V_post")
-        )
-        I_soma = I_pre - I_post
-
-        dataset["I_internal"] = xr.concat(
-            [I_pre, I_post, I_soma], dim="direction"
-        ).assign_coords(direction=["pre", "post", "soma"])
-
-    return dataset
-
-
-def instantiate_OmegaConf_params(cfg, data_type):
-    if cfg is None:
-        py_dict = {}
-    else:
-        py_dict = OmegaConf.to_container(cfg, resolve=True)
-    nb_dict = Dict.empty(
-        key_type=types.unicode_type,
-        value_type=types.float64,
-    )
-    for k, v in py_dict.items():
-        nb_dict[k] = float(v)
-    return PARAMS_REGISTRY[data_type](nb_dict)
-
-
-def simulater(
-    neuron_cfg,
-    data_type,
-    DT,
-    i_ext,
-):
-    CONF = SIMULATER_CONFIGS[data_type]
-    params = instantiate_OmegaConf_params(neuron_cfg, data_type=data_type)
-
-    results = generic_euler_solver(
-        CONF["deriv_func"],
-        CONF["init_func"](params),
-        i_ext,
-        DT,
-        CONF["args_factory"](params),
-    )
-
-    return preprocess_dataset(
-        model_type=data_type,
-        i_ext=i_ext,
-        results=results,
-        features=CONF["features"],
-        params=neuron_cfg,
-        dt=DT,
-        surrogate=False,
-    )
 
 
 class PCAPreProcessorWrapper:
@@ -171,31 +73,19 @@ class SINDySurrogateWrapper:
 
     def predict(self, init, dt, u, data_type, params_dict):
         logger.info(f"{data_type}のサロゲートモデルをテスト")
-        params = instantiate_OmegaConf_params(params_dict, data_type=data_type)
-
-        CONF = SURROGATER_CONFIGS[data_type]
         if data_type == "hh3":
             init = np.array([init[0], init[1], -65, -65])
-        results = generic_euler_solver(
-            CONF["deriv_func"],
-            init,
-            u,
-            dt,
-            model_args=CONF["args_factory"](
-                self.sindy.coefficients(), params, self.compute_theta
-            ),
-        )
-        logger.critical(f"{results.shape}")
-        sindy_result = preprocess_dataset(
-            model_type=data_type,
-            i_ext=u,
-            results=results,
-            features=CONF["features"],
-            params=params_dict,
+
+        return unified_simulater(
             dt=dt,
-            surrogate=True,
+            u=u,
+            data_type=data_type,
+            params_dict=params_dict,
+            mode="surrogate",
+            init=init,
+            xi=self.sindy.coefficients(),
+            compute_theta=self.compute_theta,
         )
-        return sindy_result
 
     def eval(self, original_ds):
         transformed_dataarray = self.preprocessor.transform(original_ds)

@@ -1,6 +1,11 @@
+from typing import Literal
+
 import numpy as np
-from numba import float64, njit
+import xarray as xr
+from numba import float64, njit, types
 from numba.experimental import jitclass
+from numba.typed import Dict
+from omegaconf import OmegaConf
 
 # jitclass for HH parameters
 hh_params_spec = [
@@ -166,14 +171,14 @@ def calc_deriv_hh3(curr_x, u_t, model_args, dvar):
 
 @njit
 def calc_deriv_sindy(curr_x, u_t, model_args, dvar):
-    xi_matrix, compute_theta = model_args
+    params, xi_matrix, compute_theta = model_args
     theta = compute_theta(curr_x[0], curr_x[1], u_t)
     dvar[:] = xi_matrix @ theta
 
 
 @njit
 def calc_deriv_sindy_hh3(curr_x, u_t, model_args, dvar):
-    xi_matrix, params, compute_theta = model_args
+    params, xi_matrix, compute_theta = model_args
 
     v_soma = curr_x[0]
     latent = curr_x[1]
@@ -222,18 +227,31 @@ PARAMS_REGISTRY = {
     "hh3": ThreeComp_Params_numba,
 }
 
+
+def instantiate_OmegaConf_params(cfg, data_type):
+    if cfg is None:
+        py_dict = {}
+    else:
+        py_dict = OmegaConf.to_container(cfg, resolve=True)
+    nb_dict = Dict.empty(
+        key_type=types.unicode_type,
+        value_type=types.float64,
+    )
+    for k, v in py_dict.items():
+        nb_dict[k] = float(v)
+    return PARAMS_REGISTRY[data_type](nb_dict)
+
+
 SIMULATER_CONFIGS = {
     "hh": {
         "deriv_func": calc_deriv_hh,
         "features": ["V_soma", "M", "H", "N"],
         "init_func": lambda p: initialize_hh(p),
-        "args_factory": lambda p, **kwargs: (p,),
     },
     "hh3": {
         "deriv_func": calc_deriv_hh3,
         "features": ["V_soma", "M", "H", "N", "V_pre", "V_post"],
         "init_func": lambda p: initialize_hh3(p),
-        "args_factory": lambda p, **kwargs: (p,),
     },
 }
 
@@ -241,11 +259,89 @@ SURROGATER_CONFIGS = {
     "hh": {
         "deriv_func": calc_deriv_sindy,
         "features": ["V_soma", "latent1"],
-        "args_factory": lambda xi, p, func, **kwargs: (xi, func),
     },
     "hh3": {
         "deriv_func": calc_deriv_sindy_hh3,
         "features": ["V_soma", "latent1", "V_pre", "V_post"],
-        "args_factory": lambda xi, p, func, **kwargs: (xi, p, func),
     },
 }
+
+
+ModeType = Literal["simulate", "surrogate"]
+
+
+def unified_simulater(dt, u, data_type, params_dict, mode: ModeType, **kwargs):
+    params = instantiate_OmegaConf_params(params_dict, data_type=data_type)
+    if mode == "simulate":
+        CONF = SIMULATER_CONFIGS[data_type]
+        args = (params,)
+        init = CONF["init_func"](params)
+
+        surrogate = False
+    elif mode == "surrogate":
+        CONF = SURROGATER_CONFIGS[data_type]
+        args = (params, kwargs["xi"], kwargs["compute_theta"])
+        init = kwargs["init"]
+
+        surrogate = True
+    else:
+        raise TypeError("Unsupported mode was detected")
+
+    raw = generic_euler_solver(CONF["deriv_func"], init, u, dt, args)
+
+    def preprocess_dataset(
+        model_type: str,
+        i_ext,
+        results,
+        features,
+        params: Dict,
+        dt,
+        surrogate=False,
+    ):
+        dataset = xr.Dataset(
+            {
+                "vars": (
+                    ("time", "features"),
+                    results,
+                ),
+                "I_ext": (("time"), i_ext),
+            },
+            coords={
+                "time": np.arange(len(i_ext)) * dt,
+                "features": features,
+            },
+            attrs={
+                "model_type": model_type,
+                "surrogate": surrogate,
+                "gate_features": ["M", "H", "N"],
+                "params": params,
+                "dt": dt,
+            },
+        )
+
+        if model_type == "hh3":
+            I_pre = params["G_12"] * (
+                dataset["vars"].sel(features="V_pre")
+                - dataset["vars"].sel(features="V_soma")
+            )
+            I_post = params["G_23"] * (
+                dataset["vars"].sel(features="V_soma")
+                - dataset["vars"].sel(features="V_post")
+            )
+            I_soma = I_pre - I_post
+
+            dataset["I_internal"] = xr.concat(
+                [I_pre, I_post, I_soma], dim="direction"
+            ).assign_coords(direction=["pre", "post", "soma"])
+
+        return dataset
+
+    return preprocess_dataset(
+        model_type=data_type,
+        i_ext=u,
+        results=raw,
+        features=CONF["features"],
+        params=params_dict,
+        dt=dt,
+        surrogate=surrogate,
+    )

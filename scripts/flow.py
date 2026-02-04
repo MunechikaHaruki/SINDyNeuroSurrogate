@@ -11,8 +11,8 @@ from prefect import flow, get_run_logger, task
 from neurosurrogate.modeling import (
     PCAPreProcessorWrapper,
     SINDySurrogateWrapper,
-    simulater,
 )
+from neurosurrogate.modeling.numba_core import unified_simulater
 from neurosurrogate.utils.plots import plot_simple
 
 
@@ -57,7 +57,9 @@ def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed, DT):
     # Configuration setup
     data_type = dataset_cfg["data_type"]
     i_ext = hydra.utils.instantiate(dataset_cfg["current"], task_seed=task_seed)
-    return simulater(neuron_cfg=neuron_cfg, data_type=data_type, DT=DT, i_ext=i_ext)
+    return unified_simulater(
+        dt=DT, u=i_ext, data_type=data_type, params_dict=neuron_cfg, mode="simulate"
+    )
 
 
 @task
