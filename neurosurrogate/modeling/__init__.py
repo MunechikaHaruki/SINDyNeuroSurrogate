@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -10,36 +9,13 @@ from sklearn.decomposition import PCA
 
 from ..utils.plots import plot_compartment_behavior, plot_diff, plot_simple
 from .numba_core import (
-    HH_Params_numba,
-    ThreeComp_Params_numba,
-    hh3_simulate_numba,
-    hh_simulate_numba,
-    simulate_sindy,
-    simulate_three_comp_numba,
+    PARAMS_REGISTRY,
+    SIMULATER_CONFIGS,
+    SURROGATER_CONFIGS,
+    generic_euler_solver,
 )
 
 logger = logging.getLogger(__name__)
-
-PARAMS_REGISTRY = {
-    "hh": HH_Params_numba,
-    "hh3": ThreeComp_Params_numba,
-}
-SIMULATOR_REGISTRY = {
-    "hh": hh_simulate_numba,
-    "hh3": hh3_simulate_numba,
-}
-
-SIMULATOR_FEATURES: Dict[str, Dict[str, Any]] = {
-    "hh": ["V_soma", "M", "H", "N"],
-    "hh3": ["V_soma", "M", "H", "N", "V_pre", "V_post"],
-}
-
-SURROGATER_REGISTRY = {"hh": simulate_sindy, "hh3": simulate_three_comp_numba}
-
-SURROGATER_FEATURES = {
-    "hh": ["V_soma", "latent1"],
-    "hh3": ["V_soma", "latent1", "V_pre", "V_post"],
-}
 
 
 def preprocess_dataset(
@@ -51,13 +27,6 @@ def preprocess_dataset(
     dt,
     surrogate=False,
 ):
-    attrs = {
-        "model_type": model_type,
-        "surrogate": surrogate,
-        "gate_features": ["M", "H", "N"],
-        "params": params,
-        "dt": dt,
-    }
     dataset = xr.Dataset(
         {
             "vars": (
@@ -70,7 +39,13 @@ def preprocess_dataset(
             "time": np.arange(len(i_ext)) * dt,
             "features": features,
         },
-        attrs=attrs,
+        attrs={
+            "model_type": model_type,
+            "surrogate": surrogate,
+            "gate_features": ["M", "H", "N"],
+            "params": params,
+            "dt": dt,
+        },
     )
 
     if model_type == "hh3":
@@ -111,14 +86,22 @@ def simulater(
     DT,
     i_ext,
 ):
+    CONF = SIMULATER_CONFIGS[data_type]
     params = instantiate_OmegaConf_params(neuron_cfg, data_type=data_type)
-    results = SIMULATOR_REGISTRY[data_type](i_ext, params, DT)
-    # Preprocess the simulation data
+
+    results = generic_euler_solver(
+        CONF["deriv_func"],
+        CONF["init_func"](params),
+        i_ext,
+        DT,
+        CONF["args_factory"](params),
+    )
+
     return preprocess_dataset(
         model_type=data_type,
         i_ext=i_ext,
         results=results,
-        features=SIMULATOR_FEATURES[data_type],
+        features=CONF["features"],
         params=neuron_cfg,
         dt=DT,
         surrogate=False,
@@ -189,20 +172,25 @@ class SINDySurrogateWrapper:
     def predict(self, init, dt, u, data_type, params_dict):
         logger.info(f"{data_type}のサロゲートモデルをテスト")
         params = instantiate_OmegaConf_params(params_dict, data_type=data_type)
-        var = SURROGATER_REGISTRY[data_type](
-            init=init,
-            u=u,
-            xi_matrix=self.sindy.coefficients(),
-            params=params,
-            dt=dt,
-            compute_theta=self.compute_theta,
+
+        CONF = SURROGATER_CONFIGS[data_type]
+        if data_type == "hh3":
+            init = np.array([init[0], init[1], -65, -65])
+        results = generic_euler_solver(
+            CONF["deriv_func"],
+            init,
+            u,
+            dt,
+            model_args=CONF["args_factory"](
+                self.sindy.coefficients(), params, self.compute_theta
+            ),
         )
-        logger.critical(f"{var.shape}")
+        logger.critical(f"{results.shape}")
         sindy_result = preprocess_dataset(
             model_type=data_type,
             i_ext=u,
-            results=var,
-            features=SURROGATER_FEATURES[data_type],
+            results=results,
+            features=CONF["features"],
             params=params_dict,
             dt=dt,
             surrogate=True,

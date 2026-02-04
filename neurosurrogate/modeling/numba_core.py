@@ -217,35 +217,35 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
     return x_history
 
 
-@njit
-def hh_simulate_numba(i_ext, p, DT):
-    init = initialize_hh(p)
-    model_args = (p,)
-    return generic_euler_solver(calc_deriv_hh, init, i_ext, DT, model_args)
+PARAMS_REGISTRY = {
+    "hh": HH_Params_numba,
+    "hh3": ThreeComp_Params_numba,
+}
 
+SIMULATER_CONFIGS = {
+    "hh": {
+        "deriv_func": calc_deriv_hh,
+        "features": ["V_soma", "M", "H", "N"],
+        "init_func": lambda p: initialize_hh(p),
+        "args_factory": lambda p, **kwargs: (p,),
+    },
+    "hh3": {
+        "deriv_func": calc_deriv_hh3,
+        "features": ["V_soma", "M", "H", "N", "V_pre", "V_post"],
+        "init_func": lambda p: initialize_hh3(p),
+        "args_factory": lambda p, **kwargs: (p,),
+    },
+}
 
-@njit
-def hh3_simulate_numba(i_ext, p, DT):
-    init = initialize_hh3(p)
-    model_args = (p,)
-    return generic_euler_solver(calc_deriv_hh3, init, i_ext, DT, model_args)
-
-
-@njit
-def simulate_sindy(init, u, xi_matrix, dt, params, compute_theta):
-    """
-    xi_matrix: SINDyで得られた model.coefficients() (shape: [n_vars, n_features])
-    """
-    model_args = (xi_matrix, compute_theta)
-    return generic_euler_solver(calc_deriv_sindy, init, u, dt, model_args)
-
-
-@njit
-def simulate_three_comp_numba(init, u, xi_matrix, dt, params, compute_theta):
-    """
-    init: [v_soma, latent, v_pre, v_post]
-    xi_matrix: SINDyの係数行列
-    """
-    init_state = np.array([init[0], init[1], -65, -65])
-    model_args = (xi_matrix, params, compute_theta)
-    return generic_euler_solver(calc_deriv_sindy_hh3, init_state, u, dt, model_args)
+SURROGATER_CONFIGS = {
+    "hh": {
+        "deriv_func": calc_deriv_sindy,
+        "features": ["V_soma", "latent1"],
+        "args_factory": lambda xi, p, func, **kwargs: (xi, func),
+    },
+    "hh3": {
+        "deriv_func": calc_deriv_sindy_hh3,
+        "features": ["V_soma", "latent1", "V_pre", "V_post"],
+        "args_factory": lambda xi, p, func, **kwargs: (xi, p, func),
+    },
+}
