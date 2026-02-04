@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 from sklearn.decomposition import PCA
 
@@ -15,30 +16,55 @@ class PCAPreProcessorWrapper:
         self.pca = PCA(n_components=1)
 
     def fit(self, train_xr_dataset):
-        gate_features = train_xr_dataset.attrs["gate_features"]
-        train_gate_data = (
-            train_xr_dataset["vars"].sel(features=gate_features).to_numpy()
-        )
+        train_gate_data = train_xr_dataset["vars"].sel(gate=True).to_numpy()
         logger.info("Fitting preprocessor...")
         self.pca.fit(train_gate_data)
 
-    def transform(self, xr_data):
-        logger.critical(type(xr_data))
-        gate_features = xr_data.attrs["gate_features"]
-        xr_gate = xr_data["vars"].sel(features=gate_features).to_numpy()
-        transformed_gate = self.pca.transform(xr_gate)
-        V_data = xr_data["vars"].sel(features="V_soma").to_numpy().reshape(-1, 1)
-        new_vars = np.concatenate((V_data, transformed_gate), axis=1)
-        new_feature_names = ["V_soma"] + [
-            f"latent{i + 1}" for i in range(transformed_gate.shape[1])
-        ]
+    # def transform(self, xr_data):
+    #     logger.critical(type(xr_data))
+    #     xr_gate = xr_data["vars"].sel(gate=True).to_numpy()
+    #     transformed_gate = self.pca.transform(xr_gate)
+    #     V_data = xr_data["vars"].sel(variable="V_soma").to_numpy().reshape(-1, 1)
+    #     new_vars = np.concatenate((V_data, transformed_gate), axis=1)
+    #     new_feature_names = ["V_soma"] + [
+    #         f"latent{i + 1}" for i in range(transformed_gate.shape[1])
+    #     ]
 
+    #     return xr.DataArray(
+    #         data=new_vars,
+    #         dims=("time", "features"),
+    #         coords={
+    #             "time": xr_data.time,
+    #             "features": new_feature_names,
+    #         },
+    #         name="vars",
+    #         attrs=xr_data.attrs,
+    #     )
+
+    def transform(self, xr_data):
+        xr_gate = xr_data["vars"].sel(gate=True).to_numpy()
+        transformed_gate = self.pca.transform(xr_gate)
+        v_soma_da = xr_data["vars"].sel(variable="V_soma")
+        new_vars = np.concatenate(
+            (v_soma_da.to_numpy().reshape(-1, 1), transformed_gate), axis=1
+        )
+        n_latent = transformed_gate.shape[1]
+        comp_parts = ["soma"] + ["soma"] * n_latent
+        variables = ["V_soma"] + [f"latent{i + 1}" for i in range(n_latent)]
+        gate_flags = [False] + [True] * n_latent  # latent も gate 由来なので True
+
+        mindex = pd.MultiIndex.from_arrays(
+            [comp_parts, variables, gate_flags],
+            names=("compartment", "variable", "gate"),
+        )
+
+        # 4. 元の座標と属性を引き継いで DataArray を作成
         return xr.DataArray(
             data=new_vars,
             dims=("time", "features"),
             coords={
                 "time": xr_data.time,
-                "features": new_feature_names,
+                "features": mindex,  # ここで階層構造を復元
             },
             name="vars",
             attrs=xr_data.attrs,
@@ -58,7 +84,9 @@ class SINDySurrogateWrapper:
         elif direct is False:
             self.u_dataarray = train_xr_dataset["I_ext"]
 
-        input_features = self.train_dataarray.coords["features"].values.tolist() + ["u"]
+        input_features = self.train_dataarray.get_index("features").get_level_values(
+            "variable"
+        ).tolist() + ["u"]
         logger.critical(input_features)
 
         self.sindy.fit(

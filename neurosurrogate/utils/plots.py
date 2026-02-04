@@ -67,7 +67,7 @@ def plot_simple(ds):
     v_feats = ["V_pre", "V_soma", "V_post"] if model_type == "hh3" else ["V_soma"]
     configs.append(
         {
-            "data": [ds["vars"].sel(features=f) for f in v_feats],
+            "data": [ds["vars"].sel(variable=f) for f in v_feats],
             "legend": v_feats if len(v_feats) > 1 else None,
             "ylabel": "V(t)",
         }
@@ -77,7 +77,7 @@ def plot_simple(ds):
     g_feats = ["latent1"] if (ds.attrs["mode"] == "surrogate") else ["M", "H", "N"]
     configs.append(
         {
-            "data": [ds["vars"].sel(features=f) for f in g_feats],
+            "data": [ds["vars"].sel(variable=f) for f in g_feats],
             "legend": g_feats,
             "ylabel": "gates",
             "xlabel": "Time [ms]",
@@ -98,9 +98,9 @@ def plot_compartment_behavior(xarray, u):
 
     # 2. 各特徴量を個別の段として追加
     data_vars = xarray
-    for feature_name in data_vars.coords["features"].values:
+    for feature_name in data_vars.get_index("features").get_level_values("variable"):
         configs.append(
-            {"data": data_vars.sel(features=feature_name), "ylabel": str(feature_name)}
+            {"data": data_vars.sel(variable=feature_name), "ylabel": str(feature_name)}
         )
 
     # 最後の段にのみ X軸ラベルを設定
@@ -117,12 +117,12 @@ def plot_diff(original: xr.Dataset, preprocessed: xr.DataArray, surrogate: xr.Da
     )
 
     # 各特徴量の比較
-    for feature in preprocessed.coords["features"].values:
+    for feature in preprocessed.get_index("features").get_level_values("variable"):
         configs.append(
             {
                 "data": [
-                    preprocessed.sel(features=feature),
-                    surrogate.vars.sel(features=feature),
+                    preprocessed.sel(variable=feature),
+                    surrogate.vars.sel(variable=feature),
                 ],
                 "legend": [f"Original {feature}", f"Surrogate {feature}"],
                 "colors": ["blue", "red"],

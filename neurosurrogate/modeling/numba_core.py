@@ -245,12 +245,20 @@ def instantiate_OmegaConf_params(cfg, data_type):
 SIMULATER_CONFIGS = {
     "hh": {
         "deriv_func": calc_deriv_hh,
-        "features": ["V_soma", "M", "H", "N"],
+        "coords": {
+            "variable": ["V_soma", "M", "H", "N"],
+            "comp_part": ["soma", "soma", "soma", "soma"],
+            "gate": [False, True, True, True],
+        },
         "init_func": lambda p: initialize_hh(p),
     },
     "hh3": {
         "deriv_func": calc_deriv_hh3,
-        "features": ["V_soma", "M", "H", "N", "V_pre", "V_post"],
+        "coords": {
+            "variable": ["V_soma", "M", "H", "N", "V_pre", "V_post"],
+            "comp_part": ["soma", "soma", "soma", "soma", "dend", "axon"],
+            "gate": [False, True, True, True, False, False],
+        },
         "init_func": lambda p: initialize_hh3(p),
     },
 }
@@ -258,11 +266,19 @@ SIMULATER_CONFIGS = {
 SURROGATER_CONFIGS = {
     "hh": {
         "deriv_func": calc_deriv_sindy,
-        "features": ["V_soma", "latent1"],
+        "coords": {
+            "variable": ["V_soma", "latent1"],
+            "comp_part": ["soma", "soma"],
+            "gate": [False, True],
+        },
     },
     "hh3": {
         "deriv_func": calc_deriv_sindy_hh3,
-        "features": ["V_soma", "latent1", "V_pre", "V_post"],
+        "coords": {
+            "variable": ["V_soma", "latent1", "V_pre", "V_post"],
+            "comp_part": ["soma", "soma", "dend", "axon"],
+            "gate": [False, True, False, False],
+        },
     },
 }
 
@@ -295,29 +311,40 @@ def unified_simulater(dt, u, data_type, params_dict, mode: ModeType, **kwargs):
         },
         coords={
             "time": np.arange(len(u)) * dt,
-            "features": CONF["features"],
+            "features": CONF["coords"]["variable"],
         },
         attrs={
             "model_type": data_type,
             "mode": mode,
-            "gate_features": ["M", "H", "N"],
             "params": params_dict,
             "dt": dt,
         },
     )
+    dataset = dataset.assign_coords(
+        compartment=("features", CONF["coords"]["comp_part"]),
+        variable=("features", CONF["coords"]["variable"]),
+        gate=("features", CONF["coords"]["gate"]),
+    ).set_index(features=["compartment", "variable", "gate"])
 
     if data_type == "hh3":
-        I_pre = params.G_12 * (
-            dataset["vars"].sel(features="V_pre")
-            - dataset["vars"].sel(features="V_soma")
+        I_pre_np = params.G_12 * (
+            dataset["vars"].sel(variable="V_pre", drop=True).squeeze().values
+            - dataset["vars"].sel(variable="V_soma", drop=True).squeeze().values
         )
-        I_post = params.G_23 * (
-            dataset["vars"].sel(features="V_soma")
-            - dataset["vars"].sel(features="V_post")
+        I_post_np = params.G_23 * (
+            dataset["vars"].sel(variable="V_soma", drop=True).squeeze().values
+            - dataset["vars"].sel(variable="V_post", drop=True).squeeze().values
         )
-        I_soma = I_pre - I_post
+        I_soma_np = I_pre_np - I_post_np
 
-        dataset["I_internal"] = xr.concat(
-            [I_pre, I_post, I_soma], dim="direction"
-        ).assign_coords(direction=["pre", "post", "soma"])
+        internal_currents_data = np.stack([I_pre_np, I_post_np, I_soma_np], axis=0)
+        
+        dataset["I_internal"] = xr.DataArray(
+            internal_currents_data,
+            coords={
+                "direction": ["pre", "post", "soma"],
+                "time": dataset.time,
+            },
+            dims=["direction", "time"],
+        )
     return dataset
