@@ -276,72 +276,48 @@ def unified_simulater(dt, u, data_type, params_dict, mode: ModeType, **kwargs):
         CONF = SIMULATER_CONFIGS[data_type]
         args = (params,)
         init = CONF["init_func"](params)
-
-        surrogate = False
     elif mode == "surrogate":
         CONF = SURROGATER_CONFIGS[data_type]
         args = (params, kwargs["xi"], kwargs["compute_theta"])
         init = kwargs["init"]
-
-        surrogate = True
     else:
         raise TypeError("Unsupported mode was detected")
 
     raw = generic_euler_solver(CONF["deriv_func"], init, u, dt, args)
 
-    def preprocess_dataset(
-        model_type: str,
-        i_ext,
-        results,
-        features,
-        params: Dict,
-        dt,
-        surrogate=False,
-    ):
-        dataset = xr.Dataset(
-            {
-                "vars": (
-                    ("time", "features"),
-                    results,
-                ),
-                "I_ext": (("time"), i_ext),
-            },
-            coords={
-                "time": np.arange(len(i_ext)) * dt,
-                "features": features,
-            },
-            attrs={
-                "model_type": model_type,
-                "surrogate": surrogate,
-                "gate_features": ["M", "H", "N"],
-                "params": params,
-                "dt": dt,
-            },
-        )
-
-        if model_type == "hh3":
-            I_pre = params["G_12"] * (
-                dataset["vars"].sel(features="V_pre")
-                - dataset["vars"].sel(features="V_soma")
-            )
-            I_post = params["G_23"] * (
-                dataset["vars"].sel(features="V_soma")
-                - dataset["vars"].sel(features="V_post")
-            )
-            I_soma = I_pre - I_post
-
-            dataset["I_internal"] = xr.concat(
-                [I_pre, I_post, I_soma], dim="direction"
-            ).assign_coords(direction=["pre", "post", "soma"])
-
-        return dataset
-
-    return preprocess_dataset(
-        model_type=data_type,
-        i_ext=u,
-        results=raw,
-        features=CONF["features"],
-        params=params_dict,
-        dt=dt,
-        surrogate=surrogate,
+    dataset = xr.Dataset(
+        {
+            "vars": (
+                ("time", "features"),
+                raw,
+            ),
+            "I_ext": (("time"), u),
+        },
+        coords={
+            "time": np.arange(len(u)) * dt,
+            "features": CONF["features"],
+        },
+        attrs={
+            "model_type": data_type,
+            "mode": mode,
+            "gate_features": ["M", "H", "N"],
+            "params": params_dict,
+            "dt": dt,
+        },
     )
+
+    if data_type == "hh3":
+        I_pre = params.G_12 * (
+            dataset["vars"].sel(features="V_pre")
+            - dataset["vars"].sel(features="V_soma")
+        )
+        I_post = params.G_23 * (
+            dataset["vars"].sel(features="V_soma")
+            - dataset["vars"].sel(features="V_post")
+        )
+        I_soma = I_pre - I_post
+
+        dataset["I_internal"] = xr.concat(
+            [I_pre, I_post, I_soma], dim="direction"
+        ).assign_coords(direction=["pre", "post", "soma"])
+    return dataset

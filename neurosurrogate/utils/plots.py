@@ -46,7 +46,6 @@ def draw_engine(plot_configs, figsize_width=10):
 
 
 def plot_simple(ds):
-    surrogate = ds.attrs["surrogate"]
     model_type = ds.attrs["model_type"]
     configs = []
 
@@ -75,7 +74,7 @@ def plot_simple(ds):
     )
 
     # 4. Gates
-    g_feats = ["latent1"] if surrogate else ["M", "H", "N"]
+    g_feats = ["latent1"] if (ds.attrs["mode"] == "surrogate") else ["M", "H", "N"]
     configs.append(
         {
             "data": [ds["vars"].sel(features=f) for f in g_feats],
