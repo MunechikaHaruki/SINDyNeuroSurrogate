@@ -137,7 +137,7 @@ def calc_deriv_hh(var, i_inj, p, dvar):
     i_leak = p.G_LEAK * (v - p.E_LEAK)
     i_na = p.G_NA * m * m * m * h * (v - p.E_NA)
     i_k = p.G_K * n * n * n * n * (v - p.E_K)
-    
+
     dvar[0] = (-i_leak - i_na - i_k + i_inj) / p.C
     dvar[1] = (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
     dvar[2] = (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
@@ -145,7 +145,7 @@ def calc_deriv_hh(var, i_inj, p, dvar):
 
 
 @njit
-def calc_deriv_threecomp_unified(var, i_inj, p, dvar):
+def calc_deriv_hh3(var, i_inj, p, dvar):
     v_soma = var[0]
     v_pre = var[4]
     v_post = var[5]
@@ -161,13 +161,41 @@ def calc_deriv_threecomp_unified(var, i_inj, p, dvar):
 
 
 @njit
+def calc_deriv_sindy(curr_x, u_t, xi_matrix, compute_theta, dvar):
+    theta = compute_theta(curr_x[0], curr_x[1], u_t)
+    dvar[:] = xi_matrix @ theta
+
+
+@njit
+def calc_deriv_sindy_hh3(curr_x, u_t, xi_matrix, params, compute_theta, dvar):
+    v_soma = curr_x[0]
+    latent = curr_x[1]
+    v_pre = curr_x[2]
+    v_post = curr_x[3]
+
+    # 1. コンパートメント間の電流計算
+    I_pre = params.G_12 * (v_pre - v_soma)
+    I_post = params.G_23 * (v_soma - v_post)
+
+    # 2. SINDyモデルによる微分値の計算 (dx = Xi @ Theta)
+    theta = compute_theta(v_soma, latent, I_pre - I_post)
+
+    dvar[0] = xi_matrix[0] @ theta
+    dvar[1] = xi_matrix[1] @ theta
+    dvar[2] = (
+        -params.hh.G_LEAK * (v_pre - params.hh.E_LEAK) - I_pre + u_t
+    ) / params.hh.C
+    dvar[3] = (-params.hh.G_LEAK * (v_post - params.hh.E_LEAK) + I_post) / params.hh.C
+
+
+@njit
 def hh_simulate_numba(i_ext, p, DT):
     nt = len(i_ext)
     var = initialize_hh(p)
     results = np.zeros((nt, len(var)))
-    dvar = np.zeros_like(var) # Allocate dvar once
+    dvar = np.zeros_like(var)  # Allocate dvar once
     for i in range(nt):
-        calc_deriv_hh(var, i_ext[i], p, dvar) # Pass dvar
+        calc_deriv_hh(var, i_ext[i], p, dvar)  # Pass dvar
         var += dvar * DT
         results[i, :] = var
     return results
@@ -178,9 +206,9 @@ def hh3_simulate_numba(i_ext, p, DT):
     nt = len(i_ext)
     var = initialize_hh3(p)
     results = np.zeros((nt, len(var)))
-    dvar = np.zeros_like(var) # Allocate dvar once
+    dvar = np.zeros_like(var)  # Allocate dvar once
     for i in range(nt):
-        calc_deriv_threecomp_unified(var, i_ext[i], p, dvar) # Pass dvar
+        calc_deriv_hh3(var, i_ext[i], p, dvar)  # Pass dvar
         var += dvar * DT
         results[i, :] = var
     return results
@@ -196,10 +224,10 @@ def simulate_sindy(init, u, xi_matrix, dt, params, compute_theta):
     x_history = np.empty((n_steps, n_vars))
 
     curr_x = init.copy()
+    dvar = np.zeros_like(curr_x)  # Allocate dvar once
     for t in range(n_steps):
-        theta = compute_theta(curr_x[0], curr_x[1], u[t])
-        dot_product = xi_matrix @ theta
-        curr_x += dot_product * dt
+        calc_deriv_sindy(curr_x, u[t], xi_matrix, compute_theta, dvar)
+        curr_x += dvar * dt  # Integration step
         x_history[t] = curr_x
 
     return x_history
@@ -217,34 +245,12 @@ def simulate_three_comp_numba(init, u, xi_matrix, dt, params, compute_theta):
     x = np.zeros((n_steps, n_vars))
     x[0] = init
 
+    curr_x = init.copy()  # Use curr_x for current state
+    dvar = np.zeros_like(curr_x)  # Allocate dvar once
+
     for nt in range(n_steps - 1):
-        # 状態変数の展開
-        v_soma = x[nt, 0]
-        latent = x[nt, 1]
-        v_pre = x[nt, 2]
-        v_post = x[nt, 3]
-
-        # 1. コンパートメント間の電流計算
-        I_pre = params.G_12 * (v_pre - v_soma)
-        I_post = params.G_23 * (v_soma - v_post)
-
-        # 2. SINDyモデルによる微分値の計算 (dx = Xi @ Theta)
-        theta = compute_theta(v_soma, latent, I_pre - I_post)
-
-        # Euler法による更新
-        x[nt + 1, 0] = v_soma + dt * xi_matrix[0] @ theta
-        x[nt + 1, 1] = latent + dt * xi_matrix[1] @ theta
-        x[nt + 1, 2] = (
-            v_pre
-            + dt
-            * (-params.hh.G_LEAK * (v_pre - params.hh.E_LEAK) - I_pre + u[nt])
-            / params.hh.C
-        )
-        x[nt + 1, 3] = (
-            v_post
-            + dt
-            * (-params.hh.G_LEAK * (v_post - params.hh.E_LEAK) + I_post)
-            / params.hh.C
-        )
+        calc_deriv_sindy_hh3(curr_x, u[nt], xi_matrix, params, compute_theta, dvar)
+        curr_x += dvar * dt
+        x[nt + 1] = curr_x
 
     return x
