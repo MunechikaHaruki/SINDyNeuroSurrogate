@@ -82,7 +82,9 @@ def log_train_model(surrogate):
             "nonzero_term_ratio": nonzero_term_num / coef.size,
         }
     )
+
     mlflow.log_metrics(summary["static_calc_cost"])
+
     mlflow.log_text(
         "\n".join(summary["feature_names"]), artifact_file="feature_names.txt"
     )
