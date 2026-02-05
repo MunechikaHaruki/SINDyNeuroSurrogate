@@ -86,6 +86,10 @@ def log_train_model(surrogate):
     mlflow.log_text(
         "\n".join(summary["feature_names"]), artifact_file="feature_names.txt"
     )
+    mlflow.log_text(
+        "\n".join(summary["active_features"]), artifact_file="active_features.txt"
+    )
+
     mlflow.log_param(
         "model_params",
         summary["model_params"],
