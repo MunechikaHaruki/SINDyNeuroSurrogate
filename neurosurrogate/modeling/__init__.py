@@ -20,27 +20,6 @@ class PCAPreProcessorWrapper:
         logger.info("Fitting preprocessor...")
         self.pca.fit(train_gate_data)
 
-    # def transform(self, xr_data):
-    #     logger.critical(type(xr_data))
-    #     xr_gate = xr_data["vars"].sel(gate=True).to_numpy()
-    #     transformed_gate = self.pca.transform(xr_gate)
-    #     V_data = xr_data["vars"].sel(variable="V_soma").to_numpy().reshape(-1, 1)
-    #     new_vars = np.concatenate((V_data, transformed_gate), axis=1)
-    #     new_feature_names = ["V_soma"] + [
-    #         f"latent{i + 1}" for i in range(transformed_gate.shape[1])
-    #     ]
-
-    #     return xr.DataArray(
-    #         data=new_vars,
-    #         dims=("time", "features"),
-    #         coords={
-    #             "time": xr_data.time,
-    #             "features": new_feature_names,
-    #         },
-    #         name="vars",
-    #         attrs=xr_data.attrs,
-    #     )
-
     def transform(self, xr_data):
         xr_gate = xr_data["vars"].sel(gate=True).to_numpy()
         transformed_gate = self.pca.transform(xr_gate)

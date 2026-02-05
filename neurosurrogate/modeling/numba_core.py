@@ -1,6 +1,7 @@
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 from numba import float64, njit, types
 from numba.experimental import jitclass
@@ -301,17 +302,25 @@ def unified_simulater(dt, u, data_type, params_dict, mode: ModeType, **kwargs):
 
     raw = generic_euler_solver(CONF["deriv_func"], init, u, dt, args)
 
+    mindex = pd.MultiIndex.from_arrays(
+        [
+            CONF["coords"]["comp_part"],
+            CONF["coords"]["variable"],
+            CONF["coords"]["gate"],
+        ],
+        names=("compartment", "variable", "gate"),
+    )
+    mindex_coords = xr.Coordinates.from_pandas_multiindex(mindex, "features")
+
+    # 2. Dataset 作成時に一括で定義する
     dataset = xr.Dataset(
         {
-            "vars": (
-                ("time", "features"),
-                raw,
-            ),
+            "vars": (("time", "features"), raw),
             "I_ext": (("time"), u),
         },
         coords={
             "time": np.arange(len(u)) * dt,
-            "features": CONF["coords"]["variable"],
+            **mindex_coords,  # ここで一気にマルチインデックス化
         },
         attrs={
             "model_type": data_type,
@@ -320,11 +329,6 @@ def unified_simulater(dt, u, data_type, params_dict, mode: ModeType, **kwargs):
             "dt": dt,
         },
     )
-    dataset = dataset.assign_coords(
-        compartment=("features", CONF["coords"]["comp_part"]),
-        variable=("features", CONF["coords"]["variable"]),
-        gate=("features", CONF["coords"]["gate"]),
-    ).set_index(features=["compartment", "variable", "gate"])
 
     if data_type == "hh3":
         I_pre_np = params.G_12 * (
@@ -338,7 +342,7 @@ def unified_simulater(dt, u, data_type, params_dict, mode: ModeType, **kwargs):
         I_soma_np = I_pre_np - I_post_np
 
         internal_currents_data = np.stack([I_pre_np, I_post_np, I_soma_np], axis=0)
-        
+
         dataset["I_internal"] = xr.DataArray(
             internal_currents_data,
             coords={
