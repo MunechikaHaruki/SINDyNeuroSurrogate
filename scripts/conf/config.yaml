@@ -1,5 +1,5 @@
 defaults:
-  - experiment: exp3  # デフォルトで "experiment" グループの "hh.yaml" を読み込む
+  - experiment: default
   - _self_ # ショートカット定義は最後に設定
 
 hydra:
@@ -12,3 +12,19 @@ matplotlib_style: paper
 
 seed: 6
 simulater_dt: 0.01
+
+dataset_profiles:
+  hh_steady_values: [10, 7, 6.5, 6.3, 6.2, 5, 3, 0]
+  hh3_steady_values: [0, 3, 5, 15, 20]
+
+datasets:
+  random_hh3:
+    data_type: hh3
+    current:
+      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
+    seed: 9919
+  random_hh:
+    data_type: hh
+    current:
+      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
+    seed: 9919

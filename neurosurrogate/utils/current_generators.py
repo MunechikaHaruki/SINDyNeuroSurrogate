@@ -13,9 +13,9 @@ def current_decorator(func):
 
     def wrapper(*args, **kwargs):
         # Set random seeds for reproducibility
-        task_seed = kwargs.pop("task_seed", 0)
-        random.seed(task_seed)
-        np.random.seed(task_seed)
+        current_seed = kwargs.pop("current_seed", 0)
+        random.seed(current_seed)
+        np.random.seed(current_seed)
         iteration = kwargs.pop("iteration", DEFAULT_ITER)
         dset_i_ext = np.zeros(shape=(iteration,))
         func(dset_i_ext, iteration, *args, **kwargs)

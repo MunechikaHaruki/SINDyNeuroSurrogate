@@ -1,0 +1,49 @@
+# @package _global_
+
+defaults:
+  - _self_
+
+experiment_name: tryDifferentTeachingCurrent
+
+selected: exp3
+
+datasets:
+  train:
+    ${scenarios.${selected}}
+
+scenarios:
+  exp1:
+    data_type: hh
+    current:
+      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
+      iteration: 900000
+      baseline: 0
+  exp2:
+    data_type: hh
+    current:
+      _target_: neurosurrogate.utils.current_generators.hh_gauss_rand_pulse
+      iteration: 900000
+      mu: 6.2
+      sigma: 5
+      baseline: 0
+  exp3:
+    data_type: hh
+    current:
+      _target_: neurosurrogate.utils.current_generators.hh_discretized
+      iteration: 900000
+      options: [-5,1.3, 6.3,20]
+      weights: [0.3,1,1,1]
+      sigma: 1
+    seed: 991927697
+  exp4:
+    data_type: hh3
+    current:
+      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
+      iteration: 900000
+      baseline: 0
+  exp5:
+    data_type: hh3
+    current:
+      _target_: neurosurrogate.utils.current_generators.hh_steady
+      iteration: 900000
+      value: 20
