@@ -12,9 +12,3 @@ matplotlib_style: paper
 
 seed: 6
 simulater_dt: 0.01
-
-neurons:
-  hh:
-  hh3:
-    G_12: 1
-    G_23: 0.7

@@ -3,10 +3,8 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 import xarray as xr
-from numba import float64, njit, types
+from numba import float64, njit
 from numba.experimental import jitclass
-from numba.typed import Dict
-from omegaconf import OmegaConf
 
 from .hh_utils import h0, m0, n0, tau_h, tau_m, tau_n
 
@@ -26,15 +24,15 @@ hh_params_spec = [
 
 @jitclass(hh_params_spec)
 class HH_Params_numba:
-    def __init__(self, params_dict):
-        self.E_REST = params_dict.get("E_REST", -65.0)
-        self.C = params_dict.get("C", 1.0)
-        self.G_LEAK = params_dict.get("G_LEAK", 0.3)
-        self.E_LEAK = params_dict.get("E_LEAK", 10.6 - 65.0)
-        self.G_NA = params_dict.get("G_NA", 120.0)
-        self.E_NA = params_dict.get("E_NA", 115.0 - 65.0)
-        self.G_K = params_dict.get("G_K", 36.0)
-        self.E_K = params_dict.get("E_K", -12.0 - 65.0)
+    def __init__(self):
+        self.E_REST = -65.0
+        self.C = 1.0
+        self.G_LEAK = 0.3
+        self.E_LEAK = 10.6 - 65.0
+        self.G_NA = 120.0
+        self.E_NA = 115.0 - 65.0
+        self.G_K = 36.0
+        self.E_K = -12.0 - 65.0
 
 
 # jitclass for Three-compartment model parameters
@@ -47,10 +45,10 @@ threecomp_params_spec = [
 
 @jitclass(threecomp_params_spec)
 class ThreeComp_Params_numba:
-    def __init__(self, params_dict):
-        self.hh = HH_Params_numba(params_dict)
-        self.G_12 = params_dict.get("G_12", 1)
-        self.G_23 = params_dict.get("G_23", 0.7)
+    def __init__(self):
+        self.hh = HH_Params_numba()
+        self.G_12 = 1
+        self.G_23 = 0.7
 
 
 @njit
@@ -159,26 +157,6 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
     return x_history
 
 
-PARAMS_REGISTRY = {
-    "hh": HH_Params_numba,
-    "hh3": ThreeComp_Params_numba,
-}
-
-
-def instantiate_OmegaConf_params(cfg, data_type):
-    if cfg is None:
-        py_dict = {}
-    else:
-        py_dict = OmegaConf.to_container(cfg, resolve=True)
-    nb_dict = Dict.empty(
-        key_type=types.unicode_type,
-        value_type=types.float64,
-    )
-    for k, v in py_dict.items():
-        nb_dict[k] = float(v)
-    return PARAMS_REGISTRY[data_type](nb_dict)
-
-
 SIMULATER_CONFIGS = {
     "hh": {
         "deriv_func": calc_deriv_hh,
@@ -223,8 +201,12 @@ SURROGATER_CONFIGS = {
 ModeType = Literal["simulate", "surrogate"]
 
 
-def unified_simulater(dt, u, data_type, params_dict, mode: ModeType, **kwargs):
-    params = instantiate_OmegaConf_params(params_dict, data_type=data_type)
+def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
+    if data_type == "hh":
+        params = HH_Params_numba()
+    elif data_type == "hh3":
+        params = ThreeComp_Params_numba()
+
     if mode == "simulate":
         CONF = SIMULATER_CONFIGS[data_type]
         args = (params,)
@@ -261,7 +243,6 @@ def unified_simulater(dt, u, data_type, params_dict, mode: ModeType, **kwargs):
         attrs={
             "model_type": data_type,
             "mode": mode,
-            "params": params_dict,
             "dt": dt,
         },
     )

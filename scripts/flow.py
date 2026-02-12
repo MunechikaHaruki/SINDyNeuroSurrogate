@@ -50,16 +50,15 @@ def generate_complex_hash(*args, **kwargs) -> str:
 @task(
     cache_key_fn=lambda context, params: str(params["task_seed"]), persist_result=True
 )
-def generate_single_dataset(dataset_cfg, neuron_cfg, task_seed, DT):
+def generate_single_dataset(dataset_cfg, task_seed, DT):
     """
     Simulates a neuron model based on configurations and preprocesses the result into a dataset.
     """
     # Configuration setup
     data_type = dataset_cfg["data_type"]
+    task_seed = 991927697
     i_ext = hydra.utils.instantiate(dataset_cfg["current"], task_seed=task_seed)
-    return unified_simulater(
-        dt=DT, u=i_ext, data_type=data_type, params_dict=neuron_cfg, mode="simulate"
-    )
+    return unified_simulater(dt=DT, u=i_ext, data_type=data_type, mode="simulate")
 
 
 @task
@@ -102,16 +101,13 @@ def log_train_model(surrogate):
 def generate_dataset_flow(dataset_key, cfg):
     dataset_cfg = cfg.datasets[dataset_key]
     data_type = dataset_cfg.data_type
-    neuron_cfg = cfg.neurons.get(data_type)
 
     task_seed = generate_complex_hash(
         dataset_cfg,
-        neuron_cfg,
         cfg.seed,
     )
     ds = generate_single_dataset(
         dataset_cfg=dataset_cfg,
-        neuron_cfg=neuron_cfg,
         task_seed=int(task_seed, 16) % (2**32),
         DT=cfg.simulater_dt,
     )

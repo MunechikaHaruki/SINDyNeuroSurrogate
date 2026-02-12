@@ -79,7 +79,7 @@ class SINDySurrogateWrapper:
             self.sindy, self.target_module
         )
 
-    def predict(self, init, dt, u, data_type, params_dict):
+    def predict(self, init, dt, u, data_type):
         logger.info(f"{data_type}のサロゲートモデルをテスト")
         if data_type == "hh3":
             init = np.array([init[0], init[1], -65, -65])
@@ -88,7 +88,6 @@ class SINDySurrogateWrapper:
             dt=dt,
             u=u,
             data_type=data_type,
-            params_dict=params_dict,
             mode="surrogate",
             init=init,
             xi=self.sindy.coefficients(),
@@ -102,7 +101,6 @@ class SINDySurrogateWrapper:
             dt=float(original_ds.attrs["dt"]),
             u=original_ds["I_ext"].to_numpy(),
             data_type=original_ds.attrs["model_type"],
-            params_dict=original_ds.attrs["params"],
         )
 
         if original_ds.attrs["model_type"] == "hh":
