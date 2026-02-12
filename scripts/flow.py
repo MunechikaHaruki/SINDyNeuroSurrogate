@@ -121,7 +121,7 @@ def generate_dataset_flow(dataset_key, cfg):
 
 
 @task
-def train_task(cfg, train_ds):
+def train_task(train_ds):
     import base
 
     # 2. Train Preprocessor
@@ -134,7 +134,7 @@ def train_task(cfg, train_ds):
         target_module=base,
         sindy_name="hh_sindy",
     )
-    surrogate_model.fit(train_ds, direct=cfg.models.surrogate.direct)
+    surrogate_model.fit(train_ds)
     log_train_model(surrogate=surrogate_model)
     return surrogate_model
 
@@ -168,7 +168,7 @@ def main_flow(cfg: DictConfig):
 
     logger.info("start generate train data")
     train_ds = generate_dataset_flow("train", cfg)
-    surrogate_model = train_task(cfg, train_ds)
+    surrogate_model = train_task(train_ds)
 
     for name in cfg.datasets.keys():
         logger.info("start to eval_flow")

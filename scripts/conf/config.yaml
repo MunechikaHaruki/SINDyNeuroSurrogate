@@ -8,26 +8,13 @@ hydra:
   sweep:
     dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
 
+matplotlib_style: paper
+
 seed: 6
+simulater_dt: 0.01
 
 neurons:
   hh:
   hh3:
-    G_12: ${g_12}
-    G_23: ${g_23}
-
-simulater_dt: 0.01
-
-models:
-  surrogate:
-    params:
-      DT: ${simulater_dt}
-
-    direct: False
-
-matplotlib_style: paper
-
-# alias
-sc: False
-g_12: 1
-g_23: 0.7
+    G_12: 1
+    G_23: 0.7

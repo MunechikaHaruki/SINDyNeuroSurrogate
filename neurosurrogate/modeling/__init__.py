@@ -57,11 +57,11 @@ class SINDySurrogateWrapper:
         self.sindy = getattr(target_module, sindy_name)
         self.preprocessor = preprocessor
 
-    def fit(self, train_xr_dataset, direct=False):
+    def fit(self, train_xr_dataset):
         self.train_dataarray = self.preprocessor.transform(train_xr_dataset)
-        if direct is True:
+        if train_xr_dataset.attrs["model_type"] == "hh3":
             self.u_dataarray = train_xr_dataset["I_internal"].sel(direction="soma")
-        elif direct is False:
+        elif train_xr_dataset.attrs["model_type"] == "hh":
             self.u_dataarray = train_xr_dataset["I_ext"]
 
         input_features = self.train_dataarray.get_index("features").get_level_values(

@@ -12,16 +12,6 @@ datasets:
     current:
       _target_: neurosurrogate.utils.current_generators.hh_gauss_rand_pulse
       iteration: 900000
-      mu: ${m}
-      sigma: ${s}
-      baseline: ${b}
-
-m: 6.2
-s: 5
-b: 0
-
-hydra:
-  sweeper:
-    params:
-      s: 2,3,5,7
-      sc: False
+      mu: 6.2
+      sigma: 5
+      baseline: 0
