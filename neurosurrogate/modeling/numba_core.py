@@ -50,7 +50,7 @@ def initialize_hh3(p):
 
 @njit
 def calc_deriv_hh(curr_x, u_t, model_args, dvar):
-    p, G_matrix = model_args
+    p, G_matrix, _, _ = model_args
 
     v = curr_x[0]
     m = curr_x[1]
@@ -71,7 +71,7 @@ def calc_deriv_hh(curr_x, u_t, model_args, dvar):
 
 @njit
 def calc_deriv_hh3(curr_x, u_t, model_args, dvar):
-    p, G_matrix = model_args
+    p, G_matrix, _, _ = model_args
 
     v_soma = curr_x[0]
     v_pre = curr_x[4]
@@ -146,6 +146,16 @@ SIMULATER_CONFIGS = {
             "gate": [False, True, True, True],
         },
         "init_func": lambda p: initialize_hh(p),
+        "N": 1,
+        "connections": None,
+        "surrogate": {
+            "deriv_func": calc_deriv_sindy,
+            "coords": {
+                "variable": ["V_soma", "latent1"],
+                "comp_part": ["soma", "soma"],
+                "gate": [False, True],
+            },
+        },
     },
     "hh3": {
         "deriv_func": calc_deriv_hh3,
@@ -155,24 +165,22 @@ SIMULATER_CONFIGS = {
             "gate": [False, True, True, True, False, False],
         },
         "init_func": lambda p: initialize_hh3(p),
-    },
-}
-
-SURROGATER_CONFIGS = {
-    "hh": {
-        "deriv_func": calc_deriv_sindy,
-        "coords": {
-            "variable": ["V_soma", "latent1"],
-            "comp_part": ["soma", "soma"],
-            "gate": [False, True],
-        },
-    },
-    "hh3": {
-        "deriv_func": calc_deriv_sindy_hh3,
-        "coords": {
-            "variable": ["V_soma", "latent1", "V_pre", "V_post"],
-            "comp_part": ["soma", "soma", "dend", "axon"],
-            "gate": [False, True, False, False],
+        "N": 3,
+        "connections": [
+            (
+                0,
+                1,
+                1,
+            ),  # 接続情報のリスト（エッジリスト） 書式：(接続元インデックス, 接続先インデックス, コンダクタンス)
+            (1, 2, 0.7),
+        ],
+        "surrogate": {
+            "deriv_func": calc_deriv_sindy_hh3,
+            "coords": {
+                "variable": ["V_soma", "latent1", "V_pre", "V_post"],
+                "comp_part": ["soma", "soma", "dend", "axon"],
+                "gate": [False, True, False, False],
+            },
         },
     },
 }
@@ -191,42 +199,33 @@ ModeType = Literal["simulate", "surrogate"]
 
 
 def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
-    if data_type == "hh":
-        params = HH_Params_numba()
-        N = 1
-        connections = None
-    elif data_type == "hh3":
-        N = 3
-        connections = [
-            (
-                0,
-                1,
-                1,
-            ),  # 接続情報のリスト（エッジリスト） 書式：(接続元インデックス, 接続先インデックス, コンダクタンス)
-            (1, 2, 0.7),
-        ]
-        params = HH_Params_numba()
+    CONF = SIMULATER_CONFIGS[data_type]
+    params = HH_Params_numba()
 
+    connections = CONF["connections"]
+    N = CONF["N"]
     G_matrix = generate_G_matrix(connections, N)
 
     if mode == "simulate":
-        CONF = SIMULATER_CONFIGS[data_type]
-        args = (params, G_matrix)
+        args = (params, G_matrix, None, None)
         init = CONF["init_func"](params)
+        deriv_func = CONF["deriv_func"]
+        COORDS = CONF["coords"]
     elif mode == "surrogate":
-        CONF = SURROGATER_CONFIGS[data_type]
         args = (params, G_matrix, kwargs["xi"], kwargs["compute_theta"])
         init = kwargs["init"]
+        deriv_func = CONF["surrogate"]["deriv_func"]
+        COORDS = CONF["surrogate"]["coords"]
     else:
         raise TypeError("Unsupported mode was detected")
 
-    raw = generic_euler_solver(CONF["deriv_func"], init, u, dt, args)
+    raw = generic_euler_solver(deriv_func, init, u, dt, args)
 
     mindex = pd.MultiIndex.from_arrays(
         [
-            CONF["coords"]["comp_part"],
-            CONF["coords"]["variable"],
-            CONF["coords"]["gate"],
+            COORDS["comp_part"],
+            COORDS["variable"],
+            COORDS["gate"],
         ],
         names=("compartment", "variable", "gate"),
     )
