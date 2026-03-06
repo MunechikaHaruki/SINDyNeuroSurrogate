@@ -1,4 +1,5 @@
 # mypy: ignore-errors
+import numpy as np
 import xarray as xr
 from matplotlib.figure import Figure
 
@@ -46,43 +47,65 @@ def draw_engine(plot_configs, figsize_width=10):
 
 
 def plot_simple(ds):
-    model_type = ds.attrs["model_type"]
     configs = []
 
-    # 1. I_ext
-    configs.append({"data": ds["I_ext"], "ylabel": "I_ext(t)"})
+    # コンパートメントIDのリストを動的に取得 (例: [0, 1, 2])
+    # ※もしI_internalの次元が "node_id" のままなら、ここを "node_id" に読み替えてください
+    comp_ids = np.unique(ds.coords["comp_id"].values)
 
-    # 2. I_internal (hh3)
-    if model_type == "hh3" and "I_internal" in ds:
-        i_int = ds["I_internal"]
+    # 1. I_ext (外部電流)
+    configs.append({"data": ds["I_ext"], "ylabel": "I_ext"})
+
+    # 2. I_internal (内部電流 / トータル電流)
+    if "I_internal" in ds:
         configs.append(
             {
-                "data": [i_int.sel(direction=d) for d in i_int.direction.values],
-                "legend": i_int.direction.values.tolist(),
+                "data": [ds["I_internal"].sel(node_id=i) for i in comp_ids],
+                "legend": [f"Comp {i}" for i in comp_ids],
                 "ylabel": "I_internal",
             }
         )
 
-    # 3. V(t)
-    v_feats = ["V_pre", "V_soma", "V_post"] if model_type == "hh3" else ["V_soma"]
+    # 3. V(t) (膜電位)
+    # gate=False のデータを抽出し、各コンパートメントごとにリスト化
+    v_data = ds["vars"].sel(gate=False)
     configs.append(
         {
-            "data": [ds["vars"].sel(variable=f) for f in v_feats],
-            "legend": v_feats if len(v_feats) > 1 else None,
-            "ylabel": "V(t)",
+            "data": [v_data.sel(comp_id=i) for i in comp_ids],
+            "legend": [f"V (Comp {i})" for i in comp_ids]
+            if len(comp_ids) > 1
+            else None,
+            "ylabel": "V(t) [mV]",
         }
     )
 
-    # 4. Gates
-    g_feats = ["latent1"] if (ds.attrs["mode"] == "surrogate") else ["M", "H", "N"]
-    configs.append(
-        {
-            "data": [ds["vars"].sel(variable=f) for f in g_feats],
-            "legend": g_feats,
-            "ylabel": "gates",
-            "xlabel": "Time [ms]",
-        }
-    )
+    # 4. Gates / Latent (ゲート変数・潜在変数)
+    # gate=True のデータが存在する場合のみプロットを作成する
+    try:
+        g_data = ds["vars"].sel(gate=True)
+        g_plot_data = []
+        g_legends = []
+
+        # コンパートメントごとに、存在するゲート変数をすべて取り出す
+        for i in comp_ids:
+            # そのコンパートメントに存在する変数名のリストを取得 (例: ["M", "H", "N"] や ["latent1"])
+            vars_in_comp = np.unique(g_data.sel(comp_id=i).coords["variable"].values)
+
+            for v_name in vars_in_comp:
+                g_plot_data.append(g_data.sel(comp_id=i, variable=v_name))
+                g_legends.append(f"{v_name} (Comp {i})")
+
+        configs.append(
+            {
+                "data": g_plot_data,
+                "legend": g_legends,
+                "ylabel": "Gates / Latent",
+                "xlabel": "Time [ms]",
+            }
+        )
+    except KeyError:
+        # パッシブモデルなど、ゲート変数が一つもない場合はスキップ
+        pass
 
     return draw_engine(configs)
 

@@ -8,7 +8,6 @@ import numpy as np
 from prefect import flow, get_run_logger, task
 
 from neurosurrogate.modeling import (
-    PCAPreProcessorWrapper,
     SINDySurrogateWrapper,
 )
 from neurosurrogate.modeling.numba_core import unified_simulater
@@ -127,13 +126,8 @@ def generate_dataset_flow(dataset_key, datasets_cfg):
 def train_task(train_ds):
     import base
 
-    # 2. Train Preprocessor
-    preprocessor = PCAPreProcessorWrapper()
-    preprocessor.fit(train_xr_dataset=train_ds)
-
     # 3. Train Model
     surrogate_model = SINDySurrogateWrapper(
-        preprocessor=preprocessor,
         target_module=base,
         sindy_name="hh_sindy",
     )

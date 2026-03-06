@@ -141,18 +141,19 @@ SIMULATER_CONFIGS = {
     "hh": {
         "deriv_func": calc_deriv_hh,
         "coords": {
-            "variable": ["V_soma", "M", "H", "N"],
-            "comp_part": ["soma", "soma", "soma", "soma"],
+            "variable": ["V", "M", "H", "N"],
+            "comp_id": [0, 0, 0, 0],
             "gate": [False, True, True, True],
         },
         "init_func": lambda p: initialize_hh(p),
         "N": 1,
         "connections": None,
+        "stim_comp_id": 0,
         "surrogate": {
             "deriv_func": calc_deriv_sindy,
             "coords": {
-                "variable": ["V_soma", "latent1"],
-                "comp_part": ["soma", "soma"],
+                "variable": ["V", "latent1"],
+                "comp_id": [0, 0],
                 "gate": [False, True],
             },
         },
@@ -160,8 +161,8 @@ SIMULATER_CONFIGS = {
     "hh3": {
         "deriv_func": calc_deriv_hh3,
         "coords": {
-            "variable": ["V_soma", "M", "H", "N", "V_pre", "V_post"],
-            "comp_part": ["soma", "soma", "soma", "soma", "dend", "axon"],
+            "variable": ["V", "M", "H", "N", "V", "V"],
+            "comp_id": [1, 1, 1, 1, 0, 2],
             "gate": [False, True, True, True, False, False],
         },
         "init_func": lambda p: initialize_hh3(p),
@@ -174,11 +175,12 @@ SIMULATER_CONFIGS = {
             ),  # 接続情報のリスト（エッジリスト） 書式：(接続元インデックス, 接続先インデックス, コンダクタンス)
             (1, 2, 0.7),
         ],
+        "stim_comp_id": 1,
         "surrogate": {
             "deriv_func": calc_deriv_sindy_hh3,
             "coords": {
-                "variable": ["V_soma", "latent1", "V_pre", "V_post"],
-                "comp_part": ["soma", "soma", "dend", "axon"],
+                "variable": ["V", "latent1", "V_pre", "V_post"],
+                "comp_id": [1, 1, 0, 2],
                 "gate": [False, True, False, False],
             },
         },
@@ -223,11 +225,11 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
 
     mindex = pd.MultiIndex.from_arrays(
         [
-            COORDS["comp_part"],
+            COORDS["comp_id"],
             COORDS["variable"],
             COORDS["gate"],
         ],
-        names=("compartment", "variable", "gate"),
+        names=("comp_id", "variable", "gate"),
     )
     mindex_coords = xr.Coordinates.from_pandas_multiindex(mindex, "features")
 
@@ -248,25 +250,23 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
         },
     )
 
-    if data_type == "hh3":
-        I_pre_np = G_matrix[0][1] * (
-            dataset["vars"].sel(variable="V_pre", drop=True).squeeze().values
-            - dataset["vars"].sel(variable="V_soma", drop=True).squeeze().values
-        )
-        I_post_np = G_matrix[1][2] * (
-            dataset["vars"].sel(variable="V_soma", drop=True).squeeze().values
-            - dataset["vars"].sel(variable="V_post", drop=True).squeeze().values
-        )
-        I_soma_np = I_pre_np - I_post_np
+    # コンパートメント間を流れる電流の系間を流れる電流の計算
+    v_dataset = dataset["vars"].sel(gate=False).sortby("comp_id")
+    V_data = v_dataset.values  # 形状: (time, N)
+    I_internal_np = (V_data @ G_matrix) - (V_data * np.sum(G_matrix, axis=1))
 
-        internal_currents_data = np.stack([I_pre_np, I_post_np, I_soma_np], axis=0)
-
-        dataset["I_internal"] = xr.DataArray(
-            internal_currents_data,
-            coords={
-                "direction": ["pre", "post", "soma"],
-                "time": dataset.time,
-            },
-            dims=["direction", "time"],
-        )
+    # コンパートメントに対し、直接入力される電流をたす
+    I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
+    stim_idx = CONF.get("stim_comp_id", 0)  # 設定から注入先を取得
+    I_ext_2d[:, stim_idx] = u  # 指定されたコンパートメントにだけ u を流し込む
+    I_internal_np = I_internal_np + I_ext_2d
+    # xarray に格納
+    dataset["I_internal"] = xr.DataArray(
+        I_internal_np.T,  # (N, time) の形状にするため転置
+        coords={
+            "node_id": np.arange(N),
+            "time": dataset.time,
+        },
+        dims=["node_id", "time"],
+    )
     return dataset

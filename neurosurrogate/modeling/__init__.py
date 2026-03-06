@@ -16,29 +16,32 @@ class PCAPreProcessorWrapper:
     def __init__(self):
         self.pca = PCA(n_components=1)
 
-    def fit(self, train_xr_dataset):
-        train_gate_data = train_xr_dataset["vars"].sel(gate=True).to_numpy()
+    def fit(self, train_xr_dataset, target_comp_id):
+        train_gate_data = (
+            train_xr_dataset["vars"]
+            .sel(gate=True)
+            .sel(comp_id=target_comp_id)
+            .to_numpy()
+        )
         logger.info("Fitting preprocessor...")
         self.pca.fit(train_gate_data)
 
-    def transform(self, xr_data):
+    def transform(self, xr_data, target_comp_id):
         xr_gate = xr_data["vars"].sel(gate=True).to_numpy()
         transformed_gate = self.pca.transform(xr_gate)
-        v_soma_da = xr_data["vars"].sel(variable="V_soma")
+        v_soma_da = xr_data["vars"].sel(gate=False).sel(comp_id=target_comp_id)
         new_vars = np.concatenate(
             (v_soma_da.to_numpy().reshape(-1, 1), transformed_gate), axis=1
         )
         n_latent = transformed_gate.shape[1]
-        comp_parts = ["soma"] + ["soma"] * n_latent
-        variables = ["V_soma"] + [f"latent{i + 1}" for i in range(n_latent)]
+        variables = ["V"] + [f"latent{i + 1}" for i in range(n_latent)]
         gate_flags = [False] + [True] * n_latent  # latent も gate 由来なので True
-
         mindex = pd.MultiIndex.from_arrays(
-            [comp_parts, variables, gate_flags],
-            names=("compartment", "variable", "gate"),
+            [variables, gate_flags],
+            names=("variable", "gate"),
         )
 
-        # 4. 元の座標と属性を引き継いで DataArray を作成
+        # 元の座標と属性を引き継いで DataArray を作成
         return xr.DataArray(
             data=new_vars,
             dims=("time", "features"),
@@ -52,17 +55,22 @@ class PCAPreProcessorWrapper:
 
 
 class SINDySurrogateWrapper:
-    def __init__(self, preprocessor, target_module, sindy_name):
+    def __init__(self, target_module, sindy_name):
         self.target_module = target_module
         self.sindy = getattr(target_module, sindy_name)
-        self.preprocessor = preprocessor
+        self.preprocessor = PCAPreProcessorWrapper()
 
     def fit(self, train_xr_dataset):
-        self.train_dataarray = self.preprocessor.transform(train_xr_dataset)
         if train_xr_dataset.attrs["model_type"] == "hh3":
-            self.u_dataarray = train_xr_dataset["I_internal"].sel(direction="soma")
+            target_comp_id = 1
         elif train_xr_dataset.attrs["model_type"] == "hh":
-            self.u_dataarray = train_xr_dataset["I_ext"]
+            target_comp_id = 0
+        self.preprocessor.fit(train_xr_dataset, target_comp_id=target_comp_id)
+
+        self.train_dataarray = self.preprocessor.transform(
+            train_xr_dataset, target_comp_id=target_comp_id
+        )
+        self.u_dataarray = train_xr_dataset["I_internal"].sel(node_id=target_comp_id)
 
         input_features = self.train_dataarray.get_index("features").get_level_values(
             "variable"
@@ -95,7 +103,14 @@ class SINDySurrogateWrapper:
         )
 
     def eval(self, original_ds):
-        transformed_dataarray = self.preprocessor.transform(original_ds)
+        if original_ds.attrs["model_type"] == "hh3":
+            target_comp_id = 1
+        elif original_ds.attrs["model_type"] == "hh":
+            target_comp_id = 0
+
+        transformed_dataarray = self.preprocessor.transform(
+            original_ds, target_comp_id=target_comp_id
+        )
         predict_result = self.predict(
             init=transformed_dataarray[0].to_numpy(),
             dt=float(original_ds.attrs["dt"]),
@@ -103,10 +118,7 @@ class SINDySurrogateWrapper:
             data_type=original_ds.attrs["model_type"],
         )
 
-        if original_ds.attrs["model_type"] == "hh":
-            u_inj = original_ds["I_ext"].to_numpy()
-        elif original_ds.attrs["model_type"] == "hh3":
-            u_inj = original_ds["I_internal"].sel(direction="soma")
+        u_inj = original_ds["I_internal"].sel(node_id=target_comp_id)
 
         return {
             "surrogate_figure": plot_simple(predict_result),
