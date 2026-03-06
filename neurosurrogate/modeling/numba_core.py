@@ -8,21 +8,20 @@ from numba.experimental import jitclass
 
 from .hh_utils import h0, m0, n0, tau_h, tau_m, tau_n
 
-# jitclass for HH parameters
-hh_params_spec = [
-    ("E_REST", float64),
-    ("C", float64),
-    ("G_LEAK", float64),
-    ("E_LEAK", float64),
-    ("G_NA", float64),
-    ("E_NA", float64),
-    ("G_K", float64),
-    ("E_K", float64),
-    ("DT", float64),
-]
 
-
-@jitclass(hh_params_spec)
+@jitclass(
+    [
+        ("E_REST", float64),
+        ("C", float64),
+        ("G_LEAK", float64),
+        ("E_LEAK", float64),
+        ("G_NA", float64),
+        ("E_NA", float64),
+        ("G_K", float64),
+        ("E_K", float64),
+        ("DT", float64),
+    ]
+)
 class HH_Params_numba:
     def __init__(self):
         self.E_REST = -65.0
@@ -35,22 +34,6 @@ class HH_Params_numba:
         self.E_K = -12.0 - 65.0
 
 
-# jitclass for Three-compartment model parameters
-threecomp_params_spec = [
-    ("hh", HH_Params_numba.class_type.instance_type),
-    ("G_12", float64),
-    ("G_23", float64),
-]
-
-
-@jitclass(threecomp_params_spec)
-class ThreeComp_Params_numba:
-    def __init__(self):
-        self.hh = HH_Params_numba()
-        self.G_12 = 1
-        self.G_23 = 0.7
-
-
 @njit
 def initialize_hh(p):
     v = p.E_REST
@@ -60,14 +43,14 @@ def initialize_hh(p):
 
 @njit
 def initialize_hh3(p):
-    init_hh = initialize_hh(p.hh)
-    init_passiv_comp = np.array([p.hh.E_REST, p.hh.E_REST])
+    init_hh = initialize_hh(p)
+    init_passiv_comp = np.array([p.E_REST, p.E_REST])
     return np.concatenate((init_hh, init_passiv_comp))
 
 
 @njit
 def calc_deriv_hh(curr_x, u_t, model_args, dvar):
-    p = model_args[0]
+    p, G_matrix = model_args
 
     v = curr_x[0]
     m = curr_x[1]
@@ -88,32 +71,31 @@ def calc_deriv_hh(curr_x, u_t, model_args, dvar):
 
 @njit
 def calc_deriv_hh3(curr_x, u_t, model_args, dvar):
-    p = model_args[0]
+    p, G_matrix = model_args
 
     v_soma = curr_x[0]
     v_pre = curr_x[4]
     v_post = curr_x[5]
 
-    i_pre = p.G_12 * (v_pre - v_soma)
-    i_post = p.G_23 * (v_soma - v_post)
+    I_pre = G_matrix[0][1] * (v_pre - v_soma)
+    I_post = G_matrix[1][2] * (v_soma - v_post)
 
-    soma_model_args = (p.hh,)
-    calc_deriv_hh(curr_x, i_pre - i_post, soma_model_args, dvar[:4])
+    calc_deriv_hh(curr_x, I_pre - I_post, model_args, dvar[:4])
 
-    dvar[4] = (-p.hh.G_LEAK * (v_pre - p.hh.E_LEAK) - i_pre + u_t) / p.hh.C
-    dvar[5] = (-p.hh.G_LEAK * (v_post - p.hh.E_LEAK) + i_post) / p.hh.C
+    dvar[4] = (-p.G_LEAK * (v_pre - p.E_LEAK) - I_pre + u_t) / p.C
+    dvar[5] = (-p.G_LEAK * (v_post - p.E_LEAK) + I_post) / p.C
 
 
 @njit
 def calc_deriv_sindy(curr_x, u_t, model_args, dvar):
-    params, xi_matrix, compute_theta = model_args
+    params, G_matrix, xi_matrix, compute_theta = model_args
     theta = compute_theta(curr_x[0], curr_x[1], u_t)
     dvar[:] = xi_matrix @ theta
 
 
 @njit
 def calc_deriv_sindy_hh3(curr_x, u_t, model_args, dvar):
-    params, xi_matrix, compute_theta = model_args
+    params, G_matrix, xi_matrix, compute_theta = model_args
 
     v_soma = curr_x[0]
     latent = curr_x[1]
@@ -121,18 +103,16 @@ def calc_deriv_sindy_hh3(curr_x, u_t, model_args, dvar):
     v_post = curr_x[3]
 
     # 1. コンパートメント間の電流計算
-    I_pre = params.G_12 * (v_pre - v_soma)
-    I_post = params.G_23 * (v_soma - v_post)
+    I_pre = G_matrix[0][1] * (v_pre - v_soma)
+    I_post = G_matrix[1][2] * (v_soma - v_post)
 
     # 2. SINDyモデルによる微分値の計算 (dx = Xi @ Theta)
     theta = compute_theta(v_soma, latent, I_pre - I_post)
 
     dvar[0] = xi_matrix[0] @ theta
     dvar[1] = xi_matrix[1] @ theta
-    dvar[2] = (
-        -params.hh.G_LEAK * (v_pre - params.hh.E_LEAK) - I_pre + u_t
-    ) / params.hh.C
-    dvar[3] = (-params.hh.G_LEAK * (v_post - params.hh.E_LEAK) + I_post) / params.hh.C
+    dvar[2] = (-params.G_LEAK * (v_pre - params.E_LEAK) - I_pre + u_t) / params.C
+    dvar[3] = (-params.G_LEAK * (v_post - params.E_LEAK) + I_post) / params.C
 
 
 @njit
@@ -204,16 +184,29 @@ ModeType = Literal["simulate", "surrogate"]
 def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
     if data_type == "hh":
         params = HH_Params_numba()
+        G_matrix = np.zeros((0, 0), dtype=np.float64)
     elif data_type == "hh3":
-        params = ThreeComp_Params_numba()
+        N = 3
+        connections_threeComp = [
+            (
+                0,
+                1,
+                1,
+            ),  # 接続情報のリスト（エッジリスト） 書式：(接続元インデックス, 接続先インデックス, コンダクタンス)
+            (1, 2, 0.7),
+        ]
+        G_matrix = np.zeros((N, N), dtype=np.float64)
+        for i, j, g in connections_threeComp:
+            G_matrix[i, j] = G_matrix[j, i] = g
+        params = HH_Params_numba()
 
     if mode == "simulate":
         CONF = SIMULATER_CONFIGS[data_type]
-        args = (params,)
+        args = (params, G_matrix)
         init = CONF["init_func"](params)
     elif mode == "surrogate":
         CONF = SURROGATER_CONFIGS[data_type]
-        args = (params, kwargs["xi"], kwargs["compute_theta"])
+        args = (params, G_matrix, kwargs["xi"], kwargs["compute_theta"])
         init = kwargs["init"]
     else:
         raise TypeError("Unsupported mode was detected")
@@ -248,11 +241,11 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
     )
 
     if data_type == "hh3":
-        I_pre_np = params.G_12 * (
+        I_pre_np = G_matrix[0][1] * (
             dataset["vars"].sel(variable="V_pre", drop=True).squeeze().values
             - dataset["vars"].sel(variable="V_soma", drop=True).squeeze().values
         )
-        I_post_np = params.G_23 * (
+        I_post_np = G_matrix[1][2] * (
             dataset["vars"].sel(variable="V_soma", drop=True).squeeze().values
             - dataset["vars"].sel(variable="V_post", drop=True).squeeze().values
         )
