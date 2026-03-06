@@ -178,16 +178,26 @@ SURROGATER_CONFIGS = {
 }
 
 
+def generate_G_matrix(connections, N):
+    G_matrix = np.zeros((N, N), dtype=np.float64)
+    if N == 1 or connections is None:
+        return G_matrix
+    for i, j, g in connections:
+        G_matrix[i, j] = G_matrix[j, i] = g
+    return G_matrix
+
+
 ModeType = Literal["simulate", "surrogate"]
 
 
 def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
     if data_type == "hh":
         params = HH_Params_numba()
-        G_matrix = np.zeros((0, 0), dtype=np.float64)
+        N = 1
+        connections = None
     elif data_type == "hh3":
         N = 3
-        connections_threeComp = [
+        connections = [
             (
                 0,
                 1,
@@ -195,10 +205,9 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
             ),  # 接続情報のリスト（エッジリスト） 書式：(接続元インデックス, 接続先インデックス, コンダクタンス)
             (1, 2, 0.7),
         ]
-        G_matrix = np.zeros((N, N), dtype=np.float64)
-        for i, j, g in connections_threeComp:
-            G_matrix[i, j] = G_matrix[j, i] = g
         params = HH_Params_numba()
+
+    G_matrix = generate_G_matrix(connections, N)
 
     if mode == "simulate":
         CONF = SIMULATER_CONFIGS[data_type]
