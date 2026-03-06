@@ -43,9 +43,9 @@ def initialize_hh(p):
 
 @njit
 def initialize_hh3(p):
-    init_hh = initialize_hh(p)
-    init_passiv_comp = np.array([p.E_REST, p.E_REST])
-    return np.concatenate((init_hh, init_passiv_comp))
+    v = p.E_REST
+    v_rel = v - p.E_REST
+    return np.array([p.E_REST, v, p.E_REST, m0(v_rel), h0(v_rel), n0(v_rel)])
 
 
 @njit
@@ -70,20 +70,42 @@ def calc_deriv_hh(curr_x, u_t, model_args, dvar):
 
 
 @njit
+def calc_hh_channel(p, u_t, v, m, h, n):
+    v_rel = v - p.E_REST
+
+    i_leak = p.G_LEAK * (v - p.E_LEAK)
+    i_na = p.G_NA * m * m * m * h * (v - p.E_NA)
+    i_k = p.G_K * n * n * n * n * (v - p.E_K)
+
+    dv = (-i_leak - i_na - i_k + u_t) / p.C
+    dm = (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
+    dh = (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
+    dn = (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
+
+    return dv, dm, dh, dn
+
+
+@njit
 def calc_deriv_hh3(curr_x, u_t, model_args, dvar):
     p, G_matrix, _, _ = model_args
 
-    v_soma = curr_x[0]
-    v_pre = curr_x[4]
-    v_post = curr_x[5]
+    v_soma = curr_x[1]
+    v_pre = curr_x[0]
+    v_post = curr_x[2]
 
     I_pre = G_matrix[0][1] * (v_pre - v_soma)
     I_post = G_matrix[1][2] * (v_soma - v_post)
 
-    calc_deriv_hh(curr_x, I_pre - I_post, model_args, dvar[:4])
+    dv, dm, dh, dn = calc_hh_channel(
+        p, I_pre - I_post, v_soma, curr_x[3], curr_x[4], curr_x[5]
+    )
 
-    dvar[4] = (-p.G_LEAK * (v_pre - p.E_LEAK) - I_pre + u_t) / p.C
-    dvar[5] = (-p.G_LEAK * (v_post - p.E_LEAK) + I_post) / p.C
+    dvar[0] = (-p.G_LEAK * (v_pre - p.E_LEAK) - I_pre + u_t) / p.C
+    dvar[1] = dv
+    dvar[2] = (-p.G_LEAK * (v_post - p.E_LEAK) + I_post) / p.C
+    dvar[3] = dm
+    dvar[4] = dh
+    dvar[5] = dn
 
 
 @njit
@@ -97,10 +119,10 @@ def calc_deriv_sindy(curr_x, u_t, model_args, dvar):
 def calc_deriv_sindy_hh3(curr_x, u_t, model_args, dvar):
     params, G_matrix, xi_matrix, compute_theta = model_args
 
-    v_soma = curr_x[0]
-    latent = curr_x[1]
-    v_pre = curr_x[2]
-    v_post = curr_x[3]
+    v_soma = curr_x[1]
+    latent = curr_x[3]
+    v_pre = curr_x[0]
+    v_post = curr_x[2]
 
     # 1. コンパートメント間の電流計算
     I_pre = G_matrix[0][1] * (v_pre - v_soma)
@@ -109,10 +131,10 @@ def calc_deriv_sindy_hh3(curr_x, u_t, model_args, dvar):
     # 2. SINDyモデルによる微分値の計算 (dx = Xi @ Theta)
     theta = compute_theta(v_soma, latent, I_pre - I_post)
 
-    dvar[0] = xi_matrix[0] @ theta
-    dvar[1] = xi_matrix[1] @ theta
-    dvar[2] = (-params.G_LEAK * (v_pre - params.E_LEAK) - I_pre + u_t) / params.C
-    dvar[3] = (-params.G_LEAK * (v_post - params.E_LEAK) + I_post) / params.C
+    dvar[1] = xi_matrix[0] @ theta
+    dvar[3] = xi_matrix[1] @ theta
+    dvar[0] = (-params.G_LEAK * (v_pre - params.E_LEAK) - I_pre + u_t) / params.C
+    dvar[2] = (-params.G_LEAK * (v_post - params.E_LEAK) + I_post) / params.C
 
 
 @njit
@@ -126,6 +148,10 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
     dvar = np.zeros(n_vars)
 
     for t in range(n_steps - 1):
+        if t < 3:
+            print("Step:", t)
+            print("curr_x:", curr_x)
+            print("dvar:", dvar)
         # 微分計算関数の呼び出し。model_argsはタプル。
         deriv_func(curr_x, u[t], model_args, dvar)
 
@@ -161,9 +187,9 @@ SIMULATER_CONFIGS = {
     "hh3": {
         "deriv_func": calc_deriv_hh3,
         "coords": {
-            "variable": ["V", "M", "H", "N", "V", "V"],
-            "comp_id": [1, 1, 1, 1, 0, 2],
-            "gate": [False, True, True, True, False, False],
+            "variable": ["V_", "V", "V_", "M", "H", "N"],
+            "comp_id": [0, 1, 2, 1, 1, 1],
+            "gate": [False, False, False, True, True, True],
         },
         "init_func": lambda p: initialize_hh3(p),
         "N": 3,
@@ -175,13 +201,13 @@ SIMULATER_CONFIGS = {
             ),  # 接続情報のリスト（エッジリスト） 書式：(接続元インデックス, 接続先インデックス, コンダクタンス)
             (1, 2, 0.7),
         ],
-        "stim_comp_id": 1,
+        "stim_comp_id": 0,
         "surrogate": {
             "deriv_func": calc_deriv_sindy_hh3,
             "coords": {
-                "variable": ["V", "latent1", "V_pre", "V_post"],
-                "comp_id": [1, 1, 0, 2],
-                "gate": [False, True, False, False],
+                "variable": ["V_", "V", "V_", "latent1"],
+                "comp_id": [0, 1, 2, 1],
+                "gate": [False, False, False, True],
             },
         },
     },

@@ -90,7 +90,7 @@ class SINDySurrogateWrapper:
     def predict(self, init, dt, u, data_type):
         logger.info(f"{data_type}のサロゲートモデルをテスト")
         if data_type == "hh3":
-            init = np.array([init[0], init[1], -65, -65])
+            init = np.array([-65, init[0], -65, init[1]])
 
         return unified_simulater(
             dt=dt,
