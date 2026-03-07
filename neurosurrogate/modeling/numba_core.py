@@ -35,20 +35,6 @@ class HH_Params_numba:
 
 
 @njit
-def initialize_hh(p):
-    v = p.E_REST
-    v_rel = v - p.E_REST
-    return np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)])
-
-
-@njit
-def initialize_hh3(p):
-    v = p.E_REST
-    v_rel = v - p.E_REST
-    return np.array([p.E_REST, v, p.E_REST, m0(v_rel), h0(v_rel), n0(v_rel)])
-
-
-@njit
 def calc_hh_channel(p, u_t, v, curr_gate, dvar_gate):
     m = curr_gate[0]
     h = curr_gate[1]
@@ -67,6 +53,11 @@ def calc_hh_channel(p, u_t, v, curr_gate, dvar_gate):
 
 
 @njit
+def calc_passive_channel(p, u_t, v):
+    return (-p.G_LEAK * (v - p.E_LEAK) + u_t) / p.C
+
+
+@njit
 def calc_deriv_hh(curr_x, u_t, model_args, dvar):
     p, G_matrix, _, _ = model_args
     dvar[0] = calc_hh_channel(p, u_t, curr_x[0], curr_x[1:], dvar[1:])
@@ -82,9 +73,10 @@ def calc_deriv_hh3(curr_x, u_t, model_args, dvar):
 
     I_pre = G_matrix[0][1] * (v_pre - v_soma)
     I_post = G_matrix[1][2] * (v_soma - v_post)
-    dvar[0] = (-p.G_LEAK * (v_pre - p.E_LEAK) - I_pre + u_t) / p.C
+
+    dvar[0] = calc_passive_channel(p, -I_pre + u_t, v_pre)
     dvar[1] = calc_hh_channel(p, I_pre - I_post, v_soma, curr_x[3:6], dvar[3:6])
-    dvar[2] = (-p.G_LEAK * (v_post - p.E_LEAK) + I_post) / p.C
+    dvar[2] = calc_passive_channel(p, I_post, v_post)
 
 
 @njit
@@ -110,10 +102,10 @@ def calc_deriv_sindy_hh3(curr_x, u_t, model_args, dvar):
     # 2. SINDyモデルによる微分値の計算 (dx = Xi @ Theta)
     theta = compute_theta(v_soma, latent, I_pre - I_post)
 
+    dvar[0] = calc_passive_channel(params, -I_pre + u_t, v_pre)
     dvar[1] = xi_matrix[0] @ theta
+    dvar[2] = calc_passive_channel(params, I_post, v_post)
     dvar[3] = xi_matrix[1] @ theta
-    dvar[0] = (-params.G_LEAK * (v_pre - params.E_LEAK) - I_pre + u_t) / params.C
-    dvar[2] = (-params.G_LEAK * (v_post - params.E_LEAK) + I_post) / params.C
 
 
 @njit
@@ -142,6 +134,11 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
     return x_history
 
 
+E_REST = -65
+v = -65
+v_rel = v - E_REST
+
+
 SIMULATER_CONFIGS = {
     "hh": {
         "deriv_func": calc_deriv_hh,
@@ -150,7 +147,7 @@ SIMULATER_CONFIGS = {
             "comp_id": [0, 0, 0, 0],
             "gate": [False, True, True, True],
         },
-        "init_func": lambda p: initialize_hh(p),
+        "init": np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)]),
         "N": 1,
         "connections": None,
         "stim_comp_id": 0,
@@ -170,7 +167,7 @@ SIMULATER_CONFIGS = {
             "comp_id": [0, 1, 2, 1, 1, 1],
             "gate": [False, False, False, True, True, True],
         },
-        "init_func": lambda p: initialize_hh3(p),
+        "init": np.array([E_REST, v, E_REST, m0(v_rel), h0(v_rel), n0(v_rel)]),
         "N": 3,
         "connections": [
             (
@@ -215,7 +212,7 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
 
     if mode == "simulate":
         args = (params, G_matrix, None, None)
-        init = CONF["init_func"](params)
+        init = CONF["init"]
         deriv_func = CONF["deriv_func"]
         COORDS = CONF["coords"]
     elif mode == "surrogate":
