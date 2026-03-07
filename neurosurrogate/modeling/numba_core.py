@@ -49,28 +49,10 @@ def initialize_hh3(p):
 
 
 @njit
-def calc_deriv_hh(curr_x, u_t, model_args, dvar):
-    p, G_matrix, _, _ = model_args
-
-    v = curr_x[0]
-    m = curr_x[1]
-    h = curr_x[2]
-    n = curr_x[3]
-
-    v_rel = v - p.E_REST
-
-    i_leak = p.G_LEAK * (v - p.E_LEAK)
-    i_na = p.G_NA * m * m * m * h * (v - p.E_NA)
-    i_k = p.G_K * n * n * n * n * (v - p.E_K)
-
-    dvar[0] = (-i_leak - i_na - i_k + u_t) / p.C
-    dvar[1] = (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
-    dvar[2] = (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
-    dvar[3] = (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
-
-
-@njit
-def calc_hh_channel(p, u_t, v, m, h, n):
+def calc_hh_channel(p, u_t, v, curr_gate, dvar_gate):
+    m = curr_gate[0]
+    h = curr_gate[1]
+    n = curr_gate[2]
     v_rel = v - p.E_REST
 
     i_leak = p.G_LEAK * (v - p.E_LEAK)
@@ -78,11 +60,16 @@ def calc_hh_channel(p, u_t, v, m, h, n):
     i_k = p.G_K * n * n * n * n * (v - p.E_K)
 
     dv = (-i_leak - i_na - i_k + u_t) / p.C
-    dm = (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
-    dh = (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
-    dn = (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
+    dvar_gate[0] = (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
+    dvar_gate[1] = (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
+    dvar_gate[2] = (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
+    return dv
 
-    return dv, dm, dh, dn
+
+@njit
+def calc_deriv_hh(curr_x, u_t, model_args, dvar):
+    p, G_matrix, _, _ = model_args
+    dvar[0] = calc_hh_channel(p, u_t, curr_x[0], curr_x[1:], dvar[1:])
 
 
 @njit
@@ -95,17 +82,9 @@ def calc_deriv_hh3(curr_x, u_t, model_args, dvar):
 
     I_pre = G_matrix[0][1] * (v_pre - v_soma)
     I_post = G_matrix[1][2] * (v_soma - v_post)
-
-    dv, dm, dh, dn = calc_hh_channel(
-        p, I_pre - I_post, v_soma, curr_x[3], curr_x[4], curr_x[5]
-    )
-
     dvar[0] = (-p.G_LEAK * (v_pre - p.E_LEAK) - I_pre + u_t) / p.C
-    dvar[1] = dv
+    dvar[1] = calc_hh_channel(p, I_pre - I_post, v_soma, curr_x[3:6], dvar[3:6])
     dvar[2] = (-p.G_LEAK * (v_post - p.E_LEAK) + I_post) / p.C
-    dvar[3] = dm
-    dvar[4] = dh
-    dvar[5] = dn
 
 
 @njit
