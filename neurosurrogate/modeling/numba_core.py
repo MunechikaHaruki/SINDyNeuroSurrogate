@@ -59,52 +59,39 @@ def calc_passive_channel(p, u_t, v):
 
 @njit
 def calc_deriv_hh(curr_x, u_t, model_args, dvar):
-    p, G_matrix, _, _ = model_args
+    p, C_matrix, _, _ = model_args
     dvar[0] = calc_hh_channel(p, u_t, curr_x[0], curr_x[1:], dvar[1:])
 
 
 @njit
 def calc_deriv_hh3(curr_x, u_t, model_args, dvar):
-    p, G_matrix, _, _ = model_args
+    p, C_matrix, _, _ = model_args
 
-    v_soma = curr_x[1]
-    v_pre = curr_x[0]
-    v_post = curr_x[2]
+    I_internal_np = curr_x[:3] @ C_matrix
+    I_internal_np[0] = I_internal_np[0] + u_t
 
-    I_pre = G_matrix[0][1] * (v_pre - v_soma)
-    I_post = G_matrix[1][2] * (v_soma - v_post)
-
-    dvar[0] = calc_passive_channel(p, -I_pre + u_t, v_pre)
-    dvar[1] = calc_hh_channel(p, I_pre - I_post, v_soma, curr_x[3:6], dvar[3:6])
-    dvar[2] = calc_passive_channel(p, I_post, v_post)
+    dvar[0] = calc_passive_channel(p, I_internal_np[0], curr_x[0])
+    dvar[1] = calc_hh_channel(p, I_internal_np[1], curr_x[1], curr_x[3:6], dvar[3:6])
+    dvar[2] = calc_passive_channel(p, I_internal_np[2], curr_x[2])
 
 
 @njit
 def calc_deriv_sindy(curr_x, u_t, model_args, dvar):
-    params, G_matrix, xi_matrix, compute_theta = model_args
+    params, C_matrix, xi_matrix, compute_theta = model_args
     theta = compute_theta(curr_x[0], curr_x[1], u_t)
     dvar[:] = xi_matrix @ theta
 
 
 @njit
 def calc_deriv_sindy_hh3(curr_x, u_t, model_args, dvar):
-    params, G_matrix, xi_matrix, compute_theta = model_args
+    params, C_matrix, xi_matrix, compute_theta = model_args
 
-    v_soma = curr_x[1]
-    latent = curr_x[3]
-    v_pre = curr_x[0]
-    v_post = curr_x[2]
-
-    # 1. コンパートメント間の電流計算
-    I_pre = G_matrix[0][1] * (v_pre - v_soma)
-    I_post = G_matrix[1][2] * (v_soma - v_post)
-
-    # 2. SINDyモデルによる微分値の計算 (dx = Xi @ Theta)
-    theta = compute_theta(v_soma, latent, I_pre - I_post)
-
-    dvar[0] = calc_passive_channel(params, -I_pre + u_t, v_pre)
+    I_internal_np = curr_x[:3] @ C_matrix
+    I_internal_np[0] = I_internal_np[0] + u_t
+    theta = compute_theta(curr_x[1], curr_x[3], I_internal_np[1])
+    dvar[0] = calc_passive_channel(params, I_internal_np[0], curr_x[0])
     dvar[1] = xi_matrix[0] @ theta
-    dvar[2] = calc_passive_channel(params, I_post, v_post)
+    dvar[2] = calc_passive_channel(params, I_internal_np[2], curr_x[2])
     dvar[3] = xi_matrix[1] @ theta
 
 
@@ -209,14 +196,16 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
     connections = CONF["connections"]
     N = CONF["N"]
     G_matrix = generate_G_matrix(connections, N)
+    D_matrix = np.diag(np.sum(G_matrix, axis=1))
+    C_matrix = G_matrix - D_matrix  # 流入を正とするグラフラプラシアンの符号反転
 
     if mode == "simulate":
-        args = (params, G_matrix, None, None)
+        args = (params, C_matrix, None, None)
         init = CONF["init"]
         deriv_func = CONF["deriv_func"]
         COORDS = CONF["coords"]
     elif mode == "surrogate":
-        args = (params, G_matrix, kwargs["xi"], kwargs["compute_theta"])
+        args = (params, C_matrix, kwargs["xi"], kwargs["compute_theta"])
         init = kwargs["init"]
         deriv_func = CONF["surrogate"]["deriv_func"]
         COORDS = CONF["surrogate"]["coords"]
@@ -255,7 +244,7 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
     # コンパートメント間を流れる電流の系間を流れる電流の計算
     v_dataset = dataset["vars"].sel(gate=False).sortby("comp_id")
     V_data = v_dataset.values  # 形状: (time, N)
-    I_internal_np = (V_data @ G_matrix) - (V_data * np.sum(G_matrix, axis=1))
+    I_internal_np = V_data @ C_matrix
 
     # コンパートメントに対し、直接入力される電流をたす
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
