@@ -58,21 +58,31 @@ def calc_passive_channel(p, u_t, v):
 
 
 @njit
-def calc_deriv_hh(curr_x, u_t, model_args, dvar):
-    p, C_matrix, _, _ = model_args
-    dvar[0] = calc_hh_channel(p, u_t, curr_x[0], curr_x[1:], dvar[1:])
+def calc_universal_simulate(curr_x, u_t, model_args, dvar):
+    """物理モデル用の汎用微分計算エンジン"""
+    p, C_matrix, passive_ids, hh_ids, stim_idx, gate_offsets = model_args
+    N = C_matrix.shape[0]
 
+    # 1. 電位ベクトルの抽出と網内電流の計算 (グラフラプラシアン)
+    v_vec = curr_x[:N]
+    I_internal = v_vec @ C_matrix
+    I_internal[stim_idx] += u_t
 
-@njit
-def calc_deriv_hh3(curr_x, u_t, model_args, dvar):
-    p, C_matrix, _, _ = model_args
+    # 2. Passive コンパートメントの計算 (if分岐なしのSoA処理)
+    for i in passive_ids:
+        dvar[i] = calc_passive_channel(p, I_internal[i], v_vec[i])
 
-    I_internal_np = curr_x[:3] @ C_matrix
-    I_internal_np[0] = I_internal_np[0] + u_t
-
-    dvar[0] = calc_passive_channel(p, I_internal_np[0], curr_x[0])
-    dvar[1] = calc_hh_channel(p, I_internal_np[1], curr_x[1], curr_x[3:6], dvar[3:6])
-    dvar[2] = calc_passive_channel(p, I_internal_np[2], curr_x[2])
+    # 3. Hodgkin-Huxley コンパートメントの計算 (if分岐なしのSoA処理)
+    for i in hh_ids:
+        g_idx = gate_offsets[i]
+        # HHは m, h, n の3つのゲート変数を持つ前提
+        dvar[i] = calc_hh_channel(
+            p,
+            I_internal[i],
+            v_vec[i],
+            curr_x[g_idx : g_idx + 3],
+            dvar[g_idx : g_idx + 3],
+        )
 
 
 @njit
@@ -128,7 +138,6 @@ v_rel = v - E_REST
 
 SIMULATER_CONFIGS = {
     "hh": {
-        "deriv_func": calc_deriv_hh,
         "coords": {
             "variable": ["V", "M", "H", "N"],
             "comp_id": [0, 0, 0, 0],
@@ -138,6 +147,9 @@ SIMULATER_CONFIGS = {
         "N": 1,
         "connections": None,
         "stim_comp_id": 0,
+        "passiv_ids": np.array([], dtype=np.int32),
+        "hh_ids": np.array([0], dtype=np.int32),
+        "gate_offsets": np.array([1], dtype=np.int32),
         "surrogate": {
             "deriv_func": calc_deriv_sindy,
             "coords": {
@@ -148,7 +160,6 @@ SIMULATER_CONFIGS = {
         },
     },
     "hh3": {
-        "deriv_func": calc_deriv_hh3,
         "coords": {
             "variable": ["V_", "V", "V_", "M", "H", "N"],
             "comp_id": [0, 1, 2, 1, 1, 1],
@@ -165,6 +176,9 @@ SIMULATER_CONFIGS = {
             (1, 2, 0.7),
         ],
         "stim_comp_id": 0,
+        "passiv_ids": np.array([0, 2], dtype=np.int32),
+        "hh_ids": np.array([1], dtype=np.int32),
+        "gate_offsets": np.array([3, 3, 6], dtype=np.int32),
         "surrogate": {
             "deriv_func": calc_deriv_sindy_hh3,
             "coords": {
@@ -202,9 +216,16 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
     C_matrix = calc_graph_laplacian(connections, N)
 
     if mode == "simulate":
-        args = (params, C_matrix, None, None)
+        args = (
+            params,
+            C_matrix,
+            CONF["passiv_ids"],
+            CONF["hh_ids"],
+            CONF["stim_comp_id"],
+            CONF["gate_offsets"],
+        )
         init = CONF["init"]
-        deriv_func = CONF["deriv_func"]
+        deriv_func = calc_universal_simulate
         COORDS = CONF["coords"]
     elif mode == "surrogate":
         args = (params, C_matrix, kwargs["xi"], kwargs["compute_theta"])
