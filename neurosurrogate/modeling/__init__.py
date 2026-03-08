@@ -87,17 +87,17 @@ class SINDySurrogateWrapper:
             self.sindy, self.target_module
         )
 
-    def predict(self, init, dt, u, data_type):
+        self.gate_init = self.train_dataarray.to_numpy()[0][1:]
+
+    def predict(self, dt, u, data_type):
         logger.info(f"{data_type}のサロゲートモデルをテスト")
-        if data_type == "hh3":
-            init = np.array([-65, init[0], -65, init[1]])
 
         return unified_simulater(
             dt=dt,
             u=u,
             data_type=data_type,
             mode="surrogate",
-            init=init,
+            gate_init=self.gate_init,
             xi=self.sindy.coefficients(),
             compute_theta=self.compute_theta,
         )
@@ -112,7 +112,6 @@ class SINDySurrogateWrapper:
             original_ds, target_comp_id=target_comp_id
         )
         predict_result = self.predict(
-            init=transformed_dataarray[0].to_numpy(),
             dt=float(original_ds.attrs["dt"]),
             u=original_ds["I_ext"].to_numpy(),
             data_type=original_ds.attrs["model_type"],

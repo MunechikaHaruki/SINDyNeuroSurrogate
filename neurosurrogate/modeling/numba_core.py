@@ -298,7 +298,11 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
             kwargs["xi"],
             kwargs["compute_theta"],
         )
-        init = kwargs["init"]
+        gate_init = kwargs["gate_init"]
+        if data_type == "hh3":
+            init = np.concatenate(([-65, -65, -65], gate_init))
+        elif data_type == "hh":
+            init = np.concatenate(([-65], gate_init))
         deriv_func = calc_universal_surrogate
         COORD = COORDS["surrogate"][data_type]
     else:
