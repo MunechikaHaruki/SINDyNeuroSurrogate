@@ -177,13 +177,17 @@ SIMULATER_CONFIGS = {
 }
 
 
-def generate_G_matrix(connections, N):
+def calc_graph_laplacian(connections, N):
     G_matrix = np.zeros((N, N), dtype=np.float64)
     if N == 1 or connections is None:
-        return G_matrix
-    for i, j, g in connections:
-        G_matrix[i, j] = G_matrix[j, i] = g
-    return G_matrix
+        pass
+    else:
+        for i, j, g in connections:
+            G_matrix[i, j] = G_matrix[j, i] = g
+    D_matrix = np.diag(np.sum(G_matrix, axis=1))
+    C_matrix = G_matrix - D_matrix  # 流入を正とするグラフラプラシアンの符号反転
+
+    return C_matrix
 
 
 ModeType = Literal["simulate", "surrogate"]
@@ -195,9 +199,7 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
 
     connections = CONF["connections"]
     N = CONF["N"]
-    G_matrix = generate_G_matrix(connections, N)
-    D_matrix = np.diag(np.sum(G_matrix, axis=1))
-    C_matrix = G_matrix - D_matrix  # 流入を正とするグラフラプラシアンの符号反転
+    C_matrix = calc_graph_laplacian(connections, N)
 
     if mode == "simulate":
         args = (params, C_matrix, None, None)
