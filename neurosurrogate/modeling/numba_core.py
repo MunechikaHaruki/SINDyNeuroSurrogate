@@ -1,3 +1,4 @@
+import copy
 from typing import Literal
 
 import numpy as np
@@ -159,10 +160,6 @@ SIMULATER_CONFIGS = {
             "comp_id": [0, 0, 0, 0],
             "gate": [False, True, True, True],
         },
-        "init": np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)]),
-        "N": 1,
-        "connections": None,
-        "stim_comp_id": 0,
         "passiv_ids": np.array([], dtype=np.int32),
         "hh_ids": np.array([0], dtype=np.int32),
         "gate_offsets": np.array([1], dtype=np.int32),
@@ -180,17 +177,6 @@ SIMULATER_CONFIGS = {
             "comp_id": [0, 1, 2, 1, 1, 1],
             "gate": [False, False, False, True, True, True],
         },
-        "init": np.array([E_REST, v, E_REST, m0(v_rel), h0(v_rel), n0(v_rel)]),
-        "N": 3,
-        "connections": [
-            (
-                0,
-                1,
-                1,
-            ),  # 接続情報のリスト（エッジリスト） 書式：(接続元インデックス, 接続先インデックス, コンダクタンス)
-            (1, 2, 0.7),
-        ],
-        "stim_comp_id": 0,
         "passiv_ids": np.array([0, 2], dtype=np.int32),
         "hh_ids": np.array([1], dtype=np.int32),
         "gate_offsets": np.array([3, 3, 6], dtype=np.int32),
@@ -203,6 +189,78 @@ SIMULATER_CONFIGS = {
         },
     },
 }
+
+COMPARTMENT_TEMPLATES = {
+    "hh": {"init": np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)])},
+    "passive": {"init": np.array([E_REST])},
+}
+
+MC_MODELS = {
+    "hh": {
+        "nodes": ["hh"],
+        "edges": [],
+        "stim_node": 0,
+    },
+    "hh3": {
+        "nodes": ["passive", "hh", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7)],
+        "stim_node": 0,
+    },
+}
+
+SURROGATE_TARGET = {"hh": [0], "hh3": [1]}
+
+
+def get_surrogate_network(net: dict, surrogate_target: list):
+    surrogate_net = copy.deepcopy(net)
+    for target_idx in surrogate_target:
+        # ★ ノードの種類を "surrogate" 部品に書き換える
+        surrogate_net["nodes"][target_idx] = "surrogate"
+    return surrogate_net
+
+
+def build_indices(data_type: str):
+    """
+    ネットワーク配線図 (MC_MODELS) と 部品カタログ (COMPARTMENT_TEMPLATES) から
+    Numba用のインデックス配列と初期値配列を自動生成する。
+    """
+    net = MC_MODELS[data_type]
+    nodes = net["nodes"]
+    N = len(nodes)
+
+    gate_offsets = np.full(N, -1, dtype=np.int32)
+    init_list = []
+
+    # --- 修正1 & 2: 通常のリストとして初期化 ---
+    ids_list = {}
+    for k in COMPARTMENT_TEMPLATES.keys():
+        ids_list[k] = []
+
+    # [Pass 1] 全ノードのVの初期値を配置し、IDを振り分ける
+    for i, node_type in enumerate(nodes):
+        # 電位の初期値を追加
+        init_list.append(COMPARTMENT_TEMPLATES[node_type]["init"][0])
+        ids_list[node_type].append(i)  # 普通のリストなのでappend可能
+
+    # [Pass 2] ゲート変数のオフセット計算と初期値の配置
+    current_offset = N
+    for i, node_type in enumerate(nodes):
+        gate_inits = COMPARTMENT_TEMPLATES[node_type]["init"][1:]
+
+        # --- 修正3: ゲート変数が存在する場合のみオフセットを記録 ---
+        if len(gate_inits) > 0:
+            gate_offsets[i] = current_offset
+            init_list.extend(gate_inits)
+            current_offset += len(gate_inits)
+
+    # 最後に、集めたIDリストを一気にNumPy配列(int32)に変換する
+    ids = {k: np.array(v, dtype=np.int32) for k, v in ids_list.items()}
+
+    return {
+        "ids": ids,
+        "gate_offsets": gate_offsets,
+        "init": np.array(init_list, dtype=np.float64),
+    }
 
 
 def calc_graph_laplacian(connections, N):
@@ -222,36 +280,34 @@ ModeType = Literal["simulate", "surrogate"]
 
 
 def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
+    MC_MODEL = MC_MODELS[data_type]
     CONF = SIMULATER_CONFIGS[data_type]
     params = HH_Params_numba()
 
-    connections = CONF["connections"]
-    N = CONF["N"]
-    C_matrix = calc_graph_laplacian(connections, N)
+    N = len(MC_MODEL["nodes"])
+    C_matrix = calc_graph_laplacian(MC_MODEL["edges"], N)
 
     if mode == "simulate":
+        indice = build_indices(data_type)
+
         args = (
             params,
             C_matrix,
-            CONF["passiv_ids"],
-            CONF["hh_ids"],
-            CONF["stim_comp_id"],
-            CONF["gate_offsets"],
+            indice["ids"]["passive"],
+            indice["ids"]["hh"],
+            MC_MODEL["stim_node"],
+            indice["gate_offsets"],
         )
-        init = CONF["init"]
+        init = indice["init"]
         deriv_func = calc_universal_simulate
         COORDS = CONF["coords"]
     elif mode == "surrogate":
         args = (
             params,
             C_matrix,
-        )
-        args = (
-            params,
-            C_matrix,
             CONF["passiv_ids"],
             CONF["hh_ids"],
-            CONF["stim_comp_id"],
+            MC_MODEL["stim_node"],
             CONF["gate_offsets"],
             kwargs["xi"],
             kwargs["compute_theta"],
