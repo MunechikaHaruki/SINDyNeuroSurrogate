@@ -153,39 +153,29 @@ v = -65
 v_rel = v - E_REST
 
 
-SIMULATER_CONFIGS = {
-    "hh": {
-        "coords": {
+COORDS = {
+    "original": {
+        "hh": {
             "variable": ["V", "M", "H", "N"],
             "comp_id": [0, 0, 0, 0],
             "gate": [False, True, True, True],
         },
-        "passiv_ids": np.array([], dtype=np.int32),
-        "hh_ids": np.array([0], dtype=np.int32),
-        "gate_offsets": np.array([1], dtype=np.int32),
-        "surrogate": {
-            "coords": {
-                "variable": ["V", "latent1"],
-                "comp_id": [0, 0],
-                "gate": [False, True],
-            },
-        },
-    },
-    "hh3": {
-        "coords": {
+        "hh3": {
             "variable": ["V_", "V", "V_", "M", "H", "N"],
             "comp_id": [0, 1, 2, 1, 1, 1],
             "gate": [False, False, False, True, True, True],
         },
-        "passiv_ids": np.array([0, 2], dtype=np.int32),
-        "hh_ids": np.array([1], dtype=np.int32),
-        "gate_offsets": np.array([3, 3, 6], dtype=np.int32),
-        "surrogate": {
-            "coords": {
-                "variable": ["V_", "V", "V_", "latent1"],
-                "comp_id": [0, 1, 2, 1],
-                "gate": [False, False, False, True],
-            },
+    },
+    "surrogate": {
+        "hh": {
+            "variable": ["V", "latent1"],
+            "comp_id": [0, 0],
+            "gate": [False, True],
+        },
+        "hh3": {
+            "variable": ["V_", "V", "V_", "latent1"],
+            "comp_id": [0, 1, 2, 1],
+            "gate": [False, False, False, True],
         },
     },
 }
@@ -281,15 +271,12 @@ ModeType = Literal["simulate", "surrogate"]
 
 def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
     MC_MODEL = MC_MODELS[data_type]
-    CONF = SIMULATER_CONFIGS[data_type]
     params = HH_Params_numba()
 
     N = len(MC_MODEL["nodes"])
     C_matrix = calc_graph_laplacian(MC_MODEL["edges"], N)
-
+    indice = build_indices(data_type)
     if mode == "simulate":
-        indice = build_indices(data_type)
-
         args = (
             params,
             C_matrix,
@@ -300,21 +287,21 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
         )
         init = indice["init"]
         deriv_func = calc_universal_simulate
-        COORDS = CONF["coords"]
+        COORD = COORDS["original"][data_type]
     elif mode == "surrogate":
         args = (
             params,
             C_matrix,
-            CONF["passiv_ids"],
-            CONF["hh_ids"],
+            indice["ids"]["passive"],
+            indice["ids"]["hh"],
             MC_MODEL["stim_node"],
-            CONF["gate_offsets"],
+            indice["gate_offsets"],
             kwargs["xi"],
             kwargs["compute_theta"],
         )
         init = kwargs["init"]
         deriv_func = calc_universal_surrogate
-        COORDS = CONF["surrogate"]["coords"]
+        COORD = COORDS["surrogate"][data_type]
     else:
         raise TypeError("Unsupported mode was detected")
 
@@ -322,9 +309,9 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
 
     mindex = pd.MultiIndex.from_arrays(
         [
-            COORDS["comp_id"],
-            COORDS["variable"],
-            COORDS["gate"],
+            COORD["comp_id"],
+            COORD["variable"],
+            COORD["gate"],
         ],
         names=("comp_id", "variable", "gate"),
     )
@@ -354,7 +341,7 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
 
     # コンパートメントに対し、直接入力される電流をたす
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
-    stim_idx = CONF.get("stim_comp_id", 0)  # 設定から注入先を取得
+    stim_idx = MC_MODEL["stim_node"]  # 設定から注入先を取得
     I_ext_2d[:, stim_idx] = u  # 指定されたコンパートメントにだけ u を流し込む
     I_internal_np = I_internal_np + I_ext_2d
     # xarray に格納
