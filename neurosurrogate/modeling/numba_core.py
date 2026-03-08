@@ -155,33 +155,6 @@ v = -65
 v_rel = v - E_REST
 
 
-COORDS = {
-    "original": {
-        "hh": {
-            "variable": ["V", "M", "H", "N"],
-            "comp_id": [0, 0, 0, 0],
-            "gate": [False, True, True, True],
-        },
-        "hh3": {
-            "variable": ["V_", "V", "V_", "M", "H", "N"],
-            "comp_id": [0, 1, 2, 1, 1, 1],
-            "gate": [False, False, False, True, True, True],
-        },
-    },
-    "surrogate": {
-        "hh": {
-            "variable": ["V", "latent1"],
-            "comp_id": [0, 0],
-            "gate": [False, True],
-        },
-        "hh3": {
-            "variable": ["V_", "V", "V_", "latent1"],
-            "comp_id": [0, 1, 2, 1],
-            "gate": [False, False, False, True],
-        },
-    },
-}
-
 COMPARTMENT_TEMPLATES = {
     "hh": {
         "init": np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)]),
@@ -253,6 +226,10 @@ def build_indices(net: dict, compartments: dict):
     gate_offsets = np.full(N, -1, dtype=np.int32)
     init_list = []
 
+    coord_comp_id = []
+    coord_variable = []
+    coord_gate = []
+
     # --- 修正1 & 2: 通常のリストとして初期化 ---
     ids_list = {}
     for k in compartments.keys():
@@ -264,16 +241,30 @@ def build_indices(net: dict, compartments: dict):
         init_list.append(compartments[node_type]["init"][0])
         ids_list[node_type].append(i)  # 普通のリストなのでappend可能
 
+        coord_comp_id.append(i)
+        coord_variable.append(compartments[node_type]["vars"][0])  # 例: "V"
+        coord_gate.append(compartments[node_type]["gate"][0])  # 例: False
+
     # [Pass 2] ゲート変数のオフセット計算と初期値の配置
     current_offset = N
     for i, node_type in enumerate(nodes):
         gate_inits = compartments[node_type]["init"][1:]
 
-        # --- 修正3: ゲート変数が存在する場合のみオフセットを記録 ---
+        # ゲートの変数名とフラグを取得
+        gate_vars = compartments[node_type]["vars"][1:]
+        gate_flags = compartments[node_type]["gate"][1:]
+        # ゲート変数が存在する場合のみオフセットを記録
         if len(gate_inits) > 0:
             gate_offsets[i] = current_offset
             init_list.extend(gate_inits)
             current_offset += len(gate_inits)
+
+            # ゲートのラベル情報を追加
+            coord_comp_id.extend(
+                [i] * len(gate_inits)
+            )  # 例: [0, 0, 0] (m, h, nが全て同じcomp_id)
+            coord_variable.extend(gate_vars)  # 例: ["M", "H", "N"] または ["latent1"]
+            coord_gate.extend(gate_flags)  # 例: [True, True, True]
 
     # 最後に、集めたIDリストを一気にNumPy配列(int32)に変換する
     ids = {k: np.array(v, dtype=np.int32) for k, v in ids_list.items()}
@@ -282,6 +273,11 @@ def build_indices(net: dict, compartments: dict):
         "ids": ids,
         "gate_offsets": gate_offsets,
         "init": np.array(init_list, dtype=np.float64),
+        "coords": {
+            "comp_id": coord_comp_id,
+            "variable": coord_variable,
+            "gate": coord_gate,
+        },
     }
 
 
@@ -320,7 +316,6 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
         )
         init = indice["init"]
         deriv_func = calc_universal_simulate
-        COORD = COORDS["original"][data_type]
     elif mode == "surrogate":
         surr_net, surr_comp = get_surrogate_network(
             net, COMPARTMENT_TEMPLATES, SURROGATE_TARGET[data_type], kwargs["gate_init"]
@@ -338,17 +333,17 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
         )
         init = indice["init"]
         deriv_func = calc_universal_surrogate
-        COORD = COORDS["surrogate"][data_type]
     else:
         raise TypeError("Unsupported mode was detected")
 
     raw = generic_euler_solver(deriv_func, init, u, dt, args)
 
+    COORDS = indice["coords"]
     mindex = pd.MultiIndex.from_arrays(
         [
-            COORD["comp_id"],
-            COORD["variable"],
-            COORD["gate"],
+            COORDS["comp_id"],
+            COORDS["variable"],
+            COORDS["gate"],
         ],
         names=("comp_id", "variable", "gate"),
     )
