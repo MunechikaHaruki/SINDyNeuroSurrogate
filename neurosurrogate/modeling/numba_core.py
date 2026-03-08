@@ -209,12 +209,11 @@ def get_surrogate_network(net: dict, surrogate_target: list):
     return surrogate_net
 
 
-def build_indices(data_type: str):
+def build_indices(net: dict, compartments: dict):
     """
     ネットワーク配線図 (MC_MODELS) と 部品カタログ (COMPARTMENT_TEMPLATES) から
     Numba用のインデックス配列と初期値配列を自動生成する。
     """
-    net = MC_MODELS[data_type]
     nodes = net["nodes"]
     N = len(nodes)
 
@@ -223,19 +222,19 @@ def build_indices(data_type: str):
 
     # --- 修正1 & 2: 通常のリストとして初期化 ---
     ids_list = {}
-    for k in COMPARTMENT_TEMPLATES.keys():
+    for k in compartments.keys():
         ids_list[k] = []
 
     # [Pass 1] 全ノードのVの初期値を配置し、IDを振り分ける
     for i, node_type in enumerate(nodes):
         # 電位の初期値を追加
-        init_list.append(COMPARTMENT_TEMPLATES[node_type]["init"][0])
+        init_list.append(compartments[node_type]["init"][0])
         ids_list[node_type].append(i)  # 普通のリストなのでappend可能
 
     # [Pass 2] ゲート変数のオフセット計算と初期値の配置
     current_offset = N
     for i, node_type in enumerate(nodes):
-        gate_inits = COMPARTMENT_TEMPLATES[node_type]["init"][1:]
+        gate_inits = compartments[node_type]["init"][1:]
 
         # --- 修正3: ゲート変数が存在する場合のみオフセットを記録 ---
         if len(gate_inits) > 0:
@@ -270,19 +269,19 @@ ModeType = Literal["simulate", "surrogate"]
 
 
 def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
-    MC_MODEL = MC_MODELS[data_type]
+    net = MC_MODELS[data_type]
     params = HH_Params_numba()
 
-    N = len(MC_MODEL["nodes"])
-    C_matrix = calc_graph_laplacian(MC_MODEL["edges"], N)
-    indice = build_indices(data_type)
+    N = len(net["nodes"])
+    C_matrix = calc_graph_laplacian(net["edges"], N)
+    indice = build_indices(net, COMPARTMENT_TEMPLATES)
     if mode == "simulate":
         args = (
             params,
             C_matrix,
             indice["ids"]["passive"],
             indice["ids"]["hh"],
-            MC_MODEL["stim_node"],
+            net["stim_node"],
             indice["gate_offsets"],
         )
         init = indice["init"]
@@ -294,7 +293,7 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
             C_matrix,
             indice["ids"]["passive"],
             indice["ids"]["hh"],
-            MC_MODEL["stim_node"],
+            net["stim_node"],
             indice["gate_offsets"],
             kwargs["xi"],
             kwargs["compute_theta"],
@@ -341,7 +340,7 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
 
     # コンパートメントに対し、直接入力される電流をたす
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
-    stim_idx = MC_MODEL["stim_node"]  # 設定から注入先を取得
+    stim_idx = net["stim_node"]  # 設定から注入先を取得
     I_ext_2d[:, stim_idx] = u  # 指定されたコンパートメントにだけ u を流し込む
     I_internal_np = I_internal_np + I_ext_2d
     # xarray に格納
