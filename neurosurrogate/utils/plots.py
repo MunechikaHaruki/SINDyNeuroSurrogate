@@ -5,6 +5,9 @@ from matplotlib.figure import Figure
 
 
 def draw_engine(plot_configs, figsize_width=10):
+    # 時間軸のラベルを指定
+    plot_configs[-1]["xlabel"] = "Time [ms]"
+
     n_rows = len(plot_configs)
     fig = Figure(figsize=(figsize_width, 2 * n_rows))
     axs = fig.subplots(nrows=n_rows, ncols=1, sharex=True)
@@ -100,7 +103,6 @@ def plot_simple(ds):
                 "data": g_plot_data,
                 "legend": g_legends,
                 "ylabel": "Gates / Latent",
-                "xlabel": "Time [ms]",
             }
         )
     except KeyError:
@@ -126,32 +128,66 @@ def plot_compartment_behavior(xarray, u):
             {"data": data_vars.sel(variable=feature_name), "ylabel": str(feature_name)}
         )
 
-    # 最後の段にのみ X軸ラベルを設定
-    configs[-1]["xlabel"] = "Time step"
-
     return draw_engine(configs)
 
 
-def plot_diff(original: xr.Dataset, preprocessed: xr.DataArray, surrogate: xr.Dataset):
+def plot_diff(
+    original: xr.Dataset,
+    preprocessed: xr.DataArray,
+    surrogate: xr.Dataset,
+    surr_id=None,
+):
     configs = []
     # I_ext
     configs.append(
         {"data": original["I_ext"], "ylabel": "I_ext(t)", "colors": ["gold"]}
     )
+    if surr_id is None:
+        surr_id = surrogate.attrs["surr_ids"][0]
+    # originalとsurrogateのVの時間変化
+    orig_v = original["vars"].sel(comp_id=surr_id, variable="V").squeeze()
+    surr_v = surrogate["vars"].sel(comp_id=surr_id, variable="V").squeeze()
 
-    # 各特徴量の比較
-    for feature in preprocessed.get_index("features").get_level_values("variable"):
+    configs.append(
+        {
+            "data": [orig_v, surr_v],
+            "legend": ["Original V", "Surrogate V"],
+            "colors": ["blue", "red"],
+            "ylabel": "V [mV]",
+            "linestyle": ["-", "--"],  # 重なった時に見やすいように破線にする
+        }
+    )
+    # preprocessedとsurrogateのgate変数の時間変化
+    # PCAで抽出されたTarget(教師データ)と、SINDyが予測した軌道を重ねて比較
+    # preprocessed の featuresインデックスから "V" 以外の変数をすべて取得 (latent1, latent2...)
+    prep_vars = preprocessed.get_index("features").get_level_values("variable").tolist()
+    latent_vars = [v for v in prep_vars if v != "V"]
+
+    for latent in latent_vars:
+        prep_gate = preprocessed.sel(variable=latent).squeeze()
+        surr_gate = surrogate["vars"].sel(comp_id=surr_id, variable=latent).squeeze()
+
         configs.append(
             {
-                "data": [
-                    preprocessed.sel(variable=feature),
-                    surrogate.vars.sel(variable=feature),
-                ],
-                "legend": [f"Original {feature}", f"Surrogate {feature}"],
+                "data": [prep_gate, surr_gate],
+                "legend": [f"Target {latent}", f"Surrogate {latent}"],
                 "colors": ["blue", "red"],
-                "ylabel": feature,
+                "ylabel": f"Latent state ({latent})",
+                "linestyle": ["-", "--"],
             }
         )
+    # originalのgateの時間変化
+    orig_gates = original["vars"].sel(comp_id=surr_id, gate=True)
+    gate_names = orig_gates.coords["variable"].values.tolist()
 
-    configs[-1]["xlabel"] = "Time [ms]"
+    configs.append(
+        {
+            "data": [orig_gates.sel(variable=name).squeeze() for name in gate_names],
+            "legend": gate_names,
+            "ylabel": "Original Gates",
+            # 色はお好みで、draw_engineのデフォルトに任せるか指定するか
+            "colors": ["green", "orange", "purple"][: len(gate_names)],
+        }
+    )
+
     return draw_engine(configs)

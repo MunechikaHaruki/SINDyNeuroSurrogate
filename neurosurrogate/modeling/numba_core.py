@@ -246,6 +246,8 @@ def unified_simulater(
         "mode": mode,
         "dt": dt,
     }
+    if mode == "surrogate":
+        dataset.attrs["surr_ids"] = indice["ids"]["surr"]
 
     # コンパートメント間を流れる電流の系間を流れる電流の計算
     v_dataset = dataset["vars"].sel(gate=False).sortby("comp_id")
