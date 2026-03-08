@@ -1,4 +1,5 @@
 import copy
+import logging
 from typing import Literal
 
 import numpy as np
@@ -8,6 +9,8 @@ from numba import float64, njit
 from numba.experimental import jitclass
 
 from .hh_utils import h0, m0, n0, tau_h, tau_m, tau_n
+
+logger = logging.getLogger(__name__)
 
 
 @jitclass(
@@ -20,7 +23,6 @@ from .hh_utils import h0, m0, n0, tau_h, tau_m, tau_n
         ("E_NA", float64),
         ("G_K", float64),
         ("E_K", float64),
-        ("DT", float64),
     ]
 )
 class HH_Params_numba:
@@ -181,8 +183,12 @@ COORDS = {
 }
 
 COMPARTMENT_TEMPLATES = {
-    "hh": {"init": np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)])},
-    "passive": {"init": np.array([E_REST])},
+    "hh": {
+        "init": np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)]),
+        "vars": ["V", "M", "H", "N"],
+        "gate": [False, True, True, True],
+    },
+    "passive": {"init": np.array([E_REST]), "vars": ["V"], "gate": [False]},
 }
 
 MC_MODELS = {
@@ -198,15 +204,42 @@ MC_MODELS = {
     },
 }
 
-SURROGATE_TARGET = {"hh": [0], "hh3": [1]}
+SURROGATE_TARGET = {"hh": 0, "hh3": 1}
 
 
-def get_surrogate_network(net: dict, surrogate_target: list):
-    surrogate_net = copy.deepcopy(net)
-    for target_idx in surrogate_target:
-        # ★ ノードの種類を "surrogate" 部品に書き換える
-        surrogate_net["nodes"][target_idx] = "surrogate"
-    return surrogate_net
+def get_surrogate_network(
+    origi_net: dict,
+    origi_comp: dict,
+    surr_indice: int,  # サロゲート化するノードのインデックスのリスト
+    surr_gate_init: list | np.ndarray,  # 外から渡される潜在変数の初期値
+):
+    # ネットワークのディープコピー（元の配線図を汚さない）
+    surr_net = copy.deepcopy(origi_net)
+    origi_node_type = surr_net["nodes"][surr_indice]
+    surr_net["nodes"][surr_indice] = "surr"
+
+    # V の初期値を元のカタログから引き継ぐ
+    origi_v_init = origi_comp[origi_node_type]["init"][0]
+
+    # V の初期値と、外から来たゲート初期値を結合 (★カッコで囲んで安全に結合！)
+    full_init = np.concatenate(
+        (
+            np.array([origi_v_init], dtype=np.float64),
+            np.array(surr_gate_init, dtype=np.float64),
+        )
+    )
+
+    # 潜在変数の次元数から、変数名(vars)とゲートフラグ(gates)を自動生成
+    num_latents = len(surr_gate_init)
+    surr_vars = ["V"] + [f"latent{i + 1}" for i in range(num_latents)]
+    surr_gates = [False] + [True] * num_latents
+
+    # 結合演算子 `|` を使って "surr" 部品を新規追加した新しいカタログを作る
+    surr_comp = origi_comp | {
+        "surr": {"init": full_init, "vars": surr_vars, "gate": surr_gates}
+    }
+    # 新しい配線図と、新しいカタログのセットを返す
+    return surr_net, surr_comp
 
 
 def build_indices(net: dict, compartments: dict):
@@ -274,8 +307,9 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
 
     N = len(net["nodes"])
     C_matrix = calc_graph_laplacian(net["edges"], N)
-    indice = build_indices(net, COMPARTMENT_TEMPLATES)
+
     if mode == "simulate":
+        indice = build_indices(net, COMPARTMENT_TEMPLATES)
         args = (
             params,
             C_matrix,
@@ -288,21 +322,21 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
         deriv_func = calc_universal_simulate
         COORD = COORDS["original"][data_type]
     elif mode == "surrogate":
+        surr_net, surr_comp = get_surrogate_network(
+            net, COMPARTMENT_TEMPLATES, SURROGATE_TARGET[data_type], kwargs["gate_init"]
+        )
+        indice = build_indices(surr_net, surr_comp)
         args = (
             params,
             C_matrix,
             indice["ids"]["passive"],
-            indice["ids"]["hh"],
+            indice["ids"]["surr"],
             net["stim_node"],
             indice["gate_offsets"],
             kwargs["xi"],
             kwargs["compute_theta"],
         )
-        gate_init = kwargs["gate_init"]
-        if data_type == "hh3":
-            init = np.concatenate(([-65, -65, -65], gate_init))
-        elif data_type == "hh":
-            init = np.concatenate(([-65], gate_init))
+        init = indice["init"]
         deriv_func = calc_universal_surrogate
         COORD = COORDS["surrogate"][data_type]
     else:
