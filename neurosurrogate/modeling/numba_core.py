@@ -86,23 +86,39 @@ def calc_universal_simulate(curr_x, u_t, model_args, dvar):
 
 
 @njit
-def calc_deriv_sindy(curr_x, u_t, model_args, dvar):
-    params, C_matrix, xi_matrix, compute_theta = model_args
-    theta = compute_theta(curr_x[0], curr_x[1], u_t)
-    dvar[:] = xi_matrix @ theta
+def calc_universal_surrogate(curr_x, u_t, model_args, dvar):
+    """SINDy代理モデル用の汎用微分計算エンジン"""
+    (
+        p,
+        C_matrix,
+        passive_ids,
+        surr_ids,
+        stim_idx,
+        gate_offsets,
+        xi_matrix,
+        compute_theta,
+    ) = model_args
+    N = C_matrix.shape[0]
 
+    # 1. 電位ベクトルの抽出と網内電流の計算 (グラフラプラシアン)
+    v_vec = curr_x[:N]
+    I_internal = v_vec @ C_matrix
+    I_internal[stim_idx] += u_t
 
-@njit
-def calc_deriv_sindy_hh3(curr_x, u_t, model_args, dvar):
-    params, C_matrix, xi_matrix, compute_theta = model_args
+    # 2. Passive コンパートメントの計算
+    for i in passive_ids:
+        dvar[i] = calc_passive_channel(p, I_internal[i], v_vec[i])
 
-    I_internal_np = curr_x[:3] @ C_matrix
-    I_internal_np[0] = I_internal_np[0] + u_t
-    theta = compute_theta(curr_x[1], curr_x[3], I_internal_np[1])
-    dvar[0] = calc_passive_channel(params, I_internal_np[0], curr_x[0])
-    dvar[1] = xi_matrix[0] @ theta
-    dvar[2] = calc_passive_channel(params, I_internal_np[2], curr_x[2])
-    dvar[3] = xi_matrix[1] @ theta
+    # 3. SINDy代理モデルの計算
+    for i in surr_ids:
+        g_idx = gate_offsets[i]
+        latent = curr_x[g_idx]  # サロゲートは1つの潜在変数 (latent) を持つ前提
+
+        # 動的にコンパイルされた Theta 関数の呼び出し
+        theta = compute_theta(v_vec[i], latent, I_internal[i])
+
+        dvar[i] = xi_matrix[0] @ theta
+        dvar[g_idx] = xi_matrix[1] @ theta
 
 
 @njit
@@ -151,7 +167,6 @@ SIMULATER_CONFIGS = {
         "hh_ids": np.array([0], dtype=np.int32),
         "gate_offsets": np.array([1], dtype=np.int32),
         "surrogate": {
-            "deriv_func": calc_deriv_sindy,
             "coords": {
                 "variable": ["V", "latent1"],
                 "comp_id": [0, 0],
@@ -180,7 +195,6 @@ SIMULATER_CONFIGS = {
         "hh_ids": np.array([1], dtype=np.int32),
         "gate_offsets": np.array([3, 3, 6], dtype=np.int32),
         "surrogate": {
-            "deriv_func": calc_deriv_sindy_hh3,
             "coords": {
                 "variable": ["V_", "V", "V_", "latent1"],
                 "comp_id": [0, 1, 2, 1],
@@ -228,9 +242,22 @@ def unified_simulater(dt, u, data_type, mode: ModeType, **kwargs):
         deriv_func = calc_universal_simulate
         COORDS = CONF["coords"]
     elif mode == "surrogate":
-        args = (params, C_matrix, kwargs["xi"], kwargs["compute_theta"])
+        args = (
+            params,
+            C_matrix,
+        )
+        args = (
+            params,
+            C_matrix,
+            CONF["passiv_ids"],
+            CONF["hh_ids"],
+            CONF["stim_comp_id"],
+            CONF["gate_offsets"],
+            kwargs["xi"],
+            kwargs["compute_theta"],
+        )
         init = kwargs["init"]
-        deriv_func = CONF["surrogate"]["deriv_func"]
+        deriv_func = calc_universal_surrogate
         COORDS = CONF["surrogate"]["coords"]
     else:
         raise TypeError("Unsupported mode was detected")
