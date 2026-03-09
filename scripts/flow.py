@@ -111,7 +111,12 @@ def train_task(train_ds):
         target_module=base,
         sindy_name="hh_sindy",
     )
-    surrogate_model.fit(train_ds)
+    if train_ds.attrs["model_type"] == "hh3":
+        target_comp_id = 1
+    elif train_ds.attrs["model_type"] == "hh":
+        target_comp_id = 0
+
+    surrogate_model.fit(train_ds, target_comp_id=target_comp_id)
     return surrogate_model
 
 

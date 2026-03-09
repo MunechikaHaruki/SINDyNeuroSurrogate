@@ -1,5 +1,3 @@
-import copy
-
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -71,41 +69,6 @@ def build_indices(net: dict, compartments: dict):
     }
 
 
-def get_surrogate_network(
-    origi_net: dict,
-    origi_comp: dict,
-    surr_indice: int,  # サロゲート化するノードのインデックスのリスト
-    surr_gate_init: list | np.ndarray,  # 外から渡される潜在変数の初期値
-):
-    # ネットワークのディープコピー（元の配線図を汚さない）
-    surr_net = copy.deepcopy(origi_net)
-    origi_node_type = surr_net["nodes"][surr_indice]
-    surr_net["nodes"][surr_indice] = "surr"
-
-    # V の初期値を元のカタログから引き継ぐ
-    origi_v_init = origi_comp[origi_node_type]["init"][0]
-
-    # V の初期値と、外から来たゲート初期値を結合 (★カッコで囲んで安全に結合！)
-    full_init = np.concatenate(
-        (
-            np.array([origi_v_init], dtype=np.float64),
-            np.array(surr_gate_init, dtype=np.float64),
-        )
-    )
-
-    # 潜在変数の次元数から、変数名(vars)とゲートフラグ(gates)を自動生成
-    num_latents = len(surr_gate_init)
-    surr_vars = ["V"] + [f"latent{i + 1}" for i in range(num_latents)]
-    surr_gates = [False] + [True] * num_latents
-
-    # 結合演算子 `|` を使って "surr" 部品を新規追加した新しいカタログを作る
-    surr_comp = origi_comp | {
-        "surr": {"init": full_init, "vars": surr_vars, "gate": surr_gates}
-    }
-    # 新しい配線図と、新しいカタログのセットを返す
-    return surr_net, surr_comp
-
-
 def set_coords(raw, u, coords, dt):
     mindex = pd.MultiIndex.from_arrays(
         [
@@ -129,6 +92,26 @@ def set_coords(raw, u, coords, dt):
         },
     )
     return dataset
+
+
+def generate_preprocessed_xarray(new_vars, time_coord, n_latent):
+    variables = ["V"] + [f"latent{i + 1}" for i in range(n_latent)]
+    gate_flags = [False] + [True] * n_latent  # latent も gate 由来なので True
+    mindex = pd.MultiIndex.from_arrays(
+        [variables, gate_flags],
+        names=("variable", "gate"),
+    )
+
+    # 元の座標と属性を引き継いで DataArray を作成
+    return xr.DataArray(
+        data=new_vars,
+        dims=("time", "features"),
+        coords={
+            "time": time_coord,
+            "features": mindex,  # ここで階層構造を復元
+        },
+        name="vars",
+    )
 
 
 def set_i_internal(dataset, I_internal_np):

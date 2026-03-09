@@ -1,3 +1,4 @@
+import copy
 import logging
 
 import numpy as np
@@ -5,9 +6,8 @@ from numba import float64, njit
 from numba.experimental import jitclass
 
 from .hh_utils import h0, m0, n0, tau_h, tau_m, tau_n
-from .numba_core_utils import (
+from .xarray_utils import (
     build_indices,
-    get_surrogate_network,
     set_coords,
     set_i_internal,
 )
@@ -137,10 +137,6 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
     dvar = np.zeros(n_vars)
 
     for t in range(n_steps - 1):
-        if t < 3:
-            print("Step:", t)
-            print("curr_x:", curr_x)
-            print("dvar:", dvar)
         # 微分計算関数の呼び出し。model_argsはタプル。
         deriv_func(curr_x, u[t], model_args, dvar)
 
@@ -180,6 +176,41 @@ MC_MODELS = {
 }
 
 SURROGATE_TARGET = {"hh": 0, "hh3": 1}
+
+
+def get_surrogate_network(
+    origi_net: dict,
+    origi_comp: dict,
+    surr_indice: int,  # サロゲート化するノードのインデックスのリスト
+    surr_gate_init: list | np.ndarray,  # 外から渡される潜在変数の初期値
+):
+    # ネットワークのディープコピー（元の配線図を汚さない）
+    surr_net = copy.deepcopy(origi_net)
+    origi_node_type = surr_net["nodes"][surr_indice]
+    surr_net["nodes"][surr_indice] = "surr"
+
+    # V の初期値を元のカタログから引き継ぐ
+    origi_v_init = origi_comp[origi_node_type]["init"][0]
+
+    # V の初期値と、外から来たゲート初期値を結合 (★カッコで囲んで安全に結合！)
+    full_init = np.concatenate(
+        (
+            np.array([origi_v_init], dtype=np.float64),
+            np.array(surr_gate_init, dtype=np.float64),
+        )
+    )
+
+    # 潜在変数の次元数から、変数名(vars)とゲートフラグ(gates)を自動生成
+    num_latents = len(surr_gate_init)
+    surr_vars = ["V"] + [f"latent{i + 1}" for i in range(num_latents)]
+    surr_gates = [False] + [True] * num_latents
+
+    # 結合演算子 `|` を使って "surr" 部品を新規追加した新しいカタログを作る
+    surr_comp = origi_comp | {
+        "surr": {"init": full_init, "vars": surr_vars, "gate": surr_gates}
+    }
+    # 新しい配線図と、新しいカタログのセットを返す
+    return surr_net, surr_comp
 
 
 def calc_graph_laplacian(connections, N):
