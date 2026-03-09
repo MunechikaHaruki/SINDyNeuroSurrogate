@@ -8,7 +8,7 @@ from prefect import flow, get_run_logger, task
 from neurosurrogate.modeling import (
     SINDySurrogateWrapper,
 )
-from neurosurrogate.modeling.numba_core import unified_simulater
+from neurosurrogate.modeling.numba_core import SURROGATE_TARGET, unified_simulater
 from neurosurrogate.utils.plots import plot_compartment_behavior, plot_diff, plot_simple
 
 
@@ -55,10 +55,8 @@ def eval_diff(surrogater, original_ds, name):
         data_type=original_ds.attrs["model_type"],
         surrogate_model=surrogater,
     )
-    if original_ds.attrs["model_type"] == "hh3":
-        target_comp_id = 1
-    elif original_ds.attrs["model_type"] == "hh":
-        target_comp_id = 0
+
+    target_comp_id = SURROGATE_TARGET[original_ds.attrs["model_type"]]
 
     transformed_dataarray = surrogater.preprocessor.transform(
         original_ds, target_comp_id=target_comp_id
@@ -111,10 +109,7 @@ def train_task(train_ds):
         target_module=base,
         sindy_name="hh_sindy",
     )
-    if train_ds.attrs["model_type"] == "hh3":
-        target_comp_id = 1
-    elif train_ds.attrs["model_type"] == "hh":
-        target_comp_id = 0
+    target_comp_id = SURROGATE_TARGET[train_ds.attrs["model_type"]]
 
     surrogate_model.fit(train_ds, target_comp_id=target_comp_id)
     return surrogate_model
