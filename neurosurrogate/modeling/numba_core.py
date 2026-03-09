@@ -1,5 +1,4 @@
 import logging
-from typing import Literal
 
 import numpy as np
 from numba import float64, njit
@@ -196,16 +195,14 @@ def calc_graph_laplacian(connections, N):
     return C_matrix
 
 
-def unified_simulater(
-    dt, u, data_type, mode: Literal["simulate", "surrogate"], **kwargs
-):
+def unified_simulater(dt, u, data_type, surrogate_model=None):
     net = MC_MODELS[data_type]
     params = HH_Params_numba()
 
     N = len(net["nodes"])
     C_matrix = calc_graph_laplacian(net["edges"], N)
 
-    if mode == "simulate":
+    if surrogate_model is None:
         indice = build_indices(net, COMPARTMENT_TEMPLATES)
         args = (
             params,
@@ -217,9 +214,12 @@ def unified_simulater(
         )
         init = indice["init"]
         deriv_func = calc_universal_simulate
-    elif mode == "surrogate":
+    else:
         surr_net, surr_comp = get_surrogate_network(
-            net, COMPARTMENT_TEMPLATES, SURROGATE_TARGET[data_type], kwargs["gate_init"]
+            net,
+            COMPARTMENT_TEMPLATES,
+            SURROGATE_TARGET[data_type],
+            surrogate_model.gate_init,
         )
         indice = build_indices(surr_net, surr_comp)
         args = (
@@ -229,13 +229,11 @@ def unified_simulater(
             indice["ids"]["surr"],
             net["stim_node"],
             indice["gate_offsets"],
-            kwargs["xi"],
-            kwargs["compute_theta"],
+            surrogate_model.sindy.coefficients(),
+            surrogate_model.compute_theta,
         )
         init = indice["init"]
         deriv_func = calc_universal_surrogate
-    else:
-        raise TypeError("Unsupported mode was detected")
 
     raw = generic_euler_solver(deriv_func, init, u, dt, args)
 
@@ -243,10 +241,9 @@ def unified_simulater(
 
     dataset.attrs = {
         "model_type": data_type,
-        "mode": mode,
         "dt": dt,
     }
-    if mode == "surrogate":
+    if surrogate_model is not None:
         dataset.attrs["surr_ids"] = indice["ids"]["surr"]
 
     # コンパートメント間を流れる電流の系間を流れる電流の計算

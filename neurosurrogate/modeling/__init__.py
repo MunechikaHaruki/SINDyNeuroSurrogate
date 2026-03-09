@@ -89,20 +89,13 @@ class SINDySurrogateWrapper:
 
         self.gate_init = self.train_dataarray.to_numpy()[0][1:]
 
-    def predict(self, dt, u, data_type):
-        logger.info(f"{data_type}のサロゲートモデルをテスト")
-
-        return unified_simulater(
-            dt=dt,
-            u=u,
-            data_type=data_type,
-            mode="surrogate",
-            gate_init=self.gate_init,
-            xi=self.sindy.coefficients(),
-            compute_theta=self.compute_theta,
-        )
-
     def eval(self, original_ds):
+        predict_result = unified_simulater(
+            dt=float(original_ds.attrs["dt"]),
+            u=original_ds["I_ext"].to_numpy(),
+            data_type=original_ds.attrs["model_type"],
+            surrogate_model=self,
+        )
         if original_ds.attrs["model_type"] == "hh3":
             target_comp_id = 1
         elif original_ds.attrs["model_type"] == "hh":
@@ -111,13 +104,6 @@ class SINDySurrogateWrapper:
         transformed_dataarray = self.preprocessor.transform(
             original_ds, target_comp_id=target_comp_id
         )
-        predict_result = self.predict(
-            dt=float(original_ds.attrs["dt"]),
-            u=original_ds["I_ext"].to_numpy(),
-            data_type=original_ds.attrs["model_type"],
-        )
-
-        u_inj = original_ds["I_internal"].sel(node_id=target_comp_id)
 
         return {
             "surrogate_figure": plot_simple(predict_result),
@@ -127,7 +113,8 @@ class SINDySurrogateWrapper:
                 surrogate=predict_result,
             ),
             "preprocessed": plot_compartment_behavior(
-                u=u_inj, xarray=transformed_dataarray
+                u=original_ds["I_internal"].sel(node_id=target_comp_id),
+                xarray=transformed_dataarray,
             ),
         }
 

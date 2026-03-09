@@ -1,6 +1,4 @@
-import hashlib
-import json
-from typing import Any, Dict
+from typing import Dict
 
 import hydra
 import mlflow
@@ -65,57 +63,16 @@ def log_eval_result(name, ds, eval_result):
     )
 
 
-def generate_complex_hash(*args, **kwargs) -> str:
-    """
-    *args と **kwargs をまとめて安定したハッシュ値を生成する
-    """
-
-    def to_stable_obj(obj: Any) -> Any:
-        """
-        あらゆる型を、JSONシリアライズ可能な標準的な型へ再帰的に変換する
-        """
-        if isinstance(obj, dict):  # 辞書型なら中身を再帰的に変換
-            return {str(k): to_stable_obj(v) for k, v in obj.items()}
-        if isinstance(obj, (list, tuple)):  # リストやタプルなら中身を再帰的に変換
-            return [to_stable_obj(i) for i in obj]
-        if isinstance(
-            obj, (int, float, bool, type(None), str)
-        ):  # それ以外は文字列化（またはそのまま）
-            return obj
-        return str(obj)
-
-    combined_data = {
-        "args": to_stable_obj(args),
-        "kwargs": to_stable_obj(kwargs),
-    }  # データを一つの構造にまとめる argsは順番を維持、kwargsはキーをソートして正規化する準備
-    json_str = json.dumps(
-        combined_data, sort_keys=True, ensure_ascii=True, default=str
-    )  # 辞書の順序を固定してJSON化
-    return hashlib.sha256(json_str.encode("utf-8")).hexdigest()  # hash化
-
-
-@task(
-    cache_key_fn=lambda context, params: str(params["dataset_seed"]),
-    persist_result=True,
-)
-def unified_simulater_wrapper(data_type, i_ext, DT, dataset_seed):
-    """
-    Simulates a neuron model based on configurations and preprocesses the result into a dataset.
-    """
-    return unified_simulater(dt=DT, u=i_ext, data_type=data_type, mode="simulate")
-
-
 def generate_dataset_flow(dataset_key, datasets_cfg):
     dataset_cfg = datasets_cfg[dataset_key]
     data_type = dataset_cfg["data_type"]
 
-    ds = unified_simulater_wrapper(
+    ds = unified_simulater(
         data_type=data_type,
-        i_ext=hydra.utils.instantiate(
+        u=hydra.utils.instantiate(
             dataset_cfg["current"], current_seed=dataset_cfg["seed"]
         ),
-        DT=dataset_cfg["dt"],
-        dataset_seed=generate_complex_hash(dataset_cfg),
+        dt=dataset_cfg["dt"],
     )
     fig = plot_simple(ds)
     mlflow.log_figure(fig, artifact_file=f"original/{data_type}/{dataset_key}.png")
