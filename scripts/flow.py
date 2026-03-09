@@ -8,7 +8,7 @@ from prefect import flow, get_run_logger, task
 from neurosurrogate.modeling import (
     SINDySurrogateWrapper,
 )
-from neurosurrogate.modeling.numba_core import SURROGATE_TARGET, unified_simulater
+from neurosurrogate.modeling.calc_engine import SURROGATE_TARGET, unified_simulater
 from neurosurrogate.utils.plots import plot_compartment_behavior, plot_diff, plot_simple
 
 

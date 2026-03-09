@@ -39,7 +39,7 @@ def draw_engine(plot_configs, figsize_width=10):
         ax.set_ylabel(cfg["ylabel"])
 
         # 凡例がある（None 以外の有効な文字列がある）場合のみ表示
-        if any(l is not None for l in labels):
+        if any(label is not None for label in labels):
             ax.legend()
 
         if cfg.get("xlabel"):

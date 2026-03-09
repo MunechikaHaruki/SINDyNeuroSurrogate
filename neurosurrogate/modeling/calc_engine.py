@@ -2,10 +2,16 @@ import copy
 import logging
 
 import numpy as np
-from numba import float64, njit
-from numba.experimental import jitclass
+from numba import njit
 
-from .hh_utils import h0, m0, n0, tau_h, tau_m, tau_n
+from .neuron_core import (
+    HH_Params_numba,
+    calc_hh_channel,
+    calc_passive_channel,
+    h0,
+    m0,
+    n0,
+)
 from .xarray_utils import (
     build_indices,
     set_coords,
@@ -13,53 +19,6 @@ from .xarray_utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@jitclass(
-    [
-        ("E_REST", float64),
-        ("C", float64),
-        ("G_LEAK", float64),
-        ("E_LEAK", float64),
-        ("G_NA", float64),
-        ("E_NA", float64),
-        ("G_K", float64),
-        ("E_K", float64),
-    ]
-)
-class HH_Params_numba:
-    def __init__(self):
-        self.E_REST = -65.0
-        self.C = 1.0
-        self.G_LEAK = 0.3
-        self.E_LEAK = 10.6 - 65.0
-        self.G_NA = 120.0
-        self.E_NA = 115.0 - 65.0
-        self.G_K = 36.0
-        self.E_K = -12.0 - 65.0
-
-
-@njit
-def calc_hh_channel(p, u_t, v, curr_gate, dvar_gate):
-    m = curr_gate[0]
-    h = curr_gate[1]
-    n = curr_gate[2]
-    v_rel = v - p.E_REST
-
-    i_leak = p.G_LEAK * (v - p.E_LEAK)
-    i_na = p.G_NA * m * m * m * h * (v - p.E_NA)
-    i_k = p.G_K * n * n * n * n * (v - p.E_K)
-
-    dv = (-i_leak - i_na - i_k + u_t) / p.C
-    dvar_gate[0] = (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
-    dvar_gate[1] = (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
-    dvar_gate[2] = (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
-    return dv
-
-
-@njit
-def calc_passive_channel(p, u_t, v):
-    return (-p.G_LEAK * (v - p.E_LEAK) + u_t) / p.C
 
 
 @njit
