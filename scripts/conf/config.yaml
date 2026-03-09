@@ -28,3 +28,8 @@ datasets:
     current:
       _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
     seed: 9919
+  random_hh4:
+    data_type: hh4
+    current:
+      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
+    seed: 9919

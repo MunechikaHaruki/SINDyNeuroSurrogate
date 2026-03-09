@@ -22,7 +22,7 @@ class PCAPreProcessorWrapper:
         self.pca.fit(train_gate_data)
 
     def transform(self, xr_data, target_comp_id):
-        xr_gate = xr_data["vars"].sel(gate=True).to_numpy()
+        xr_gate = xr_data["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
         transformed_gate = self.pca.transform(xr_gate)
         v_soma_da = xr_data["vars"].sel(gate=False, comp_id=target_comp_id)
         new_vars = np.concatenate(
