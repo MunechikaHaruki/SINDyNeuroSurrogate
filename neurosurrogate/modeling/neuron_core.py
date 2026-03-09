@@ -114,3 +114,18 @@ def calc_hh_channel(p, u_t, v, curr_gate, dvar_gate):
 @njit
 def calc_passive_channel(p, u_t, v):
     return (-p.G_LEAK * (v - p.E_LEAK) + u_t) / p.C
+
+
+E_REST = -65
+v = -65
+v_rel = v - E_REST
+
+
+COMPARTMENT_TEMPLATES = {
+    "hh": {
+        "init": np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)]),
+        "vars": ["V", "M", "H", "N"],
+        "gate": [False, True, True, True],
+    },
+    "passive": {"init": np.array([E_REST]), "vars": ["V"], "gate": [False]},
+}

@@ -55,12 +55,6 @@ radon:
 #################################################################################
 # PROJECT RULES                                                                 #
 #################################################################################
-# build
-build:
-	{{VIRTUAL_ENV}} python setup.py build_ext --inplace
-rebuild:
-	rm -rf ./build
-	{{VIRTUAL_ENV}} python setup.py build_ext --inplace
 
 # activate prefect server
 prefect:

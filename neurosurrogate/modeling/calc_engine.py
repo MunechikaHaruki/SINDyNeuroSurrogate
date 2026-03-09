@@ -5,12 +5,10 @@ import numpy as np
 from numba import njit
 
 from .neuron_core import (
+    COMPARTMENT_TEMPLATES,
     HH_Params_numba,
     calc_hh_channel,
     calc_passive_channel,
-    h0,
-    m0,
-    n0,
 )
 from .xarray_utils import (
     build_indices,
@@ -106,20 +104,6 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
 
     return x_history
 
-
-E_REST = -65
-v = -65
-v_rel = v - E_REST
-
-
-COMPARTMENT_TEMPLATES = {
-    "hh": {
-        "init": np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)]),
-        "vars": ["V", "M", "H", "N"],
-        "gate": [False, True, True, True],
-    },
-    "passive": {"init": np.array([E_REST]), "vars": ["V"], "gate": [False]},
-}
 
 MC_MODELS = {
     "hh": {
