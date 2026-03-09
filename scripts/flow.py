@@ -9,7 +9,7 @@ from neurosurrogate.modeling import (
     SINDySurrogateWrapper,
 )
 from neurosurrogate.modeling.numba_core import unified_simulater
-from neurosurrogate.utils.plots import plot_simple
+from neurosurrogate.utils.plots import plot_compartment_behavior, plot_diff, plot_simple
 
 
 def log_train_model(surrogate):
@@ -46,6 +46,36 @@ def log_train_model(surrogate):
         summary["model_params"],
     )
     mlflow.log_figure(summary["train_figure"], artifact_file="train.png")
+
+
+def get_eval_result(surrogater, original_ds):
+    predict_result = unified_simulater(
+        dt=float(original_ds.attrs["dt"]),
+        u=original_ds["I_ext"].to_numpy(),
+        data_type=original_ds.attrs["model_type"],
+        surrogate_model=surrogater,
+    )
+    if original_ds.attrs["model_type"] == "hh3":
+        target_comp_id = 1
+    elif original_ds.attrs["model_type"] == "hh":
+        target_comp_id = 0
+
+    transformed_dataarray = surrogater.preprocessor.transform(
+        original_ds, target_comp_id=target_comp_id
+    )
+
+    return {
+        "surrogate_figure": plot_simple(predict_result),
+        "diff": plot_diff(
+            original=original_ds,
+            preprocessed=transformed_dataarray,
+            surrogate=predict_result,
+        ),
+        "preprocessed": plot_compartment_behavior(
+            u=original_ds["I_internal"].sel(node_id=target_comp_id),
+            xarray=transformed_dataarray,
+        ),
+    }
 
 
 def log_eval_result(name, ds, eval_result):
@@ -105,5 +135,5 @@ def main_flow(datasets_cfg: Dict):
     for name in datasets_cfg.keys():
         logger.info(f"start {name}'s evaluation")
         ds = generate_dataset_flow(name, datasets_cfg)
-        eval_result = surrogate_model.eval(ds)
+        eval_result = get_eval_result(surrogate_model, ds)
         log_eval_result(name, ds, eval_result)

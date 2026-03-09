@@ -5,8 +5,7 @@ import pandas as pd
 import xarray as xr
 from sklearn.decomposition import PCA
 
-from ..utils.plots import plot_compartment_behavior, plot_diff, plot_simple
-from .numba_core import unified_simulater
+from ..utils.plots import plot_compartment_behavior
 from .profiler import get_active_features, static_calc_cost
 
 logger = logging.getLogger(__name__)
@@ -88,35 +87,6 @@ class SINDySurrogateWrapper:
         )
 
         self.gate_init = self.train_dataarray.to_numpy()[0][1:]
-
-    def eval(self, original_ds):
-        predict_result = unified_simulater(
-            dt=float(original_ds.attrs["dt"]),
-            u=original_ds["I_ext"].to_numpy(),
-            data_type=original_ds.attrs["model_type"],
-            surrogate_model=self,
-        )
-        if original_ds.attrs["model_type"] == "hh3":
-            target_comp_id = 1
-        elif original_ds.attrs["model_type"] == "hh":
-            target_comp_id = 0
-
-        transformed_dataarray = self.preprocessor.transform(
-            original_ds, target_comp_id=target_comp_id
-        )
-
-        return {
-            "surrogate_figure": plot_simple(predict_result),
-            "diff": plot_diff(
-                original=original_ds,
-                preprocessed=transformed_dataarray,
-                surrogate=predict_result,
-            ),
-            "preprocessed": plot_compartment_behavior(
-                u=original_ds["I_internal"].sel(node_id=target_comp_id),
-                xarray=transformed_dataarray,
-            ),
-        }
 
     def get_loggable_summary(self) -> dict:
         return {
