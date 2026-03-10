@@ -69,22 +69,21 @@ def log_train_model(surrogate):
 
 
 def eval_diff(surrogater, original_ds, name):
+    data_type = original_ds.attrs["model_type"]
     predict_result = unified_simulater(
         dt=float(original_ds.attrs["dt"]),
         u=original_ds["I_ext"].to_numpy(),
-        data_type=original_ds.attrs["model_type"],
-        net=MC_MODELS[original_ds.attrs["model_type"]],
-        surrogate_target=SURROGATE_TARGET[original_ds.attrs["model_type"]],
+        net=MC_MODELS[data_type],
+        surrogate_target=SURROGATE_TARGET[data_type],
         surrogate_model=surrogater,
     )
 
-    target_comp_id = SURROGATE_TARGET[original_ds.attrs["model_type"]]
+    target_comp_id = SURROGATE_TARGET[data_type]
 
     transformed_dataarray = surrogater.preprocessor.transform(
         original_ds, target_comp_id=target_comp_id
     )
 
-    data_type = original_ds.attrs["model_type"]
     mlflow.log_figure(
         plot_compartment_behavior(
             u=original_ds["I_internal"].sel(node_id=target_comp_id),
@@ -111,13 +110,13 @@ def generate_dataset_flow(dataset_key, datasets_cfg):
     data_type = dataset_cfg["data_type"]
 
     ds = unified_simulater(
-        data_type=data_type,
         u=hydra.utils.instantiate(
             dataset_cfg["current"], current_seed=dataset_cfg["seed"]
         ),
         dt=dataset_cfg["dt"],
         net=MC_MODELS[data_type],
     )
+    ds.attrs["model_type"] = data_type
     fig = plot_simple(ds)
     mlflow.log_figure(fig, artifact_file=f"original/{data_type}/{dataset_key}.png")
     return ds

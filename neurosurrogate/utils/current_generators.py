@@ -99,12 +99,3 @@ def hh_variable_width(
         start = terminus
         terminus = min(terminus + pulse_step, iteration)
         dset_i_ext[start:terminus] = np.full(terminus - start, v)
-
-
-# Traub用のコード
-# def generate_traub_steady_current(
-#     value: float, compartment_index: int
-# ) -> Callable[[h5py.Dataset], None]:
-# iter = dset_i_ext.shape[0]
-# # dset_I_ext は (iter, NC) の形状なので、特定の列を更新
-# dset_i_ext[:, compartment_index] = np.full(iter, value)

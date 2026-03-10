@@ -153,9 +153,7 @@ def calc_graph_laplacian(connections, N):
     return C_matrix
 
 
-def unified_simulater(
-    dt, u, data_type, net, surrogate_target=None, surrogate_model=None
-):
+def unified_simulater(dt, u, net, surrogate_target=None, surrogate_model=None):
     params = HH_Params_numba()
 
     N = len(net["nodes"])
@@ -197,11 +195,8 @@ def unified_simulater(
     raw = generic_euler_solver(deriv_func, init, u, dt, args)
 
     dataset = set_coords(raw, u, indice["coords"], dt)
+    dataset.attrs["dt"] = dt
 
-    dataset.attrs = {
-        "model_type": data_type,
-        "dt": dt,
-    }
     if surrogate_model is not None:
         dataset.attrs["surr_ids"] = indice["ids"]["surr"]
 
