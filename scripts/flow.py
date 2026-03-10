@@ -3,6 +3,7 @@ from typing import Dict
 import hydra
 import mlflow
 import numpy as np
+from base import MC_MODELS, SURROGATE_TARGET, SINDY_MODEl
 from prefect import flow, get_run_logger, task
 
 from neurosurrogate.modeling import (
@@ -46,27 +47,6 @@ def log_train_model(surrogate):
         summary["model_params"],
     )
     mlflow.log_figure(summary["train_figure"], artifact_file="train.png")
-
-
-MC_MODELS = {
-    "hh": {
-        "nodes": ["hh"],
-        "edges": [],
-        "stim_node": 0,
-    },
-    "hh3": {
-        "nodes": ["passive", "hh", "passive"],
-        "edges": [(0, 1, 1.0), (1, 2, 0.7)],
-        "stim_node": 0,
-    },
-    "hh5": {
-        "nodes": ["passive", "passive", "hh", "passive", "passive"],
-        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
-        "stim_node": 0,
-    },
-}
-
-SURROGATE_TARGET = {"hh": 0, "hh3": 1, "hh5": 2}
 
 
 def generate_dataset_flow(dataset_key, datasets_cfg):
@@ -125,7 +105,6 @@ def eval_diff(surrogater, original_ds, name):
 
 @task
 def train_task(train_ds):
-    from base import SINDY_MODEl
 
     # 3. Train Model
     surrogate_model = SINDySurrogateWrapper(SINDY_MODEl[0], SINDY_MODEl[1])

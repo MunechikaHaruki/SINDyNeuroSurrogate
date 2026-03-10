@@ -83,6 +83,26 @@ hh_sindy = ps.SINDy(
     optimizer=ps.optimizers.STLSQ(threshold=0.01, normalize_columns=False, alpha=2.0),
 )
 
+MC_MODELS = {
+    "hh": {
+        "nodes": ["hh"],
+        "edges": [],
+        "stim_node": 0,
+    },
+    "hh3": {
+        "nodes": ["passive", "hh", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7)],
+        "stim_node": 0,
+    },
+    "hh5": {
+        "nodes": ["passive", "passive", "hh", "passive", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
+        "stim_node": 0,
+    },
+}
+
+SURROGATE_TARGET = {"hh": 0, "hh3": 1, "hh5": 2}
+
 env = sys.modules[__name__]
 
 SINDY_MODEl = (hh_sindy, env)
