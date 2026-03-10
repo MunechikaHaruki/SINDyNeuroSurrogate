@@ -15,20 +15,4 @@ simulater_dt: 0.01
 
 dataset_profiles:
   steady_currents: [ 0, 3, 5, 6.5, 6.3, 6.2, 7, 10, 15, 20]
-
-datasets:
-  random_hh3:
-    data_type: hh3
-    current:
-      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
-    seed: 9919
-  random_hh:
-    data_type: hh
-    current:
-      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
-    seed: 9919
-  random_hh5:
-    data_type: hh5
-    current:
-      _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
-    seed: 9919
+  random_current_seeds: [9919,9920]

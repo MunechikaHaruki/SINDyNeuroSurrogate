@@ -49,7 +49,7 @@ def get_hydra_overrides():
 def build_full_datasets(cfg):
     # 1. 既存の datasets (random_hh3, random_hh 等) を辞書として取得
     # resolve=True にすることで、内部の変数参照を解決した状態で取得できます
-    datasets = OmegaConf.to_container(cfg.datasets, resolve=True)
+    datasets = {}
 
     # 学習用のデータをテストデータに追加
     datasets["train"] = OmegaConf.to_container(cfg.train, resolve=True)
@@ -74,6 +74,17 @@ def build_full_datasets(cfg):
                         "_target_": "neurosurrogate.utils.current_generators.hh_steady",
                         "value": float(v),
                     },
+                }
+
+        for seed in cfg.dataset_profiles.random_current_seeds:
+            key = f"random_{model}_{seed}"
+            if key not in datasets:
+                datasets[key] = {
+                    "data_type": model,
+                    "current": {
+                        "_target_": "neurosurrogate.utils.current_generators.hh_rand_pulse",
+                    },
+                    "seed": seed,
                 }
 
     for key in datasets:
