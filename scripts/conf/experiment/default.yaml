@@ -17,6 +17,7 @@ scenarios:
       _target_: neurosurrogate.utils.current_generators.hh_rand_pulse
       iteration: 900000
       baseline: 0
+    
   exp2:
     data_type: hh
     current:
@@ -34,6 +35,7 @@ scenarios:
       weights: [0.3,1,1,1]
       sigma: 1
       current_seed: 991927697
+    target_comp_id: 0
   exp4:
     data_type: hh3
     current:

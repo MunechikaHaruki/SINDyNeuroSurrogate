@@ -9,6 +9,7 @@ import subprocess
 import hydra
 import matplotlib.pyplot as plt
 import mlflow
+from base import SINDY_MODEl
 from flow import main_flow
 from omegaconf import DictConfig, OmegaConf
 
@@ -60,28 +61,28 @@ def build_full_datasets(cfg):
         ds_dict["current"].setdefault("current_seed", cfg["default_current_seed"])
         return ds_dict
 
-    for model in ["hh", "hh3", "hh5"]:
+    for model in SINDY_MODEl["target"].keys():
         for v in cfg.dataset_profiles.steady_currents:
             key = f"stady_{model}_{v}"
-            if key not in datasets:
-                datasets[key] = {
-                    "data_type": model,
-                    "current": {
-                        "_target_": "neurosurrogate.utils.current_generators.hh_steady",
-                        "value": float(v),
-                    },
-                }
+            datasets[key] = {
+                "data_type": model,
+                "current": {
+                    "_target_": "neurosurrogate.utils.current_generators.hh_steady",
+                    "value": float(v),
+                },
+                "target_comp_id": SINDY_MODEl["target"][model],
+            }
 
         for seed in cfg.dataset_profiles.random_current_seeds:
             key = f"random_{model}_{seed}"
-            if key not in datasets:
-                datasets[key] = {
-                    "data_type": model,
-                    "current": {
-                        "_target_": "neurosurrogate.utils.current_generators.hh_rand_pulse",
-                        "current_seed": seed,
-                    },
-                }
+            datasets[key] = {
+                "data_type": model,
+                "current": {
+                    "_target_": "neurosurrogate.utils.current_generators.hh_rand_pulse",
+                    "current_seed": seed,
+                },
+                "target_comp_id": SINDY_MODEl["target"][model],
+            }
 
     for key in datasets:
         datasets[key] = apply_defaults(datasets[key])
@@ -113,6 +114,7 @@ def main(cfg: DictConfig) -> None:
         )
         # Prefect flow
         dataset_cfg = build_full_datasets(cfg)
+        logger.info(dataset_cfg)
         main_flow(dataset_cfg)
     logger.info("Script ended")
 

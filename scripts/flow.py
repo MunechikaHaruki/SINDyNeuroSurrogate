@@ -64,18 +64,18 @@ def generate_dataset_flow(dataset_key, datasets_cfg):
     return ds
 
 
-def eval_diff(surrogater, original_ds, name):
+def eval_diff(original_ds, name, datasets_cfg, surrogate_model):
     data_type = original_ds.attrs["model_type"]
-    target_comp_id = SINDY_MODEl["target"][data_type]
+    target_comp_id = datasets_cfg[name]["target_comp_id"]
     predict_result = unified_simulater(
         dt=float(original_ds.attrs["dt"]),
         u=original_ds["I_ext"].to_numpy(),
         net=MC_MODELS[data_type],
         surrogate_target=target_comp_id,
-        surrogate_model=surrogater,
+        surrogate_model=surrogate_model,
     )
 
-    transformed_dataarray = surrogater.preprocessor.transform(
+    transformed_dataarray = surrogate_model.preprocessor.transform(
         original_ds, target_comp_id=target_comp_id
     )
 
@@ -101,13 +101,9 @@ def eval_diff(surrogater, original_ds, name):
 
 
 @task
-def train_task(train_ds):
-    data_type = train_ds.attrs["model_type"]
-
+def train_task(train_ds, target_comp_id):
     # 3. Train Model
     surrogate_model = SINDySurrogateWrapper(SINDY_MODEl["sindy"], SINDY_MODEl["env"])
-    target_comp_id = SINDY_MODEl["target"][data_type]
-
     surrogate_model.fit(train_ds, target_comp_id=target_comp_id)
     return surrogate_model
 
@@ -119,10 +115,11 @@ def main_flow(datasets_cfg: Dict):
 
     logger.info("start generate train data")
     train_ds = generate_dataset_flow("train", datasets_cfg)
-    surrogate_model = train_task(train_ds)
+    target_comp_id = datasets_cfg["train"]["target_comp_id"]
+    surrogate_model = train_task(train_ds, target_comp_id)
     log_train_model(surrogate_model)
 
-    for name in datasets_cfg.keys():
-        logger.info(f"start {name}'s evaluation")
-        ds = generate_dataset_flow(name, datasets_cfg)
-        eval_diff(surrogate_model, ds, name)
+    for key in datasets_cfg.keys():
+        logger.info(f"start {key}'s evaluation")
+        ds = generate_dataset_flow(key, datasets_cfg)
+        eval_diff(ds, key, datasets_cfg, surrogate_model)
