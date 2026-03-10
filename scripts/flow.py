@@ -11,26 +11,6 @@ from neurosurrogate.modeling import (
 from neurosurrogate.modeling.calc_engine import unified_simulater
 from neurosurrogate.utils.plots import plot_compartment_behavior, plot_diff, plot_simple
 
-MC_MODELS = {
-    "hh": {
-        "nodes": ["hh"],
-        "edges": [],
-        "stim_node": 0,
-    },
-    "hh3": {
-        "nodes": ["passive", "hh", "passive"],
-        "edges": [(0, 1, 1.0), (1, 2, 0.7)],
-        "stim_node": 0,
-    },
-    "hh5": {
-        "nodes": ["passive", "passive", "hh", "passive", "passive"],
-        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
-        "stim_node": 0,
-    },
-}
-
-SURROGATE_TARGET = {"hh": 0, "hh3": 1, "hh5": 2}
-
 
 def log_train_model(surrogate):
     summary = surrogate.get_loggable_summary()
@@ -66,6 +46,44 @@ def log_train_model(surrogate):
         summary["model_params"],
     )
     mlflow.log_figure(summary["train_figure"], artifact_file="train.png")
+
+
+MC_MODELS = {
+    "hh": {
+        "nodes": ["hh"],
+        "edges": [],
+        "stim_node": 0,
+    },
+    "hh3": {
+        "nodes": ["passive", "hh", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7)],
+        "stim_node": 0,
+    },
+    "hh5": {
+        "nodes": ["passive", "passive", "hh", "passive", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
+        "stim_node": 0,
+    },
+}
+
+SURROGATE_TARGET = {"hh": 0, "hh3": 1, "hh5": 2}
+
+
+def generate_dataset_flow(dataset_key, datasets_cfg):
+    dataset_cfg = datasets_cfg[dataset_key]
+    data_type = dataset_cfg["data_type"]
+
+    ds = unified_simulater(
+        u=hydra.utils.instantiate(
+            dataset_cfg["current"], current_seed=dataset_cfg["seed"]
+        ),
+        dt=dataset_cfg["dt"],
+        net=MC_MODELS[data_type],
+    )
+    ds.attrs["model_type"] = data_type
+    fig = plot_simple(ds)
+    mlflow.log_figure(fig, artifact_file=f"original/{data_type}/{dataset_key}.png")
+    return ds
 
 
 def eval_diff(surrogater, original_ds, name):
@@ -105,32 +123,12 @@ def eval_diff(surrogater, original_ds, name):
     )
 
 
-def generate_dataset_flow(dataset_key, datasets_cfg):
-    dataset_cfg = datasets_cfg[dataset_key]
-    data_type = dataset_cfg["data_type"]
-
-    ds = unified_simulater(
-        u=hydra.utils.instantiate(
-            dataset_cfg["current"], current_seed=dataset_cfg["seed"]
-        ),
-        dt=dataset_cfg["dt"],
-        net=MC_MODELS[data_type],
-    )
-    ds.attrs["model_type"] = data_type
-    fig = plot_simple(ds)
-    mlflow.log_figure(fig, artifact_file=f"original/{data_type}/{dataset_key}.png")
-    return ds
-
-
 @task
 def train_task(train_ds):
-    import base
+    from base import SINDY_MODEl
 
     # 3. Train Model
-    surrogate_model = SINDySurrogateWrapper(
-        target_module=base,
-        sindy_name="hh_sindy",
-    )
+    surrogate_model = SINDySurrogateWrapper(SINDY_MODEl[0], SINDY_MODEl[1])
     target_comp_id = SURROGATE_TARGET[train_ds.attrs["model_type"]]
 
     surrogate_model.fit(train_ds, target_comp_id=target_comp_id)

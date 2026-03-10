@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import pysindy as ps
 from numba import njit
@@ -80,3 +82,7 @@ hh_sindy = ps.SINDy(
     ),
     optimizer=ps.optimizers.STLSQ(threshold=0.01, normalize_columns=False, alpha=2.0),
 )
+
+env = sys.modules[__name__]
+
+SINDY_MODEl = (hh_sindy, env)

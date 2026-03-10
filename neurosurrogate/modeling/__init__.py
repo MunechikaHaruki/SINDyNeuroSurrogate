@@ -33,9 +33,10 @@ class PCAPreProcessorWrapper:
 
 
 class SINDySurrogateWrapper:
-    def __init__(self, target_module, sindy_name):
+    def __init__(self, initialized_sindy, target_module):
+        self.sindy = initialized_sindy
         self.target_module = target_module
-        self.sindy = getattr(target_module, sindy_name)
+
         self.preprocessor = PCAPreProcessorWrapper()
 
     def fit(self, train_xr_dataset, target_comp_id):
