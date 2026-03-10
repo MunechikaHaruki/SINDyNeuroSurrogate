@@ -8,8 +8,28 @@ from prefect import flow, get_run_logger, task
 from neurosurrogate.modeling import (
     SINDySurrogateWrapper,
 )
-from neurosurrogate.modeling.calc_engine import SURROGATE_TARGET, unified_simulater
+from neurosurrogate.modeling.calc_engine import unified_simulater
 from neurosurrogate.utils.plots import plot_compartment_behavior, plot_diff, plot_simple
+
+MC_MODELS = {
+    "hh": {
+        "nodes": ["hh"],
+        "edges": [],
+        "stim_node": 0,
+    },
+    "hh3": {
+        "nodes": ["passive", "hh", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7)],
+        "stim_node": 0,
+    },
+    "hh5": {
+        "nodes": ["passive", "passive", "hh", "passive", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
+        "stim_node": 0,
+    },
+}
+
+SURROGATE_TARGET = {"hh": 0, "hh3": 1, "hh5": 2}
 
 
 def log_train_model(surrogate):
@@ -53,6 +73,8 @@ def eval_diff(surrogater, original_ds, name):
         dt=float(original_ds.attrs["dt"]),
         u=original_ds["I_ext"].to_numpy(),
         data_type=original_ds.attrs["model_type"],
+        net=MC_MODELS[original_ds.attrs["model_type"]],
+        surrogate_target=SURROGATE_TARGET[original_ds.attrs["model_type"]],
         surrogate_model=surrogater,
     )
 
@@ -94,6 +116,7 @@ def generate_dataset_flow(dataset_key, datasets_cfg):
             dataset_cfg["current"], current_seed=dataset_cfg["seed"]
         ),
         dt=dataset_cfg["dt"],
+        net=MC_MODELS[data_type],
     )
     fig = plot_simple(ds)
     mlflow.log_figure(fig, artifact_file=f"original/{data_type}/{dataset_key}.png")

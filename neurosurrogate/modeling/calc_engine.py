@@ -105,27 +105,6 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
     return x_history
 
 
-MC_MODELS = {
-    "hh": {
-        "nodes": ["hh"],
-        "edges": [],
-        "stim_node": 0,
-    },
-    "hh3": {
-        "nodes": ["passive", "hh", "passive"],
-        "edges": [(0, 1, 1.0), (1, 2, 0.7)],
-        "stim_node": 0,
-    },
-    "hh5": {
-        "nodes": ["passive", "passive", "hh", "passive", "passive"],
-        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
-        "stim_node": 0,
-    },
-}
-
-SURROGATE_TARGET = {"hh": 0, "hh3": 1, "hh5": 2}
-
-
 def get_surrogate_network(
     origi_net: dict,
     origi_comp: dict,
@@ -174,8 +153,9 @@ def calc_graph_laplacian(connections, N):
     return C_matrix
 
 
-def unified_simulater(dt, u, data_type, surrogate_model=None):
-    net = MC_MODELS[data_type]
+def unified_simulater(
+    dt, u, data_type, net, surrogate_target=None, surrogate_model=None
+):
     params = HH_Params_numba()
 
     N = len(net["nodes"])
@@ -197,7 +177,7 @@ def unified_simulater(dt, u, data_type, surrogate_model=None):
         surr_net, surr_comp = get_surrogate_network(
             net,
             COMPARTMENT_TEMPLATES,
-            SURROGATE_TARGET[data_type],
+            surrogate_target,
             surrogate_model.gate_init,
         )
         indice = build_indices(surr_net, surr_comp)
