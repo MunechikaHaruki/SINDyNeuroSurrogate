@@ -116,14 +116,14 @@ MC_MODELS = {
         "edges": [(0, 1, 1.0), (1, 2, 0.7)],
         "stim_node": 0,
     },
-    "hh4": {
-        "nodes": ["passive", "passive", "hh", "passive"],
-        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7)],
+    "hh5": {
+        "nodes": ["passive", "passive", "hh", "passive", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
         "stim_node": 0,
     },
 }
 
-SURROGATE_TARGET = {"hh": 0, "hh3": 1, "hh4": 2}
+SURROGATE_TARGET = {"hh": 0, "hh3": 1, "hh5": 2}
 
 
 def get_surrogate_network(
