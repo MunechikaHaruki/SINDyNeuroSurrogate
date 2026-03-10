@@ -3,7 +3,6 @@ from typing import Dict
 import hydra
 import mlflow
 import numpy as np
-from base import MC_MODELS
 from prefect import flow, get_run_logger
 
 from neurosurrogate.modeling.calc_engine import unified_simulater
@@ -46,14 +45,14 @@ def log_train_model(surrogate):
     mlflow.log_figure(summary["train_figure"], artifact_file="train.png")
 
 
-def generate_dataset_flow(dataset_key, datasets_cfg):
+def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):
     dataset_cfg = datasets_cfg[dataset_key]
     data_type = dataset_cfg["data_type"]
 
     ds = unified_simulater(
         u=hydra.utils.instantiate(dataset_cfg["current"]),
         dt=dataset_cfg["dt"],
-        net=MC_MODELS[data_type],
+        net=models_arch[data_type],
     )
     ds.attrs["model_type"] = data_type
     fig = plot_simple(ds)
@@ -61,13 +60,13 @@ def generate_dataset_flow(dataset_key, datasets_cfg):
     return ds
 
 
-def eval_diff(original_ds, name, datasets_cfg, surrogate_model):
+def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
     data_type = original_ds.attrs["model_type"]
     target_comp_id = datasets_cfg[name]["target_comp_id"]
     predict_result = unified_simulater(
         dt=float(original_ds.attrs["dt"]),
         u=original_ds["I_ext"].to_numpy(),
-        net=MC_MODELS[data_type],
+        net=models_arch[data_type],
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
     )
@@ -98,12 +97,12 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model):
 
 
 @flow
-def main_flow(datasets_cfg: Dict, surrogate_model):
+def main_flow(datasets_cfg: Dict, surrogate_model, models_arch):
     logger = get_run_logger()
     logger.info("Start Flow")
 
     logger.info("start generate train data")
-    train_ds = generate_dataset_flow("train", datasets_cfg)
+    train_ds = generate_dataset_flow("train", datasets_cfg, models_arch)
     target_comp_id = datasets_cfg["train"]["target_comp_id"]
 
     surrogate_model.fit(train_ds, target_comp_id=target_comp_id)
@@ -111,5 +110,5 @@ def main_flow(datasets_cfg: Dict, surrogate_model):
 
     for key in datasets_cfg.keys():
         logger.info(f"start {key}'s evaluation")
-        ds = generate_dataset_flow(key, datasets_cfg)
-        eval_diff(ds, key, datasets_cfg, surrogate_model)
+        ds = generate_dataset_flow(key, datasets_cfg, models_arch)
+        eval_diff(ds, key, datasets_cfg, surrogate_model, models_arch)

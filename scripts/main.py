@@ -9,7 +9,7 @@ import subprocess
 import hydra
 import matplotlib.pyplot as plt
 import mlflow
-from base import SINDY_MODEl
+from base import MC_MODELS, SINDY_MODEl
 from flow import main_flow
 from omegaconf import DictConfig, OmegaConf
 
@@ -120,7 +120,7 @@ def main(cfg: DictConfig) -> None:
         surrogate_model = SINDySurrogateWrapper(
             SINDY_MODEl["sindy"], SINDY_MODEl["env"]
         )
-        main_flow(dataset_cfg, surrogate_model)
+        main_flow(dataset_cfg, surrogate_model, MC_MODELS)
     logger.info("Script ended")
 
 
