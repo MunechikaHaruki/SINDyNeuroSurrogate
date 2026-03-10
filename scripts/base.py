@@ -101,8 +101,8 @@ MC_MODELS = {
     },
 }
 
-SURROGATE_TARGET = {"hh": 0, "hh3": 1, "hh5": 2}
-
-env = sys.modules[__name__]
-
-SINDY_MODEl = (hh_sindy, env)
+SINDY_MODEl = {
+    "sindy": hh_sindy,
+    "env": sys.modules[__name__],
+    "target": {"hh": 0, "hh3": 1, "hh5": 2},
+}

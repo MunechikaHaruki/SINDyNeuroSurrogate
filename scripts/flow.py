@@ -3,7 +3,7 @@ from typing import Dict
 import hydra
 import mlflow
 import numpy as np
-from base import MC_MODELS, SURROGATE_TARGET, SINDY_MODEl
+from base import MC_MODELS, SINDY_MODEl
 from prefect import flow, get_run_logger, task
 
 from neurosurrogate.modeling import (
@@ -68,15 +68,14 @@ def generate_dataset_flow(dataset_key, datasets_cfg):
 
 def eval_diff(surrogater, original_ds, name):
     data_type = original_ds.attrs["model_type"]
+    target_comp_id = SINDY_MODEl["target"][data_type]
     predict_result = unified_simulater(
         dt=float(original_ds.attrs["dt"]),
         u=original_ds["I_ext"].to_numpy(),
         net=MC_MODELS[data_type],
-        surrogate_target=SURROGATE_TARGET[data_type],
+        surrogate_target=target_comp_id,
         surrogate_model=surrogater,
     )
-
-    target_comp_id = SURROGATE_TARGET[data_type]
 
     transformed_dataarray = surrogater.preprocessor.transform(
         original_ds, target_comp_id=target_comp_id
@@ -105,10 +104,11 @@ def eval_diff(surrogater, original_ds, name):
 
 @task
 def train_task(train_ds):
+    data_type = train_ds.attrs["model_type"]
 
     # 3. Train Model
-    surrogate_model = SINDySurrogateWrapper(SINDY_MODEl[0], SINDY_MODEl[1])
-    target_comp_id = SURROGATE_TARGET[train_ds.attrs["model_type"]]
+    surrogate_model = SINDySurrogateWrapper(SINDY_MODEl["sindy"], SINDY_MODEl["env"])
+    target_comp_id = SINDY_MODEl["target"][data_type]
 
     surrogate_model.fit(train_ds, target_comp_id=target_comp_id)
     return surrogate_model
