@@ -54,9 +54,7 @@ def generate_dataset_flow(dataset_key, datasets_cfg):
     data_type = dataset_cfg["data_type"]
 
     ds = unified_simulater(
-        u=hydra.utils.instantiate(
-            dataset_cfg["current"], current_seed=dataset_cfg["seed"]
-        ),
+        u=hydra.utils.instantiate(dataset_cfg["current"]),
         dt=dataset_cfg["dt"],
         net=MC_MODELS[data_type],
     )

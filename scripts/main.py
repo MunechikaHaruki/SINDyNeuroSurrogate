@@ -54,14 +54,10 @@ def build_full_datasets(cfg):
     # 学習用のデータをテストデータに追加
     datasets["train"] = OmegaConf.to_container(cfg.train, resolve=True)
 
-    # 共通デフォルト値の抽出
-    default_seed = cfg.get("seed", 42)
-    default_dt = cfg.get("simulater_dt", 0.01)
-
     # 内部関数：デフォルト値をセットする
     def apply_defaults(ds_dict):
-        ds_dict.setdefault("seed", default_seed)
-        ds_dict.setdefault("dt", default_dt)
+        ds_dict.setdefault("dt", cfg["simulater_default_dt"])
+        ds_dict["current"].setdefault("current_seed", cfg["default_current_seed"])
         return ds_dict
 
     for model in ["hh", "hh3", "hh5"]:
@@ -83,8 +79,8 @@ def build_full_datasets(cfg):
                     "data_type": model,
                     "current": {
                         "_target_": "neurosurrogate.utils.current_generators.hh_rand_pulse",
+                        "current_seed": seed,
                     },
-                    "seed": seed,
                 }
 
     for key in datasets:
