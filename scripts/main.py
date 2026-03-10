@@ -51,6 +51,9 @@ def build_full_datasets(cfg):
     # resolve=True にすることで、内部の変数参照を解決した状態で取得できます
     datasets = OmegaConf.to_container(cfg.datasets, resolve=True)
 
+    # 学習用のデータをテストデータに追加
+    datasets["train"] = OmegaConf.to_container(cfg.train, resolve=True)
+
     # 共通デフォルト値の抽出
     default_seed = cfg.get("seed", 42)
     default_dt = cfg.get("simulater_dt", 0.01)

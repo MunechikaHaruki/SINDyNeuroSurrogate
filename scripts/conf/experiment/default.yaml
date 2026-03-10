@@ -7,9 +7,8 @@ experiment_name: tryDifferentTeachingCurrent
 
 selected: exp3
 
-datasets:
-  train:
-    ${scenarios.${selected}}
+train:
+  ${scenarios.${selected}}
 
 scenarios:
   exp1:
