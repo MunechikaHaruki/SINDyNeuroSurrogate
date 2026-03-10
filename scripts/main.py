@@ -61,27 +61,12 @@ def build_full_datasets(cfg):
         ds_dict.setdefault("dt", default_dt)
         return ds_dict
 
-    # 2. HH 用の定電流データを追加
-    if "hh_steady_values" in cfg.dataset_profiles:
-        for v in cfg.dataset_profiles.hh_steady_values:
-            key = f"steady_hh_{v}"
-            # すでにYAML側で定義されている場合はスキップ、または上書きを選択
+    for model in ["hh", "hh3", "hh5"]:
+        for v in cfg.dataset_profiles.steady_currents:
+            key = f"stady_{model}_{v}"
             if key not in datasets:
                 datasets[key] = {
-                    "data_type": "hh",
-                    "current": {
-                        "_target_": "neurosurrogate.utils.current_generators.hh_steady",
-                        "value": float(v),
-                    },
-                }
-
-    # 3. HH3 用の定電流データを追加
-    if "hh3_steady_values" in cfg.dataset_profiles:
-        for v in cfg.dataset_profiles.hh3_steady_values:
-            key = f"steady_hh3_{v}"
-            if key not in datasets:
-                datasets[key] = {
-                    "data_type": "hh3",
+                    "data_type": model,
                     "current": {
                         "_target_": "neurosurrogate.utils.current_generators.hh_steady",
                         "value": float(v),
