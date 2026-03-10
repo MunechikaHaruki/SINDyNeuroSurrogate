@@ -3,12 +3,9 @@ from typing import Dict
 import hydra
 import mlflow
 import numpy as np
-from base import MC_MODELS, SINDY_MODEl
-from prefect import flow, get_run_logger, task
+from base import MC_MODELS
+from prefect import flow, get_run_logger
 
-from neurosurrogate.modeling import (
-    SINDySurrogateWrapper,
-)
 from neurosurrogate.modeling.calc_engine import unified_simulater
 from neurosurrogate.utils.plots import plot_compartment_behavior, plot_diff, plot_simple
 
@@ -100,23 +97,16 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model):
     )
 
 
-@task
-def train_task(train_ds, target_comp_id):
-    # 3. Train Model
-    surrogate_model = SINDySurrogateWrapper(SINDY_MODEl["sindy"], SINDY_MODEl["env"])
-    surrogate_model.fit(train_ds, target_comp_id=target_comp_id)
-    return surrogate_model
-
-
 @flow
-def main_flow(datasets_cfg: Dict):
+def main_flow(datasets_cfg: Dict, surrogate_model):
     logger = get_run_logger()
     logger.info("Start Flow")
 
     logger.info("start generate train data")
     train_ds = generate_dataset_flow("train", datasets_cfg)
     target_comp_id = datasets_cfg["train"]["target_comp_id"]
-    surrogate_model = train_task(train_ds, target_comp_id)
+
+    surrogate_model.fit(train_ds, target_comp_id=target_comp_id)
     log_train_model(surrogate_model)
 
     for key in datasets_cfg.keys():

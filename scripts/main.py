@@ -13,6 +13,8 @@ from base import SINDY_MODEl
 from flow import main_flow
 from omegaconf import DictConfig, OmegaConf
 
+from neurosurrogate.modeling import SINDySurrogateWrapper
+
 # Prefectのインポートより前に環境変数を設定する
 os.environ["PREFECT_LOGGING_EXTRA_LOGGERS"] = "neurosurrogate"
 
@@ -115,7 +117,10 @@ def main(cfg: DictConfig) -> None:
         # Prefect flow
         dataset_cfg = build_full_datasets(cfg)
         logger.info(dataset_cfg)
-        main_flow(dataset_cfg)
+        surrogate_model = SINDySurrogateWrapper(
+            SINDY_MODEl["sindy"], SINDY_MODEl["env"]
+        )
+        main_flow(dataset_cfg, surrogate_model)
     logger.info("Script ended")
 
 
