@@ -20,70 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 @njit
-def calc_universal_simulate(curr_x, u_t, model_args, dvar):
-    """物理モデル用の汎用微分計算エンジン"""
-    p, C_matrix, passive_ids, hh_ids, stim_idx, gate_offsets = model_args
-    N = C_matrix.shape[0]
-
-    # 1. 電位ベクトルの抽出と網内電流の計算 (グラフラプラシアン)
-    v_vec = curr_x[:N]
-    I_internal = v_vec @ C_matrix
-    I_internal[stim_idx] += u_t
-
-    # 2. Passive コンパートメントの計算 (if分岐なしのSoA処理)
-    for i in passive_ids:
-        dvar[i] = calc_passive_channel(p, I_internal[i], v_vec[i])
-
-    # 3. Hodgkin-Huxley コンパートメントの計算 (if分岐なしのSoA処理)
-    for i in hh_ids:
-        g_idx = gate_offsets[i]
-        # HHは m, h, n の3つのゲート変数を持つ前提
-        dvar[i] = calc_hh_channel(
-            p,
-            I_internal[i],
-            v_vec[i],
-            curr_x[g_idx : g_idx + 3],
-            dvar[g_idx : g_idx + 3],
-        )
-
-
-@njit
-def calc_universal_surrogate(curr_x, u_t, model_args, dvar):
-    """SINDy代理モデル用の汎用微分計算エンジン"""
-    (
-        p,
-        C_matrix,
-        passive_ids,
-        surr_ids,
-        stim_idx,
-        gate_offsets,
-        xi_matrix,
-        compute_theta,
-    ) = model_args
-    N = C_matrix.shape[0]
-
-    # 1. 電位ベクトルの抽出と網内電流の計算 (グラフラプラシアン)
-    v_vec = curr_x[:N]
-    I_internal = v_vec @ C_matrix
-    I_internal[stim_idx] += u_t
-
-    # 2. Passive コンパートメントの計算
-    for i in passive_ids:
-        dvar[i] = calc_passive_channel(p, I_internal[i], v_vec[i])
-
-    # 3. SINDy代理モデルの計算
-    for i in surr_ids:
-        g_idx = gate_offsets[i]
-        latent = curr_x[g_idx]  # サロゲートは1つの潜在変数 (latent) を持つ前提
-
-        # 動的にコンパイルされた Theta 関数の呼び出し
-        theta = compute_theta(v_vec[i], latent, I_internal[i])
-
-        dvar[i] = xi_matrix[0] @ theta
-        dvar[g_idx] = xi_matrix[1] @ theta
-
-
-@njit
 def generic_euler_solver(deriv_func, init, u, dt, model_args):
     n_steps = len(u)
     n_vars = len(init)
@@ -153,6 +89,57 @@ def calc_graph_laplacian(connections, N):
     return C_matrix
 
 
+@njit
+def dummy_theta(v, latent, i_int):
+    return np.zeros(1, dtype=np.float64)
+
+
+DUMMY_XI = np.zeros((2, 1), dtype=np.float64)
+
+DUMMY_SINDY_ARGS = (DUMMY_XI, dummy_theta)
+
+
+@njit
+def calc_universal_deriv(curr_x, u_t, model_args, dvar):
+    """物理モデル用の汎用微分計算エンジン"""
+    net_args, indice_args, sindy_args = model_args
+    gate_offsets, passive_ids, hh_ids, surr_ids = indice_args
+    p, C_matrix, stim_idx = net_args
+    xi_matrix, compute_theta = sindy_args
+    N = C_matrix.shape[0]
+
+    # 1. 電位ベクトルの抽出と網内電流の計算 (グラフラプラシアン)
+    v_vec = curr_x[:N]
+    I_internal = v_vec @ C_matrix
+    I_internal[stim_idx] += u_t
+
+    # 2. Passive コンパートメントの計算 (if分岐なしのSoA処理)
+    for i in passive_ids:
+        dvar[i] = calc_passive_channel(p, I_internal[i], v_vec[i])
+
+    # 3. Hodgkin-Huxley コンパートメントの計算 (if分岐なしのSoA処理)
+    for i in hh_ids:
+        g_idx = gate_offsets[i]
+        # HHは m, h, n の3つのゲート変数を持つ前提
+        dvar[i] = calc_hh_channel(
+            p,
+            I_internal[i],
+            v_vec[i],
+            curr_x[g_idx : g_idx + 3],
+            dvar[g_idx : g_idx + 3],
+        )
+    # SINDy代理モデルの計算
+    for i in surr_ids:
+        g_idx = gate_offsets[i]
+        latent = curr_x[g_idx]  # サロゲートは1つの潜在変数 (latent) を持つ前提
+
+        # 動的にコンパイルされた Theta 関数の呼び出し
+        theta = compute_theta(v_vec[i], latent, I_internal[i])
+
+        dvar[i] = xi_matrix[0] @ theta
+        dvar[g_idx] = xi_matrix[1] @ theta
+
+
 def unified_simulater(dt, u, net, surrogate_target=None, surrogate_model=None):
     params = HH_Params_numba()
 
@@ -161,16 +148,8 @@ def unified_simulater(dt, u, net, surrogate_target=None, surrogate_model=None):
 
     if surrogate_model is None:
         indice = build_indices(net, COMPARTMENT_TEMPLATES)
-        args = (
-            params,
-            C_matrix,
-            indice["ids"]["passive"],
-            indice["ids"]["hh"],
-            net["stim_node"],
-            indice["gate_offsets"],
-        )
-        init = indice["init"]
-        deriv_func = calc_universal_simulate
+        net_args = (params, C_matrix, net["stim_node"])
+        sindy_args = DUMMY_SINDY_ARGS
     else:
         surr_net, surr_comp = get_surrogate_network(
             net,
@@ -179,20 +158,21 @@ def unified_simulater(dt, u, net, surrogate_target=None, surrogate_model=None):
             surrogate_model.gate_init,
         )
         indice = build_indices(surr_net, surr_comp)
-        args = (
-            params,
-            C_matrix,
-            indice["ids"]["passive"],
-            indice["ids"]["surr"],
-            net["stim_node"],
-            indice["gate_offsets"],
+        net_args = (params, C_matrix, net["stim_node"])
+        sindy_args = (
             surrogate_model.sindy.coefficients(),
             surrogate_model.compute_theta,
         )
-        init = indice["init"]
-        deriv_func = calc_universal_surrogate
+    indice_args = (
+        indice["gate_offsets"],
+        indice["ids"]["passive"],
+        indice["ids"]["hh"],
+        indice["ids"]["surr"],
+    )
 
-    raw = generic_euler_solver(deriv_func, init, u, dt, args)
+    args = (net_args, indice_args, sindy_args)
+
+    raw = generic_euler_solver(calc_universal_deriv, indice["init"], u, dt, args)
 
     dataset = set_coords(raw, u, indice["coords"], dt)
     dataset.attrs["dt"] = dt

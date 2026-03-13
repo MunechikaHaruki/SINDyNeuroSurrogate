@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -55,7 +57,9 @@ def build_indices(net: dict, compartments: dict):
             coord_gate.extend(gate_flags)  # 例: [True, True, True]
 
     # 最後に、集めたIDリストを一気にNumPy配列(int32)に変換する
-    ids = {k: np.array(v, dtype=np.int32) for k, v in ids_list.items()}
+    ids = defaultdict(lambda: np.array([], dtype=np.int32))
+    for k, v in ids_list.items():
+        ids[k] = np.array(v, dtype=np.int32)
 
     return {
         "ids": ids,
