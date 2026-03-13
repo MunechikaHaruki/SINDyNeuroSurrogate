@@ -5,11 +5,9 @@ import numpy as np
 
 DEFAULT_ITER = 80000
 
-CURRENT_GENERATER = {}
-
 
 def current_decorator(func):
-    """HHモデル用の関数ラッパー"""
+    """電流生成関数ラッパー"""
 
     def wrapper(*args, **kwargs):
         # Set random seeds for reproducibility
@@ -21,13 +19,11 @@ def current_decorator(func):
         func(dset_i_ext, iteration, *args, **kwargs)
         return dset_i_ext
 
-    CURRENT_GENERATER[func.__name__] = wrapper
-
     return wrapper
 
 
 @current_decorator
-def hh_rand_pulse(
+def generate_rand_pulse(
     dset_i_ext,
     iteration,
     max_val: int = 20,
@@ -41,13 +37,13 @@ def hh_rand_pulse(
 
 
 @current_decorator
-def hh_steady(dset_i_ext, iteration, value: float):
+def generate_steady(dset_i_ext, iteration, value: float):
     """一定の電流を生成する"""
     dset_i_ext[:] = np.full(iteration, value)
 
 
 @current_decorator
-def hh_gauss_rand_pulse(
+def generate_gauss_rand_pulse(
     dset_i_ext,
     iteration,
     max_val: int = 20,
@@ -67,7 +63,7 @@ def hh_gauss_rand_pulse(
 
 
 @current_decorator
-def hh_discretized(
+def generate_discretized(
     dset_i_ext,
     iteration,
     pulse_step=2000,
@@ -79,23 +75,3 @@ def hh_discretized(
         chosen = random.choices(options, weights=weights, k=1)[0]
         chosen = chosen + random.gauss(mu=0, sigma=sigma)
         dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = np.full(pulse_step, chosen)
-
-
-@current_decorator
-def hh_variable_width(
-    dset_i_ext,
-    iteration,
-    max_val: int = 20,
-    pulse_step: int = 2000,
-    flow_rate: float = 0.5,
-    mu=0,
-    sigma=5,
-):
-    terminus = 0
-    while terminus < iteration:
-        pulse_step = random.randint(1, pulse_step)
-        v = random.gauss(mu=mu, sigma=sigma) if random.random() < flow_rate else 0.0
-        v = np.clip(v, 0, max_val)
-        start = terminus
-        terminus = min(terminus + pulse_step, iteration)
-        dset_i_ext[start:terminus] = np.full(terminus - start, v)

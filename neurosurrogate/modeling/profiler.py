@@ -155,10 +155,4 @@ def get_original_hh_cost():
     res["mul"] += 1 * 3
     res["div"] += 1 * 3  # dvar[1-3]
 
-    # # 4. calc_deriv_hh3 (コンパートメント接続部)
-    # res["pm"] += 4  # I_pre, I_post の計算 (各2pm)
-    # res["pm"] += 4
-    # res["mul"] += 4
-    # res["div"] += 2  # v_pre, v_post の微分
-
     return res

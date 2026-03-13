@@ -69,7 +69,7 @@ def build_full_datasets(cfg):
             datasets[key] = {
                 "data_type": model,
                 "current": {
-                    "_target_": "neurosurrogate.utils.current_generators.hh_steady",
+                    "_target_": "neurosurrogate.utils.current_generators.generate_steady",
                     "value": float(v),
                 },
                 "target_comp_id": SINDY_MODEl["target"][model],
@@ -80,7 +80,7 @@ def build_full_datasets(cfg):
             datasets[key] = {
                 "data_type": model,
                 "current": {
-                    "_target_": "neurosurrogate.utils.current_generators.hh_rand_pulse",
+                    "_target_": "neurosurrogate.utils.current_generators.generate_rand_pulse",
                     "current_seed": seed,
                 },
                 "target_comp_id": SINDY_MODEl["target"][model],
