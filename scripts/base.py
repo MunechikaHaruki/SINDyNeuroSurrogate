@@ -94,9 +94,41 @@ MC_MODELS = {
         "edges": [(0, 1, 1.0), (1, 2, 0.7)],
         "stim_node": 0,
     },
-    "hh5": {
-        "nodes": ["passive", "passive", "hh", "passive", "passive"],
+    "hh3(hhp)": {
+        "nodes": ["hh", "hh", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7)],
+        "stim_node": 0,
+    },
+    "hh3(phh)": {
+        "nodes": ["passive", "hh", "hh"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7)],
+        "stim_node": 0,
+    },
+    "hh5(a)": {
+        "nodes": ["passive", "hh", "hh", "passive", "passive"],
         "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
+        "stim_node": 0,
+    },
+    "hh5(b)": {
+        "nodes": ["passive", "passive", "hh", "hh", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
+        "stim_node": 0,
+    },
+    "hh5(c)": {
+        "nodes": ["passive", "hh", "hh", "hh", "passive"],
+        "edges": [(0, 1, 1.0), (1, 2, 0.7), (2, 3, 0.7), (3, 4, 0.5)],
+        "stim_node": 0,
+    },
+    "hh7": {
+        "nodes": ["passive", "hh", "hh", "hh", "hh", "passive", "passive"],
+        "edges": [
+            (0, 1, 1.0),
+            (1, 2, 0.7),
+            (2, 3, 0.7),
+            (2, 4, 0.5),
+            (3, 5, 0.5),
+            (4, 6, 0.6),
+        ],
         "stim_node": 0,
     },
 }
@@ -104,5 +136,14 @@ MC_MODELS = {
 SINDY_MODEl = {
     "sindy": hh_sindy,
     "env": sys.modules[__name__],
-    "target": {"hh": 0, "hh3": 1, "hh5": 2},
+    "target": {
+        "hh": 0,
+        "hh3": 1,
+        "hh3(hhp)": 1,
+        "hh3(phh)": 1,
+        "hh5(a)": 2,
+        "hh5(b)": 2,
+        "hh5(c)": 2,
+        "hh7": 2,
+    },
 }

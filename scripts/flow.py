@@ -9,7 +9,9 @@ from neurosurrogate.modeling.calc_engine import unified_simulater
 from neurosurrogate.utils.plots import plot_compartment_behavior, plot_diff, plot_simple
 
 
-def log_train_model(surrogate):
+def train_model(surrogate, train_ds, target_comp_id):
+    surrogate.fit(train_ds, target_comp_id)
+    # surrogateモデルのロギング
     summary = surrogate.get_loggable_summary()
     mlflow.log_dict(
         summary["equations"],
@@ -100,14 +102,11 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
 def main_flow(datasets_cfg: Dict, surrogate_model, models_arch):
     logger = get_run_logger()
     logger.info("Start Flow")
-
     logger.info("start generate train data")
     train_ds = generate_dataset_flow("train", datasets_cfg, models_arch)
     target_comp_id = datasets_cfg["train"]["target_comp_id"]
-
-    surrogate_model.fit(train_ds, target_comp_id=target_comp_id)
-    log_train_model(surrogate_model)
-
+    logger.info("Start Training")
+    train_model(surrogate_model, train_ds, target_comp_id)
     for key in datasets_cfg.keys():
         logger.info(f"start {key}'s evaluation")
         ds = generate_dataset_flow(key, datasets_cfg, models_arch)
