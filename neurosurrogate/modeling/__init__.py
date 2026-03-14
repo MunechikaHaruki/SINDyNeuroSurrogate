@@ -64,39 +64,33 @@ class SINDySurrogateWrapper:
         self.compute_theta = extract_compute_theta_from_sindy(
             self.sindy, self.target_module
         )
-
         self.gate_init = self.train_dataarray.to_numpy()[0][1:]
-
-        self.feature_cost_map = build_feature_cost_map(
-            self.sindy.get_feature_names(), self.base_cost_map
-        )
 
     def get_loggable_summary(self) -> dict:
         coef = self.sindy.optimizer.coef_
         nonzero_term_num = np.count_nonzero(coef)
 
-        cost_metrics = static_calc_cost(
-            self.sindy, self.feature_cost_map, self.original_cost
+        feature_cost_map = build_feature_cost_map(
+            self.sindy.get_feature_names(), self.base_cost_map
         )
-        model_params = self.sindy.optimizer.get_params()
+        active_features_map = build_feature_cost_map(
+            get_active_features(self.sindy), self.base_cost_map
+        )
 
         return {
             "metrics": {
-                **cost_metrics,
+                **static_calc_cost(self.sindy, feature_cost_map, self.original_cost),
                 "nonzero_term_num": int(nonzero_term_num),
                 "nonzero_term_ratio": float(nonzero_term_num / coef.size),
             },
-            "params": model_params,
+            "params": self.sindy.optimizer.get_params(),
             "artifacts": {
                 # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
                 "texts": {
                     "sindy_equations.txt": "\n".join(self.sindy.equations(precision=3)),
-                    "feature_names.txt": "\n".join(self.sindy.get_feature_names()),
-                    "active_features.txt": "\n".join(get_active_features(self.sindy)),
                     "coef.txt": np.array2string(coef, precision=3),
-                    "feature_cost_map.md": self._format_cost_map_to_md_table(
-                        self.feature_cost_map
-                    ),
+                    "features.md": self._format_to_table(feature_cost_map),
+                    "features_active.txt": self._format_to_table(active_features_map),
                 },
                 # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
                 "figures": {
@@ -108,7 +102,7 @@ class SINDySurrogateWrapper:
         }
 
     @staticmethod
-    def _format_cost_map_to_md_table(cost_map: dict) -> str:
+    def _format_to_table(cost_map: dict) -> str:
         # 辞書をデータフレームに変換
         df = pd.DataFrame.from_dict(cost_map, orient="index")
         df.index.name = "Feature"
