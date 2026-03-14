@@ -1,9 +1,7 @@
-import json
 from typing import Dict
 
 import hydra
 import mlflow
-import numpy as np
 from prefect import flow, get_run_logger
 
 from neurosurrogate.modeling.calc_engine import unified_simulater
@@ -14,43 +12,16 @@ def train_model(surrogate, train_ds, target_comp_id):
     surrogate.fit(train_ds, target_comp_id)
     # surrogateモデルのロギング
     summary = surrogate.get_loggable_summary()
-    mlflow.log_dict(
-        summary["equations"],
-        artifact_file="sindy_equations.txt",
-    )
-    coef = summary["coefficients"]
-    mlflow.log_text(
-        np.array2string(coef, precision=3),
-        artifact_file="coef.txt",
-    )
 
-    nonzero_term_num = np.count_nonzero(coef)
-    mlflow.log_metrics(
-        metrics={
-            "nonzero_term_num": nonzero_term_num,
-            "nonzero_term_ratio": nonzero_term_num / coef.size,
-        }
-    )
+    mlflow.log_metrics(summary["metrics"])
+    mlflow.log_params(summary["params"])
 
-    mlflow.log_metrics(summary["static_calc_cost"])
+    for filename, content in summary["artifacts"]["texts"].items():
+        mlflow.log_text(content, artifact_file=filename)
 
-    mlflow.log_text(
-        "\n".join(summary["feature_names"]), artifact_file="feature_names.txt"
-    )
-    mlflow.log_text(
-        "\n".join(summary["active_features"]), artifact_file="active_features.txt"
-    )
-
-    mlflow.log_text(
-        json.dumps(summary["feature_cost_map"], indent=2),
-        artifact_file="feature_cost_map.txt",
-    )
-
-    mlflow.log_param(
-        "model_params",
-        summary["model_params"],
-    )
-    mlflow.log_figure(summary["train_figure"], artifact_file="train.png")
+    for filename, fig in summary["artifacts"]["figures"].items():
+        if fig is not None:
+            mlflow.log_figure(fig, artifact_file=filename)
 
 
 def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):

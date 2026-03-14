@@ -1,3 +1,4 @@
+import json
 import logging
 
 import numpy as np
@@ -71,19 +72,39 @@ class SINDySurrogateWrapper:
         )
 
     def get_loggable_summary(self) -> dict:
+        coef = self.sindy.optimizer.coef_
+        nonzero_term_num = np.count_nonzero(coef)
+
+        cost_metrics = static_calc_cost(
+            self.sindy, self.feature_cost_map, self.original_cost
+        )
+        model_params = self.sindy.optimizer.get_params()
+
         return {
-            "equations": self.sindy.equations(precision=3),
-            "coefficients": self.sindy.optimizer.coef_,
-            "feature_names": self.sindy.get_feature_names(),
-            "active_features": get_active_features(self.sindy),
-            "model_params": str(self.sindy.optimizer.get_params),
-            "train_figure": plot_compartment_behavior(
-                xarray=self.train_dataarray, u=self.u_dataarray
-            ),
-            "feature_cost_map": self.feature_cost_map,
-            "static_calc_cost": static_calc_cost(
-                self.sindy, self.feature_cost_map, self.original_cost
-            ),
+            "metrics": {
+                **cost_metrics,
+                "nonzero_term_num": int(nonzero_term_num),
+                "nonzero_term_ratio": float(nonzero_term_num / coef.size),
+            },
+            "params": model_params,
+            "artifacts": {
+                # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
+                "texts": {
+                    "sindy_equations.txt": "\n".join(self.sindy.equations(precision=3)),
+                    "feature_names.txt": "\n".join(self.sindy.get_feature_names()),
+                    "active_features.txt": "\n".join(get_active_features(self.sindy)),
+                    "coef.txt": np.array2string(coef, precision=3),
+                    "feature_cost_map.json": json.dumps(
+                        self.feature_cost_map, indent=2
+                    ),
+                },
+                # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
+                "figures": {
+                    "train.png": plot_compartment_behavior(
+                        xarray=self.train_dataarray, u=self.u_dataarray
+                    )
+                },
+            },
         }
 
 
