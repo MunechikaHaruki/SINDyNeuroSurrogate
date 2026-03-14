@@ -3,20 +3,21 @@ import random
 
 import numpy as np
 
-DEFAULT_ITER = 80000
-
 
 def current_decorator(func):
     """電流生成関数ラッパー"""
 
     def wrapper(*args, **kwargs):
         # Set random seeds for reproducibility
-        current_seed = kwargs.pop("current_seed", 0)
+        current_seed = kwargs.pop("current_seed")
         random.seed(current_seed)
         np.random.seed(current_seed)
-        iteration = kwargs.pop("iteration", DEFAULT_ITER)
+        iteration = kwargs.pop("iteration")
+        silence_steps = kwargs.pop("silence_steps")
         dset_i_ext = np.zeros(shape=(iteration,))
         func(dset_i_ext, iteration, *args, **kwargs)
+
+        dset_i_ext[:silence_steps] = 0  # 最初の電流を初期化
         return dset_i_ext
 
     return wrapper

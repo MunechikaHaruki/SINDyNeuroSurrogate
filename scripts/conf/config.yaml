@@ -10,9 +10,13 @@ hydra:
 
 matplotlib_style: paper
 
+# デフォルト値の設定(シミュレーション)
+simulater_default_dt: 0.01 #[ms]
+simulater_default_duration: 800 #[ms]
+# デフォルト値の設定(電流生成)
 default_current_seed: 6
-simulater_default_dt: 0.01
+silence_duration: 10 #[ms]
 
 dataset_profiles:
-  steady_currents: [ 0, 3, 5, 6.5, 6.3, 6.2, 7, 10, 15, 20]
+  steady_currents: [ 0, 10, 20] #, 6.5, 6.3, 6.2, 7, 10, 15, 20]
   random_current_seeds: [9919,9920]

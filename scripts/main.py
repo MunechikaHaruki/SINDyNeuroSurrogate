@@ -60,7 +60,15 @@ def build_full_datasets(cfg):
     # 内部関数：デフォルト値をセットする
     def apply_defaults(ds_dict):
         ds_dict.setdefault("dt", cfg["simulater_default_dt"])
+
+        # 電流周りのデフォルト値セット
         ds_dict["current"].setdefault("current_seed", cfg["default_current_seed"])
+        ds_dict["current"].setdefault(
+            "silence_steps", int(cfg["silence_duration"] / ds_dict["dt"])
+        )
+        ds_dict["current"].setdefault(
+            "iteration", int(cfg["simulater_default_duration"] / ds_dict["dt"])
+        )
         return ds_dict
 
     for model in SINDY_MODEl["target"].keys():
