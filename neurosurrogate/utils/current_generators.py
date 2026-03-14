@@ -17,7 +17,8 @@ def current_decorator(func):
         dset_i_ext = np.zeros(shape=(iteration,))
         func(dset_i_ext, iteration, *args, **kwargs)
 
-        dset_i_ext[:silence_steps] = 0  # 最初の電流を初期化
+        dset_i_ext[:silence_steps] = 0  # 最初の電流は何も与えない
+        dset_i_ext[-silence_steps:] = 0  # 最後の電流は何も与えない
         return dset_i_ext
 
     return wrapper
