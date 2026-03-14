@@ -1,4 +1,5 @@
 import re
+from collections import Counter
 
 import numpy as np
 
@@ -15,7 +16,7 @@ def get_active_features(sindy_model):
     return active_features
 
 
-def static_calc_cost(sindy_model, cost_map):
+def static_calc_cost(sindy_model, cost_map, original_cost):
     """ "
     expの演算回数が~~~,+の演算回数が~~~みたいに計算
     """
@@ -34,33 +35,17 @@ def static_calc_cost(sindy_model, cost_map):
     active_features = get_active_features(sindy_model)
 
     for feature in active_features:
-        work_str = feature
+        # 騒々しく失敗する (Fail Fast, Fail Loudly)
+        if feature not in cost_map:
+            raise ValueError(
+                f"未知の基底関数 '{feature}' が見つかりました。"
+                "注入された cost_map にこの基底関数の定義を追加してください。"
+            )
 
-        # ステップ1: 物理関数を特定して消去 (Pop)
-        for func_name, costs in cost_map.items():
-            if func_name in work_str:
-                # 物理関数が見つかった回数分コストを加算
-                count = work_str.count(func_name)
-                for op, val in costs.items():
-                    surrogate_raw[op] += val * count
-                # 解析済みとして文字列から消す
-                work_str = work_str.replace(func_name, "")
-
-        # ステップ2: np.power を特定して消去
-        # 正規表現でべき乗数を抽出し、(n-1)回の乗算として加算
-        powers = re.findall(r"np\.power\(.*?, (\d+)\)", work_str)
-        for p in powers:
-            surrogate_raw["mul"] += int(p) - 1
-        work_str = re.sub(r"np\.power\(.*?, \d+\)", "", work_str)
-
-        # ステップ3: 残った文字列（残渣）から演算子をカウント
-        # ここに残っている '*' や '+' は、項同士の結合に使われているものだけ
-        surrogate_raw["mul"] += work_str.count("*")
-        surrogate_raw["pm"] += work_str.count("+") + work_str.count("-")
-        # u や V_soma などの変数名は無視される
-
-    # 2. オリジナルモデルのコスト取得
-    original_raw = get_original_hh_cost(cost_map)
+        # 辞書から直接コストを引いて足すだけ（超高速＆確実）
+        feature_cost = cost_map[feature]
+        for op, val in feature_cost.items():
+            surrogate_raw[op] += val
 
     # 3. 階層化辞書の構築
     result = {}
@@ -68,13 +53,13 @@ def static_calc_cost(sindy_model, cost_map):
     # surrogate / original カテゴリ
     for k, v in surrogate_raw.items():
         result[f"cost/surrogate/{k}"] = v
-    for k, v in original_raw.items():
+    for k, v in original_cost.items():
         result[f"cost/original/{k}"] = v
 
     # diff / reduction_pct カテゴリ
     # 基本演算(exp, div, pm, mul)について比較
-    for k in original_raw.keys():
-        v_orig = original_raw[k]
+    for k in original_cost.keys():
+        v_orig = original_cost[k]
         v_surr = surrogate_raw.get(k, 0)
 
         # 差分 (削減量)
@@ -83,36 +68,39 @@ def static_calc_cost(sindy_model, cost_map):
     return result
 
 
-def get_original_hh_cost(cost_map):
+def build_feature_cost_map(feature_names: list, base_cost_map: dict) -> dict:
     """
-    提供された calc_deriv_hh / hh3 のコードを静的にトレースした演算コスト。
+    SINDyが生成したすべての基底関数名(文字列)を解析し、
+    O(1)で引ける完全一致のコスト辞書を自動生成する。
     """
-    res = {"exp": 0, "div": 0, "pm": 0, "mul": 0}
+    feature_cost_map = {}
 
-    # 1. alpha/beta (6個分)
-    for func in ["alpha_m", "beta_m", "alpha_h", "beta_h", "alpha_n", "beta_n"]:
-        for op, val in cost_map[func].items():
-            res[op] += val
+    # 部分一致バグを防ぐため、名前が長い順にソートして処理
+    sorted_funcs = sorted(base_cost_map.keys(), key=len, reverse=True)
 
-    # 2. Gating variables (m0, h0, n0, tau_m, tau_h, tau_n) の計算
-    # m0 = alpha / (alpha + beta) -> 1pm, 1div
-    # tau = 1 / (alpha + beta) -> 1pm, 1div
-    res["pm"] += (1 + 1) * 3
-    res["div"] += (1 + 1) * 3
+    for feature in feature_names:
+        cost = Counter({"exp": 0, "div": 0, "pm": 0, "mul": 0})
+        work_str = feature
 
-    # 3. calc_deriv_hh 内部
-    res["pm"] += 1  # v_rel = v - p.E_REST
-    res["pm"] += 1
-    res["mul"] += 1  # i_leak
-    res["pm"] += 1
-    res["mul"] += 5  # i_na (m*m*m*h*(v-E))
-    res["pm"] += 1
-    res["mul"] += 5  # i_k (n*n*n*n*(v-E))
+        # ステップ1: 基礎物理関数のコストを抽出し、文字列から消去
+        for func_name in sorted_funcs:
+            count = work_str.count(func_name)
+            if count > 0:
+                for op, val in base_cost_map[func_name].items():
+                    cost[op] += val * count
+                work_str = work_str.replace(func_name, "")
 
-    res["pm"] += 4
-    res["div"] += 1  # dvar[0]
-    res["pm"] += 2 * 3
-    res["mul"] += 1 * 3
-    res["div"] += 1 * 3  # dvar[1-3]
+        # ステップ2: べき乗 (np.power) の展開コスト
+        # np.power(x, 3) なら (3-1)=2回の掛け算
+        powers = re.findall(r"np\.power\(.*?, (\d+)\)", work_str)
+        cost["mul"] += sum(int(p) - 1 for p in powers)
+        work_str = re.sub(r"np\.power\(.*?, \d+\)", "", work_str)
 
-    return res
+        # ステップ3: 残った演算子 (* や +) のカウント
+        cost["mul"] += work_str.count("*")
+        cost["pm"] += work_str.count("+") + work_str.count("-")
+
+        # 辞書に登録
+        feature_cost_map[feature] = dict(cost)
+
+    return feature_cost_map

@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 from ..utils.plots import plot_compartment_behavior
-from .profiler import get_active_features, static_calc_cost
+from .profiler import build_feature_cost_map, get_active_features, static_calc_cost
 from .xarray_utils import generate_preprocessed_xarray
 
 logger = logging.getLogger(__name__)
@@ -33,10 +33,11 @@ class PCAPreProcessorWrapper:
 
 
 class SINDySurrogateWrapper:
-    def __init__(self, initialized_sindy, target_module, cost_map):
+    def __init__(self, initialized_sindy, target_module, base_cost_map, original_cost):
         self.sindy = initialized_sindy
         self.target_module = target_module
-        self.cost_map = cost_map
+        self.base_cost_map = base_cost_map
+        self.original_cost = original_cost
 
         self.preprocessor = PCAPreProcessorWrapper()
 
@@ -65,6 +66,10 @@ class SINDySurrogateWrapper:
 
         self.gate_init = self.train_dataarray.to_numpy()[0][1:]
 
+        self.feature_cost_map = build_feature_cost_map(
+            self.sindy.get_feature_names(), self.base_cost_map
+        )
+
     def get_loggable_summary(self) -> dict:
         return {
             "equations": self.sindy.equations(precision=3),
@@ -75,7 +80,10 @@ class SINDySurrogateWrapper:
             "train_figure": plot_compartment_behavior(
                 xarray=self.train_dataarray, u=self.u_dataarray
             ),
-            "static_calc_cost": static_calc_cost(self.sindy, self.cost_map),
+            "feature_cost_map": self.feature_cost_map,
+            "static_calc_cost": static_calc_cost(
+                self.sindy, self.feature_cost_map, self.original_cost
+            ),
         }
 
 

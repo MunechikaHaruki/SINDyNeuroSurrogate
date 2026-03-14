@@ -1,3 +1,4 @@
+import json
 from typing import Dict
 
 import hydra
@@ -38,6 +39,11 @@ def train_model(surrogate, train_ds, target_comp_id):
     )
     mlflow.log_text(
         "\n".join(summary["active_features"]), artifact_file="active_features.txt"
+    )
+
+    mlflow.log_text(
+        json.dumps(summary["feature_cost_map"], indent=2),
+        artifact_file="feature_cost_map.txt",
     )
 
     mlflow.log_param(
