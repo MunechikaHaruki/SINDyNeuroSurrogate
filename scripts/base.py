@@ -12,6 +12,46 @@ from neurosurrogate.modeling.neuron_core import (
     beta_n,
 )
 
+cost_map = {
+    "alpha_m": {
+        "exp": 1,
+        "div": 1,
+        "pm": 2,  # 2.5 - 0.1v (1回分) と 分母の - 1.0
+        "mul": 2,  # 0.1 * v (1回分)
+    },
+    "beta_m": {
+        "exp": 1,
+        "div": 1,
+        "pm": 1,  # -v
+        "mul": 1,  # 4.0 * exp
+    },
+    "alpha_h": {
+        "exp": 1,
+        "div": 1,
+        "pm": 1,
+        "mul": 1,
+    },
+    "beta_h": {
+        "exp": 1,
+        "div": 1,
+        "pm": 2,  # 3.0 - 0.1v と + 1.0
+        "mul": 1,  # 0.1 * v
+    },
+    "alpha_n": {
+        "exp": 1,
+        "div": 1,
+        "pm": 2,
+        "mul": 2,
+    },
+    "beta_n": {
+        "exp": 1,
+        "div": 1,
+        "pm": 1,
+        "mul": 1,
+    },
+    "a_n": {"exp": 1, "div": 1, "pm": 2, "mul": 2},
+}
+
 
 @njit
 def a_n(v):

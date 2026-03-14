@@ -2,46 +2,6 @@ import re
 
 import numpy as np
 
-cost_map = {
-    "alpha_m": {
-        "exp": 1,
-        "div": 1,
-        "pm": 2,  # 2.5 - 0.1v (1回分) と 分母の - 1.0
-        "mul": 2,  # 0.1 * v (1回分)
-    },
-    "beta_m": {
-        "exp": 1,
-        "div": 1,
-        "pm": 1,  # -v
-        "mul": 1,  # 4.0 * exp
-    },
-    "alpha_h": {
-        "exp": 1,
-        "div": 1,
-        "pm": 1,
-        "mul": 1,
-    },
-    "beta_h": {
-        "exp": 1,
-        "div": 1,
-        "pm": 2,  # 3.0 - 0.1v と + 1.0
-        "mul": 1,  # 0.1 * v
-    },
-    "alpha_n": {
-        "exp": 1,
-        "div": 1,
-        "pm": 2,
-        "mul": 2,
-    },
-    "beta_n": {
-        "exp": 1,
-        "div": 1,
-        "pm": 1,
-        "mul": 1,
-    },
-    "a_n": {"exp": 1, "div": 1, "pm": 2, "mul": 2},
-}
-
 
 def get_active_features(sindy_model):
     # 係数が非ゼロのインデックスを取得
@@ -55,7 +15,7 @@ def get_active_features(sindy_model):
     return active_features
 
 
-def static_calc_cost(sindy_model):
+def static_calc_cost(sindy_model, cost_map):
     """ "
     expの演算回数が~~~,+の演算回数が~~~みたいに計算
     """
@@ -100,7 +60,7 @@ def static_calc_cost(sindy_model):
         # u や V_soma などの変数名は無視される
 
     # 2. オリジナルモデルのコスト取得
-    original_raw = get_original_hh_cost()
+    original_raw = get_original_hh_cost(cost_map)
 
     # 3. 階層化辞書の構築
     result = {}
@@ -123,7 +83,7 @@ def static_calc_cost(sindy_model):
     return result
 
 
-def get_original_hh_cost():
+def get_original_hh_cost(cost_map):
     """
     提供された calc_deriv_hh / hh3 のコードを静的にトレースした演算コスト。
     """

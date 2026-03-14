@@ -33,9 +33,10 @@ class PCAPreProcessorWrapper:
 
 
 class SINDySurrogateWrapper:
-    def __init__(self, initialized_sindy, target_module):
+    def __init__(self, initialized_sindy, target_module, cost_map):
         self.sindy = initialized_sindy
         self.target_module = target_module
+        self.cost_map = cost_map
 
         self.preprocessor = PCAPreProcessorWrapper()
 
@@ -74,7 +75,7 @@ class SINDySurrogateWrapper:
             "train_figure": plot_compartment_behavior(
                 xarray=self.train_dataarray, u=self.u_dataarray
             ),
-            "static_calc_cost": static_calc_cost(self.sindy),
+            "static_calc_cost": static_calc_cost(self.sindy, self.cost_map),
         }
 
 
