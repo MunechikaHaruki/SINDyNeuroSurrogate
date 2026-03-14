@@ -4,8 +4,9 @@ import hydra
 import mlflow
 from prefect import flow, get_run_logger
 
+from neurosurrogate.modeling import analyze_eval_results
 from neurosurrogate.modeling.calc_engine import unified_simulater
-from neurosurrogate.utils.plots import plot_compartment_behavior, plot_diff, plot_simple
+from neurosurrogate.utils.plots import plot_simple
 
 
 def train_model(surrogate, train_ds, target_comp_id):
@@ -20,8 +21,7 @@ def train_model(surrogate, train_ds, target_comp_id):
         mlflow.log_text(content, artifact_file=filename)
 
     for filename, fig in summary["artifacts"]["figures"].items():
-        if fig is not None:
-            mlflow.log_figure(fig, artifact_file=filename)
+        mlflow.log_figure(fig, artifact_file=filename)
 
 
 def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):
@@ -49,30 +49,12 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
     )
-
-    transformed_dataarray = surrogate_model.preprocessor.transform(
-        original_ds, target_comp_id=target_comp_id
+    eval_result = analyze_eval_results(
+        original_ds, predict_result, name, target_comp_id, surrogate_model
     )
-
-    mlflow.log_figure(
-        plot_compartment_behavior(
-            u=original_ds["I_internal"].sel(node_id=target_comp_id),
-            xarray=transformed_dataarray,
-        ),
-        artifact_file=f"preprocessed/{data_type}/{name}.png",
-    )
-    mlflow.log_figure(
-        plot_simple(predict_result),
-        artifact_file=f"surrogate/{data_type}/{name}.png",
-    )
-    mlflow.log_figure(
-        plot_diff(
-            original=original_ds,
-            preprocessed=transformed_dataarray,
-            surrogate=predict_result,
-        ),
-        artifact_file=f"compare/{data_type}/{name}.png",
-    )
+    mlflow.log_metrics(eval_result["metrics"])
+    for path, fig in eval_result["figures"].items():
+        mlflow.log_figure(fig, artifact_file=path)
 
 
 @flow

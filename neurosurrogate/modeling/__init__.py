@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 
-from ..utils.plots import plot_compartment_behavior
+from ..utils.plots import plot_compartment_behavior, plot_diff, plot_simple
 from .profiler import build_feature_cost_map, get_active_features, static_calc_cost
 from .xarray_utils import generate_preprocessed_xarray
 
@@ -90,7 +90,7 @@ class SINDySurrogateWrapper:
                     "sindy_equations.txt": "\n".join(self.sindy.equations(precision=3)),
                     "coef.txt": np.array2string(coef, precision=3),
                     "features.md": self._format_to_table(feature_cost_map),
-                    "features_active.txt": self._format_to_table(active_features_map),
+                    "features_active.md": self._format_to_table(active_features_map),
                 },
                 # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
                 "figures": {
@@ -128,3 +128,45 @@ def dynamic_compute_theta({input_features}):
     local_vars = {}
     exec(source, vars(target_module), local_vars)
     return local_vars["dynamic_compute_theta"]
+
+
+def analyze_eval_results(
+    original_ds, predict_result, name, target_comp_id, surrogate_model
+):
+    """
+    シミュレーション済みのデータを受け取り、メトリクス計算と可視化を行う。
+    シミュレーター自体は呼び出さない。
+    """
+    data_type = original_ds.attrs["model_type"]
+    dt = float(original_ds.attrs["dt"])
+
+    # 1. 前処理済みデータの取得
+    transformed_dataarray = surrogate_model.preprocessor.transform(
+        original_ds, target_comp_id=target_comp_id
+    )
+
+    # 2. メトリクス計算 (ISI等)
+    # orig_v = original_ds["v"].sel(node_id=target_comp_id).to_numpy()
+    # surr_v = predict_result["v"].sel(node_id=target_comp_id).to_numpy()
+    # dynamic_metrics = calc_dynamic_metrics(orig_v, surr_v, dt)
+    dynamic_metrics = {}  # dummy
+
+    def set_prefix_to_metrics(metrics: dict):
+        return {f"eval/{data_type}/{name}/{k}": v for k, v in metrics.items()}
+
+    # 3. 構造化して返す
+    return {
+        "metrics": set_prefix_to_metrics(dynamic_metrics),
+        "figures": {
+            f"preprocessed/{data_type}/{name}.png": plot_compartment_behavior(
+                u=original_ds["I_internal"].sel(node_id=target_comp_id),
+                xarray=transformed_dataarray,
+            ),
+            f"surrogate/{data_type}/{name}.png": plot_simple(predict_result),
+            f"compare/{data_type}/{name}.png": plot_diff(
+                original=original_ds,
+                preprocessed=transformed_dataarray,
+                surrogate=predict_result,
+            ),
+        },
+    }
