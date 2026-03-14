@@ -159,6 +159,7 @@ def unified_simulater(dt, u, net, surrogate_target=None, surrogate_model=None):
         )
         indice = build_indices(surr_net, surr_comp)
         net_args = (params, C_matrix, net["stim_node"])
+
         sindy_args = (
             surrogate_model.sindy.coefficients(),
             surrogate_model.compute_theta,

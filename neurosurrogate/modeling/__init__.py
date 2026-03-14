@@ -61,10 +61,21 @@ class SINDySurrogateWrapper:
             t=train_xr_dataset["time"].to_numpy(),
             feature_names=input_features,
         )
-        self.compute_theta = extract_compute_theta_from_sindy(
-            self.sindy, self.target_module
-        )
+
         self.gate_init = self.train_dataarray.to_numpy()[0][1:]
+
+        # 関数組み立て
+        array_content = ",\n".join(self.sindy.get_feature_names())
+        input_features = ",".join(self.sindy.feature_names)
+        self.source = f"""@njit
+def dynamic_compute_theta({input_features}):
+    return np.array([
+{array_content}])"""
+        local_vars = {}
+        exec(self.source, vars(self.target_module), local_vars)
+        self.compute_theta = local_vars["dynamic_compute_theta"]
+
+        logger.info(self.source)
 
     def get_loggable_summary(self) -> dict:
         coef = self.sindy.optimizer.coef_
@@ -87,7 +98,8 @@ class SINDySurrogateWrapper:
             "artifacts": {
                 # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
                 "texts": {
-                    "sindy_equations.txt": "\n".join(self.sindy.equations(precision=3)),
+                    "equations.txt": "\n".join(self.sindy.equations(precision=3)),
+                    "source.txt": self.source,
                     "coef.txt": np.array2string(coef, precision=3),
                     "features.md": self._format_to_table(feature_cost_map),
                     "features_active.md": self._format_to_table(active_features_map),
@@ -108,26 +120,6 @@ class SINDySurrogateWrapper:
         df.index.name = "Feature"
         # 欠損値を0で埋めて整数型にし、美しいMarkdownとして出力
         return df.fillna(0).astype(int).to_markdown()
-
-
-def extract_compute_theta_from_sindy(sindy_model, target_module):
-    """
-    SINDyオブジェクトから特徴量計算式を抽出し、
-    Numbaでコンパイルされた関数を生成する。
-    """
-    feature_names = sindy_model.get_feature_names()
-    input_features = ",".join(sindy_model.feature_names)
-    # ソースコードの組み立て
-    array_content = ",\n".join(feature_names)
-    source = f"""@njit
-def dynamic_compute_theta({input_features}):
-    return np.array([
-{array_content}])"""
-    logger.info(source)
-    # 実行環境のglobals()を引き継ぎ、alpha_mなどの関数を参照可能にする
-    local_vars = {}
-    exec(source, vars(target_module), local_vars)
-    return local_vars["dynamic_compute_theta"]
 
 
 def analyze_eval_results(
