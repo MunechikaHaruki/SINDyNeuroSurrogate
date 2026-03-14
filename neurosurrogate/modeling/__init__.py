@@ -1,7 +1,7 @@
-import json
 import logging
 
 import numpy as np
+import pandas as pd
 from sklearn.decomposition import PCA
 
 from ..utils.plots import plot_compartment_behavior
@@ -94,8 +94,8 @@ class SINDySurrogateWrapper:
                     "feature_names.txt": "\n".join(self.sindy.get_feature_names()),
                     "active_features.txt": "\n".join(get_active_features(self.sindy)),
                     "coef.txt": np.array2string(coef, precision=3),
-                    "feature_cost_map.json": json.dumps(
-                        self.feature_cost_map, indent=2
+                    "feature_cost_map.md": self._format_cost_map_to_md_table(
+                        self.feature_cost_map
                     ),
                 },
                 # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
@@ -106,6 +106,14 @@ class SINDySurrogateWrapper:
                 },
             },
         }
+
+    @staticmethod
+    def _format_cost_map_to_md_table(cost_map: dict) -> str:
+        # 辞書をデータフレームに変換
+        df = pd.DataFrame.from_dict(cost_map, orient="index")
+        df.index.name = "Feature"
+        # 欠損値を0で埋めて整数型にし、美しいMarkdownとして出力
+        return df.fillna(0).astype(int).to_markdown()
 
 
 def extract_compute_theta_from_sindy(sindy_model, target_module):
