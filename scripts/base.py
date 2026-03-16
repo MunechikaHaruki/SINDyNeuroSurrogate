@@ -13,36 +13,28 @@ from neurosurrogate.modeling.neuron_core import (
     hh_base_cost_map,
 )
 
-gate = ps.CustomLibrary(
-    library_functions=[
-        lambda x: alpha_m(x),
-        lambda x: alpha_h(x),
-        lambda x: alpha_n(x),
-    ],
-    function_names=[
-        lambda x: f"alpha_m({x})",
-        lambda x: f"alpha_h({x})",
-        lambda x: f"alpha_n({x})",
-    ],
+
+def make_gate_lib(funcs, names, is_product=False):
+    """Gate単体、または Gate * y のペアを生成するファクトリ"""
+    if not is_product:
+        # 単体: lambda x: alpha_m(x)
+        f_list = [f for f in funcs]
+        n_list = [(lambda n: lambda x: f"{n}({x})")(n) for n in names]
+    else:
+        # 積: lambda x, y: alpha_m(x) * y
+        f_list = [(lambda f: lambda x, y: f(x) * y)(f) for f in funcs]
+        n_list = [(lambda n: lambda x, y: f"{n}({x})*{y}")(n) for n in names]
+    return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
+
+
+gate = make_gate_lib(
+    [alpha_m, alpha_h, alpha_n], ["alpha_m", "alpha_h", "alpha_n"], is_product=False
 )
 
-gate_product = ps.CustomLibrary(
-    library_functions=[
-        lambda x, y: alpha_m(x) * y,
-        lambda x, y: beta_m(x) * y,
-        lambda x, y: alpha_h(x) * y,
-        lambda x, y: beta_h(x) * y,
-        lambda x, y: alpha_n(x) * y,
-        lambda x, y: beta_n(x) * y,
-    ],
-    function_names=[
-        lambda x, y: f"alpha_m({x})*{y}",
-        lambda x, y: f"beta_m({x})*{y}",
-        lambda x, y: f"alpha_h({x})*{y}",
-        lambda x, y: f"beta_h({x})*{y}",
-        lambda x, y: f"alpha_n({x})*{y}",
-        lambda x, y: f"beta_n({x})*{y}",
-    ],
+gate_product = make_gate_lib(
+    funcs=[alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n],
+    names=["alpha_m", "beta_m", "alpha_h", "beta_h", "alpha_n", "beta_n"],
+    is_product=True,
 )
 
 volt_base = ps.CustomLibrary(
@@ -60,15 +52,17 @@ volt_base = ps.CustomLibrary(
     ],
 )
 
+
 base = ps.CustomLibrary(
     library_functions=[lambda x: x, lambda: 1],
     function_names=[lambda x: f"{x}", lambda: "1"],
 )
 
+
 hh_sindy = ps.SINDy(
     feature_library=ps.GeneralizedLibrary(
         [gate, gate_product, volt_base, base],
-        inputs_per_library=[
+        inputs_per_library=[  # [0,1,2]はV,g',u
             [0],
             [0, 1],
             [0, 1, 2],  # gate_product に V, m, h を渡す
