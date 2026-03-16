@@ -69,6 +69,84 @@ def tau_n(v_rel):
     return 1.0 / (alpha_n(v_rel) + beta_n(v_rel))
 
 
+hh_base_cost_map = {
+    "alpha_m": {
+        "exp": 1,
+        "div": 1,
+        "pm": 2,  # 2.5 - 0.1v (1回分) と 分母の - 1.0
+        "mul": 2,  # 0.1 * v (1回分)
+    },
+    "beta_m": {
+        "exp": 1,
+        "div": 1,
+        "pm": 1,  # -v
+        "mul": 1,  # 4.0 * exp
+    },
+    "alpha_h": {
+        "exp": 1,
+        "div": 1,
+        "pm": 1,
+        "mul": 1,
+    },
+    "beta_h": {
+        "exp": 1,
+        "div": 1,
+        "pm": 2,  # 3.0 - 0.1v と + 1.0
+        "mul": 1,  # 0.1 * v
+    },
+    "alpha_n": {
+        "exp": 1,
+        "div": 1,
+        "pm": 2,
+        "mul": 2,
+    },
+    "beta_n": {
+        "exp": 1,
+        "div": 1,
+        "pm": 1,
+        "mul": 1,
+    },
+}
+
+
+def _get_original_hh_cost(base_cost_map):
+    """
+    提供された calc_deriv_hh / hh3 のコードを静的にトレースした演算コスト。
+    """
+    res = {"exp": 0, "div": 0, "pm": 0, "mul": 0}
+
+    # 1. alpha/beta (6個分)
+    for func in ["alpha_m", "beta_m", "alpha_h", "beta_h", "alpha_n", "beta_n"]:
+        for op, val in base_cost_map[func].items():
+            res[op] += val
+
+    # 2. Gating variables (m0, h0, n0, tau_m, tau_h, tau_n) の計算
+    # m0 = alpha / (alpha + beta) -> 1pm, 1div
+    # tau = 1 / (alpha + beta) -> 1pm, 1div
+    res["pm"] += (1 + 1) * 3
+    res["div"] += (1 + 1) * 3
+
+    # 3. calc_deriv_hh 内部
+    res["pm"] += 1  # v_rel = v - p.E_REST
+    res["pm"] += 1
+    res["mul"] += 1  # i_leak
+    res["pm"] += 1
+    res["mul"] += 5  # i_na (m*m*m*h*(v-E))
+    res["pm"] += 1
+    res["mul"] += 5  # i_k (n*n*n*n*(v-E))
+
+    res["pm"] += 4
+    res["div"] += 1  # dvar[0]
+    res["pm"] += 2 * 3
+    res["mul"] += 1 * 3
+    res["div"] += 1 * 3  # dvar[1-3]
+
+    return res
+
+
+HH_COST = _get_original_hh_cost(hh_base_cost_map)
+
+
 @jitclass(
     [
         ("E_REST", float64),
