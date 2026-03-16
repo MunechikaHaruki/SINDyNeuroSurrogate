@@ -1,9 +1,7 @@
-import sys
-
 import numpy as np
 import pysindy as ps
-from numba import njit
 
+from neurosurrogate.modeling import neuron_core
 from neurosurrogate.modeling.neuron_core import (
     HH_COST,
     alpha_h,
@@ -15,22 +13,11 @@ from neurosurrogate.modeling.neuron_core import (
     hh_base_cost_map,
 )
 
-COST_MAP = {
-    "base": hh_base_cost_map,
-    "orig": HH_COST,
-}
-
-
-@njit
-def a_n(v):
-    return 0.01 * (10 - v) / (np.exp((10 - v) / 10.0) - 1 + 0.001)  # ゼロ除算回避
-
-
 gate = ps.CustomLibrary(
     library_functions=[
         lambda x: alpha_m(x),
         lambda x: alpha_h(x),
-        lambda x: alpha_n(x),  # ゼロ除算回避
+        lambda x: alpha_n(x),
     ],
     function_names=[
         lambda x: f"alpha_m({x})",
@@ -141,9 +128,15 @@ MC_MODELS = {
     },
 }
 
+
+COST_MAP = {
+    "base": hh_base_cost_map,
+    "orig": HH_COST,
+}
+
 SINDY_MODEl = {
     "sindy": hh_sindy,
-    "env": sys.modules[__name__],
+    "env": neuron_core,
     "target": {
         "hh": 0,
         "hh3": 1,
