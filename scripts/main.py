@@ -126,7 +126,7 @@ def main(cfg: DictConfig) -> None:
         dataset_cfg = build_full_datasets(cfg)
         logger.info(dataset_cfg)
         surrogate_model = SINDySurrogateWrapper(
-            SINDY_MODEl["sindy"], SINDY_MODEl["env"], COST_MAP["base"], COST_MAP["orig"]
+            SINDY_MODEl["sindy"], SINDY_MODEl["env"], COST_MAP["func"], COST_MAP["orig"]
         )
         main_flow(dataset_cfg, surrogate_model, MC_MODELS)
     logger.info("Script ended")

@@ -69,7 +69,7 @@ def tau_n(v_rel):
     return 1.0 / (alpha_n(v_rel) + beta_n(v_rel))
 
 
-hh_base_cost_map = {
+FUNC_COST_MAP = {
     "alpha_m": {
         "exp": 1,
         "div": 1,
@@ -144,7 +144,7 @@ def _get_original_hh_cost(base_cost_map):
     return res
 
 
-HH_COST = _get_original_hh_cost(hh_base_cost_map)
+HH_COST = _get_original_hh_cost(FUNC_COST_MAP)
 
 
 @jitclass(
@@ -195,13 +195,13 @@ def calc_passive_channel(p, u_t, v):
 
 
 E_REST = -65
-v = -65
-v_rel = v - E_REST
+V_INIT = -65
+V_REL = V_INIT - E_REST
 
 
 COMPARTMENT_TEMPLATES = {
     "hh": {
-        "init": np.array([v, m0(v_rel), h0(v_rel), n0(v_rel)]),
+        "init": np.array([V_INIT, m0(V_REL), h0(V_REL), n0(V_REL)]),
         "vars": ["V", "M", "H", "N"],
         "gate": [False, True, True, True],
     },

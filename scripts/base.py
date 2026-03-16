@@ -3,6 +3,7 @@ import pysindy as ps
 
 from neurosurrogate.modeling import neuron_core
 from neurosurrogate.modeling.neuron_core import (
+    FUNC_COST_MAP,
     HH_COST,
     alpha_h,
     alpha_m,
@@ -10,7 +11,6 @@ from neurosurrogate.modeling.neuron_core import (
     beta_h,
     beta_m,
     beta_n,
-    hh_base_cost_map,
 )
 
 
@@ -63,7 +63,7 @@ def make_volt_lib(specs):
     return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
-hh_sindy = ps.SINDy(
+INITIALIZED_SINDY = ps.SINDy(
     feature_library=ps.GeneralizedLibrary(
         [
             make_gate_lib([alpha_m, alpha_h, alpha_n], is_product=False),
@@ -86,6 +86,26 @@ hh_sindy = ps.SINDy(
     ),
     optimizer=ps.optimizers.STLSQ(threshold=0.01, normalize_columns=False, alpha=2.0),
 )
+
+COST_MAP = {
+    "func": FUNC_COST_MAP,
+    "orig": HH_COST,
+}
+
+SINDY_MODEl = {
+    "sindy": INITIALIZED_SINDY,
+    "env": neuron_core,
+    "target": {
+        "hh": 0,
+        "hh3": 1,
+        "hh3(hhp)": 1,
+        "hh3(phh)": 1,
+        "hh5(a)": 2,
+        "hh5(b)": 2,
+        "hh5(c)": 2,
+        "hh7": 2,
+    },
+}
 
 MC_MODELS = {
     "hh": {
@@ -134,26 +154,5 @@ MC_MODELS = {
             (4, 6, 0.6),
         ],
         "stim_node": 0,
-    },
-}
-
-
-COST_MAP = {
-    "base": hh_base_cost_map,
-    "orig": HH_COST,
-}
-
-SINDY_MODEl = {
-    "sindy": hh_sindy,
-    "env": neuron_core,
-    "target": {
-        "hh": 0,
-        "hh3": 1,
-        "hh3(hhp)": 1,
-        "hh3(phh)": 1,
-        "hh5(a)": 2,
-        "hh5(b)": 2,
-        "hh5(c)": 2,
-        "hh7": 2,
     },
 }
