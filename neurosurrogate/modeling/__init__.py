@@ -71,12 +71,35 @@ class SINDySurrogateWrapper:
         self.gate_init = self.train_dataarray.to_numpy()[0][1:]
 
         # 関数組み立て
-        array_content = ",\n".join(self.sindy.get_feature_names())
+        #         array_content = ",\n".join(self.sindy.get_feature_names())
+        #         input_features = ",".join(self.sindy.feature_names)
+        #         self.source = f"""@njit
+        # def dynamic_compute_theta({input_features}):
+        #     return np.array([
+        # {array_content}])"""
+
+        feature_names = self.sindy.get_feature_names()
+        num_features = len(feature_names)
+
+        # 2. 各要素を res[i] = ... の形に変換
+        assignments = []
+        for i, name in enumerate(feature_names):
+            # '1' という文字列が来た場合は、Numbaの型推論を助けるために '1.0' に置換
+            safe_name = "1.0" if name == "1" else name
+            # SINDyの出力する '^'（べき乗）を Python の '**' に置換
+            safe_name = safe_name.replace("^", "**")
+            assignments.append(f"    res[{i}] = {safe_name}")
+
+        array_content = "\n".join(assignments)
         input_features = ",".join(self.sindy.feature_names)
+
+        # 3. テンプレートを組み立て
         self.source = f"""@njit
 def dynamic_compute_theta({input_features}):
-    return np.array([
-{array_content}])"""
+    res = np.empty({num_features}, dtype=np.float64)
+{array_content}
+    return res
+        """
         local_vars = {}
         exec(self.source, vars(self.target_module), local_vars)
         self.compute_theta = local_vars["dynamic_compute_theta"]
