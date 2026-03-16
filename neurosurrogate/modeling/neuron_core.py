@@ -4,8 +4,13 @@ from numba.experimental import jitclass
 
 
 @njit
+def lin_exp_form(x):
+    return x / (np.exp(x) - 1.0)
+
+
+@njit
 def alpha_m(v):
-    return (2.5 - 0.1 * v) / (np.exp(2.5 - 0.1 * v) - 1.0)
+    return lin_exp_form(2.5 - 0.1 * v)
 
 
 @njit
@@ -25,33 +30,12 @@ def beta_h(v):
 
 @njit
 def alpha_n(v):
-    return (0.1 - 0.01 * v) / (np.exp(1 - 0.1 * v) - 1.0)
+    return 0.1 * lin_exp_form(1 - 0.1 * v)
 
 
 @njit
 def beta_n(v):
     return 0.125 * np.exp(-v / 80.0)
-
-
-@njit
-def m0(v_rel):
-    a_m = alpha_m(v_rel)
-    b_m = beta_m(v_rel)
-    return a_m / (a_m + b_m)
-
-
-@njit
-def h0(v_rel):
-    a_h = alpha_h(v_rel)
-    b_h = beta_h(v_rel)
-    return a_h / (a_h + b_h)
-
-
-@njit
-def n0(v_rel):
-    a_n = alpha_n(v_rel)
-    b_n = beta_n(v_rel)
-    return a_n / (a_n + b_n)
 
 
 FUNC_COST_MAP = {
@@ -183,10 +167,13 @@ E_REST = -65
 V_INIT = -65
 V_REL = V_INIT - E_REST
 
+m_init = alpha_m(V_REL) / (alpha_m(V_REL) + beta_m(V_REL))
+h_init = alpha_h(V_REL) / (alpha_h(V_REL) + beta_h(V_REL))
+n_init = alpha_n(V_REL) / (alpha_n(V_REL) + beta_n(V_REL))
 
 COMPARTMENT_TEMPLATES = {
     "hh": {
-        "init": np.array([V_INIT, m0(V_REL), h0(V_REL), n0(V_REL)]),
+        "init": np.array([V_INIT, m_init, h_init, n_init]),
         "vars": ["V", "M", "H", "N"],
         "gate": [False, True, True, True],
     },
