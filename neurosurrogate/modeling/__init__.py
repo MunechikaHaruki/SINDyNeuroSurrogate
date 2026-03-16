@@ -71,17 +71,10 @@ class SINDySurrogateWrapper:
         self.gate_init = self.train_dataarray.to_numpy()[0][1:]
 
         # 関数組み立て
-        #         array_content = ",\n".join(self.sindy.get_feature_names())
-        #         input_features = ",".join(self.sindy.feature_names)
-        #         self.source = f"""@njit
-        # def dynamic_compute_theta({input_features}):
-        #     return np.array([
-        # {array_content}])"""
-
         feature_names = self.sindy.get_feature_names()
         num_features = len(feature_names)
 
-        # 2. 各要素を res[i] = ... の形に変換
+        # 各要素を res[i] = ... の形に変換
         assignments = []
         for i, name in enumerate(feature_names):
             # '1' という文字列が来た場合は、Numbaの型推論を助けるために '1.0' に置換

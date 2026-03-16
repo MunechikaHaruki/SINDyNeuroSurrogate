@@ -5,7 +5,18 @@ from numba.experimental import jitclass
 
 @njit
 def lin_exp_form(x):
-    return x / (np.exp(x) - 1.0)
+    condition = np.abs(x) < 1e-8
+
+    # 特異点付近（テイラー展開）
+    approx = 1.0 / (1.0 + x / 2.0 + x**2 / 6.0 + x**3 / 24.0)
+
+    # 生の式（0除算を避けるための微小値 epsilon）
+    # 分母が0だと計算が止まるので、一時的に1.0にしておき、後で where で捨てます
+    denom = np.exp(x) - 1.0
+    safe_denom = np.where(denom == 0, 1.0, denom)
+    raw = x / safe_denom
+
+    return np.where(condition, approx, raw)
 
 
 @njit
