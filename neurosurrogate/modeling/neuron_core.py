@@ -54,21 +54,6 @@ def n0(v_rel):
     return a_n / (a_n + b_n)
 
 
-@njit
-def tau_m(v_rel):
-    return 1.0 / (alpha_m(v_rel) + beta_m(v_rel))
-
-
-@njit
-def tau_h(v_rel):
-    return 1.0 / (alpha_h(v_rel) + beta_h(v_rel))
-
-
-@njit
-def tau_n(v_rel):
-    return 1.0 / (alpha_n(v_rel) + beta_n(v_rel))
-
-
 FUNC_COST_MAP = {
     "alpha_m": {
         "exp": 1,
@@ -183,9 +168,9 @@ def calc_hh_channel(p, u_t, v, curr_gate, dvar_gate):
     i_k = p.G_K * n * n * n * n * (v - p.E_K)
 
     dv = (-i_leak - i_na - i_k + u_t) / p.C
-    dvar_gate[0] = (1.0 / tau_m(v_rel)) * (-m + m0(v_rel))
-    dvar_gate[1] = (1.0 / tau_h(v_rel)) * (-h + h0(v_rel))
-    dvar_gate[2] = (1.0 / tau_n(v_rel)) * (-n + n0(v_rel))
+    dvar_gate[0] = alpha_m(v_rel) * (1.0 - m) - beta_m(v_rel) * m
+    dvar_gate[1] = alpha_h(v_rel) * (1.0 - h) - beta_h(v_rel) * h
+    dvar_gate[2] = alpha_n(v_rel) * (1.0 - n) - beta_n(v_rel) * n
     return dv
 
 
