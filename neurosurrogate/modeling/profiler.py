@@ -2,6 +2,7 @@ import re
 from collections import Counter
 
 import numpy as np
+from scipy.signal import find_peaks
 
 
 def get_active_features(sindy_model):
@@ -104,3 +105,60 @@ def build_feature_cost_map(feature_names: list, base_cost_map: dict) -> dict:
         feature_cost_map[feature] = dict(cost)
 
     return feature_cost_map
+
+
+def calc_dynamic_metrics(orig_v, surr_v, dt):
+    """
+    オリジナル波形とサロゲート波形の力学系・神経科学的メトリクスを計算する。
+    """
+    metrics = {}
+
+    # 1. 基本的な波形誤差
+    metrics["rmse"] = np.sqrt(np.mean((orig_v - surr_v) ** 2))
+    metrics["mae"] = np.mean(np.abs(orig_v - surr_v))
+
+    # 2. スパイク検出 (一般的な活動電位を想定し、0mVを閾値とする)
+    # ※ モデルの静止膜電位やピークスケールに合わせて height は調整してください
+    orig_peaks, _ = find_peaks(orig_v, height=0.0)
+    surr_peaks, _ = find_peaks(surr_v, height=0.0)
+
+    # スパイク数の比較
+    metrics["orig_spike_count"] = len(orig_peaks)
+    metrics["surr_spike_count"] = len(surr_peaks)
+    metrics["spike_count_diff"] = abs(len(orig_peaks) - len(surr_peaks))
+
+    # 3. 発火潜時 (最初のスパイクまでの時間) の誤差
+    if len(orig_peaks) > 0 and len(surr_peaks) > 0:
+        orig_latency = orig_peaks[0] * dt
+        surr_latency = surr_peaks[0] * dt
+        metrics["latency_error"] = abs(orig_latency - surr_latency)
+    else:
+        metrics["latency_error"] = np.nan  # どちらかが発火しなかった場合
+
+    # 4. ISI (Inter-Spike Interval: スパイク間隔) の計算
+    # スパイクが2回以上ないとISIは計算できないため分岐
+    if len(orig_peaks) >= 2:
+        orig_isi = np.diff(orig_peaks) * dt
+        metrics["orig_mean_isi"] = np.mean(orig_isi)
+        metrics["orig_std_isi"] = np.std(orig_isi)
+    else:
+        metrics["orig_mean_isi"] = np.nan
+        metrics["orig_std_isi"] = np.nan
+
+    if len(surr_peaks) >= 2:
+        surr_isi = np.diff(surr_peaks) * dt
+        metrics["surr_mean_isi"] = np.mean(surr_isi)
+        metrics["surr_std_isi"] = np.std(surr_isi)
+    else:
+        metrics["surr_mean_isi"] = np.nan
+        metrics["surr_std_isi"] = np.nan
+
+    # ISIの誤差 (両方に十分なスパイクがある場合)
+    if len(orig_peaks) >= 2 and len(surr_peaks) >= 2:
+        metrics["mean_isi_error"] = abs(
+            metrics["orig_mean_isi"] - metrics["surr_mean_isi"]
+        )
+    else:
+        metrics["mean_isi_error"] = np.nan
+
+    return metrics

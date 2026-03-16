@@ -1,3 +1,4 @@
+import json
 import logging
 
 import numpy as np
@@ -5,7 +6,12 @@ import pandas as pd
 from sklearn.decomposition import PCA
 
 from ..utils.plots import plot_compartment_behavior, plot_diff, plot_simple
-from .profiler import build_feature_cost_map, get_active_features, static_calc_cost
+from .profiler import (
+    build_feature_cost_map,
+    calc_dynamic_metrics,
+    get_active_features,
+    static_calc_cost,
+)
 from .xarray_utils import generate_preprocessed_xarray
 
 logger = logging.getLogger(__name__)
@@ -138,27 +144,40 @@ def analyze_eval_results(
     )
 
     # 2. メトリクス計算 (ISI等)
-    # orig_v = original_ds["v"].sel(node_id=target_comp_id).to_numpy()
-    # surr_v = predict_result["v"].sel(node_id=target_comp_id).to_numpy()
-    # dynamic_metrics = calc_dynamic_metrics(orig_v, surr_v, dt)
-    dynamic_metrics = {}  # dummy
+    orig_v = (
+        original_ds["vars"].sel(gate=False, comp_id=target_comp_id).to_numpy().squeeze()
+    )
+    surr_v = (
+        predict_result["vars"]
+        .sel(gate=False, comp_id=target_comp_id)
+        .to_numpy()
+        .squeeze()
+    )
+    dynamic_metrics = calc_dynamic_metrics(orig_v, surr_v, dt)
 
-    def set_prefix_to_metrics(metrics: dict):
-        return {f"eval/{data_type}/{name}/{k}": v for k, v in metrics.items()}
+    # def set_prefix_to_metrics(metrics: dict):
+    #     return {f"eval/{data_type}/{name}/{k}": v for k, v in metrics.items()}
 
     # 3. 構造化して返す
     return {
-        "metrics": set_prefix_to_metrics(dynamic_metrics),
-        "figures": {
-            f"preprocessed/{data_type}/{name}.png": plot_compartment_behavior(
-                u=original_ds["I_internal"].sel(node_id=target_comp_id),
-                xarray=transformed_dataarray,
-            ),
-            f"surrogate/{data_type}/{name}.png": plot_simple(predict_result),
-            f"compare/{data_type}/{name}.png": plot_diff(
-                original=original_ds,
-                preprocessed=transformed_dataarray,
-                surrogate=predict_result,
-            ),
+        "metrics": {},  # set_prefix_to_metrics(dynamic_metrics),
+        "artifacts": {
+            "texts": {
+                f"{data_type}/{name}_metrics.txt": json.dumps(
+                    dynamic_metrics, indent=4
+                ),
+            },
+            "figures": {
+                f"preprocessed/{data_type}/{name}.png": plot_compartment_behavior(
+                    u=original_ds["I_internal"].sel(node_id=target_comp_id),
+                    xarray=transformed_dataarray,
+                ),
+                f"surrogate/{data_type}/{name}.png": plot_simple(predict_result),
+                f"compare/{data_type}/{name}.png": plot_diff(
+                    original=original_ds,
+                    preprocessed=transformed_dataarray,
+                    surrogate=predict_result,
+                ),
+            },
         },
     }

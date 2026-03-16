@@ -52,12 +52,15 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
     )
-    eval_result = analyze_eval_results(
+    summary = analyze_eval_results(
         original_ds, predict_result, name, target_comp_id, surrogate_model
     )
-    mlflow.log_metrics(eval_result["metrics"])
-    for path, fig in eval_result["figures"].items():
-        mlflow.log_figure(fig, artifact_file=path)
+    mlflow.log_metrics(summary["metrics"])
+    for filename, content in summary["artifacts"]["texts"].items():
+        mlflow.log_text(content, artifact_file=filename)
+
+    for filename, fig in summary["artifacts"]["figures"].items():
+        mlflow.log_figure(fig, artifact_file=filename)
 
 
 @flow
