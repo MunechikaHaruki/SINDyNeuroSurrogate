@@ -28,26 +28,39 @@ def make_gate_lib(funcs, is_product=False):
     return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
-volt_base = ps.CustomLibrary(
-    library_functions=[
-        lambda u, v, w: np.power(u, 3) * v * w,
-        lambda u, v: np.power(u, 3) * v,
-        lambda u, v: np.power(u, 4) * v,
-        lambda u: np.power(u, 4),
-    ],
-    function_names=[
-        lambda u, v, w: f"np.power({u}, 3) * {v} * {w}",
-        lambda u, v: f"np.power({u}, 3) * {v}",
-        lambda u, v: f"np.power({u}, 4) * {v}",
-        lambda u: f"np.power({u}, 4)",
-    ],
-)
+def make_volt_lib(specs):
+    """(累乗, 変数個数) のタプルリストから生成"""
+    f_list, n_list = [], []
 
+    # 1. 内部で「関数を作るための関数」を定義（pを固定するため）
+    def create_u_p_v_w(p_val):
+        return (
+            lambda u, v, w: np.power(u, p_val) * v * w,
+            lambda u, v, w: f"np.power({u}, {p_val}) * {v} * {w}",
+        )
 
-base = ps.CustomLibrary(
-    library_functions=[lambda x: x, lambda: 1],
-    function_names=[lambda x: f"{x}", lambda: "1"],
-)
+    def create_u_p_v(p_val):
+        return (
+            lambda u, v: np.power(u, p_val) * v,
+            lambda u, v: f"np.power({u}, {p_val}) * {v}",
+        )
+
+    def create_u_p(p_val):
+        return lambda u: np.power(u, p_val), lambda u: f"np.power({u}, {p_val})"
+
+    # 2. ループで適切な関数を生成して追加
+    for p, vars_count in specs:
+        if vars_count == 2:
+            f, n = create_u_p_v_w(p)
+        elif vars_count == 1:
+            f, n = create_u_p_v(p)
+        else:
+            f, n = create_u_p(p)
+
+        f_list.append(f)
+        n_list.append(n)
+
+    return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
 hh_sindy = ps.SINDy(
@@ -58,8 +71,11 @@ hh_sindy = ps.SINDy(
                 funcs=[alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n],
                 is_product=True,
             ),
-            volt_base,
-            base,
+            make_volt_lib([(3, 2), (3, 1), (4, 1), (4, 0)]),  # 累乗, 追加変数の数
+            ps.CustomLibrary(
+                library_functions=[lambda x: x, lambda: 1],
+                function_names=[lambda x: f"{x}", lambda: "1"],
+            ),
         ],
         inputs_per_library=[  # [0,1,2]はV,g',u
             [0],
