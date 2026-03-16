@@ -8,6 +8,7 @@ from neurosurrogate.modeling.neuron_core import (
     HH_COST,
     alpha_h,
     alpha_m,
+    alpha_n,
     beta_h,
     beta_m,
     beta_n,
@@ -15,10 +16,7 @@ from neurosurrogate.modeling.neuron_core import (
 )
 
 COST_MAP = {
-    "base": hh_base_cost_map
-    | {
-        "a_n": {"exp": 1, "div": 1, "pm": 2, "mul": 2},
-    },
+    "base": hh_base_cost_map,
     "orig": HH_COST,
 }
 
@@ -32,12 +30,12 @@ gate = ps.CustomLibrary(
     library_functions=[
         lambda x: alpha_m(x),
         lambda x: alpha_h(x),
-        lambda x: a_n(x),  # ゼロ除算回避
+        lambda x: alpha_n(x),  # ゼロ除算回避
     ],
     function_names=[
         lambda x: f"alpha_m({x})",
         lambda x: f"alpha_h({x})",
-        lambda x: f"a_n({x})",
+        lambda x: f"alpha_n({x})",
     ],
 )
 
@@ -47,7 +45,7 @@ gate_product = ps.CustomLibrary(
         lambda x, y: beta_m(x) * y,
         lambda x, y: alpha_h(x) * y,
         lambda x, y: beta_h(x) * y,
-        lambda x, y: a_n(x) * y,
+        lambda x, y: alpha_n(x) * y,
         lambda x, y: beta_n(x) * y,
     ],
     function_names=[
@@ -55,7 +53,7 @@ gate_product = ps.CustomLibrary(
         lambda x, y: f"beta_m({x})*{y}",
         lambda x, y: f"alpha_h({x})*{y}",
         lambda x, y: f"beta_h({x})*{y}",
-        lambda x, y: f"a_n({x})*{y}",
+        lambda x, y: f"alpha_n({x})*{y}",
         lambda x, y: f"beta_n({x})*{y}",
     ],
 )
