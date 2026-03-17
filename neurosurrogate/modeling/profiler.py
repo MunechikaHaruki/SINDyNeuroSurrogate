@@ -29,9 +29,9 @@ def static_calc_cost(sindy_model, cost_map, original_cost):
         "mul": 0,
     }
     coef = sindy_model.coefficients()
-    nnz = np.count_nonzero(coef)
+    nnz = np.count_nonzero(coef).item()
     surrogate_raw["mul"] = nnz
-    surrogate_raw["pm"] = max(0, nnz - coef.shape[0])
+    surrogate_raw["pm"] = max(0, nnz - int(coef.shape[0]))
 
     active_features = get_active_features(sindy_model)
 

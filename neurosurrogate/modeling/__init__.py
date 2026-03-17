@@ -70,8 +70,17 @@ class SINDySurrogateWrapper:
 
         self.gate_init = self.train_dataarray.to_numpy()[0][1:]
 
+        # 関数のビルド
+        self.source = self._build_source(self.sindy)
+        local_vars = {}
+        exec(self.source, vars(self.target_module), local_vars)
+        self.compute_theta = local_vars["dynamic_compute_theta"]
+        logger.info(self.source)
+
+    @staticmethod
+    def _build_source(sindy):
         # 関数組み立て
-        feature_names = self.sindy.get_feature_names()
+        feature_names = sindy.get_feature_names()
         num_features = len(feature_names)
 
         # 各要素を res[i] = ... の形に変換
@@ -84,20 +93,15 @@ class SINDySurrogateWrapper:
             assignments.append(f"    res[{i}] = {safe_name}")
 
         array_content = "\n".join(assignments)
-        input_features = ",".join(self.sindy.feature_names)
+        input_features = ",".join(sindy.feature_names)
 
         # 3. テンプレートを組み立て
-        self.source = f"""@njit
+        return f"""@njit
 def dynamic_compute_theta({input_features}):
     res = np.empty({num_features}, dtype=np.float64)
 {array_content}
     return res
         """
-        local_vars = {}
-        exec(self.source, vars(self.target_module), local_vars)
-        self.compute_theta = local_vars["dynamic_compute_theta"]
-
-        logger.info(self.source)
 
     def get_loggable_summary(self) -> dict:
         coef = self.sindy.optimizer.coef_
@@ -110,25 +114,42 @@ def dynamic_compute_theta({input_features}):
             get_active_features(self.sindy), self.base_cost_map
         )
 
+        model_calc_cost = static_calc_cost(
+            self.sindy, feature_cost_map, self.original_cost
+        )
+
+        coef_stat = {
+            "nonzero_term_num": str(nonzero_term_num),
+            "nonzero_term_ratio": str(nonzero_term_num / coef.size),
+        }
+
+        artifacts_root = "model_info"
         return {
-            "metrics": {
-                **static_calc_cost(self.sindy, feature_cost_map, self.original_cost),
-                "nonzero_term_num": int(nonzero_term_num),
-                "nonzero_term_ratio": float(nonzero_term_num / coef.size),
-            },
+            "metrics": {},
             "params": self.sindy.optimizer.get_params(),
             "artifacts": {
                 # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
                 "texts": {
-                    "equations.txt": "\n".join(self.sindy.equations(precision=3)),
-                    "source.txt": self.source,
-                    "coef.txt": np.array2string(coef, precision=3),
-                    "features.md": self._format_to_table(feature_cost_map),
-                    "features_active.md": self._format_to_table(active_features_map),
+                    f"{artifacts_root}/equations.txt": "\n".join(
+                        self.sindy.equations(precision=3)
+                    ),
+                    f"{artifacts_root}/source.txt": self.source,
+                    f"{artifacts_root}/coef.txt": np.array2string(coef, precision=3),
+                    f"{artifacts_root}/features.md": self._format_to_table(
+                        feature_cost_map
+                    ),
+                    f"{artifacts_root}/features_active.md": self._format_to_table(
+                        active_features_map
+                    ),
+                    f"{artifacts_root}/model_calc_cost": json.dumps(
+                        model_calc_cost,
+                        indent=4,
+                    ),
+                    f"{artifacts_root}/coef_stat": json.dumps(coef_stat, indent=4),
                 },
                 # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
                 "figures": {
-                    "train.png": plot_compartment_behavior(
+                    f"{artifacts_root}/train.png": plot_compartment_behavior(
                         xarray=self.train_dataarray, u=self.u_dataarray
                     )
                 },
@@ -171,25 +192,21 @@ def analyze_eval_results(
     )
     dynamic_metrics = calc_dynamic_metrics(orig_v, surr_v, dt)
 
-    # def set_prefix_to_metrics(metrics: dict):
-    #     return {f"eval/{data_type}/{name}/{k}": v for k, v in metrics.items()}
-
     # 3. 構造化して返す
+    artifacts_root = f"test/{data_type}/{name}"
     return {
         "metrics": {},  # set_prefix_to_metrics(dynamic_metrics),
         "artifacts": {
             "texts": {
-                f"{data_type}/{name}_metrics.txt": json.dumps(
-                    dynamic_metrics, indent=4
-                ),
+                f"{artifacts_root}/metrics.txt": json.dumps(dynamic_metrics, indent=4),
             },
             "figures": {
-                f"preprocessed/{data_type}/{name}.png": plot_compartment_behavior(
+                f"{artifacts_root}/preprocessed.png": plot_compartment_behavior(
                     u=original_ds["I_internal"].sel(node_id=target_comp_id),
                     xarray=transformed_dataarray,
                 ),
-                f"surrogate/{data_type}/{name}.png": plot_simple(predict_result),
-                f"compare/{data_type}/{name}.png": plot_diff(
+                f"{artifacts_root}/surrogate.png": plot_simple(predict_result),
+                f"{artifacts_root}/compare.png": plot_diff(
                     original=original_ds,
                     preprocessed=transformed_dataarray,
                     surrogate=predict_result,
