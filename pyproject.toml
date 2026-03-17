@@ -34,6 +34,7 @@ dev = [
     "psutil>=7.0.0",
     "ruff>=0.12.9",
     "pylint>=3.3.8",
+    "marimo>=0.21.0",
 ]
 
 [tool.mypy]

@@ -153,12 +153,12 @@ def calc_dynamic_metrics(orig_v, surr_v, dt):
         metrics["surr_mean_isi"] = np.nan
         metrics["surr_std_isi"] = np.nan
 
-    # ISIの誤差 (両方に十分なスパイクがある場合)
+    # ISIの誤差 (両方に十分なスパイクがある場合) ニューロンのリズムがどれだけずれているか
     if len(orig_peaks) >= 2 and len(surr_peaks) >= 2:
-        metrics["mean_isi_error"] = abs(
+        metrics["periodicity_gap"] = abs(
             metrics["orig_mean_isi"] - metrics["surr_mean_isi"]
         )
     else:
-        metrics["mean_isi_error"] = np.nan
+        metrics["periodicity_gap"] = np.nan
 
     return metrics

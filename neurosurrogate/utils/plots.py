@@ -151,7 +151,7 @@ def plot_diff(
     configs.append(
         {
             "data": [orig_v, surr_v],
-            "legend": ["Original V", "Surrogate V"],
+            "legend": ["orig V", "surr V"],
             "colors": ["blue", "red"],
             "ylabel": "V [mV]",
             "linestyle": ["-", "--"],  # 重なった時に見やすいように破線にする
@@ -170,9 +170,9 @@ def plot_diff(
         configs.append(
             {
                 "data": [prep_gate, surr_gate],
-                "legend": [f"Target {latent}", f"Surrogate {latent}"],
+                "legend": [f"target {latent}", f"surr {latent}"],
                 "colors": ["blue", "red"],
-                "ylabel": f"Latent state ({latent})",
+                "ylabel": f"{latent}",
                 "linestyle": ["-", "--"],
             }
         )
@@ -184,7 +184,7 @@ def plot_diff(
         {
             "data": [orig_gates.sel(variable=name).squeeze() for name in gate_names],
             "legend": gate_names,
-            "ylabel": "Original Gates",
+            "ylabel": "orig gates",
             # 色はお好みで、draw_engineのデフォルトに任せるか指定するか
             "colors": ["green", "orange", "purple"][: len(gate_names)],
         }

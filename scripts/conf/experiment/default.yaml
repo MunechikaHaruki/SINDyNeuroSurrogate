@@ -34,7 +34,7 @@ scenarios:
       options: [-5,1.3, 6.3,20]
       weights: [0.3,1,1,1]
       sigma: 1
-      current_seed: 991927697
+      current_seed: 991927698
     target_comp_id: 0
   exp4:
     data_type: hh3

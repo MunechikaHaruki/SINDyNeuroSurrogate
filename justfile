@@ -65,8 +65,6 @@ mlflow:
     @lsof -t -i:{{MLFLOW_PORT}} | xargs kill -9 || true
     {{VIRTUAL_ENV}} python -m mlflow ui --port {{MLFLOW_PORT}} --backend-store-uri ./mlruns
 
-# deactivate で仮想環境から抜けれます
-alias:
-	source .venv/bin/activate
-	eval "$(python scripts/main.py -sc install=zsh)"
-	alias p='python scripts/main.py'
+# activate
+marimo:
+	{{VIRTUAL_ENV}} marimo edit equations.py

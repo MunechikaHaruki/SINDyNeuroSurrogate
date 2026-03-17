@@ -2,7 +2,7 @@
 figure.figsize: 10, 6
 figure.facecolor: white
 savefig.format: png
-
+figure.dpi: 80
 # --- Font (Sans-serif) ---
 font.family: sans-serif
 font.size: 20

@@ -1,7 +1,7 @@
 # --- Figure ---
 figure.figsize: 3.5, 2.625
 savefig.format: pdf
-
+figure.dpi: 100
 # --- Font (Serif) ---
 font.family: serif
 font.serif: Times New Roman
