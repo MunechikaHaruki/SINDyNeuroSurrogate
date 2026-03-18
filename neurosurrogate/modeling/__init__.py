@@ -123,9 +123,13 @@ def dynamic_compute_theta({input_features}):
             "nonzero_term_ratio": str(nonzero_term_num / coef.size),
         }
 
+        model_calc_cost_metrics = {
+            k: v for k, v in model_calc_cost.items() if k.startswith("cost/diff/")
+        }
+
         artifacts_root = "model_info"
         return {
-            "metrics": {},
+            "metrics": {**coef_stat, **model_calc_cost_metrics},
             "params": self.sindy.optimizer.get_params(),
             "artifacts": {
                 # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
@@ -141,11 +145,10 @@ def dynamic_compute_theta({input_features}):
                     f"{artifacts_root}/features_active.md": self._format_to_table(
                         active_features_map
                     ),
-                    f"{artifacts_root}/model_calc_cost": json.dumps(
+                    f"{artifacts_root}/model_calc_cost.txt": json.dumps(
                         model_calc_cost,
                         indent=4,
                     ),
-                    f"{artifacts_root}/coef_stat": json.dumps(coef_stat, indent=4),
                 },
                 # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
                 "figures": {
@@ -211,6 +214,7 @@ def analyze_eval_results(
                     preprocessed=transformed_dataarray,
                     surrogate=predict_result,
                 ),
+                f"{artifacts_root}/orig.png": plot_simple(original_ds),
             },
         },
     }

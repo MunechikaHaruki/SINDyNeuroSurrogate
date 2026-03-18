@@ -6,7 +6,6 @@ from prefect import flow, get_run_logger, task
 
 from neurosurrogate.modeling import analyze_eval_results
 from neurosurrogate.modeling.calc_engine import unified_simulater
-from neurosurrogate.utils.plots import plot_simple
 
 
 @task
@@ -36,8 +35,6 @@ def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):
         net=models_arch[data_type],
     )
     ds.attrs["model_type"] = data_type
-    fig = plot_simple(ds)
-    mlflow.log_figure(fig, artifact_file=f"original/{data_type}/{dataset_key}.png")
     return ds
 
 
