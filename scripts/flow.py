@@ -50,7 +50,7 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
         surrogate_model=surrogate_model,
     )
     summary = analyze_eval_results(
-        original_ds, predict_result, name, target_comp_id, surrogate_model
+        original_ds, predict_result, target_comp_id, surrogate_model
     )
     mlflow.log_metrics(summary["metrics"])
     for filename, content in summary["artifacts"]["texts"].items():
@@ -61,15 +61,20 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
 
 
 @flow
-def main_flow(datasets_cfg: Dict, surrogate_model, models_arch):
+def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
     logger = get_run_logger()
-    logger.info("Start Flow")
-    logger.info("start generate train data")
-    train_ds = generate_dataset_flow("train", datasets_cfg, models_arch)
-    target_comp_id = datasets_cfg["train"]["target_comp_id"]
-    logger.info("Start Training")
-    train_model(surrogate_model, train_ds, target_comp_id)
-    for key in datasets_cfg.keys():
-        logger.info(f"start {key}'s evaluation")
-        ds = generate_dataset_flow(key, datasets_cfg, models_arch)
-        eval_diff(ds, key, datasets_cfg, surrogate_model, models_arch)
+    logger.info("Start Flow:start generate train data")
+    with mlflow.start_run(run_name=run_name) as run:
+        logger.info(f"run_id:{run.info.run_id}")
+        mlflow.log_dict(datasets_cfg, "datasets.yaml")
+        train_ds = generate_dataset_flow("train", datasets_cfg, models_arch)
+        target_comp_id = datasets_cfg["train"]["target_comp_id"]
+        logger.info("Start Training")
+        train_model(surrogate_model, train_ds, target_comp_id)
+        for key in datasets_cfg.keys():
+            logger.info(f"start {key}'s evaluation")
+            with mlflow.start_run(run_name=f"Eval_{key}", nested=True):
+                mlflow.set_tag("eval_dataset", key)
+                mlflow.log_dict(datasets_cfg[key], "dataset.yaml")
+                ds = generate_dataset_flow(key, datasets_cfg, models_arch)
+                eval_diff(ds, key, datasets_cfg, surrogate_model, models_arch)

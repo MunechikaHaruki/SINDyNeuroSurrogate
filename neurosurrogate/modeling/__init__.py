@@ -161,14 +161,11 @@ def dynamic_compute_theta({input_features}):
         return df.fillna(0).astype(int).to_markdown()
 
 
-def analyze_eval_results(
-    original_ds, predict_result, name, target_comp_id, surrogate_model
-):
+def analyze_eval_results(original_ds, predict_result, target_comp_id, surrogate_model):
     """
     シミュレーション済みのデータを受け取り、メトリクス計算と可視化を行う。
     シミュレーター自体は呼び出さない。
     """
-    data_type = original_ds.attrs["model_type"]
     dt = float(original_ds.attrs["dt"])
 
     # 1. 前処理済みデータの取得
@@ -189,25 +186,24 @@ def analyze_eval_results(
     dynamic_metrics = calc_dynamic_metrics(orig_v, surr_v, dt)
 
     # 3. 構造化して返す
-    artifacts_root = f"test/{data_type}/{name}"
     return {
         "metrics": {},  # set_prefix_to_metrics(dynamic_metrics),
         "artifacts": {
             "texts": {
-                f"{artifacts_root}/metrics.txt": json.dumps(dynamic_metrics, indent=4),
+                "metrics.txt": json.dumps(dynamic_metrics, indent=4),
             },
             "figures": {
-                f"{artifacts_root}/preprocessed.png": plot_compartment_behavior(
+                "preprocessed.png": plot_compartment_behavior(
                     u=original_ds["I_internal"].sel(node_id=target_comp_id),
                     xarray=transformed_dataarray,
                 ),
-                f"{artifacts_root}/surrogate.png": plot_simple(predict_result),
-                f"{artifacts_root}/compare.png": plot_diff(
+                "surrogate.png": plot_simple(predict_result),
+                "compare.png": plot_diff(
                     original=original_ds,
                     preprocessed=transformed_dataarray,
                     surrogate=predict_result,
                 ),
-                f"{artifacts_root}/orig.png": plot_simple(original_ds),
+                "orig.png": plot_simple(original_ds),
             },
         },
     }

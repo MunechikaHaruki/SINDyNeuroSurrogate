@@ -103,37 +103,32 @@ def build_full_datasets(cfg):
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
+    # cfgの依存関係解決とビルド
     OmegaConf.resolve(cfg)
-
+    dataset_cfg = build_full_datasets(cfg)
+    if cfg.eval_onlyone_shortcut is not None:
+        dataset_cfg = {
+            "train": dataset_cfg["train"],
+            cfg.eval_onlyone_shortcut: dataset_cfg[cfg.eval_onlyone_shortcut],
+        }
+    logger.info(dataset_cfg)
+    # mlflowの初期設定
+    mlflow.set_tracking_uri("file:./mlruns")
+    mlflow.set_experiment(cfg.experiment_name)
+    # matplotlibのstyle設定
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     BASE_STYLE_PATH = os.path.join(BASE_DIR, "./conf/style/base.mplstyle")
     plt.style.use(BASE_STYLE_PATH)
     STYLE_PATH = os.path.join(BASE_DIR, f"./conf/style/{cfg.matplotlib_style}.mplstyle")
     plt.style.use(STYLE_PATH)
 
-    run_name_prefix = get_hydra_overrides()
-    mlflow.set_tracking_uri("file:./mlruns")
-    mlflow.set_experiment(cfg.experiment_name)
-    # Create run to generate ID
-    with mlflow.start_run(run_name=run_name_prefix) as run:
-        logger.info(f"run_id:{run.info.run_id}")
-        mlflow.log_dict(OmegaConf.to_container(cfg, resolve=True), "config.yaml")
-        mlflow.set_tag(
-            "mlflow.runName",
-            f"{cfg.selected}_{run_name_prefix}_commit-{get_commit_id()}",
-        )
-        # Prefect flow
-        dataset_cfg = build_full_datasets(cfg)
-        if cfg.eval_onlyone_shortcut is not None:
-            dataset_cfg = {
-                "train": dataset_cfg["train"],
-                cfg.eval_onlyone_shortcut: dataset_cfg[cfg.eval_onlyone_shortcut],
-            }
-        logger.info(dataset_cfg)
-        surrogate_model = SINDySurrogateWrapper(
-            SINDY_MODEl["sindy"], SINDY_MODEl["env"], COST_MAP["func"], COST_MAP["orig"]
-        )
-        main_flow(dataset_cfg, surrogate_model, MC_MODELS)
+    # surrogate_modelの初期化
+    surrogate_model = SINDySurrogateWrapper(
+        SINDY_MODEl["sindy"], SINDY_MODEl["env"], COST_MAP["func"], COST_MAP["orig"]
+    )
+    # Prefect flow
+    run_name = f"{cfg.selected}_{get_hydra_overrides()}_{get_commit_id()}"
+    main_flow(dataset_cfg, surrogate_model, MC_MODELS, run_name)
     logger.info("Script ended")
 
 
