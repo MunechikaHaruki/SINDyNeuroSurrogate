@@ -124,6 +124,11 @@ def main(cfg: DictConfig) -> None:
         )
         # Prefect flow
         dataset_cfg = build_full_datasets(cfg)
+        if cfg.eval_onlyone_shortcut is not None:
+            dataset_cfg = {
+                "train": dataset_cfg["train"],
+                cfg.eval_onlyone_shortcut: dataset_cfg[cfg.eval_onlyone_shortcut],
+            }
         logger.info(dataset_cfg)
         surrogate_model = SINDySurrogateWrapper(
             SINDY_MODEl["sindy"], SINDY_MODEl["env"], COST_MAP["func"], COST_MAP["orig"]

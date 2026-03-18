@@ -127,32 +127,25 @@ def dynamic_compute_theta({input_features}):
             k: v for k, v in model_calc_cost.items() if k.startswith("cost/diff/")
         }
 
-        artifacts_root = "model_info"
         return {
             "metrics": {**coef_stat, **model_calc_cost_metrics},
             "params": self.sindy.optimizer.get_params(),
             "artifacts": {
                 # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
                 "texts": {
-                    f"{artifacts_root}/equations.txt": "\n".join(
-                        self.sindy.equations(precision=3)
-                    ),
-                    f"{artifacts_root}/source.txt": self.source,
-                    f"{artifacts_root}/coef.txt": np.array2string(coef, precision=3),
-                    f"{artifacts_root}/features.md": self._format_to_table(
-                        feature_cost_map
-                    ),
-                    f"{artifacts_root}/features_active.md": self._format_to_table(
-                        active_features_map
-                    ),
-                    f"{artifacts_root}/model_calc_cost.txt": json.dumps(
+                    "equations.txt": "\n".join(self.sindy.equations(precision=3)),
+                    "coef.txt": np.array2string(coef, precision=3),
+                    "features.md": self._format_to_table(feature_cost_map),
+                    "features_active.md": self._format_to_table(active_features_map),
+                    "misc/source.txt": self.source,
+                    "misc/model_calc_cost.txt": json.dumps(
                         model_calc_cost,
                         indent=4,
                     ),
                 },
                 # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
                 "figures": {
-                    f"{artifacts_root}/train.png": plot_compartment_behavior(
+                    "train.png": plot_compartment_behavior(
                         xarray=self.train_dataarray, u=self.u_dataarray
                     )
                 },
