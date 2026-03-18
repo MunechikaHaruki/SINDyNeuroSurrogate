@@ -29,11 +29,16 @@ def _(TARGET_EXP, load_btn, mlflow, mo):
         if load_btn.value:
             experiment = mlflow.get_experiment_by_name(TARGET_EXP)
             if experiment:
-                runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
+                all_runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
+                # 親runのみを抽出
+                runs_df = all_runs_df[all_runs_df["tags.mlflow.parentRunId"].isna()].copy()
+                # start_time に基づいて降順（最新が上）にソート、表示変更
+                runs_df = runs_df.sort_values("start_time", ascending=False)
+                runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
 
                 # カラムの整理（run_id, start_time を先頭に）
                 cols = [c for c in runs_df.columns if "metrics" in c or "params" in c or c == "run_id"]
-                runs_df = runs_df[["run_id", "start_time"] + [c for c in cols if c != "run_id"]]
+                runs_df = runs_df[["tags.mlflow.runName","run_id", "start_time"] + [c for c in cols if c != "run_id"]]
 
                 # selection="multi" に変更
                 run_selector = mo.ui.table(
@@ -48,12 +53,84 @@ def _(TARGET_EXP, load_btn, mlflow, mo):
             run_selector = mo.md("👆 上のボタンを押してデータをロードしてください。")
 
     run_selector
-    return (run_selector,)
+    return experiment, run_selector
 
 
 @app.cell
-def _(run_selector):
-    run_ids=run_selector.value["run_id"].tolist()
+def _(experiment, mlflow, mo, run_selector):
+    # 親が選択されていない場合は停止
+    mo.stop(len(run_selector.value) == 0)
+
+    # 選択された親IDのリスト
+    parent_run_ids = run_selector.value["run_id"].tolist()
+
+    # フィルタクエリを作成 (tags.mlflow.parentRunId が親IDのいずれかと一致するもの)
+    filter_query = " OR ".join([f"tags.mlflow.parentRunId = '{pid}'" for pid in parent_run_ids])
+
+    with mo.status.spinner(title="子Runを取得中..."):
+        # 子Run（評価結果など）を検索
+        child_runs_df = mlflow.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            filter_string=filter_query
+        )
+
+    # 子Runを一覧表示（ここから特定の評価結果を選ぶ）
+    child_selector = mo.ui.table(
+        child_runs_df[["tags.mlflow.runName", "run_id", "tags.eval_dataset", "start_time"]],
+        label="Artifactを確認したい子Runを選択してください",
+        selection="single"
+    )
+
+    child_selector
+    return (child_selector,)
+
+
+@app.cell
+def _(child_selector, mlflow, mo):
+    # 子Runが選択されていない場合は停止
+    mo.stop(len(child_selector.value) == 0)
+
+    target_run_id = child_selector.value.iloc[0]["run_id"]
+
+    with mo.status.spinner(title="Artifactリストを取得中..."):
+        client = mlflow.tracking.MlflowClient()
+        # Artifactのリスト（ファイル一覧）を取得
+        artifacts = client.list_artifacts(target_run_id)
+    
+        # ファイル名の一覧を作成
+        artifact_paths = [a.path for a in artifacts]
+
+    # Artifactを選択するドロップダウン
+    artifact_selector = mo.ui.dropdown(
+        options=artifact_paths,
+        label="表示するArtifactを選択:"
+    )
+
+    artifact_selector
+    return artifact_selector, client, target_run_id
+
+
+@app.cell
+def _(artifact_selector, client, mo, target_run_id):
+    mo.stop(not artifact_selector.value)
+
+    path = artifact_selector.value
+    local_path = client.download_artifacts(target_run_id, path)
+
+    if path.endswith((".png", ".jpg", ".jpeg")):
+        # 画像の場合
+        content = mo.image(local_path)
+    elif path.endswith((".txt", ".yaml", ".json", ".log")):
+        # テキスト系の場合
+        with open(local_path, "r") as f:
+            content = mo.plain_text(f.read())
+    else:
+        content = mo.md(f"📁 ファイルをダウンロードしました: `{local_path}`")
+
+    mo.vstack([
+        mo.md(f"### Artifact: {path}"),
+        content
+    ])
     return
 
 

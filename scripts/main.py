@@ -4,7 +4,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import logging
-import subprocess
 
 import hydra
 import matplotlib.pyplot as plt
@@ -25,28 +24,6 @@ logger = logging.getLogger(__name__)
 os.environ["HTTP_PROXY"] = ""
 os.environ["HTTPS_PROXY"] = ""
 os.environ["NO_PROXY"] = "localhost,127.0.0.1"
-
-
-def get_commit_id():
-    try:
-        commit_id = (
-            subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
-            .decode("utf-8")
-            .strip()
-        )
-    except subprocess.CalledProcessError:
-        commit_id = "unknown"
-    return commit_id
-
-
-def get_hydra_overrides():
-    try:
-        run_name_prefix = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
-    except Exception:
-        run_name_prefix = "OverrideError"
-    if run_name_prefix == "":
-        run_name_prefix = "noOverride"
-    return run_name_prefix
 
 
 def build_full_datasets(cfg):
@@ -126,9 +103,15 @@ def main(cfg: DictConfig) -> None:
     surrogate_model = SINDySurrogateWrapper(
         SINDY_MODEl["sindy"], SINDY_MODEl["env"], COST_MAP["func"], COST_MAP["orig"]
     )
+    # mlflow name
+    try:
+        hydra_overrides = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
+    except Exception:
+        hydra_overrides = "OverrideError"
+    if hydra_overrides == "":
+        hydra_overrides = "Default"
     # Prefect flow
-    run_name = f"{cfg.selected}_{get_hydra_overrides()}_{get_commit_id()}"
-    main_flow(dataset_cfg, surrogate_model, MC_MODELS, run_name)
+    main_flow(dataset_cfg, surrogate_model, MC_MODELS, hydra_overrides)
     logger.info("Script ended")
 
 
