@@ -4,7 +4,7 @@ __generated_with = "0.21.0"
 app = marimo.App(width="medium")
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     import marimo as mo
     import mlflow

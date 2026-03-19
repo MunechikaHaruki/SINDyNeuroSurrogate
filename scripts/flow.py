@@ -1,14 +1,17 @@
+import logging
 from typing import Dict
 
 import hydra
 import mlflow
-from prefect import flow, get_run_logger, task
 
+# from prefect import flow, get_run_logger, task
 from neurosurrogate.modeling import analyze_eval_results
 from neurosurrogate.modeling.calc_engine import unified_simulater
 
+logger = logging.getLogger(__name__)
 
-@task
+
+# @task
 def train_model(surrogate, train_ds, target_comp_id):
     surrogate.fit(train_ds, target_comp_id)
     # surrogateモデルのロギング
@@ -24,7 +27,7 @@ def train_model(surrogate, train_ds, target_comp_id):
         mlflow.log_figure(fig, artifact_file=filename)
 
 
-@task
+# @task
 def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):
     dataset_cfg = datasets_cfg[dataset_key]
     data_type = dataset_cfg["data_type"]
@@ -38,7 +41,7 @@ def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):
     return ds
 
 
-@task
+# @task
 def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
     data_type = original_ds.attrs["model_type"]
     target_comp_id = datasets_cfg[name]["target_comp_id"]
@@ -60,9 +63,9 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
         mlflow.log_figure(fig, artifact_file=filename)
 
 
-@flow
+# @flow
 def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
-    logger = get_run_logger()
+    # logger = get_run_logger()
     logger.info("Start Flow:start generate train data")
     with mlflow.start_run(run_name=run_name) as run:
         logger.info(f"run_id:{run.info.run_id}")

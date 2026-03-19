@@ -14,16 +14,13 @@ from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.modeling import SINDySurrogateWrapper
 
-# Prefectのインポートより前に環境変数を設定する
-os.environ["PREFECT_LOGGING_EXTRA_LOGGERS"] = "neurosurrogate"
-
-logger = logging.getLogger(__name__)
-
-
 # プロキシ設定を一時的に無効化
 os.environ["HTTP_PROXY"] = ""
 os.environ["HTTPS_PROXY"] = ""
 os.environ["NO_PROXY"] = "localhost,127.0.0.1"
+
+
+logger = logging.getLogger(__name__)
 
 
 def build_full_datasets(cfg):
@@ -91,7 +88,9 @@ def main(cfg: DictConfig) -> None:
     logger.info(dataset_cfg)
     # mlflowの初期設定
     mlflow.set_tracking_uri("file:./mlruns")
+    mlflow.enable_system_metrics_logging()
     mlflow.set_experiment(cfg.experiment_name)
+    os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
     # matplotlibのstyle設定
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     BASE_STYLE_PATH = os.path.join(BASE_DIR, "./conf/style/base.mplstyle")

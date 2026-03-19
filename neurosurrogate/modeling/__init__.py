@@ -183,15 +183,12 @@ def analyze_eval_results(original_ds, predict_result, target_comp_id, surrogate_
         .to_numpy()
         .squeeze()
     )
-    dynamic_metrics = calc_dynamic_metrics(orig_v, surr_v, dt)
 
     # 3. 構造化して返す
     return {
-        "metrics": {},  # set_prefix_to_metrics(dynamic_metrics),
+        "metrics": calc_dynamic_metrics(orig_v, surr_v, dt),
         "artifacts": {
-            "texts": {
-                "metrics.txt": json.dumps(dynamic_metrics, indent=4),
-            },
+            "texts": {},
             "figures": {
                 "preprocessed.png": plot_compartment_behavior(
                     u=original_ds["I_internal"].sel(node_id=target_comp_id),
