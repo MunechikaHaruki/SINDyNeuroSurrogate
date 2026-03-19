@@ -112,25 +112,6 @@ def plot_simple(ds):
     return draw_engine(configs)
 
 
-def plot_compartment_behavior(xarray, u):
-    """
-    xarrayデータから特徴量ごとの時系列プロット用構成を生成し、描画する。
-    """
-    configs = []
-
-    # 1. 外部入力 (I_ext)
-    configs.append({"data": u, "ylabel": "I_ext(t)"})
-
-    # 2. 各特徴量を個別の段として追加
-    data_vars = xarray
-    for feature_name in data_vars.get_index("features").get_level_values("variable"):
-        configs.append(
-            {"data": data_vars.sel(variable=feature_name), "ylabel": str(feature_name)}
-        )
-
-    return draw_engine(configs)
-
-
 def plot_diff(
     original: xr.Dataset,
     preprocessed: xr.DataArray,

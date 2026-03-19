@@ -98,26 +98,6 @@ def set_coords(raw, u, coords, dt):
     return dataset
 
 
-def generate_preprocessed_xarray(new_vars, time_coord, n_latent):
-    variables = ["V"] + [f"latent{i + 1}" for i in range(n_latent)]
-    gate_flags = [False] + [True] * n_latent  # latent も gate 由来なので True
-    mindex = pd.MultiIndex.from_arrays(
-        [variables, gate_flags],
-        names=("variable", "gate"),
-    )
-
-    # 元の座標と属性を引き継いで DataArray を作成
-    return xr.DataArray(
-        data=new_vars,
-        dims=("time", "features"),
-        coords={
-            "time": time_coord,
-            "features": mindex,  # ここで階層構造を復元
-        },
-        name="vars",
-    )
-
-
 def set_i_internal(dataset, I_internal_np):
     # xarray に格納
     dataset["I_internal"] = xr.DataArray(

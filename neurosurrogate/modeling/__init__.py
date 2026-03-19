@@ -1,18 +1,17 @@
-import json
 import logging
 
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 
-from ..utils.plots import plot_compartment_behavior, plot_diff, plot_simple
+from ..utils.plots import plot_diff, plot_simple
 from .profiler import (
     build_feature_cost_map,
     calc_dynamic_metrics,
     get_active_features,
     static_calc_cost,
 )
-from .xarray_utils import generate_preprocessed_xarray
+from .xarray_utils import set_coords
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +34,20 @@ class PCAPreProcessorWrapper:
         new_vars = np.concatenate(
             (v_soma_da.to_numpy().reshape(-1, 1), transformed_gate), axis=1
         )
+
         n_latent = transformed_gate.shape[1]
-        return generate_preprocessed_xarray(new_vars, xr_data.time, n_latent)
+        coords_config = {
+            "comp_id": [0] * (n_latent + 1),
+            "variable": ["V"] + [f"latent{i + 1}" for i in range(n_latent)],
+            "gate": [False] + [True] * n_latent,
+        }
+        logger.info(coords_config)
+        return set_coords(
+            raw=new_vars,
+            u=xr_data["I_internal"].sel(node_id=target_comp_id).to_numpy(),
+            coords=coords_config,
+            dt=float(xr_data.time[1] - xr_data.time[0]),
+        )
 
 
 class SINDySurrogateWrapper:
@@ -48,27 +59,21 @@ class SINDySurrogateWrapper:
 
         self.preprocessor = PCAPreProcessorWrapper()
 
-    def fit(self, train_xr_dataset, target_comp_id):
-        self.preprocessor.fit(train_xr_dataset, target_comp_id=target_comp_id)
-
-        self.train_dataarray = self.preprocessor.transform(
-            train_xr_dataset, target_comp_id=target_comp_id
+    def fit(self, train_xr, target_comp_id):
+        self.preprocessor.fit(train_xr, target_comp_id=target_comp_id)
+        self.preprocessed_xr = self.preprocessor.transform(
+            train_xr, target_comp_id=target_comp_id
         )
-        self.u_dataarray = train_xr_dataset["I_internal"].sel(node_id=target_comp_id)
-
-        input_features = self.train_dataarray.get_index("features").get_level_values(
-            "variable"
-        ).tolist() + ["u"]
-        logger.critical(input_features)
-
+        input_features = self.preprocessed_xr.variable.values.tolist() + ["u"]
+        logger.info(input_features)
         self.sindy.fit(
-            self.train_dataarray.to_numpy(),
-            u=self.u_dataarray.to_numpy(),
-            t=train_xr_dataset["time"].to_numpy(),
+            self.preprocessed_xr["vars"].sel(comp_id=target_comp_id).to_numpy(),
+            u=self.preprocessed_xr["I_ext"].to_numpy(),
+            t=train_xr["time"].to_numpy(),
             feature_names=input_features,
         )
 
-        self.gate_init = self.train_dataarray.to_numpy()[0][1:]
+        self.gate_init = self.preprocessed_xr["vars"].to_numpy()[0][1:]
 
         # 関数のビルド
         self.source = self._build_source(self.sindy)
@@ -76,6 +81,38 @@ class SINDySurrogateWrapper:
         exec(self.source, vars(self.target_module), local_vars)
         self.compute_theta = local_vars["dynamic_compute_theta"]
         logger.info(self.source)
+
+    def get_loggable_summary(self) -> dict:
+        coef = self.sindy.optimizer.coef_
+        nonzero_term_num = np.count_nonzero(coef)
+
+        feature_cost_map = build_feature_cost_map(
+            self.sindy.get_feature_names(), self.base_cost_map
+        )
+        active_features_map = build_feature_cost_map(
+            get_active_features(self.sindy), self.base_cost_map
+        )
+
+        return {
+            "metrics": {
+                "nonzero_term_num": str(nonzero_term_num),
+                "nonzero_term_ratio": str(nonzero_term_num / coef.size),
+                **static_calc_cost(self.sindy, feature_cost_map, self.original_cost),
+            },
+            "params": self.sindy.optimizer.get_params(),
+            "artifacts": {
+                # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
+                "texts": {
+                    "equations.txt": "\n".join(self.sindy.equations(precision=3)),
+                    "coef.txt": np.array2string(coef, precision=3),
+                    "features.md": self._format_to_table(feature_cost_map),
+                    "features_active.md": self._format_to_table(active_features_map),
+                    "misc/source.txt": self.source,
+                },
+                # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
+                "figures": {"train.png": plot_simple(self.preprocessed_xr)},
+            },
+        }
 
     @staticmethod
     def _build_source(sindy):
@@ -103,55 +140,6 @@ def dynamic_compute_theta({input_features}):
     return res
         """
 
-    def get_loggable_summary(self) -> dict:
-        coef = self.sindy.optimizer.coef_
-        nonzero_term_num = np.count_nonzero(coef)
-
-        feature_cost_map = build_feature_cost_map(
-            self.sindy.get_feature_names(), self.base_cost_map
-        )
-        active_features_map = build_feature_cost_map(
-            get_active_features(self.sindy), self.base_cost_map
-        )
-
-        model_calc_cost = static_calc_cost(
-            self.sindy, feature_cost_map, self.original_cost
-        )
-
-        coef_stat = {
-            "nonzero_term_num": str(nonzero_term_num),
-            "nonzero_term_ratio": str(nonzero_term_num / coef.size),
-        }
-
-        model_calc_cost_metrics = {
-            k: v for k, v in model_calc_cost.items() if k.startswith("cost/diff/")
-        }
-
-        return {
-            "metrics": {**coef_stat, **model_calc_cost_metrics},
-            "params": self.sindy.optimizer.get_params(),
-            "artifacts": {
-                # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
-                "texts": {
-                    "equations.txt": "\n".join(self.sindy.equations(precision=3)),
-                    "coef.txt": np.array2string(coef, precision=3),
-                    "features.md": self._format_to_table(feature_cost_map),
-                    "features_active.md": self._format_to_table(active_features_map),
-                    "misc/source.txt": self.source,
-                    "misc/model_calc_cost.txt": json.dumps(
-                        model_calc_cost,
-                        indent=4,
-                    ),
-                },
-                # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
-                "figures": {
-                    "train.png": plot_compartment_behavior(
-                        xarray=self.train_dataarray, u=self.u_dataarray
-                    )
-                },
-            },
-        }
-
     @staticmethod
     def _format_to_table(cost_map: dict) -> str:
         # 辞書をデータフレームに変換
@@ -168,8 +156,7 @@ def analyze_eval_results(original_ds, predict_result, target_comp_id, surrogate_
     """
     dt = float(original_ds.attrs["dt"])
 
-    # 1. 前処理済みデータの取得
-    transformed_dataarray = surrogate_model.preprocessor.transform(
+    preprocessed_xr = surrogate_model.preprocessor.transform(
         original_ds, target_comp_id=target_comp_id
     )
 
@@ -190,17 +177,14 @@ def analyze_eval_results(original_ds, predict_result, target_comp_id, surrogate_
         "artifacts": {
             "texts": {},
             "figures": {
-                "preprocessed.png": plot_compartment_behavior(
-                    u=original_ds["I_internal"].sel(node_id=target_comp_id),
-                    xarray=transformed_dataarray,
-                ),
-                "surrogate.png": plot_simple(predict_result),
-                "compare.png": plot_diff(
-                    original=original_ds,
-                    preprocessed=transformed_dataarray,
-                    surrogate=predict_result,
-                ),
                 "orig.png": plot_simple(original_ds),
+                "preprocessed.png": plot_simple(preprocessed_xr),
+                "surrogate.png": plot_simple(predict_result),
+                # "compare.png": plot_diff(
+                #     original=original_ds,
+                #     preprocessed=transformed_dataarray,
+                #     surrogate=predict_result,
+                # ),
             },
         },
     }
