@@ -19,11 +19,11 @@ class PCAPreProcessorWrapper:
         self.pca = PCA(n_components=1)
 
     def fit(self, train_xr_dataset, target_comp_id):
-        train_gate_data = (
+        self.train_gate_data = (
             train_xr_dataset["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
         )
         logger.info("Fitting preprocessor...")
-        self.pca.fit(train_gate_data)
+        self.pca.fit(self.train_gate_data)
 
     def transform(self, xr_data, target_comp_id):
         xr_gate = xr_data["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
@@ -46,6 +46,20 @@ class PCAPreProcessorWrapper:
             coords=coords_config,
             dt=float(xr_data.time[1] - xr_data.time[0]),
         )
+
+    def get_loggable_summary(self):
+        reconstructed = self.pca.inverse_transform(
+            self.pca.transform(self.train_gate_data)
+        )
+        mse = np.mean((self.train_gate_data - reconstructed) ** 2)
+        return {
+            "pca/explained_variance_ratio": float(
+                self.pca.explained_variance_ratio_[0]
+            ),
+            "pca/explained_variance": float(self.pca.explained_variance_[0]),
+            "pca/reconstruction_mse": float(mse),
+            "pca/reconstruction_mse_ratio": float(mse / np.var(self.train_gate_data)),
+        }
 
 
 class SINDySurrogateWrapper:
@@ -97,6 +111,7 @@ class SINDySurrogateWrapper:
                 "nonzero_term_num": str(nonzero_term_num),
                 "nonzero_term_ratio": str(nonzero_term_num / coef.size),
                 **static_calc_cost(self.sindy, feature_cost_map, self.original_cost),
+                **self.preprocessor.get_loggable_summary(),
             },
             "params": self.sindy.optimizer.get_params(),
             "artifacts": {
