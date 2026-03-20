@@ -10,6 +10,7 @@ from neurosurrogate.modeling.calc_engine import unified_simulater
 from neurosurrogate.modeling.profiler import calc_dynamic_metrics
 from neurosurrogate.utils.plots import (
     draw_engine,
+    plot_2d_attractor_comparison,
     plot_sindy_coefficients,
     spec_diff,
     spec_simple,
@@ -111,6 +112,14 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
         artifact_file="compare.png",
     )
 
+    fig_phase = plot_2d_attractor_comparison(
+        orig_ds=preprocessed_xr,
+        surr_ds=predict_result,
+        comp_id=target_comp_id,
+        state_vars=["V", "latent1"],  # 実際のSINDyのターゲット変数名に合わせて変更
+    )
+    mlflow.log_figure(fig_phase, artifact_file="attractor_surr.png")
+
 
 def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
     logger.info("Start Flow:start generate train data")
@@ -131,6 +140,7 @@ def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
                     eval_diff(ds, key, datasets_cfg, surrogate_model, models_arch)
                     logger.info(f"Successfully finished evaluation for {key}")
             except Exception as e:
-                logger.error(f"Failed to evaluate {key}: {str(e)}")
-                mlflow.set_tag("error", str(type(e).__name__))
+                logger.exception(f"Failed to evaluate {key}: {str(e)}")
+                mlflow.set_tag("error_type", str(type(e).__name__))
+                mlflow.set_tag("error_msg", str(e))
                 continue
