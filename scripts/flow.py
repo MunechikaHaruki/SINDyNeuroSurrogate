@@ -1,14 +1,29 @@
 import logging
+import tempfile
+from pathlib import Path
 from typing import Dict
 
 import hydra
 import mlflow
 
-# from prefect import flow, get_run_logger, task
-from neurosurrogate.modeling import analyze_eval_results
 from neurosurrogate.modeling.calc_engine import unified_simulater
+from neurosurrogate.modeling.profiler import calc_dynamic_metrics
+from neurosurrogate.utils.plots import plot_diff, plot_simple
 
 logger = logging.getLogger(__name__)
+
+
+def save_xarray(ds, name):
+    mlflow.log_figure(plot_simple(ds), artifact_file=f"{name}.png")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_path = Path(tmpdir) / f"{name}.nc"
+        if "features" in ds.indexes:
+            ds_to_save = ds.reset_index("features")
+        else:
+            ds_to_save = ds
+        ds_to_save.to_netcdf(local_path)
+        mlflow.log_artifact(local_path, artifact_path="data")
 
 
 @mlflow.trace
@@ -23,8 +38,8 @@ def train_model(surrogate, train_ds, target_comp_id):
     for filename, content in summary["artifacts"]["texts"].items():
         mlflow.log_text(content, artifact_file=filename)
 
-    for filename, fig in summary["artifacts"]["figures"].items():
-        mlflow.log_figure(fig, artifact_file=filename)
+    for name, ds in summary["artifacts"]["xarray"].items():
+        save_xarray(ds, name)
 
 
 @mlflow.trace
@@ -45,22 +60,32 @@ def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):
 def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
     data_type = original_ds.attrs["model_type"]
     target_comp_id = datasets_cfg[name]["target_comp_id"]
+    dt = float(original_ds.attrs["dt"])
     predict_result = unified_simulater(
-        dt=float(original_ds.attrs["dt"]),
+        dt=dt,
         u=original_ds["I_ext"].to_numpy(),
         net=models_arch[data_type],
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
     )
-    summary = analyze_eval_results(
-        original_ds, predict_result, target_comp_id, surrogate_model
-    )
-    mlflow.log_metrics(summary["metrics"])
-    for filename, content in summary["artifacts"]["texts"].items():
-        mlflow.log_text(content, artifact_file=filename)
 
-    for filename, fig in summary["artifacts"]["figures"].items():
-        mlflow.log_figure(fig, artifact_file=filename)
+    preprocessed_xr = surrogate_model.preprocessor.transform(
+        original_ds, target_comp_id=target_comp_id
+    )
+
+    # logging
+    mlflow.log_metrics(
+        calc_dynamic_metrics(original_ds, predict_result, target_comp_id, dt)
+    )
+    names = ["orig", "preprocessed", "surr"]
+    datasets = [original_ds, preprocessed_xr, predict_result]
+    for ds, name in zip(datasets, names):
+        save_xarray(ds, name)
+
+    mlflow.log_figure(
+        plot_diff(original_ds, preprocessed_xr, predict_result, surr_id=target_comp_id),
+        artifact_file="compare.png",
+    )
 
 
 def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):

@@ -107,10 +107,13 @@ def build_feature_cost_map(feature_names: list, base_cost_map: dict) -> dict:
     return feature_cost_map
 
 
-def calc_dynamic_metrics(orig_v, surr_v, dt):
+def calc_dynamic_metrics(orig_ds, surr_ds, comp_id, dt):
     """
     オリジナル波形とサロゲート波形の力学系・神経科学的メトリクスを計算する。
     """
+    orig_v = orig_ds["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
+    surr_v = surr_ds["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
+
     metrics = {}
 
     # 1. 基本的な波形誤差

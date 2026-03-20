@@ -4,10 +4,8 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 
-from ..utils.plots import plot_diff, plot_simple
 from .profiler import (
     build_feature_cost_map,
-    calc_dynamic_metrics,
     get_active_features,
     static_calc_cost,
 )
@@ -110,7 +108,7 @@ class SINDySurrogateWrapper:
                     "misc/source.txt": self.source,
                 },
                 # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
-                "figures": {"train.png": plot_simple(self.preprocessed_xr)},
+                "xarray": {"train": self.preprocessed_xr},
             },
         }
 
@@ -147,44 +145,3 @@ def dynamic_compute_theta({input_features}):
         df.index.name = "Feature"
         # 欠損値を0で埋めて整数型にし、美しいMarkdownとして出力
         return df.fillna(0).astype(int).to_markdown()
-
-
-def analyze_eval_results(original_ds, predict_result, target_comp_id, surrogate_model):
-    """
-    シミュレーション済みのデータを受け取り、メトリクス計算と可視化を行う。
-    シミュレーター自体は呼び出さない。
-    """
-    dt = float(original_ds.attrs["dt"])
-
-    preprocessed_xr = surrogate_model.preprocessor.transform(
-        original_ds, target_comp_id=target_comp_id
-    )
-
-    # 2. メトリクス計算 (ISI等)
-    orig_v = (
-        original_ds["vars"].sel(gate=False, comp_id=target_comp_id).to_numpy().squeeze()
-    )
-    surr_v = (
-        predict_result["vars"]
-        .sel(gate=False, comp_id=target_comp_id)
-        .to_numpy()
-        .squeeze()
-    )
-
-    # 3. 構造化して返す
-    return {
-        "metrics": calc_dynamic_metrics(orig_v, surr_v, dt),
-        "artifacts": {
-            "texts": {},
-            "figures": {
-                "orig.png": plot_simple(original_ds),
-                "preprocessed.png": plot_simple(preprocessed_xr),
-                "surrogate.png": plot_simple(predict_result),
-                "compare.png": plot_diff(
-                    original=original_ds,
-                    preprocessed=preprocessed_xr,
-                    surrogate=predict_result,
-                ),
-            },
-        },
-    }
