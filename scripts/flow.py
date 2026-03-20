@@ -8,7 +8,12 @@ import mlflow
 
 from neurosurrogate.modeling.calc_engine import unified_simulater
 from neurosurrogate.modeling.profiler import calc_dynamic_metrics
-from neurosurrogate.utils.plots import draw_engine, spec_diff, spec_simple
+from neurosurrogate.utils.plots import (
+    draw_engine,
+    plot_sindy_coefficients,
+    spec_diff,
+    spec_simple,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +48,14 @@ def train_model(surrogate, train_ds, target_comp_id):
 
     for name, ds in summary["artifacts"]["xarray"].items():
         save_xarray(ds, name)
+
+    model = summary["model"]
+    fig = plot_sindy_coefficients(
+        xi_matrix=model["xi"],
+        feature_names=model["feature_names"],
+        target_names=model["target_names"],
+    )
+    mlflow.log_figure(fig, artifact_file="sindy_coef.png")
 
 
 @mlflow.trace

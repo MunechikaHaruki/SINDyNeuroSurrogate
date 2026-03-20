@@ -126,6 +126,11 @@ class SINDySurrogateWrapper:
                 # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
                 "xarray": {"train": self.preprocessed_xr},
             },
+            "model": {
+                "xi": coef,
+                "feature_names": self.sindy.get_feature_names(),
+                "target_names": self.preprocessed_xr.variable.values.tolist(),
+            },
         }
 
     @staticmethod
