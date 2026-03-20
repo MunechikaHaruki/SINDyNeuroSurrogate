@@ -1,6 +1,8 @@
 # mypy: ignore-errors
 import numpy as np
+import plotly.graph_objects as go
 from matplotlib.figure import Figure
+from plotly.subplots import make_subplots
 
 
 def draw_engine(datasets, spec, engine="matplotlib", figsize_width=10):
@@ -45,10 +47,10 @@ def draw_engine(datasets, spec, engine="matplotlib", figsize_width=10):
         panels[-1]["xlabel"] = "Time [ms]"
 
     # --- 2. レンダリング ---
-    # if engine == "plotly":
-    #     return _draw_plotly(panels)
-    # else:
-    return _draw_matplotlib(panels, figsize_width)
+    if engine == "plotly":
+        return _draw_plotly(panels, figsize_width)
+    else:
+        return _draw_matplotlib(panels, figsize_width)
 
 
 def _draw_matplotlib(panels, figsize_width):
@@ -81,10 +83,58 @@ def _draw_matplotlib(panels, figsize_width):
     return fig
 
 
-def plot_simple(ds, engine="matplotlib"):
-    datasets = {"main": ds}
-    spec = []
+def _draw_plotly(panels, figsize_width):
 
+    n_rows = len(panels)
+    fig = make_subplots(
+        rows=n_rows,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.04,
+        subplot_titles=[p["ylabel"] for p in panels],
+    )
+
+    for row, panel in enumerate(panels, start=1):
+        for tr in panel["traces"]:
+            fig.add_trace(
+                go.Scatter(
+                    x=tr["x"],
+                    y=tr["y"],
+                    name=tr["label"],
+                    line=dict(
+                        color=tr["color"],
+                        dash=_style_to_dash(tr["style"]),
+                    ),
+                    showlegend=tr["label"] is not None,
+                    legendgroup=str(row),
+                ),
+                row=row,
+                col=1,
+            )
+
+    # 最後のパネルだけX軸ラベルを表示
+    fig.update_xaxes(title_text="Time [ms]", row=n_rows, col=1)
+
+    fig.update_layout(
+        width=figsize_width * 96,
+        height=220 * n_rows,
+        margin=dict(l=60, r=20, t=40, b=40),
+    )
+    return fig
+
+
+def _style_to_dash(style):
+    # matplotlib linestyle → plotly dash
+    return {
+        "-": "solid",
+        "--": "dash",
+        ":": "dot",
+        "-.": "dashdot",
+    }.get(style, "solid")
+
+
+def spec_simple(ds):
+    spec = []
     comp_ids = np.unique(ds.coords["comp_id"].values)
 
     # 1. I_ext
@@ -142,13 +192,10 @@ def plot_simple(ds, engine="matplotlib"):
             spec.append({"ylabel": "Gates / Latent", "traces": traces})
     except KeyError:
         pass
+    return ({"main": ds}, spec)
 
-    return draw_engine(datasets, spec, engine=engine)
 
-
-def plot_diff(original, preprocessed, surrogate, surr_id=None, engine="matplotlib"):
-    if surr_id is None:
-        surr_id = surrogate.attrs.get("surr_ids", [None])[0]
+def spec_diff(original, preprocessed, surrogate, surr_id):
 
     datasets = {"orig": original, "prep": preprocessed, "surr": surrogate}
     spec = []
@@ -232,16 +279,6 @@ def plot_diff(original, preprocessed, surrogate, surr_id=None, engine="matplotli
                 }
                 for name in gate_names
             ],
-            "colors": [
-                "green",
-                "orange",
-                "purple",
-            ],  # traces側で指定しない場合のデフォルトをエンジン側で拾わせることも可能ですが、今回はシンプルに
         }
     )
-    # gateの色の割り当て（必要に応じて）
-    colors = ["green", "orange", "purple"]
-    for i, tr in enumerate(spec[-1]["traces"]):
-        tr["color"] = colors[i % len(colors)]
-
-    return draw_engine(datasets, spec, engine=engine)
+    return (datasets, spec)

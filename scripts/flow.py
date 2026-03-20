@@ -8,13 +8,16 @@ import mlflow
 
 from neurosurrogate.modeling.calc_engine import unified_simulater
 from neurosurrogate.modeling.profiler import calc_dynamic_metrics
-from neurosurrogate.utils.plots import plot_diff, plot_simple
+from neurosurrogate.utils.plots import draw_engine, spec_diff, spec_simple
 
 logger = logging.getLogger(__name__)
 
 
 def save_xarray(ds, name):
-    mlflow.log_figure(plot_simple(ds), artifact_file=f"{name}.png")
+    datasets, spec = spec_simple(ds)
+    for ext, engine in zip(["png", "html"], ["matplotlib", "plotly"]):
+        fig = draw_engine(datasets, spec, engine=engine)
+        mlflow.log_figure(fig, artifact_file=f"{name}.{ext}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_path = Path(tmpdir) / f"{name}.nc"
@@ -82,8 +85,11 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
     for ds, name in zip(datasets, names):
         save_xarray(ds, name)
 
+    datasets, spec = spec_diff(
+        original_ds, preprocessed_xr, predict_result, surr_id=target_comp_id
+    )
     mlflow.log_figure(
-        plot_diff(original_ds, preprocessed_xr, predict_result, surr_id=target_comp_id),
+        draw_engine(datasets, spec, engine="matplotlib"),
         artifact_file="compare.png",
     )
 
