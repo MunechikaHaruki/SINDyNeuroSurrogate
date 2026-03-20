@@ -88,10 +88,11 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
     datasets, spec = spec_diff(
         original_ds, preprocessed_xr, predict_result, surr_id=target_comp_id
     )
-    mlflow.log_figure(
-        draw_engine(datasets, spec, engine="matplotlib"),
-        artifact_file="compare.png",
-    )
+    for ext, engine in zip(["png", "html"], ["matplotlib", "plotly"]):
+        mlflow.log_figure(
+            draw_engine(datasets, spec, engine=engine),
+            artifact_file=f"compare.{ext}",
+        )
 
 
 def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
