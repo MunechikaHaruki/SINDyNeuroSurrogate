@@ -117,6 +117,7 @@ def calc_dynamic_metrics(orig_ds, surr_ds, comp_id, dt):
     return {
         **_calc_waveform_metrics(orig_v, surr_v),
         **_calc_spike_metrics(orig_peaks, surr_peaks, dt),
+        **_calc_windowless_spike_metrics(orig_v, surr_v, dt),
     }
 
 
@@ -150,3 +151,43 @@ def _latency_error(orig_peaks, surr_peaks, dt):
     if len(orig_peaks) > 0 and len(surr_peaks) > 0:
         return float(abs(orig_peaks[0] - surr_peaks[0]) * dt)
     return np.nan
+
+
+def _calc_windowless_spike_metrics(orig_v, surr_v, dt):
+    """
+    波形全体から物理的特徴量の分布（中央値）を抽出して比較する。
+    窓関数の設定を排除し、ダイナミクス自体の再現性をロバストに評価する。
+    """
+    # 1. 微分波形の事前計算
+    orig_dvdt = np.diff(orig_v) / dt
+    surr_dvdt = np.diff(surr_v) / dt
+
+    # 2. 特徴量抽出の共通ヘルパー
+    def get_median_peak(signal, height):
+        peaks, _ = find_peaks(signal, height=height)
+        return np.median(signal[peaks]) if len(peaks) > 0 else np.nan
+
+    # 3. 各物理指標の中央値を一括算出
+    # (対象信号, 信号名, 検出閾値) のリストで定義
+    feature_configs = [
+        (orig_v, surr_v, "amp", 0.0),  # 電位ピーク (mV)
+        (orig_dvdt, surr_dvdt, "max_dvdt", 10.0),  # 最大立上り速度 (mV/ms)
+        (
+            -orig_dvdt,
+            -surr_dvdt,
+            "min_dvdt",
+            10.0,
+        ),  # 最大立下り速度 (mV/ms) ※反転して検出
+    ]
+
+    results = {}
+    for o_sig, s_sig, key, thresh in feature_configs:
+        o_med = get_median_peak(o_sig, thresh)
+        s_med = get_median_peak(s_sig, thresh)
+
+        # 片方でもピークがなければ NaN 誤差、あれば絶対誤差
+        # ※ min_dvdt の場合、get_median_peak は正の値を返すが、
+        # 誤差計算において絶対値をとるため、符号反転の考慮は不要
+        results[f"median_{key}_error"] = float(abs(o_med - s_med))
+
+    return results
