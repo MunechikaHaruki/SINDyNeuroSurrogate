@@ -18,11 +18,16 @@ from neurosurrogate.utils.plots import (
 logger = logging.getLogger(__name__)
 
 
-def save_xarray(ds, name):
+def save_xarray(ds, name, save_plotly=False):
+    """
+    plotlyでセーブされるhtmlは重い
+    """
     datasets, spec = spec_simple(ds)
-    for ext, engine in zip(["png", "html"], ["matplotlib", "plotly"]):
-        fig = draw_engine(datasets, spec, engine=engine)
-        mlflow.log_figure(fig, artifact_file=f"{name}.{ext}")
+    fig = draw_engine(datasets, spec, engine="matplotlib")
+    mlflow.log_figure(fig, artifact_file=f"{name}.png")
+    if save_plotly:
+        fig = draw_engine(datasets, spec, engine="plotly")
+        mlflow.log_figure(fig, artifact_file=f"{name}.html")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_path = Path(tmpdir) / f"{name}.nc"
@@ -47,7 +52,7 @@ def train_model(surrogate, train_ds, target_comp_id):
         mlflow.log_text(content, artifact_file=filename)
 
     for name, ds in summary["artifacts"]["xarray"].items():
-        save_xarray(ds, name)
+        save_xarray(ds, name, save_plotly=True)
 
     model = summary["model"]
     fig = plot_sindy_coefficients(
@@ -101,11 +106,10 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
     datasets, spec = spec_diff(
         original_ds, preprocessed_xr, predict_result, surr_id=target_comp_id
     )
-    for ext, engine in zip(["png", "html"], ["matplotlib", "plotly"]):
-        mlflow.log_figure(
-            draw_engine(datasets, spec, engine=engine),
-            artifact_file=f"compare.{ext}",
-        )
+    mlflow.log_figure(
+        draw_engine(datasets, spec, engine="matplotlib"),
+        artifact_file="compare.png",
+    )
 
 
 def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
@@ -119,8 +123,14 @@ def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
         train_model(surrogate_model, train_ds, target_comp_id)
         for key in datasets_cfg.keys():
             logger.info(f"start {key}'s evaluation")
-            with mlflow.start_run(run_name=f"Eval_{key}", nested=True):
-                mlflow.set_tag("eval_dataset", key)
-                mlflow.log_dict(datasets_cfg[key], "dataset.yaml")
-                ds = generate_dataset_flow(key, datasets_cfg, models_arch)
-                eval_diff(ds, key, datasets_cfg, surrogate_model, models_arch)
+            try:
+                with mlflow.start_run(run_name=f"Eval_{key}", nested=True):
+                    mlflow.set_tag("eval_dataset", key)
+                    mlflow.log_dict(datasets_cfg[key], "dataset.yaml")
+                    ds = generate_dataset_flow(key, datasets_cfg, models_arch)
+                    eval_diff(ds, key, datasets_cfg, surrogate_model, models_arch)
+                    logger.info(f"Successfully finished evaluation for {key}")
+            except Exception as e:
+                logger.error(f"Failed to evaluate {key}: {str(e)}")
+                mlflow.set_tag("error", str(type(e).__name__))
+                continue
