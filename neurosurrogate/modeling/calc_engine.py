@@ -97,13 +97,10 @@ def dummy_theta(v, latent, i_int):
 
 
 class DummySurrogate:
-    DUMMY_XI = np.zeros((2, 1), dtype=np.float64)
-
-    DUMMY_SINDY_ARGS = (DUMMY_XI, dummy_theta)
-
     @property
     def sindy_args(self):
-        return DummySurrogate.DUMMY_SINDY_ARGS
+        dummy_xi = np.zeros((2, 1), dtype=np.float64)
+        return (dummy_xi, dummy_theta)
 
     @property
     def gate_init(self):
@@ -151,7 +148,7 @@ def calc_universal_deriv(curr_x, u_t, model_args, dvar):
         dvar[g_idx] = xi_matrix[1] @ theta
 
 
-def unified_simulater(
+def unified_simulator(
     dt, u, net, surrogate_target=None, surrogate_model=DummySurrogate()
 ):
     params = HH_Params_numba()

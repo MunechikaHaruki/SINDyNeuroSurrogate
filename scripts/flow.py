@@ -6,7 +6,7 @@ from typing import Dict
 import hydra
 import mlflow
 
-from neurosurrogate.modeling.calc_engine import unified_simulater
+from neurosurrogate.modeling.calc_engine import unified_simulator
 from neurosurrogate.modeling.profiler import calc_dynamic_metrics
 from neurosurrogate.utils.plots import (
     draw_engine,
@@ -69,7 +69,7 @@ def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):
     dataset_cfg = datasets_cfg[dataset_key]
     data_type = dataset_cfg["data_type"]
 
-    ds = unified_simulater(
+    ds = unified_simulator(
         u=hydra.utils.instantiate(dataset_cfg["current"]),
         dt=dataset_cfg["dt"],
         net=models_arch[data_type],
@@ -83,7 +83,7 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
     data_type = original_ds.attrs["model_type"]
     target_comp_id = datasets_cfg[name]["target_comp_id"]
     dt = float(original_ds.attrs["dt"])
-    predict_result = unified_simulater(
+    predict_result = unified_simulator(
         dt=dt,
         u=original_ds["I_ext"].to_numpy(),
         net=models_arch[data_type],
