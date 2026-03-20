@@ -109,13 +109,12 @@ def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):
         dt=dataset_cfg["dt"],
         net=models_arch[data_type],
     )
-    ds.attrs["model_type"] = data_type
     return ds
 
 
 @mlflow.trace
 def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
-    data_type = original_ds.attrs["model_type"]
+    data_type = datasets_cfg[name]["data_type"]
     target_comp_id = datasets_cfg[name]["target_comp_id"]
     dt = float(original_ds.attrs["dt"])
     predict_result = unified_simulator(

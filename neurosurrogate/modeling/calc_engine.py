@@ -92,22 +92,6 @@ def calc_graph_laplacian(connections, N):
 
 
 @njit
-def dummy_theta(v, latent, i_int):
-    return np.zeros(1, dtype=np.float64)
-
-
-class DummySurrogate:
-    @property
-    def sindy_args(self):
-        dummy_xi = np.zeros((2, 1), dtype=np.float64)
-        return (dummy_xi, dummy_theta)
-
-    @property
-    def gate_init(self):
-        return [0.0]
-
-
-@njit
 def calc_universal_deriv(curr_x, u_t, model_args, dvar):
     """物理モデル用の汎用微分計算エンジン"""
     net_args, indice_args, sindy_args = model_args
@@ -148,6 +132,21 @@ def calc_universal_deriv(curr_x, u_t, model_args, dvar):
         dvar[g_idx] = xi_matrix[1] @ theta
 
 
+class DummySurrogate:
+    @njit
+    def dummy_theta(v, latent, i_int):
+        return np.zeros(1, dtype=np.float64)
+
+    @property
+    def sindy_args(self):
+        dummy_xi = np.zeros((2, 1), dtype=np.float64)
+        return (dummy_xi, self.dummy_theta)
+
+    @property
+    def gate_init(self):
+        return [0.0]
+
+
 def unified_simulator(
     dt, u, net, surrogate_target=None, surrogate_model=DummySurrogate()
 ):
@@ -163,25 +162,18 @@ def unified_simulator(
         surrogate_model.gate_init,
     )
     indice = build_indices(surr_net, surr_comp)
-    net_args = (params, C_matrix, net["stim_node"])
 
-    sindy_args = surrogate_model.sindy_args
+    net_args = (params, C_matrix, net["stim_node"])
     indice_args = (
         indice["gate_offsets"],
         indice["ids"]["passive"],
         indice["ids"]["hh"],
         indice["ids"]["surr"],
     )
-
-    args = (net_args, indice_args, sindy_args)
-
+    args = (net_args, indice_args, surrogate_model.sindy_args)
     raw = generic_euler_solver(calc_universal_deriv, indice["init"], u, dt, args)
-
     dataset = set_coords(raw, u, indice["coords"], dt)
     dataset.attrs["dt"] = dt
-
-    if surrogate_model is not None:
-        dataset.attrs["surr_ids"] = indice["ids"]["surr"]
 
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
     stim_idx = net["stim_node"]  # 設定から注入先を取得
