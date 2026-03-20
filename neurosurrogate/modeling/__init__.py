@@ -95,6 +95,10 @@ class SINDySurrogateWrapper:
     def gate_init(self):
         return self.preprocessed_xr["vars"].to_numpy()[0][1:]
 
+    @property
+    def sindy_args(self):
+        return (self.sindy.coefficients(), self.compute_theta)
+
     def get_loggable_summary(self) -> dict:
         coef = self.sindy.optimizer.coef_
         nonzero_term_num = np.count_nonzero(coef)

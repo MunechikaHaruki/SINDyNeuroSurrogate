@@ -47,6 +47,8 @@ def get_surrogate_network(
     surr_indice: int,  # サロゲート化するノードのインデックスのリスト
     surr_gate_init: list | np.ndarray,  # 外から渡される潜在変数の初期値
 ):
+    if surr_indice is None:
+        return origi_net, origi_comp
     # ネットワークのディープコピー（元の配線図を汚さない）
     surr_net = copy.deepcopy(origi_net)
     origi_node_type = surr_net["nodes"][surr_indice]
@@ -94,9 +96,18 @@ def dummy_theta(v, latent, i_int):
     return np.zeros(1, dtype=np.float64)
 
 
-DUMMY_XI = np.zeros((2, 1), dtype=np.float64)
+class DummySurrogate:
+    DUMMY_XI = np.zeros((2, 1), dtype=np.float64)
 
-DUMMY_SINDY_ARGS = (DUMMY_XI, dummy_theta)
+    DUMMY_SINDY_ARGS = (DUMMY_XI, dummy_theta)
+
+    @property
+    def sindy_args(self):
+        return DummySurrogate.DUMMY_SINDY_ARGS
+
+    @property
+    def gate_init(self):
+        return [0.0]
 
 
 @njit
@@ -140,30 +151,24 @@ def calc_universal_deriv(curr_x, u_t, model_args, dvar):
         dvar[g_idx] = xi_matrix[1] @ theta
 
 
-def unified_simulater(dt, u, net, surrogate_target=None, surrogate_model=None):
+def unified_simulater(
+    dt, u, net, surrogate_target=None, surrogate_model=DummySurrogate()
+):
     params = HH_Params_numba()
 
     N = len(net["nodes"])
     C_matrix = calc_graph_laplacian(net["edges"], N)
 
-    if surrogate_model is None:
-        indice = build_indices(net, COMPARTMENT_TEMPLATES)
-        net_args = (params, C_matrix, net["stim_node"])
-        sindy_args = DUMMY_SINDY_ARGS
-    else:
-        surr_net, surr_comp = get_surrogate_network(
-            net,
-            COMPARTMENT_TEMPLATES,
-            surrogate_target,
-            surrogate_model.gate_init,
-        )
-        indice = build_indices(surr_net, surr_comp)
-        net_args = (params, C_matrix, net["stim_node"])
+    surr_net, surr_comp = get_surrogate_network(
+        net,
+        COMPARTMENT_TEMPLATES,
+        surrogate_target,
+        surrogate_model.gate_init,
+    )
+    indice = build_indices(surr_net, surr_comp)
+    net_args = (params, C_matrix, net["stim_node"])
 
-        sindy_args = (
-            surrogate_model.sindy.coefficients(),
-            surrogate_model.compute_theta,
-        )
+    sindy_args = surrogate_model.sindy_args
     indice_args = (
         indice["gate_offsets"],
         indice["ids"]["passive"],
