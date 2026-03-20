@@ -108,60 +108,45 @@ def build_feature_cost_map(feature_names: list, base_cost_map: dict) -> dict:
 
 
 def calc_dynamic_metrics(orig_ds, surr_ds, comp_id, dt):
-    """
-    オリジナル波形とサロゲート波形の力学系・神経科学的メトリクスを計算する。
-    """
     orig_v = orig_ds["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
     surr_v = surr_ds["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
 
-    metrics = {}
-
-    # 1. 基本的な波形誤差
-    metrics["rmse"] = np.sqrt(np.mean((orig_v - surr_v) ** 2))
-    metrics["mae"] = np.mean(np.abs(orig_v - surr_v))
-
-    # 2. スパイク検出 (一般的な活動電位を想定し、0mVを閾値とする)
-    # ※ モデルの静止膜電位やピークスケールに合わせて height は調整してください
     orig_peaks, _ = find_peaks(orig_v, height=0.0)
     surr_peaks, _ = find_peaks(surr_v, height=0.0)
 
-    # スパイク数の比較
-    metrics["orig_spike_count"] = len(orig_peaks)
-    metrics["surr_spike_count"] = len(surr_peaks)
-    metrics["spike_count_diff"] = abs(len(orig_peaks) - len(surr_peaks))
+    return {
+        **_calc_waveform_metrics(orig_v, surr_v),
+        **_calc_spike_metrics(orig_peaks, surr_peaks, dt),
+    }
 
-    # 3. 発火潜時 (最初のスパイクまでの時間) の誤差
+
+def _calc_waveform_metrics(orig_v, surr_v):
+    return {
+        "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),
+        "mae": float(np.mean(np.abs(orig_v - surr_v))),
+    }
+
+
+def _calc_spike_metrics(orig_peaks, surr_peaks, dt):
+    orig_isi = np.diff(orig_peaks) * dt if len(orig_peaks) >= 2 else None
+    surr_isi = np.diff(surr_peaks) * dt if len(surr_peaks) >= 2 else None
+
+    return {
+        "orig_spike_count": len(orig_peaks),
+        "surr_spike_count": len(surr_peaks),
+        "spike_count_diff": abs(len(orig_peaks) - len(surr_peaks)),
+        "latency_error": _latency_error(orig_peaks, surr_peaks, dt),
+        "orig_mean_isi": float(np.mean(orig_isi)) if orig_isi is not None else np.nan,
+        "orig_std_isi": float(np.std(orig_isi)) if orig_isi is not None else np.nan,
+        "surr_mean_isi": float(np.mean(surr_isi)) if surr_isi is not None else np.nan,
+        "surr_std_isi": float(np.std(surr_isi)) if surr_isi is not None else np.nan,
+        "periodicity_gap": abs(np.mean(orig_isi) - np.mean(surr_isi))
+        if orig_isi is not None and surr_isi is not None
+        else np.nan,
+    }
+
+
+def _latency_error(orig_peaks, surr_peaks, dt):
     if len(orig_peaks) > 0 and len(surr_peaks) > 0:
-        orig_latency = orig_peaks[0] * dt
-        surr_latency = surr_peaks[0] * dt
-        metrics["latency_error"] = abs(orig_latency - surr_latency)
-    else:
-        metrics["latency_error"] = np.nan  # どちらかが発火しなかった場合
-
-    # 4. ISI (Inter-Spike Interval: スパイク間隔) の計算
-    # スパイクが2回以上ないとISIは計算できないため分岐
-    if len(orig_peaks) >= 2:
-        orig_isi = np.diff(orig_peaks) * dt
-        metrics["orig_mean_isi"] = np.mean(orig_isi)
-        metrics["orig_std_isi"] = np.std(orig_isi)
-    else:
-        metrics["orig_mean_isi"] = np.nan
-        metrics["orig_std_isi"] = np.nan
-
-    if len(surr_peaks) >= 2:
-        surr_isi = np.diff(surr_peaks) * dt
-        metrics["surr_mean_isi"] = np.mean(surr_isi)
-        metrics["surr_std_isi"] = np.std(surr_isi)
-    else:
-        metrics["surr_mean_isi"] = np.nan
-        metrics["surr_std_isi"] = np.nan
-
-    # ISIの誤差 (両方に十分なスパイクがある場合) ニューロンのリズムがどれだけずれているか
-    if len(orig_peaks) >= 2 and len(surr_peaks) >= 2:
-        metrics["periodicity_gap"] = abs(
-            metrics["orig_mean_isi"] - metrics["surr_mean_isi"]
-        )
-    else:
-        metrics["periodicity_gap"] = np.nan
-
-    return metrics
+        return float(abs(orig_peaks[0] - surr_peaks[0]) * dt)
+    return np.nan
