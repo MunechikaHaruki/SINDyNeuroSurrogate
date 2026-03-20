@@ -35,7 +35,7 @@ class PCAPreProcessorWrapper:
 
         n_latent = transformed_gate.shape[1]
         coords_config = {
-            "comp_id": [0] * (n_latent + 1),
+            "comp_id": [target_comp_id] * (n_latent + 1),
             "variable": ["V"] + [f"latent{i + 1}" for i in range(n_latent)],
             "gate": [False] + [True] * n_latent,
         }
@@ -70,15 +70,16 @@ class SINDySurrogateWrapper:
             t=train_xr["time"].to_numpy(),
             feature_names=input_features,
         )
-
-        self.gate_init = self.preprocessed_xr["vars"].to_numpy()[0][1:]
-
         # 関数のビルド
         self.source = self._build_source(self.sindy)
         local_vars = {}
         exec(self.source, vars(self.target_module), local_vars)
         self.compute_theta = local_vars["dynamic_compute_theta"]
         logger.info(self.source)
+
+    @property
+    def gate_init(self):
+        return self.preprocessed_xr["vars"].to_numpy()[0][1:]
 
     def get_loggable_summary(self) -> dict:
         coef = self.sindy.optimizer.coef_
