@@ -180,11 +180,11 @@ def analyze_eval_results(original_ds, predict_result, target_comp_id, surrogate_
                 "orig.png": plot_simple(original_ds),
                 "preprocessed.png": plot_simple(preprocessed_xr),
                 "surrogate.png": plot_simple(predict_result),
-                # "compare.png": plot_diff(
-                #     original=original_ds,
-                #     preprocessed=transformed_dataarray,
-                #     surrogate=predict_result,
-                # ),
+                "compare.png": plot_diff(
+                    original=original_ds,
+                    preprocessed=preprocessed_xr,
+                    surrogate=predict_result,
+                ),
             },
         },
     }

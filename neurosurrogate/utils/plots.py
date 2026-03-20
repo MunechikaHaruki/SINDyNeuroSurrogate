@@ -114,7 +114,7 @@ def plot_simple(ds):
 
 def plot_diff(
     original: xr.Dataset,
-    preprocessed: xr.DataArray,
+    preprocessed: xr.Dataset,
     surrogate: xr.Dataset,
     surr_id=None,
 ):
@@ -138,14 +138,12 @@ def plot_diff(
             "linestyle": ["-", "--"],  # 重なった時に見やすいように破線にする
         }
     )
-    # preprocessedとsurrogateのgate変数の時間変化
-    # PCAで抽出されたTarget(教師データ)と、SINDyが予測した軌道を重ねて比較
-    # preprocessed の featuresインデックスから "V" 以外の変数をすべて取得 (latent1, latent2...)
-    prep_vars = preprocessed.get_index("features").get_level_values("variable").tolist()
+
+    prep_vars = preprocessed.coords["variable"].values.tolist()
     latent_vars = [v for v in prep_vars if v != "V"]
 
     for latent in latent_vars:
-        prep_gate = preprocessed.sel(variable=latent).squeeze()
+        prep_gate = preprocessed["vars"].sel(variable=latent).squeeze()
         surr_gate = surrogate["vars"].sel(comp_id=surr_id, variable=latent).squeeze()
 
         configs.append(
