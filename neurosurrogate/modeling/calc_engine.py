@@ -181,17 +181,9 @@ def unified_simulater(dt, u, net, surrogate_target=None, surrogate_model=None):
     if surrogate_model is not None:
         dataset.attrs["surr_ids"] = indice["ids"]["surr"]
 
-    # コンパートメント間を流れる電流の系間を流れる電流の計算
-    v_dataset = dataset["vars"].sel(gate=False).sortby("comp_id")
-    V_data = v_dataset.values  # 形状: (time, N)
-    I_internal_np = V_data @ C_matrix
-
-    # コンパートメントに対し、直接入力される電流をたす
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
     stim_idx = net["stim_node"]  # 設定から注入先を取得
     I_ext_2d[:, stim_idx] = u  # 指定されたコンパートメントにだけ u を流し込む
-    I_internal_np = I_internal_np + I_ext_2d
-
-    set_i_internal(dataset, I_internal_np)
+    set_i_internal(dataset, C_matrix, I_ext_2d)
 
     return dataset

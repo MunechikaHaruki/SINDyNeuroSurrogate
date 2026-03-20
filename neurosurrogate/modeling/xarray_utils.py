@@ -98,13 +98,19 @@ def set_coords(raw, u, coords, dt):
     return dataset
 
 
-def set_i_internal(dataset, I_internal_np):
+def set_i_internal(dataset, C_matrix, I_ext_2d):
+    # コンパートメント間を流れる電流の系間を流れる電流の計算
+    v_dataset = dataset["vars"].sel(gate=False).sortby("comp_id")
+    V_data = v_dataset.values  # 形状: (time, N)
+    I_internal_np = V_data @ C_matrix
+    # コンパートメントに対し、直接入力される電流をたす
+    I_internal_np = I_internal_np + I_ext_2d
     # xarray に格納
     dataset["I_internal"] = xr.DataArray(
-        I_internal_np.T,  # (N, time) の形状にするため転置
+        I_internal_np,  # (N, time) の形状にするため転置
         coords={
-            "node_id": np.arange(I_internal_np.shape[1]),
             "time": dataset.time,
+            "node_id": np.arange(I_internal_np.shape[1]),
         },
-        dims=["node_id", "time"],
+        dims=["time", "node_id"],
     )
