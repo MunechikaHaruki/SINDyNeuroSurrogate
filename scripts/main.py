@@ -30,7 +30,9 @@ def build_current_cases(current_test_settings):
     """
     cases = []
     for current_type, spec in current_test_settings.items():
+        base_path = "neurosurrogate.utils.current_generators."
         target = spec["_target_"]
+        target = base_path + target
         params = spec.get("params", {})
 
         def _find_sweep_param(params: dict):
@@ -57,12 +59,22 @@ def build_current_cases(current_test_settings):
 
 def build_full_datasets(cfg):
     datasets = {"train": OmegaConf.to_container(cfg.train, resolve=True)}
+    combo = cfg.test_combinations[cfg.active_test]
+    active_models = combo["models"]
+    active_currents = combo["currents"]
 
     current_cases = build_current_cases(
-        OmegaConf.to_container(cfg.current_test_settings, resolve=True)
+        {
+            k: v
+            for k, v in OmegaConf.to_container(
+                cfg.current_test_settings, resolve=True
+            ).items()
+            if k in active_currents
+        }
     )
 
-    for model, target_comp_id in SINDY_MODEl["target"].items():
+    for model in active_models:
+        target_comp_id = SINDY_MODEl["target"][model]
         for case_key, current_cfg in current_cases:
             key = f"{case_key}_{model}"
             datasets[key] = {
@@ -86,15 +98,7 @@ def build_full_datasets(cfg):
 
     for key in datasets:
         datasets[key] = apply_defaults(datasets[key], cfg["datasets_default"])
-
     logger.info(datasets)
-
-    if cfg.eval_onlyone_shortcut is not None:
-        datasets = {
-            "train": datasets["train"],
-            cfg.eval_onlyone_shortcut: datasets[cfg.eval_onlyone_shortcut],
-        }
-
     return datasets
 
 

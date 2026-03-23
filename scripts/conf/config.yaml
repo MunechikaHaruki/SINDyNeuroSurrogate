@@ -22,14 +22,25 @@ datasets_default:
 
 current_test_settings:
   steady:
-    _target_: "neurosurrogate.utils.current_generators.generate_steady"
+    _target_: "generate_steady"
     params:
       value: [0, 10, 20]
   random:
-    _target_: "neurosurrogate.utils.current_generators.generate_rand_pulse"
+    _target_: "generate_rand_pulse"
     params:
       current_seed: [9919, 9920]
 
+# 組み合わせの定義（変わらない）
+test_combinations:
+  quick_check:
+    models: [php]
+    currents: [steady]
+  full_eval:
+    models: [php, hh]
+    currents: [steady, random]
+  random_only:
+    models: [php, hh]
+    currents: [random]
 
-#評価のショートカット
-eval_onlyone_shortcut: random_9919_hh7
+# CLI で毎回切り替える
+active_test: quick_check
