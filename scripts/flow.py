@@ -112,6 +112,11 @@ def train_model(surrogate, train_ds, target_comp_id):
 
 @mlflow.trace
 def eval_diff(key, datasets_cfg, surrogate_model, models_arch):
+    mlflow.set_tag("eval_dataset", key)
+    mlflow.log_params(datasets_cfg[key])
+    mlflow.log_params(datasets_cfg[key]["current"])
+    mlflow.log_dict(datasets_cfg[key], "dataset.yaml")
+
     original_ds = unified_simulator(
         **build_simulator_config(key, datasets_cfg, models_arch)
     )
@@ -166,12 +171,10 @@ def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
         target_comp_id = datasets_cfg["train"]["target_comp_id"]
         logger.info("Start Training")
         train_model(surrogate_model, train_ds, target_comp_id)
-        for key in datasets_cfg.keys():
+        for key, dataset in datasets_cfg.items():
             logger.info(f"start {key}'s evaluation")
             try:
                 with mlflow.start_run(run_name=f"Eval_{key}", nested=True):
-                    mlflow.set_tag("eval_dataset", key)
-                    mlflow.log_dict(datasets_cfg[key], "dataset.yaml")
                     eval_diff(key, datasets_cfg, surrogate_model, models_arch)
                     logger.info(f"Successfully finished evaluation for {key}")
             except Exception as e:
