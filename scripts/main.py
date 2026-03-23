@@ -33,27 +33,17 @@ def build_current_cases(current_test_settings):
         base_path = "neurosurrogate.utils.current_generators."
         target = spec["_target_"]
         target = base_path + target
-        params = spec.get("params", {})
+        default_params = spec.get("params", {})
+        params_sweep = spec.get("params_sweep", {})
 
-        def _find_sweep_param(params: dict):
-            """paramsの中でリストになっているものをスイープ対象として返す"""
-            for key, value in params.items():
-                if isinstance(value, list):
-                    return key, value
-            return None, [None]
+        if not params_sweep:
+            cases.append((current_type, {"_target_": target, **default_params}))
+            continue
 
-        sweep_key, sweep_values = _find_sweep_param(params)
-
+        sweep_key, sweep_values = next(iter(params_sweep.items()))
         for val in sweep_values:
-            current_cfg = {"_target_": target, **params}
-            if sweep_key is not None:
-                current_cfg[sweep_key] = val
-                key_suffix = str(val)
-            else:
-                key_suffix = current_type
-
-            cases.append((f"{current_type}_{key_suffix}", current_cfg))
-
+            current_cfg = {"_target_": target, **default_params, sweep_key: val}
+            cases.append((f"{current_type}_{val}", current_cfg))
     return cases
 
 

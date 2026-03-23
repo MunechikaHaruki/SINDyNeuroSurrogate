@@ -23,11 +23,11 @@ datasets_default:
 current_test_settings:
   steady:
     _target_: "generate_steady"
-    params:
+    params_sweep:
       value: [0, 10, 20]
   random:
     _target_: "generate_rand_pulse"
-    params:
+    params_sweep:
       current_seed: [9919, 9920]
 
 # 組み合わせの定義（変わらない）
