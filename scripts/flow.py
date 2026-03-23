@@ -73,6 +73,17 @@ def save_xarray(ds, name):
     mlflow.log_figure(fig, artifact_file=f"{name}.png")
 
 
+def parse_datasets(key, datasets_cfg, models_arch):
+    dataset_cfg = datasets_cfg[key]
+    data_type = dataset_cfg["data_type"]
+    model_arch = models_arch[data_type]
+
+    u = hydra.utils.instantiate(dataset_cfg["current"])
+    dt = dataset_cfg["dt"]
+    parsed_dict = {"u": u, "dt": dt, "net": model_arch}
+    return parsed_dict
+
+
 @mlflow.trace
 def train_model(surrogate, train_ds, target_comp_id):
     surrogate.fit(train_ds, target_comp_id)
@@ -100,27 +111,13 @@ def train_model(surrogate, train_ds, target_comp_id):
 
 
 @mlflow.trace
-def generate_dataset_flow(dataset_key, datasets_cfg, models_arch):
-    dataset_cfg = datasets_cfg[dataset_key]
-    data_type = dataset_cfg["data_type"]
+def eval_diff(name, datasets_cfg, surrogate_model, models_arch):
+    original_ds = unified_simulator(**parse_datasets(name, datasets_cfg, models_arch))
 
-    ds = unified_simulator(
-        u=hydra.utils.instantiate(dataset_cfg["current"]),
-        dt=dataset_cfg["dt"],
-        net=models_arch[data_type],
-    )
-    return ds
-
-
-@mlflow.trace
-def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
-    data_type = datasets_cfg[name]["data_type"]
     target_comp_id = datasets_cfg[name]["target_comp_id"]
-    dt = float(original_ds.attrs["dt"])
+
     predict_result = unified_simulator(
-        dt=dt,
-        u=original_ds["I_ext"].to_numpy(),
-        net=models_arch[data_type],
+        **parse_datasets(name, datasets_cfg, models_arch),
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
     )
@@ -130,6 +127,7 @@ def eval_diff(original_ds, name, datasets_cfg, surrogate_model, models_arch):
     )
 
     # logging
+    dt = datasets_cfg[name]["dt"]
     mlflow.log_metrics(
         calc_dynamic_metrics(original_ds, predict_result, target_comp_id, dt)
     )
@@ -160,7 +158,9 @@ def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
     with mlflow.start_run(run_name=run_name) as run:
         logger.info(f"run_id:{run.info.run_id}")
         mlflow.log_dict(datasets_cfg, "datasets.yaml")
-        train_ds = generate_dataset_flow("train", datasets_cfg, models_arch)
+        train_ds = unified_simulator(
+            **parse_datasets("train", datasets_cfg, models_arch)
+        )
         target_comp_id = datasets_cfg["train"]["target_comp_id"]
         logger.info("Start Training")
         train_model(surrogate_model, train_ds, target_comp_id)
@@ -170,8 +170,7 @@ def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
                 with mlflow.start_run(run_name=f"Eval_{key}", nested=True):
                     mlflow.set_tag("eval_dataset", key)
                     mlflow.log_dict(datasets_cfg[key], "dataset.yaml")
-                    ds = generate_dataset_flow(key, datasets_cfg, models_arch)
-                    eval_diff(ds, key, datasets_cfg, surrogate_model, models_arch)
+                    eval_diff(key, datasets_cfg, surrogate_model, models_arch)
                     logger.info(f"Successfully finished evaluation for {key}")
             except Exception as e:
                 logger.exception(f"Failed to evaluate {key}: {str(e)}")

@@ -173,7 +173,6 @@ def unified_simulator(
     args = (net_args, indice_args, surrogate_model.sindy_args)
     raw = generic_euler_solver(calc_universal_deriv, indice["init"], u, dt, args)
     dataset = set_coords(raw, u, indice["coords"], dt)
-    dataset.attrs["dt"] = dt
 
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
     stim_idx = net["stim_node"]  # 設定から注入先を取得
