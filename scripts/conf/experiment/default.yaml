@@ -28,14 +28,15 @@ scenarios:
       baseline: 0
   exp3:
     data_type: hh
-    current:
-      _target_: neurosurrogate.utils.current_generators.generate_discretized
-      iteration: 900000
-      options: [-5,1.3, 6.3,20]
-      weights: [0.3,1,1,1]
-      sigma: 1
-      current_seed: 991927697
     target_comp_id: 0
+    current:
+      pipeline:
+        - _target_: neurosurrogate.utils.current_generators.generate_discretized
+          options: [-5,1.3, 6.3,20]
+          weights: [0.3,1,1,1]
+          sigma: 1
+      current_seed: 991927697
+      iteration: 900000
   exp4:
     data_type: hh3
     current:

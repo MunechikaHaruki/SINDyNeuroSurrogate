@@ -40,28 +40,47 @@ def _resolve_sweep_values(value_cfg) -> list:
     raise ValueError(f"params_sweepの値が不正です: {value_cfg}")
 
 
+def _get_single_sweep_param(params_sweep: dict):
+    if len(params_sweep) != 1:
+        raise ValueError(
+            f"params_sweepは1キーのみ対応しています: {list(params_sweep.keys())}"
+        )
+    return next(iter(params_sweep.items()))
+
+
 def build_current_cases(current_test_settings):
     """
     current_test_settings からキーと current 設定の一覧を生成する
     例: [("steady_0", {...}), ("steady_10", {...}), ("random_9919", {...}), ...]
     """
     cases = []
+    base_path = "neurosurrogate.utils.current_generators."
+
     for current_type, spec in current_test_settings.items():
-        base_path = "neurosurrogate.utils.current_generators."
-        target = spec["_target_"]
-        target = base_path + target
+        target = base_path + spec["_target_"]
         default_params = spec.get("params", {})
         params_sweep = spec.get("params_sweep", {})
 
         if not params_sweep:
-            cases.append((current_type, {"_target_": target, **default_params}))
+            cases.append(
+                (current_type, {"pipeline": [{"_target_": target, **default_params}]})
+            )
             continue
 
-        sweep_key, sweep_value_cfg = next(iter(params_sweep.items()))
+        sweep_key, sweep_value_cfg = _get_single_sweep_param(params_sweep)
         sweep_values = _resolve_sweep_values(sweep_value_cfg)
         for val in sweep_values:
-            current_cfg = {"_target_": target, **default_params, sweep_key: val}
-            cases.append((f"{current_type}_{val}", current_cfg))
+            cases.append(
+                (
+                    f"{current_type}_{val}",
+                    {
+                        "pipeline": [
+                            {"_target_": target, **default_params, sweep_key: val}
+                        ]
+                    },
+                )
+            )
+
     return cases
 
 
@@ -106,6 +125,7 @@ def build_full_datasets(cfg):
 
     for key in datasets:
         datasets[key] = apply_defaults(datasets[key], cfg["datasets_default"])
+
     logger.info(datasets)
     return datasets
 

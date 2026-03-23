@@ -4,76 +4,68 @@ import random
 import numpy as np
 
 
-def current_decorator(func):
-    """電流生成関数ラッパー"""
-
-    def wrapper(*args, **kwargs):
-        # Set random seeds for reproducibility
-        current_seed = kwargs.pop("current_seed")
-        random.seed(current_seed)
-        np.random.seed(current_seed)
-        iteration = kwargs.pop("iteration")
-        silence_steps = kwargs.pop("silence_steps")
-        dset_i_ext = np.zeros(shape=(iteration,))
-        func(dset_i_ext, iteration, *args, **kwargs)
-
-        dset_i_ext[:silence_steps] = 0  # 最初の電流は何も与えない
-        dset_i_ext[-silence_steps:] = 0  # 最後の電流は何も与えない
-        return dset_i_ext
-
-    return wrapper
-
-
-@current_decorator
-def generate_rand_pulse(
-    dset_i_ext,
-    iteration,
-    max_val: int = 20,
-    pulse_step: int = 2000,
-    flow_rate: float = 0.5,
-    baseline: float = 0.0,
-):
-    for n in range(math.floor(iteration / pulse_step)):
-        v = random.randint(0, max_val) if random.random() < flow_rate else baseline
-        dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = np.full(pulse_step, v)
-
-
-@current_decorator
-def generate_steady(dset_i_ext, iteration, value: float):
+def generate_steady(value: float):
     """一定の電流を生成する"""
-    dset_i_ext[:] = np.full(iteration, value)
+
+    def apply(dset_i_ext: np.ndarray) -> None:
+        dset_i_ext[:] = value
+
+    return apply
 
 
-@current_decorator
-def generate_gauss_rand_pulse(
-    dset_i_ext,
-    iteration,
+def generate_rand_pulse(
     max_val: int = 20,
     pulse_step: int = 2000,
     flow_rate: float = 0.5,
-    mu=0,
-    sigma=5,
     baseline: float = 0.0,
 ):
-    for n in range(math.floor(iteration / pulse_step)):
-        if random.random() < flow_rate:
-            v = random.gauss(mu=mu, sigma=sigma)
-            v = np.clip(v, baseline, max_val)
-        else:
-            v = baseline
-        dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = np.full(pulse_step, v)
+    def apply(dset_i_ext: np.ndarray) -> None:
+        iteration = len(dset_i_ext)
+        for n in range(math.floor(iteration / pulse_step)):
+            v = random.randint(0, max_val) if random.random() < flow_rate else baseline
+            dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = v
+
+    return apply
 
 
-@current_decorator
-def generate_discretized(
-    dset_i_ext,
-    iteration,
-    pulse_step=2000,
-    options=[-5, 6.2, 6.3, 5],
-    weights=[1, 1, 1, 1],
-    sigma=0.1,
+def generate_gauss_rand_pulse(
+    max_val: int = 20,
+    pulse_step: int = 2000,
+    flow_rate: float = 0.5,
+    mu: float = 0,
+    sigma: float = 5,
+    baseline: float = 0.0,
 ):
-    for n in range(math.floor(iteration / pulse_step)):
-        chosen = random.choices(options, weights=weights, k=1)[0]
-        chosen = chosen + random.gauss(mu=0, sigma=sigma)
-        dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = np.full(pulse_step, chosen)
+    def apply(dset_i_ext: np.ndarray) -> None:
+        iteration = len(dset_i_ext)
+        for n in range(math.floor(iteration / pulse_step)):
+            if random.random() < flow_rate:
+                v = np.clip(random.gauss(mu=mu, sigma=sigma), baseline, max_val)
+            else:
+                v = baseline
+            dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = v
+
+    return apply
+
+
+def generate_discretized(
+    pulse_step: int = 2000,
+    options: list = [-5, 6.2, 6.3, 5],
+    weights: list = [1, 1, 1, 1],
+    sigma: float = 0.1,
+):
+    def apply(dset_i_ext: np.ndarray) -> None:
+        iteration = len(dset_i_ext)
+        for n in range(math.floor(iteration / pulse_step)):
+            chosen = random.choices(options, weights=weights, k=1)[0]
+            chosen = chosen + random.gauss(mu=0, sigma=sigma)
+            dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = chosen
+
+    return apply
+
+
+def add_white_noise(sigma: float = 0.1):
+    def apply(dset_i_ext: np.ndarray) -> None:
+        dset_i_ext += np.random.normal(0, sigma, len(dset_i_ext))
+
+    return apply

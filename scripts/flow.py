@@ -1,5 +1,6 @@
 import inspect
 import logging
+import random
 import tempfile
 from pathlib import Path
 from typing import Dict
@@ -73,12 +74,35 @@ def save_xarray(ds, name):
     mlflow.log_figure(fig, artifact_file=f"{name}.png")
 
 
+def apply_current_pipeline(current_cfg):
+    current_seed = current_cfg["current_seed"]
+    iteration = current_cfg["iteration"]
+    silence_steps = current_cfg["silence_steps"]
+    random.seed(current_seed)
+    np.random.seed(current_seed)
+
+    dset_i_ext = np.zeros(iteration)
+
+    if "pipeline" in current_cfg:
+        for step_cfg in current_cfg["pipeline"]:
+            func = hydra.utils.instantiate(step_cfg)
+            func(dset_i_ext)
+    else:
+        # 旧来のフォーマット: _target_ が直接 current_cfg にある
+        func = hydra.utils.instantiate(current_cfg)
+        func(dset_i_ext)
+
+    dset_i_ext[:silence_steps] = 0
+    dset_i_ext[-silence_steps:] = 0
+    return dset_i_ext
+
+
 def build_simulator_config(key, datasets_cfg, models_arch):
     dataset_cfg = datasets_cfg[key]
     data_type = dataset_cfg["data_type"]
     model_arch = models_arch[data_type]
 
-    u = hydra.utils.instantiate(dataset_cfg["current"])
+    u = apply_current_pipeline(dataset_cfg["current"])
     dt = dataset_cfg["dt"]
     parsed_dict = {"u": u, "dt": dt, "net": model_arch}
     return parsed_dict
