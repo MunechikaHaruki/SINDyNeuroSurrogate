@@ -10,15 +10,26 @@ hydra:
 
 matplotlib_style: paper
 
-# デフォルト値の設定(シミュレーション)
-simulater_default_dt: 0.01 #[ms]
-simulater_default_duration: 800 #[ms]
-# デフォルト値の設定(電流生成)
-default_current_seed: 6
-silence_duration: 10 #[ms]
-#評価のショートカット
-eval_onlyone_shortcut: random_hh7_9919
 
-dataset_profiles:
-  steady_currents: [ 0, 10, 20] #, 6.5, 6.3, 6.2, 7, 10, 15, 20]
-  random_current_seeds: [9919,9920]
+datasets_default:
+  # デフォルト値の設定(シミュレーション)
+  simulator_default_dt: 0.01 #[ms]
+  simulator_default_duration: 800 #[ms]
+  # デフォルト値の設定(電流生成)
+  default_current_seed: 6
+  silence_duration: 10 #[ms]
+
+
+current_test_settings:
+  steady:
+    _target_: "neurosurrogate.utils.current_generators.generate_steady"
+    params:
+      value: [0, 10, 20]
+  random:
+    _target_: "neurosurrogate.utils.current_generators.generate_rand_pulse"
+    params:
+      current_seed: [9919, 9920]
+
+
+#評価のショートカット
+eval_onlyone_shortcut: random_9919_hh7

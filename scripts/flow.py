@@ -73,7 +73,7 @@ def save_xarray(ds, name):
     mlflow.log_figure(fig, artifact_file=f"{name}.png")
 
 
-def parse_datasets(key, datasets_cfg, models_arch):
+def build_simulator_config(key, datasets_cfg, models_arch):
     dataset_cfg = datasets_cfg[key]
     data_type = dataset_cfg["data_type"]
     model_arch = models_arch[data_type]
@@ -111,13 +111,15 @@ def train_model(surrogate, train_ds, target_comp_id):
 
 
 @mlflow.trace
-def eval_diff(name, datasets_cfg, surrogate_model, models_arch):
-    original_ds = unified_simulator(**parse_datasets(name, datasets_cfg, models_arch))
+def eval_diff(key, datasets_cfg, surrogate_model, models_arch):
+    original_ds = unified_simulator(
+        **build_simulator_config(key, datasets_cfg, models_arch)
+    )
 
-    target_comp_id = datasets_cfg[name]["target_comp_id"]
+    target_comp_id = datasets_cfg[key]["target_comp_id"]
 
     predict_result = unified_simulator(
-        **parse_datasets(name, datasets_cfg, models_arch),
+        **build_simulator_config(key, datasets_cfg, models_arch),
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
     )
@@ -127,7 +129,7 @@ def eval_diff(name, datasets_cfg, surrogate_model, models_arch):
     )
 
     # logging
-    dt = datasets_cfg[name]["dt"]
+    dt = datasets_cfg[key]["dt"]
     mlflow.log_metrics(
         calc_dynamic_metrics(original_ds, predict_result, target_comp_id, dt)
     )
@@ -159,7 +161,7 @@ def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
         logger.info(f"run_id:{run.info.run_id}")
         mlflow.log_dict(datasets_cfg, "datasets.yaml")
         train_ds = unified_simulator(
-            **parse_datasets("train", datasets_cfg, models_arch)
+            **build_simulator_config("train", datasets_cfg, models_arch)
         )
         target_comp_id = datasets_cfg["train"]["target_comp_id"]
         logger.info("Start Training")

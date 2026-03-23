@@ -23,53 +23,77 @@ os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 logger = logging.getLogger(__name__)
 
 
+def build_current_cases(current_test_settings):
+    """
+    current_test_settings からキーと current 設定の一覧を生成する
+    例: [("steady_0", {...}), ("steady_10", {...}), ("random_9919", {...}), ...]
+    """
+    cases = []
+    for current_type, spec in current_test_settings.items():
+        target = spec["_target_"]
+        params = spec.get("params", {})
+
+        def _find_sweep_param(params: dict):
+            """paramsの中でリストになっているものをスイープ対象として返す"""
+            for key, value in params.items():
+                if isinstance(value, list):
+                    return key, value
+            return None, [None]
+
+        sweep_key, sweep_values = _find_sweep_param(params)
+
+        for val in sweep_values:
+            current_cfg = {"_target_": target, **params}
+            if sweep_key is not None:
+                current_cfg[sweep_key] = val
+                key_suffix = str(val)
+            else:
+                key_suffix = current_type
+
+            cases.append((f"{current_type}_{key_suffix}", current_cfg))
+
+    return cases
+
+
 def build_full_datasets(cfg):
-    # 1. 既存の datasets (random_hh3, random_hh 等) を辞書として取得
-    # resolve=True にすることで、内部の変数参照を解決した状態で取得できます
-    datasets = {}
+    datasets = {"train": OmegaConf.to_container(cfg.train, resolve=True)}
 
-    # 学習用のデータをテストデータに追加
-    datasets["train"] = OmegaConf.to_container(cfg.train, resolve=True)
+    current_cases = build_current_cases(
+        OmegaConf.to_container(cfg.current_test_settings, resolve=True)
+    )
 
-    # 内部関数：デフォルト値をセットする
-    def apply_defaults(ds_dict):
-        ds_dict.setdefault("dt", cfg["simulater_default_dt"])
+    for model, target_comp_id in SINDY_MODEl["target"].items():
+        for case_key, current_cfg in current_cases:
+            key = f"{case_key}_{model}"
+            datasets[key] = {
+                "data_type": model,
+                "current": current_cfg,
+                "target_comp_id": target_comp_id,
+            }
 
-        # 電流周りのデフォルト値セット
-        ds_dict["current"].setdefault("current_seed", cfg["default_current_seed"])
+    def apply_defaults(ds_dict, cfg_default):
+        ds_dict.setdefault("dt", cfg_default["simulator_default_dt"])
         ds_dict["current"].setdefault(
-            "silence_steps", int(cfg["silence_duration"] / ds_dict["dt"])
+            "current_seed", cfg_default["default_current_seed"]
         )
         ds_dict["current"].setdefault(
-            "iteration", int(cfg["simulater_default_duration"] / ds_dict["dt"])
+            "silence_steps", int(cfg_default["silence_duration"] / ds_dict["dt"])
+        )
+        ds_dict["current"].setdefault(
+            "iteration", int(cfg_default["simulator_default_duration"] / ds_dict["dt"])
         )
         return ds_dict
 
-    for model in SINDY_MODEl["target"].keys():
-        for v in cfg.dataset_profiles.steady_currents:
-            key = f"stady_{model}_{v}"
-            datasets[key] = {
-                "data_type": model,
-                "current": {
-                    "_target_": "neurosurrogate.utils.current_generators.generate_steady",
-                    "value": float(v),
-                },
-                "target_comp_id": SINDY_MODEl["target"][model],
-            }
-
-        for seed in cfg.dataset_profiles.random_current_seeds:
-            key = f"random_{model}_{seed}"
-            datasets[key] = {
-                "data_type": model,
-                "current": {
-                    "_target_": "neurosurrogate.utils.current_generators.generate_rand_pulse",
-                    "current_seed": seed,
-                },
-                "target_comp_id": SINDY_MODEl["target"][model],
-            }
-
     for key in datasets:
-        datasets[key] = apply_defaults(datasets[key])
+        datasets[key] = apply_defaults(datasets[key], cfg["datasets_default"])
+
+    logger.info(datasets)
+
+    if cfg.eval_onlyone_shortcut is not None:
+        datasets = {
+            "train": datasets["train"],
+            cfg.eval_onlyone_shortcut: datasets[cfg.eval_onlyone_shortcut],
+        }
 
     return datasets
 
@@ -80,11 +104,6 @@ def main(cfg: DictConfig) -> None:
     # cfgの依存関係解決とビルド
     OmegaConf.resolve(cfg)
     dataset_cfg = build_full_datasets(cfg)
-    if cfg.eval_onlyone_shortcut is not None:
-        dataset_cfg = {
-            "train": dataset_cfg["train"],
-            cfg.eval_onlyone_shortcut: dataset_cfg[cfg.eval_onlyone_shortcut],
-        }
     logger.info(dataset_cfg)
     # mlflowの初期設定
     mlflow.set_tracking_uri("file:./mlruns")
