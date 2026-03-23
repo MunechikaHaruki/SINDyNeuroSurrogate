@@ -85,7 +85,6 @@ def build_current_cases(current_test_settings):
 
 
 def build_full_datasets(cfg):
-    datasets = {"train": OmegaConf.to_container(cfg.train, resolve=True)}
     combo = cfg.test_combinations[cfg.active_test]
     active_models = combo["models"]
     active_currents = combo["currents"]
@@ -100,6 +99,7 @@ def build_full_datasets(cfg):
         }
     )
 
+    datasets = {}
     for model in active_models:
         target_comp_id = SINDY_MODEl["target"][model]
         for case_key, current_cfg in current_cases:
@@ -110,7 +110,7 @@ def build_full_datasets(cfg):
                 "target_comp_id": target_comp_id,
             }
 
-    def apply_defaults(ds_dict, cfg_default):
+    def apply_defaults(ds_dict, cfg_default, for_teaching=False):
         ds_dict.setdefault("dt", cfg_default["simulator_default_dt"])
         ds_dict["current"].setdefault(
             "current_seed", cfg_default["default_current_seed"]
@@ -118,13 +118,22 @@ def build_full_datasets(cfg):
         ds_dict["current"].setdefault(
             "silence_steps", int(cfg_default["silence_duration"] / ds_dict["dt"])
         )
-        ds_dict["current"].setdefault(
-            "iteration", int(cfg_default["simulator_default_duration"] / ds_dict["dt"])
-        )
+        if for_teaching is False:
+            default_iteration = int(
+                cfg_default["simulator_default_duration"] / ds_dict["dt"]
+            )
+        else:
+            default_iteration = int(cfg_default["train_duration"] / ds_dict["dt"])
+        ds_dict["current"].setdefault("iteration", default_iteration)
         return ds_dict
 
+    datasets["train"] = OmegaConf.to_container(
+        cfg.teaching_settings[cfg.selected], resolve=True
+    )
     for key in datasets:
-        datasets[key] = apply_defaults(datasets[key], cfg["datasets_default"])
+        datasets[key] = apply_defaults(
+            datasets[key], cfg["datasets_default"], for_teaching=(key == "train")
+        )
 
     logger.info(datasets)
     return datasets
