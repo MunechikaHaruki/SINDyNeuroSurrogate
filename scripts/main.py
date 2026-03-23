@@ -1,18 +1,20 @@
+import logging
 import os
 
-import matplotlib
-
-matplotlib.use("Agg")
-import logging
-
 import hydra
-import matplotlib.pyplot as plt
+import matplotlib
 import mlflow
+import numpy as np
 from base import COST_MAP, MC_MODELS, SINDY_MODEl
 from flow import main_flow
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.modeling import SINDySurrogateWrapper
+
+matplotlib.use("Agg")
+
+
+import matplotlib.pyplot as plt
 
 # プロキシ設定を一時的に無効化
 os.environ["HTTP_PROXY"] = ""
@@ -21,6 +23,21 @@ os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_sweep_values(value_cfg) -> list:
+    if isinstance(value_cfg, list):
+        return value_cfg
+    if isinstance(value_cfg, dict):
+        start = value_cfg["start"]
+        stop = value_cfg["stop"]
+        if "num" in value_cfg:
+            return np.linspace(start, stop, value_cfg["num"]).tolist()
+        elif "step" in value_cfg:
+            return np.arange(
+                start, stop + value_cfg["step"], value_cfg["step"]
+            ).tolist()
+    raise ValueError(f"params_sweepの値が不正です: {value_cfg}")
 
 
 def build_current_cases(current_test_settings):
@@ -40,7 +57,8 @@ def build_current_cases(current_test_settings):
             cases.append((current_type, {"_target_": target, **default_params}))
             continue
 
-        sweep_key, sweep_values = next(iter(params_sweep.items()))
+        sweep_key, sweep_value_cfg = next(iter(params_sweep.items()))
+        sweep_values = _resolve_sweep_values(sweep_value_cfg)
         for val in sweep_values:
             current_cfg = {"_target_": target, **default_params, sweep_key: val}
             cases.append((f"{current_type}_{val}", current_cfg))

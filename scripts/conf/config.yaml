@@ -24,7 +24,10 @@ current_test_settings:
   steady:
     _target_: "generate_steady"
     params_sweep:
-      value: [0, 10, 20]
+      value: 
+        start: 0
+        stop: 20
+        step: 5
   random:
     _target_: "generate_rand_pulse"
     params_sweep:
