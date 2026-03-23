@@ -138,7 +138,7 @@ def train_model(surrogate, train_ds, target_comp_id):
 def eval_diff(key, datasets_cfg, surrogate_model, models_arch):
     mlflow.set_tag("eval_dataset", key)
     mlflow.log_params(datasets_cfg[key])
-    mlflow.log_params(datasets_cfg[key]["current"])
+    mlflow.log_params(datasets_cfg[key]["current"]["pipeline"][0])
     mlflow.log_dict(datasets_cfg[key], "dataset.yaml")
 
     original_ds = unified_simulator(

@@ -32,6 +32,33 @@ current_test_settings:
     _target_: "generate_rand_pulse"
     params_sweep:
       current_seed: [9919, 9920]
+  ramp:
+    _target_: "generate_ramp"
+    params_sweep:
+      stop:
+        start: 5
+        stop: 20
+        step: 5  # → start=0固定で、stop=[5, 10, 15, 20]をスイープ
+    params:
+      start: 0.0
+  sinusoidal:
+    _target_: "generate_sinusoidal"
+    params:
+      baseline: 5.0
+      frequency: 0.01
+    params_sweep:
+      amplitude: [2.0, 5.0, 10.0]
+
+  chirp:
+    _target_: "generate_chirp"
+    params:
+      f_start: 0.001
+      f_stop: 0.01
+      baseline: 5.0
+    params_sweep:
+      amplitude: [2.0, 5.0, 10.0]
+
+
 
 # 組み合わせの定義（変わらない）
 test_combinations:
