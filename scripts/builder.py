@@ -4,9 +4,11 @@ import random
 import hydra
 import numpy as np
 import pysindy as ps
+from conf.feature_library_components import LIB_BUILDER_REGISTRY
 from omegaconf import OmegaConf
 
 from neurosurrogate.modeling import SINDySurrogateWrapper
+from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +146,7 @@ def build_full_datasets(cfg, model_definitions):
         return ds_dict
 
     datasets["train"] = OmegaConf.to_container(
-        cfg.teaching_settings[cfg.selected], resolve=True
+        cfg.teaching_settings[cfg.sindy.teaching_current], resolve=True
     )
     for key in datasets:
         datasets[key] = apply_defaults(
@@ -164,13 +166,8 @@ def build_current_pipeline(current_cfg):
 
     dset_i_ext = np.zeros(iteration)
 
-    if "pipeline" in current_cfg:
-        for step_cfg in current_cfg["pipeline"]:
-            func = hydra.utils.instantiate(step_cfg)
-            func(dset_i_ext)
-    else:
-        # 旧来のフォーマット: _target_ が直接 current_cfg にある
-        func = hydra.utils.instantiate(current_cfg)
+    for step_cfg in current_cfg["pipeline"]:
+        func = hydra.utils.instantiate(step_cfg)
         func(dset_i_ext)
 
     dset_i_ext[:silence_steps] = 0
@@ -187,7 +184,6 @@ def build_simulator_config(key, datasets_cfg):
 
 
 def build_feature_library(library_specs):
-    from feature_library_components import LIB_BUILDER_REGISTRY
 
     def _build_one(spec):
         builder = LIB_BUILDER_REGISTRY.get(spec["type"])
@@ -201,7 +197,6 @@ def build_feature_library(library_specs):
 
 
 def build_surrogate(cfg_sindy):
-    from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
 
     library = build_feature_library(cfg_sindy.library_specs)
 

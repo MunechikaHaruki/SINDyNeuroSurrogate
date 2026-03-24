@@ -131,10 +131,8 @@ sindy:
       inputs: [0, 1, 2]
     - type: base
       inputs: [0, 1, 2]
- 
-
-
+  
+  teaching_current: exp3
 
 # プリセット
-selected: exp3
 active_test: quick_check

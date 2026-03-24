@@ -5,8 +5,8 @@ import hydra
 import matplotlib
 import mlflow
 from builder import build_full_datasets, build_surrogate
+from conf.neuron_models import MODEL_DEFINITIONS
 from flow import main_flow
-from neuron_models import MODEL_DEFINITIONS
 from omegaconf import DictConfig, OmegaConf
 
 matplotlib.use("Agg")
