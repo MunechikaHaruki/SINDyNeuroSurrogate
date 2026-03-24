@@ -13,37 +13,35 @@ from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
 logger = logging.getLogger(__name__)
 
 
-def _resolve_sweep_values(value_cfg) -> list:
-    if isinstance(value_cfg, list):
-        return value_cfg
-    if isinstance(value_cfg, dict):
-        start = value_cfg["start"]
-        stop = value_cfg["stop"]
-        if "num" in value_cfg:
-            return np.linspace(start, stop, value_cfg["num"]).tolist()
-        elif "step" in value_cfg:
-            return np.arange(
-                start, stop + value_cfg["step"], value_cfg["step"]
-            ).tolist()
-    raise ValueError(f"params_sweepの値が不正です: {value_cfg}")
-
-
-def _get_single_sweep_param(params_sweep: dict):
-    if len(params_sweep) != 1:
-        raise ValueError(
-            f"params_sweepは1キーのみ対応しています: {list(params_sweep.keys())}"
-        )
-    return next(iter(params_sweep.items()))
-
-
 def build_current_cases(current_test_settings):
     """
     current_test_settings からキーと current 設定の一覧を生成する
     例: [("steady_0", {...}), ("steady_10", {...}), ("random_9919", {...}), ...]
     """
+
+    def _get_single_sweep_param(params_sweep: dict):
+        if len(params_sweep) != 1:
+            raise ValueError(
+                f"params_sweepは1キーのみ対応しています: {list(params_sweep.keys())}"
+            )
+        return next(iter(params_sweep.items()))
+
+    def _resolve_sweep_values(value_cfg) -> list:
+        if isinstance(value_cfg, list):
+            return value_cfg
+        if isinstance(value_cfg, dict):
+            start = value_cfg["start"]
+            stop = value_cfg["stop"]
+            if "num" in value_cfg:
+                return np.linspace(start, stop, value_cfg["num"]).tolist()
+            elif "step" in value_cfg:
+                return np.arange(
+                    start, stop + value_cfg["step"], value_cfg["step"]
+                ).tolist()
+        raise ValueError(f"params_sweepの値が不正です: {value_cfg}")
+
     cases = []
     base_path = "neurosurrogate.utils.current_generators."
-
     for current_type, spec in current_test_settings.items():
         target = base_path + spec["_target_"]
         default_params = spec.get("params", {})
@@ -54,7 +52,6 @@ def build_current_cases(current_test_settings):
                 (current_type, {"pipeline": [{"_target_": target, **default_params}]})
             )
             continue
-
         sweep_key, sweep_value_cfg = _get_single_sweep_param(params_sweep)
         sweep_values = _resolve_sweep_values(sweep_value_cfg)
         for val in sweep_values:
@@ -157,47 +154,43 @@ def build_full_datasets(cfg, model_definitions):
     return datasets
 
 
-def build_current_pipeline(current_cfg):
-    current_seed = current_cfg["current_seed"]
-    iteration = current_cfg["iteration"]
-    silence_steps = current_cfg["silence_steps"]
-    random.seed(current_seed)
-    np.random.seed(current_seed)
-
-    dset_i_ext = np.zeros(iteration)
-
-    for step_cfg in current_cfg["pipeline"]:
-        func = hydra.utils.instantiate(step_cfg)
-        func(dset_i_ext)
-
-    dset_i_ext[:silence_steps] = 0
-    dset_i_ext[-silence_steps:] = 0
-    return dset_i_ext
-
-
 def build_simulator_config(dataset_cfg):
+    def build_current_pipeline(current_cfg):
+        current_seed = current_cfg["current_seed"]
+        iteration = current_cfg["iteration"]
+        silence_steps = current_cfg["silence_steps"]
+        random.seed(current_seed)
+        np.random.seed(current_seed)
+
+        dset_i_ext = np.zeros(iteration)
+
+        for step_cfg in current_cfg["pipeline"]:
+            func = hydra.utils.instantiate(step_cfg)
+            func(dset_i_ext)
+
+        dset_i_ext[:silence_steps] = 0
+        dset_i_ext[-silence_steps:] = 0
+        return dset_i_ext
+
     u = build_current_pipeline(dataset_cfg["current"])
     dt = dataset_cfg["dt"]
     parsed_dict = {"u": u, "dt": dt, "net": dataset_cfg["net"]}
     return parsed_dict
 
 
-def build_feature_library(library_specs):
-
+def build_surrogate(cfg_sindy):
     def _build_one(spec):
         builder = LIB_BUILDER_REGISTRY.get(spec["type"])
         if builder is None:
             raise ValueError(f"未知のlibrary type: {spec['type']}")
         return builder(spec)
 
-    lib_input_pairs = [(_build_one(s), s["inputs"]) for s in library_specs]
-    libraries, inputs = zip(*lib_input_pairs)
-    return ps.GeneralizedLibrary(list(libraries), inputs_per_library=list(inputs))
+    def _build_feature_library(library_specs):
+        lib_input_pairs = [(_build_one(s), s["inputs"]) for s in library_specs]
+        libraries, inputs = zip(*lib_input_pairs)
+        return ps.GeneralizedLibrary(list(libraries), inputs_per_library=list(inputs))
 
-
-def build_surrogate(cfg_sindy):
-
-    library = build_feature_library(cfg_sindy.library_specs)
+    library = _build_feature_library(cfg_sindy.library_specs)
 
     # pySINDyの初期化
     initialized_sindy = ps.SINDy(

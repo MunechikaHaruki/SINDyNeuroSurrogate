@@ -60,7 +60,7 @@ def main_flow(datasets_cfg: Dict, surrogate_model, run_name):
             try:
                 with mlflow.start_run(run_name=f"Eval_{key}", nested=True):
                     mlflow.set_tag("eval_dataset", key)
-                    eval_diff(datasets_cfg[key], surrogate_model)
+                    eval_diff(dataset, surrogate_model)
                     logger.info(f"Successfully finished evaluation for {key}")
             except Exception as e:
                 logger.exception(f"Failed to evaluate {key}: {str(e)}")
@@ -73,7 +73,6 @@ def main_flow(datasets_cfg: Dict, surrogate_model, run_name):
 def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
     setup_all(cfg)
-    # 設定のビルド
     dataset_cfg = build_full_datasets(cfg, MODEL_DEFINITIONS)
     surrogate_model = build_surrogate(cfg.sindy)
     main_flow(dataset_cfg, surrogate_model, get_hydra_overrides())
