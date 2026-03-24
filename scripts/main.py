@@ -36,7 +36,7 @@ def eval_diff(dataset_cfg, surrogate_model):
     log_dataset_cfg(dataset_cfg)
     original_ds = unified_simulator(**build_simulator_config(dataset_cfg))
     target_comp_id = dataset_cfg["target_comp_id"]
-    predict_result = unified_simulator(
+    surr_ds = unified_simulator(
         **build_simulator_config(dataset_cfg),
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
@@ -44,7 +44,7 @@ def eval_diff(dataset_cfg, surrogate_model):
     preprocessed_xr = surrogate_model.preprocessor.transform(
         original_ds, target_comp_id=target_comp_id
     )
-    log_eval_result(original_ds, predict_result, preprocessed_xr, dataset_cfg)
+    log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
 
 
 def main_flow(datasets_cfg: Dict, surrogate_model, run_name):

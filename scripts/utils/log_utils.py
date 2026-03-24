@@ -94,19 +94,17 @@ def log_dataset_cfg(dataset_cfg):
     mlflow.log_dict(dataset_cfg, "dataset.yaml")
 
 
-def log_eval_result(original_ds, predict_result, preprocessed_xr, dataset_cfg):
+def log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
     dt = dataset_cfg["dt"]
     target_comp_id = dataset_cfg["target_comp_id"]
-    mlflow.log_metrics(
-        calc_dynamic_metrics(original_ds, predict_result, target_comp_id, dt)
-    )
+    mlflow.log_metrics(calc_dynamic_metrics(original_ds, surr_ds, target_comp_id, dt))
     names = ["orig", "preprocessed", "surr"]
-    datasets = [original_ds, preprocessed_xr, predict_result]
+    datasets = [original_ds, preprocessed_xr, surr_ds]
     for ds, name in zip(datasets, names):
         save_xarray(ds, name)
 
     datasets, spec = spec_diff(
-        original_ds, preprocessed_xr, predict_result, surr_id=target_comp_id
+        original_ds, preprocessed_xr, surr_ds, surr_id=target_comp_id
     )
     mlflow.log_figure(
         draw_engine(datasets, spec, engine="matplotlib"),
@@ -115,7 +113,7 @@ def log_eval_result(original_ds, predict_result, preprocessed_xr, dataset_cfg):
 
     fig_phase = plot_2d_attractor_comparison(
         orig_ds=preprocessed_xr,
-        surr_ds=predict_result,
+        surr_ds=surr_ds,
         comp_id=target_comp_id,
         state_vars=["V", "latent1"],  # 実際のSINDyのターゲット変数名に合わせて変更
     )
