@@ -7,10 +7,7 @@ import mlflow
 import numpy as np
 
 from neurosurrogate.modeling import SINDySurrogateWrapper
-from neurosurrogate.utils.plots import (
-    draw_engine,
-    spec_simple,
-)
+from neurosurrogate.utils.plots import draw_engine, plot_sindy_coefficients, spec_simple
 
 
 def get_hydra_overrides():
@@ -43,6 +40,25 @@ class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
 
     def predict(self, context, model_input):
         pass  # unified_simulatorに直接渡すので不要
+
+
+def log_surrogate_summary(summary):
+    mlflow.log_metrics(summary["metrics"])
+    mlflow.log_params(summary["params"])
+
+    for filename, content in summary["artifacts"]["texts"].items():
+        mlflow.log_text(content, artifact_file=filename)
+
+    for name, ds in summary["artifacts"]["xarray"].items():
+        save_xarray(ds, name)
+
+    model = summary["model"]
+    fig = plot_sindy_coefficients(
+        xi_matrix=model["xi"],
+        feature_names=model["feature_names"],
+        target_names=model["target_names"],
+    )
+    mlflow.log_figure(fig, artifact_file="sindy_coef.png")
 
 
 def log_surrogate_model(surrogate: SINDySurrogateWrapper):

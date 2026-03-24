@@ -175,8 +175,7 @@ def build_current_pipeline(current_cfg):
     return dset_i_ext
 
 
-def build_simulator_config(key, datasets_cfg):
-    dataset_cfg = datasets_cfg[key]
+def build_simulator_config(dataset_cfg):
     u = build_current_pipeline(dataset_cfg["current"])
     dt = dataset_cfg["dt"]
     parsed_dict = {"u": u, "dt": dt, "net": dataset_cfg["net"]}

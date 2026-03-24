@@ -14,6 +14,7 @@ from utils.builder import (
 from utils.log_utils import (
     get_hydra_overrides,
     log_surrogate_model,
+    log_surrogate_summary,
     save_xarray,
 )
 
@@ -22,7 +23,6 @@ from neurosurrogate.modeling.profiler import calc_dynamic_metrics
 from neurosurrogate.utils.plots import (
     draw_engine,
     plot_2d_attractor_comparison,
-    plot_sindy_coefficients,
     spec_diff,
 )
 
@@ -32,42 +32,22 @@ logger = logging.getLogger(__name__)
 @mlflow.trace
 def train_model(surrogate, train_ds, target_comp_id):
     surrogate.fit(train_ds, target_comp_id)
-    # surrogateモデルのロギング
-    summary = surrogate.get_loggable_summary()
-
-    mlflow.log_metrics(summary["metrics"])
-    mlflow.log_params(summary["params"])
-
-    for filename, content in summary["artifacts"]["texts"].items():
-        mlflow.log_text(content, artifact_file=filename)
-
-    for name, ds in summary["artifacts"]["xarray"].items():
-        save_xarray(ds, name)
-
-    model = summary["model"]
-    fig = plot_sindy_coefficients(
-        xi_matrix=model["xi"],
-        feature_names=model["feature_names"],
-        target_names=model["target_names"],
-    )
-    mlflow.log_figure(fig, artifact_file="sindy_coef.png")
-
+    log_surrogate_summary(surrogate.get_loggable_summary())
     log_surrogate_model(surrogate)
 
 
 @mlflow.trace
-def eval_diff(key, datasets_cfg, surrogate_model):
-    mlflow.set_tag("eval_dataset", key)
-    mlflow.log_params(datasets_cfg[key])
-    mlflow.log_params(datasets_cfg[key]["current"]["pipeline"][0])
-    mlflow.log_dict(datasets_cfg[key], "dataset.yaml")
+def eval_diff(dataset_cfg, surrogate_model):
+    mlflow.log_params(dataset_cfg)
+    mlflow.log_params(dataset_cfg["current"]["pipeline"][0])
+    mlflow.log_dict(dataset_cfg, "dataset.yaml")
 
-    original_ds = unified_simulator(**build_simulator_config(key, datasets_cfg))
+    original_ds = unified_simulator(**build_simulator_config(dataset_cfg))
 
-    target_comp_id = datasets_cfg[key]["target_comp_id"]
+    target_comp_id = dataset_cfg["target_comp_id"]
 
     predict_result = unified_simulator(
-        **build_simulator_config(key, datasets_cfg),
+        **build_simulator_config(dataset_cfg),
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
     )
@@ -77,7 +57,7 @@ def eval_diff(key, datasets_cfg, surrogate_model):
     )
 
     # logging
-    dt = datasets_cfg[key]["dt"]
+    dt = dataset_cfg["dt"]
     mlflow.log_metrics(
         calc_dynamic_metrics(original_ds, predict_result, target_comp_id, dt)
     )
@@ -108,7 +88,7 @@ def main_flow(datasets_cfg: Dict, surrogate_model, run_name):
     with mlflow.start_run(run_name=run_name) as run:
         logger.info(f"run_id:{run.info.run_id}")
         mlflow.log_dict(datasets_cfg, "datasets.yaml")
-        train_ds = unified_simulator(**build_simulator_config("train", datasets_cfg))
+        train_ds = unified_simulator(**build_simulator_config(datasets_cfg["train"]))
         target_comp_id = datasets_cfg["train"]["target_comp_id"]
         logger.info("Start Training")
         train_model(surrogate_model, train_ds, target_comp_id)
@@ -116,7 +96,8 @@ def main_flow(datasets_cfg: Dict, surrogate_model, run_name):
             logger.info(f"start {key}'s evaluation")
             try:
                 with mlflow.start_run(run_name=f"Eval_{key}", nested=True):
-                    eval_diff(key, datasets_cfg, surrogate_model)
+                    mlflow.set_tag("eval_dataset", key)
+                    eval_diff(datasets_cfg[key], surrogate_model)
                     logger.info(f"Successfully finished evaluation for {key}")
             except Exception as e:
                 logger.exception(f"Failed to evaluate {key}: {str(e)}")
