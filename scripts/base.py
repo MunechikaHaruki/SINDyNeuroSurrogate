@@ -63,8 +63,8 @@ def make_volt_lib(specs):
     return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
-INITIALIZED_SINDY = ps.SINDy(
-    feature_library=ps.GeneralizedLibrary(
+def build_feature_library():
+    library = ps.GeneralizedLibrary(
         [
             make_gate_lib([alpha_m, alpha_h, alpha_n], is_product=False),
             make_gate_lib(
@@ -83,13 +83,10 @@ INITIALIZED_SINDY = ps.SINDy(
             [0, 1, 2],  # gate_product に V, m, h を渡す
             [0, 1, 2],  # base に V, m, h を渡す
         ],
-    ),
-    optimizer=ps.optimizers.STLSQ(threshold=0.01, normalize_columns=False, alpha=2.0),
-)
-
-COST_MAP = {
-    "func": FUNC_COST_MAP,
-    "orig": HH_COST,
-}
-
-ENV = neuron_core
+    )
+    env = neuron_core
+    cost_map = {
+        "func": FUNC_COST_MAP,
+        "orig": HH_COST,
+    }
+    return library, env, cost_map
