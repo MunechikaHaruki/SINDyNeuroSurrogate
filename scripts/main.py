@@ -4,13 +4,10 @@ import os
 import hydra
 import matplotlib
 import mlflow
-import pysindy as ps
-from builder import build_feature_library, build_full_datasets
+from builder import build_full_datasets, build_surrogate
 from flow import main_flow
 from neuron_models import MODEL_DEFINITIONS
 from omegaconf import DictConfig, OmegaConf
-
-from neurosurrogate.modeling import SINDySurrogateWrapper
 
 matplotlib.use("Agg")
 
@@ -45,18 +42,7 @@ def main(cfg: DictConfig) -> None:
     STYLE_PATH = os.path.join(BASE_DIR, f"./conf/style/{cfg.matplotlib_style}.mplstyle")
     plt.style.use(STYLE_PATH)
 
-    # pySINDyの初期化
-    library, env, cost_map = build_feature_library()
-    initialized_sindy = ps.SINDy(
-        feature_library=library,
-        optimizer=ps.optimizers.STLSQ(
-            threshold=0.01, normalize_columns=False, alpha=2.0
-        ),
-    )
-    # surrogate_modelの初期化
-    surrogate_model = SINDySurrogateWrapper(
-        initialized_sindy, env, cost_map["func"], cost_map["orig"]
-    )
+    surrogate_model = build_surrogate(cfg.sindy.optimizer)
     # mlflow name
     try:
         hydra_overrides = hydra.core.hydra_config.HydraConfig.get().job.override_dirname

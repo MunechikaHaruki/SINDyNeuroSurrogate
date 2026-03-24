@@ -110,6 +110,14 @@ teaching_settings:
       pipeline: *rand_pulse
 
 
+sindy:
+  optimizer:
+    _target_: pysindy.optimizers.STLSQ
+    threshold: 0.01
+    normalize_columns: false
+    alpha: 2.0
+
+
 # プリセット
 selected: exp3
 active_test: quick_check

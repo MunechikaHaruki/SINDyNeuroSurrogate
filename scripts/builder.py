@@ -3,7 +3,10 @@ import random
 
 import hydra
 import numpy as np
+import pysindy as ps
 from omegaconf import OmegaConf
+
+from neurosurrogate.modeling import SINDySurrogateWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -179,14 +182,11 @@ def build_simulator_config(key, datasets_cfg):
     dataset_cfg = datasets_cfg[key]
     u = build_current_pipeline(dataset_cfg["current"])
     dt = dataset_cfg["dt"]
-    logger.info(dataset_cfg)
     parsed_dict = {"u": u, "dt": dt, "net": dataset_cfg["net"]}
     return parsed_dict
 
 
-def build_feature_library():
-    import numpy as np
-    import pysindy as ps
+def build_surrogate(optimzier_cfg):
 
     from neurosurrogate.modeling.neuron_core import (
         FUNC_COST_MAP,
@@ -266,11 +266,13 @@ def build_feature_library():
             [0, 1, 2],  # base に V, m, h を渡す
         ],
     )
+
+    # pySINDyの初期化
+    initialized_sindy = ps.SINDy(
+        feature_library=library,
+        optimizer=hydra.utils.instantiate(optimzier_cfg),
+    )
     from neurosurrogate.modeling import neuron_core
 
-    env = neuron_core
-    cost_map = {
-        "func": FUNC_COST_MAP,
-        "orig": HH_COST,
-    }
-    return library, env, cost_map
+    # surrogate_modelの初期化
+    return SINDySurrogateWrapper(initialized_sindy, neuron_core, FUNC_COST_MAP, HH_COST)
