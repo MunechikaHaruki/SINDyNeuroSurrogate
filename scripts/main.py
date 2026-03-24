@@ -6,11 +6,11 @@ import mlflow
 from conf.neuron_models import MODEL_DEFINITIONS
 from omegaconf import DictConfig
 from utils.boot import setup_all
-from utils.builder import (
-    build_full_datasets,
+from utils.builder_core import (
     build_simulator_config,
     build_surrogate,
 )
+from utils.builder_datasets import build_full_datasets
 from utils.log_model import log_surrogate_model
 from utils.log_utils import (
     get_hydra_overrides,
