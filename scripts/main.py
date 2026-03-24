@@ -5,8 +5,9 @@ import hydra
 import matplotlib
 import mlflow
 import numpy as np
-from base import COST_MAP, MC_MODELS, SINDY_MODEl
+from base import COST_MAP, ENV, INITIALIZED_SINDY
 from flow import main_flow
+from neuron_models import MC_MODELS, TARGET_NODES
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.modeling import SINDySurrogateWrapper
@@ -101,7 +102,7 @@ def build_full_datasets(cfg):
 
     datasets = {}
     for model in active_models:
-        target_comp_id = SINDY_MODEl["target"][model]
+        target_comp_id = TARGET_NODES[model]
         for case_key, current_cfg in current_cases:
             key = f"{case_key}_{model}"
             datasets[key] = {
@@ -160,7 +161,7 @@ def main(cfg: DictConfig) -> None:
 
     # surrogate_modelの初期化
     surrogate_model = SINDySurrogateWrapper(
-        SINDY_MODEl["sindy"], SINDY_MODEl["env"], COST_MAP["func"], COST_MAP["orig"]
+        INITIALIZED_SINDY, ENV, COST_MAP["func"], COST_MAP["orig"]
     )
     # mlflow name
     try:
