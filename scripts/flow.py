@@ -1,13 +1,12 @@
 import inspect
 import logging
-import random
 import tempfile
 from pathlib import Path
 from typing import Dict
 
-import hydra
 import mlflow
 import numpy as np
+from builder import build_simulator_config
 
 from neurosurrogate.modeling import SINDySurrogateWrapper
 from neurosurrogate.modeling.calc_engine import unified_simulator
@@ -74,40 +73,6 @@ def save_xarray(ds, name):
     mlflow.log_figure(fig, artifact_file=f"{name}.png")
 
 
-def apply_current_pipeline(current_cfg):
-    current_seed = current_cfg["current_seed"]
-    iteration = current_cfg["iteration"]
-    silence_steps = current_cfg["silence_steps"]
-    random.seed(current_seed)
-    np.random.seed(current_seed)
-
-    dset_i_ext = np.zeros(iteration)
-
-    if "pipeline" in current_cfg:
-        for step_cfg in current_cfg["pipeline"]:
-            func = hydra.utils.instantiate(step_cfg)
-            func(dset_i_ext)
-    else:
-        # 旧来のフォーマット: _target_ が直接 current_cfg にある
-        func = hydra.utils.instantiate(current_cfg)
-        func(dset_i_ext)
-
-    dset_i_ext[:silence_steps] = 0
-    dset_i_ext[-silence_steps:] = 0
-    return dset_i_ext
-
-
-def build_simulator_config(key, datasets_cfg, models_arch):
-    dataset_cfg = datasets_cfg[key]
-    data_type = dataset_cfg["data_type"]
-    model_arch = models_arch[data_type]
-
-    u = apply_current_pipeline(dataset_cfg["current"])
-    dt = dataset_cfg["dt"]
-    parsed_dict = {"u": u, "dt": dt, "net": model_arch}
-    return parsed_dict
-
-
 @mlflow.trace
 def train_model(surrogate, train_ds, target_comp_id):
     surrogate.fit(train_ds, target_comp_id)
@@ -135,20 +100,18 @@ def train_model(surrogate, train_ds, target_comp_id):
 
 
 @mlflow.trace
-def eval_diff(key, datasets_cfg, surrogate_model, models_arch):
+def eval_diff(key, datasets_cfg, surrogate_model):
     mlflow.set_tag("eval_dataset", key)
     mlflow.log_params(datasets_cfg[key])
     mlflow.log_params(datasets_cfg[key]["current"]["pipeline"][0])
     mlflow.log_dict(datasets_cfg[key], "dataset.yaml")
 
-    original_ds = unified_simulator(
-        **build_simulator_config(key, datasets_cfg, models_arch)
-    )
+    original_ds = unified_simulator(**build_simulator_config(key, datasets_cfg))
 
     target_comp_id = datasets_cfg[key]["target_comp_id"]
 
     predict_result = unified_simulator(
-        **build_simulator_config(key, datasets_cfg, models_arch),
+        **build_simulator_config(key, datasets_cfg),
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
     )
@@ -184,14 +147,12 @@ def eval_diff(key, datasets_cfg, surrogate_model, models_arch):
     mlflow.log_figure(fig_phase, artifact_file="attractor_surr.png")
 
 
-def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
+def main_flow(datasets_cfg: Dict, surrogate_model, run_name):
     logger.info("Start Flow:start generate train data")
     with mlflow.start_run(run_name=run_name) as run:
         logger.info(f"run_id:{run.info.run_id}")
         mlflow.log_dict(datasets_cfg, "datasets.yaml")
-        train_ds = unified_simulator(
-            **build_simulator_config("train", datasets_cfg, models_arch)
-        )
+        train_ds = unified_simulator(**build_simulator_config("train", datasets_cfg))
         target_comp_id = datasets_cfg["train"]["target_comp_id"]
         logger.info("Start Training")
         train_model(surrogate_model, train_ds, target_comp_id)
@@ -199,7 +160,7 @@ def main_flow(datasets_cfg: Dict, surrogate_model, models_arch, run_name):
             logger.info(f"start {key}'s evaluation")
             try:
                 with mlflow.start_run(run_name=f"Eval_{key}", nested=True):
-                    eval_diff(key, datasets_cfg, surrogate_model, models_arch)
+                    eval_diff(key, datasets_cfg, surrogate_model)
                     logger.info(f"Successfully finished evaluation for {key}")
             except Exception as e:
                 logger.exception(f"Failed to evaluate {key}: {str(e)}")

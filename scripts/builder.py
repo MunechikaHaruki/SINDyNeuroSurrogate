@@ -1,5 +1,7 @@
 import logging
+import random
 
+import hydra
 import numpy as np
 from omegaconf import OmegaConf
 
@@ -65,61 +67,6 @@ def build_current_cases(current_test_settings):
     return cases
 
 
-def build_full_datasets(cfg, target_nodes):
-    combo = cfg.test_combinations[cfg.active_test]
-    active_models = combo["models"]
-    active_currents = combo["currents"]
-
-    current_cases = build_current_cases(
-        {
-            k: v
-            for k, v in OmegaConf.to_container(
-                cfg.current_test_settings, resolve=True
-            ).items()
-            if k in active_currents
-        }
-    )
-
-    datasets = {}
-    for model in active_models:
-        target_comp_id = target_nodes[model]
-        for case_key, current_cfg in current_cases:
-            key = f"{case_key}_{model}"
-            datasets[key] = {
-                "data_type": model,
-                "current": current_cfg,
-                "target_comp_id": target_comp_id,
-            }
-
-    def apply_defaults(ds_dict, cfg_default, for_teaching=False):
-        ds_dict.setdefault("dt", cfg_default["simulator_default_dt"])
-        ds_dict["current"].setdefault(
-            "current_seed", cfg_default["default_current_seed"]
-        )
-        ds_dict["current"].setdefault(
-            "silence_steps", int(cfg_default["silence_duration"] / ds_dict["dt"])
-        )
-        if for_teaching is False:
-            default_iteration = int(
-                cfg_default["simulator_default_duration"] / ds_dict["dt"]
-            )
-        else:
-            default_iteration = int(cfg_default["train_duration"] / ds_dict["dt"])
-        ds_dict["current"].setdefault("iteration", default_iteration)
-        return ds_dict
-
-    datasets["train"] = OmegaConf.to_container(
-        cfg.teaching_settings[cfg.selected], resolve=True
-    )
-    for key in datasets:
-        datasets[key] = apply_defaults(
-            datasets[key], cfg["datasets_default"], for_teaching=(key == "train")
-        )
-
-    logger.info(datasets)
-    return datasets
-
-
 def build_models(definitions: dict):
     mc_models = {}
     target_nodes = {}
@@ -141,6 +88,100 @@ def build_models(definitions: dict):
         target_nodes[name] = name_to_idx[spec["target"]]
 
     return mc_models, target_nodes
+
+
+def build_full_datasets(cfg, model_definitions):
+
+    combo = cfg.test_combinations[cfg.active_test]
+    active_models = combo["models"]
+    active_currents = combo["currents"]
+
+    current_cases = build_current_cases(
+        {
+            k: v
+            for k, v in OmegaConf.to_container(
+                cfg.current_test_settings, resolve=True
+            ).items()
+            if k in active_currents
+        }
+    )
+
+    datasets = {}
+
+    for model in active_models:
+        for case_key, current_cfg in current_cases:
+            key = f"{case_key}_{model}"
+            datasets[key] = {
+                "data_type": model,
+                "current": current_cfg,
+            }
+
+    mc_models, target_nodes = build_models(model_definitions)
+
+    def apply_defaults(ds_dict, cfg_default, for_teaching=False):
+        ds_dict.setdefault("dt", cfg_default["simulator_default_dt"])
+        ds_dict["current"].setdefault(
+            "current_seed", cfg_default["default_current_seed"]
+        )
+        ds_dict["current"].setdefault(
+            "silence_steps", int(cfg_default["silence_duration"] / ds_dict["dt"])
+        )
+
+        # model
+        model = ds_dict["data_type"]
+        ds_dict["target_comp_id"] = target_nodes[model]
+        ds_dict["net"] = mc_models[model]
+        if for_teaching is False:
+            default_iteration = int(
+                cfg_default["simulator_default_duration"] / ds_dict["dt"]
+            )
+        else:
+            default_iteration = int(cfg_default["train_duration"] / ds_dict["dt"])
+        ds_dict["current"].setdefault("iteration", default_iteration)
+        return ds_dict
+
+    datasets["train"] = OmegaConf.to_container(
+        cfg.teaching_settings[cfg.selected], resolve=True
+    )
+    for key in datasets:
+        datasets[key] = apply_defaults(
+            datasets[key], cfg["datasets_default"], for_teaching=(key == "train")
+        )
+
+    logger.info(datasets)
+    return datasets
+
+
+def build_current_pipeline(current_cfg):
+    current_seed = current_cfg["current_seed"]
+    iteration = current_cfg["iteration"]
+    silence_steps = current_cfg["silence_steps"]
+    random.seed(current_seed)
+    np.random.seed(current_seed)
+
+    dset_i_ext = np.zeros(iteration)
+
+    if "pipeline" in current_cfg:
+        for step_cfg in current_cfg["pipeline"]:
+            func = hydra.utils.instantiate(step_cfg)
+            func(dset_i_ext)
+    else:
+        # 旧来のフォーマット: _target_ が直接 current_cfg にある
+        func = hydra.utils.instantiate(current_cfg)
+        func(dset_i_ext)
+
+    dset_i_ext[:silence_steps] = 0
+    dset_i_ext[-silence_steps:] = 0
+    return dset_i_ext
+
+
+def build_simulator_config(key, datasets_cfg):
+    dataset_cfg = datasets_cfg[key]
+    u = build_current_pipeline(dataset_cfg["current"])
+    dt = dataset_cfg["dt"]
+    logger.info(dataset_cfg)
+    parsed_dict = {"u": u, "dt": dt, "net": dataset_cfg["net"]}
+    return parsed_dict
 
 
 def build_feature_library():

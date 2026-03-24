@@ -5,7 +5,7 @@ import hydra
 import matplotlib
 import mlflow
 import pysindy as ps
-from builder import build_feature_library, build_full_datasets, build_models
+from builder import build_feature_library, build_full_datasets
 from flow import main_flow
 from neuron_models import MODEL_DEFINITIONS
 from omegaconf import DictConfig, OmegaConf
@@ -31,8 +31,7 @@ def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
     # cfgの依存関係解決とビルド
     OmegaConf.resolve(cfg)
-    MC_MODELS, TARGET_NODES = build_models(MODEL_DEFINITIONS)
-    dataset_cfg = build_full_datasets(cfg, TARGET_NODES)
+    dataset_cfg = build_full_datasets(cfg, MODEL_DEFINITIONS)
     logger.info(dataset_cfg)
     # mlflowの初期設定
     mlflow.set_tracking_uri("file:./mlruns")
@@ -66,7 +65,7 @@ def main(cfg: DictConfig) -> None:
     if hydra_overrides == "":
         hydra_overrides = "Default"
     # Prefect flow
-    main_flow(dataset_cfg, surrogate_model, MC_MODELS, hydra_overrides)
+    main_flow(dataset_cfg, surrogate_model, hydra_overrides)
     logger.info("Script ended")
 
 

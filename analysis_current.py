@@ -7,33 +7,32 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
-    import yaml
-    import numpy as np
     import matplotlib.pyplot as plt
-    from hydra.utils import instantiate
-    from scripts.flow import apply_current_pipeline
+    import numpy as np
+    import yaml
+
+    from scripts.flow import build_current_pipeline
+
     # yaml読み込み
     with open("./scripts/conf/config.yaml") as f:
         cfg = yaml.safe_load(f)
 
     # UI
     selected = mo.ui.dropdown(
-        options=list(cfg["current_train_pipelines"].keys()),
-        label="experiment"
+        options=list(cfg["current_train_pipelines"].keys()), label="experiment"
     )
     mo.hstack([selected])
-    return apply_current_pipeline, cfg, mo, np, plt, selected
+    return build_current_pipeline, cfg, mo, np, plt, selected
 
 
 @app.cell
-def _(apply_current_pipeline, cfg, mo, np, plt, selected):
+def _(build_current_pipeline, cfg, mo, np, plt, selected):
     # 選択されたexpの電流を生成して表示
-    pipeline=cfg["current_train_pipelines"][selected.value]
+    pipeline = cfg["current_train_pipelines"][selected.value]
 
-    current_cfg={"pipeline":pipeline}
+    current_cfg = {"pipeline": pipeline}
 
-
-    defaults=cfg["datasets_default"]
+    defaults = cfg["datasets_default"]
     dt = defaults["simulator_default_dt"]
     iteration = int(defaults["simulator_default_duration"] / dt)
     current_cfg.setdefault("current_seed", defaults["default_current_seed"])
@@ -41,7 +40,7 @@ def _(apply_current_pipeline, cfg, mo, np, plt, selected):
     current_cfg.setdefault("silence_steps", int(defaults["silence_duration"] / dt))
 
     # パイプライン実行
-    u = apply_current_pipeline(current_cfg)
+    u = build_current_pipeline(current_cfg)
     t = np.arange(iteration) * dt
 
     fig, ax = plt.subplots()
