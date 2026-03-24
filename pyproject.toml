@@ -23,6 +23,7 @@ dependencies = [
     "psutil>=7.0.0",
     "plotly>=6.6.0",
     "seaborn>=0.13.2",
+    "hydra-optuna-sweeper>=1.2.0",
 ]
     #"torch>=2.7.1",
     #"torchvision>=0.22.1",

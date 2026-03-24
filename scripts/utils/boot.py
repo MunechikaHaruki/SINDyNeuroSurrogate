@@ -29,10 +29,8 @@ def setup_matplotlib(matplotlib_style):
     import matplotlib.pyplot as plt
 
     STYLE_DIR = os.path.join(PROJECT_ROOT, "./scripts/conf/style")
-    BASE_STYLE_PATH = os.path.join(STYLE_DIR, "./base.mplstyle")
-    plt.style.use(BASE_STYLE_PATH)
-    STYLE_PATH = os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle")
-    plt.style.use(STYLE_PATH)
+    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
+    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
 
 def setup_all(cfg):
