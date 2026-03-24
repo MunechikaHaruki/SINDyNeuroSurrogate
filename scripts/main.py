@@ -23,13 +23,22 @@ os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 logger = logging.getLogger(__name__)
 
 
+def get_hydra_overrides():
+    try:
+        hydra_overrides = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
+    except Exception:
+        hydra_overrides = "OverrideError"
+    if hydra_overrides == "":
+        hydra_overrides = "Default"
+    return hydra_overrides
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
     # cfgの依存関係解決とビルド
     OmegaConf.resolve(cfg)
-    dataset_cfg = build_full_datasets(cfg, MODEL_DEFINITIONS)
-    logger.info(dataset_cfg)
+
     # mlflowの初期設定
     mlflow.set_tracking_uri("file:./mlruns")
     mlflow.enable_system_metrics_logging()
@@ -41,17 +50,12 @@ def main(cfg: DictConfig) -> None:
     plt.style.use(BASE_STYLE_PATH)
     STYLE_PATH = os.path.join(BASE_DIR, f"./conf/style/{cfg.matplotlib_style}.mplstyle")
     plt.style.use(STYLE_PATH)
-
-    surrogate_model = build_surrogate(cfg.sindy.optimizer)
-    # mlflow name
-    try:
-        hydra_overrides = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
-    except Exception:
-        hydra_overrides = "OverrideError"
-    if hydra_overrides == "":
-        hydra_overrides = "Default"
+    # 設定のビルド
+    dataset_cfg = build_full_datasets(cfg, MODEL_DEFINITIONS)
+    logger.info(dataset_cfg)
+    surrogate_model = build_surrogate(cfg.sindy)
     # Prefect flow
-    main_flow(dataset_cfg, surrogate_model, hydra_overrides)
+    main_flow(dataset_cfg, surrogate_model, get_hydra_overrides())
     logger.info("Script ended")
 
 

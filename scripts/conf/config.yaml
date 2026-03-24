@@ -116,6 +116,23 @@ sindy:
     threshold: 0.01
     normalize_columns: false
     alpha: 2.0
+  
+  library_specs:
+    - type: gate
+      funcs: [alpha_m, alpha_h, alpha_n]
+      is_product: false
+      inputs: [0]
+    - type: gate
+      funcs: [alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n]
+      is_product: true
+      inputs: [0, 1]
+    - type: volt
+      specs: [[3, 2], [3, 1], [4, 1], [4, 0]]
+      inputs: [0, 1, 2]
+    - type: base
+      inputs: [0, 1, 2]
+ 
+
 
 
 # プリセット
