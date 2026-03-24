@@ -11,11 +11,11 @@ from utils.builder import (
     build_simulator_config,
     build_surrogate,
 )
+from utils.log_model import log_surrogate_model
 from utils.log_utils import (
     get_hydra_overrides,
     log_dataset_cfg,
     log_eval_result,
-    log_surrogate_model,
     log_surrogate_summary,
 )
 
@@ -61,6 +61,7 @@ def eval_datasets(datasets_cfg: Dict, surrogate_model, train_run_id):
             with mlflow.start_run(
                 run_name=f"Eval_{key}",
                 tags={"mlflow.parentRunId": train_run_id, "eval_dataset": key},
+                nested=True,
             ):
                 eval_diff(dataset, surrogate_model)
                 logger.info(f"Successfully finished evaluation for {key}")
