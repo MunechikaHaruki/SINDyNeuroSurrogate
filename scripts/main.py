@@ -5,10 +5,9 @@ import hydra
 import matplotlib
 import mlflow
 import pysindy as ps
-from base import build_feature_library
-from builder import build_full_datasets
+from builder import build_feature_library, build_full_datasets, build_models
 from flow import main_flow
-from neuron_models import MC_MODELS, TARGET_NODES
+from neuron_models import MODEL_DEFINITIONS
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.modeling import SINDySurrogateWrapper
@@ -32,6 +31,7 @@ def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
     # cfgの依存関係解決とビルド
     OmegaConf.resolve(cfg)
+    MC_MODELS, TARGET_NODES = build_models(MODEL_DEFINITIONS)
     dataset_cfg = build_full_datasets(cfg, TARGET_NODES)
     logger.info(dataset_cfg)
     # mlflowの初期設定
