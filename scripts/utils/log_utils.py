@@ -15,6 +15,15 @@ from neurosurrogate.utils.plots import (
 logger = logging.getLogger(__name__)
 
 
+def _save_xarray(ds, name):
+    """
+    plotlyでセーブされるhtmlは重い
+    """
+    datasets, spec = spec_simple(ds)
+    fig = draw_engine(datasets, spec, engine="matplotlib")
+    mlflow.log_figure(fig, artifact_file=f"{name}.png")
+
+
 def get_hydra_overrides():
     try:
         hydra_overrides = hydra.core.hydra_config.HydraConfig.get().job.override_dirname
@@ -25,6 +34,12 @@ def get_hydra_overrides():
     return hydra_overrides
 
 
+def log_dataset_cfg(dataset_cfg):
+    mlflow.log_params(dataset_cfg)
+    mlflow.log_params(dataset_cfg["current"]["pipeline"][0])
+    mlflow.log_dict(dataset_cfg, "dataset.yaml")
+
+
 def log_surrogate_summary(summary):
     mlflow.log_metrics(summary["metrics"])
     mlflow.log_params(summary["params"])
@@ -33,7 +48,7 @@ def log_surrogate_summary(summary):
         mlflow.log_text(content, artifact_file=filename)
 
     for name, ds in summary["artifacts"]["xarray"].items():
-        save_xarray(ds, name)
+        _save_xarray(ds, name)
 
     model = summary["model"]
     fig = plot_sindy_coefficients(
@@ -44,12 +59,6 @@ def log_surrogate_summary(summary):
     mlflow.log_figure(fig, artifact_file="sindy_coef.png")
 
 
-def log_dataset_cfg(dataset_cfg):
-    mlflow.log_params(dataset_cfg)
-    mlflow.log_params(dataset_cfg["current"]["pipeline"][0])
-    mlflow.log_dict(dataset_cfg, "dataset.yaml")
-
-
 def log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
     dt = dataset_cfg["dt"]
     target_comp_id = dataset_cfg["target_comp_id"]
@@ -57,7 +66,7 @@ def log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
     names = ["orig", "preprocessed", "surr"]
     datasets = [original_ds, preprocessed_xr, surr_ds]
     for ds, name in zip(datasets, names):
-        save_xarray(ds, name)
+        _save_xarray(ds, name)
 
     datasets, spec = spec_diff(
         original_ds, preprocessed_xr, surr_ds, surr_id=target_comp_id
@@ -74,12 +83,3 @@ def log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
         state_vars=["V", "latent1"],  # 実際のSINDyのターゲット変数名に合わせて変更
     )
     mlflow.log_figure(fig_phase, artifact_file="attractor_surr.png")
-
-
-def save_xarray(ds, name):
-    """
-    plotlyでセーブされるhtmlは重い
-    """
-    datasets, spec = spec_simple(ds)
-    fig = draw_engine(datasets, spec, engine="matplotlib")
-    mlflow.log_figure(fig, artifact_file=f"{name}.png")
