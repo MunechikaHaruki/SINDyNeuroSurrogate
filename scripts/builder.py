@@ -186,18 +186,19 @@ def build_simulator_config(key, datasets_cfg):
     return parsed_dict
 
 
-def build_surrogate(optimzier_cfg):
+from neurosurrogate.modeling.neuron_core import (
+    FUNC_COST_MAP,
+    HH_COST,
+    alpha_h,
+    alpha_m,
+    alpha_n,
+    beta_h,
+    beta_m,
+    beta_n,
+)
 
-    from neurosurrogate.modeling.neuron_core import (
-        FUNC_COST_MAP,
-        HH_COST,
-        alpha_h,
-        alpha_m,
-        alpha_n,
-        beta_h,
-        beta_m,
-        beta_n,
-    )
+
+def build_feature_library():
 
     def make_gate_lib(funcs, is_product=False):
         """Gate単体、または Gate * y のペアを生成するファクトリ"""
@@ -246,7 +247,7 @@ def build_surrogate(optimzier_cfg):
 
         return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
-    library = ps.GeneralizedLibrary(
+    return ps.GeneralizedLibrary(
         [
             make_gate_lib([alpha_m, alpha_h, alpha_n], is_product=False),
             make_gate_lib(
@@ -266,6 +267,11 @@ def build_surrogate(optimzier_cfg):
             [0, 1, 2],  # base に V, m, h を渡す
         ],
     )
+
+
+def build_surrogate(optimzier_cfg):
+
+    library = build_feature_library()
 
     # pySINDyの初期化
     initialized_sindy = ps.SINDy(
