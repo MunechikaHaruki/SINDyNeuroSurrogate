@@ -25,10 +25,16 @@ logger = logging.getLogger(__name__)
 
 
 @mlflow.trace
-def train_model(surrogate, train_ds, target_comp_id):
-    surrogate.fit(train_ds, target_comp_id)
-    log_surrogate_summary(surrogate.get_loggable_summary())
-    log_surrogate_model(surrogate)
+def train_model(surrogate, train_dataset_cfg):
+    target_comp_id = train_dataset_cfg["target_comp_id"]
+    train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
+    with mlflow.start_run(run_name=f"Training_run:{get_hydra_overrides()}") as run:
+        log_dataset_cfg(train_dataset_cfg)
+        logger.info(f"run_id:{run.info.run_id}:Start training")
+        surrogate.fit(train_ds, target_comp_id)
+        log_surrogate_summary(surrogate.get_loggable_summary())
+        log_surrogate_model(surrogate)
+        return run.info.run_id
 
 
 @mlflow.trace
@@ -47,35 +53,32 @@ def eval_diff(dataset_cfg, surrogate_model):
     log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
 
 
-def main_flow(datasets_cfg: Dict, surrogate_model, run_name):
-    logger.info("Start Flow:start generate train data")
-    with mlflow.start_run(run_name=run_name) as run:
-        logger.info(f"run_id:{run.info.run_id}")
-        train_ds = unified_simulator(**build_simulator_config(datasets_cfg["train"]))
-        target_comp_id = datasets_cfg["train"]["target_comp_id"]
-        logger.info("Start Training")
-        train_model(surrogate_model, train_ds, target_comp_id)
-        for key, dataset in datasets_cfg.items():
-            logger.info(f"start {key}'s evaluation")
-            try:
-                with mlflow.start_run(run_name=f"Eval_{key}", nested=True):
-                    mlflow.set_tag("eval_dataset", key)
-                    eval_diff(dataset, surrogate_model)
-                    logger.info(f"Successfully finished evaluation for {key}")
-            except Exception as e:
-                logger.exception(f"Failed to evaluate {key}: {str(e)}")
-                mlflow.set_tag("error_type", str(type(e).__name__))
-                mlflow.set_tag("error_msg", str(e))
-                continue
+def eval_datasets(datasets_cfg: Dict, surrogate_model, train_run_id):
+    logger.info("Start Flow:start generate eval data")
+    for key, dataset in datasets_cfg.items():
+        logger.info(f"start {key}'s evaluation")
+        try:
+            with mlflow.start_run(
+                run_name=f"Eval_{key}",
+                tags={"mlflow.parentRunId": train_run_id, "eval_dataset": key},
+            ):
+                eval_diff(dataset, surrogate_model)
+                logger.info(f"Successfully finished evaluation for {key}")
+        except Exception as e:
+            logger.exception(f"Failed to evaluate {key}: {str(e)}")
+            mlflow.set_tag("error_type", str(type(e).__name__))
+            mlflow.set_tag("error_msg", str(e))
+            continue
 
 
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
     setup_all(cfg)
-    dataset_cfg = build_full_datasets(cfg, MODEL_DEFINITIONS)
+    datasets_cfg = build_full_datasets(cfg, MODEL_DEFINITIONS)
     surrogate_model = build_surrogate(cfg.sindy)
-    main_flow(dataset_cfg, surrogate_model, get_hydra_overrides())
+    train_run_id = train_model(surrogate_model, datasets_cfg["train"])
+    eval_datasets(datasets_cfg, surrogate_model, train_run_id)
     logger.info("Script ended")
 
 
