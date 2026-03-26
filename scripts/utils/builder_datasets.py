@@ -35,33 +35,28 @@ def _resolve_sweep_values(value_cfg) -> list:
 def build_current_cases(current_test_settings: dict) -> list:
     """
     current_test_settings からキーと current 設定の一覧を生成する
+    例: [("steady_0", {...}), ("random_9919", {...}), ...]
     """
     cases = []
-    base_path = "neurosurrogate.utils.current_generators."
 
     for current_type, spec in current_test_settings.items():
-        target = base_path + spec["_target_"]
-        default_params = spec.get("params", {})
+        base_cfg = spec["base"]
         params_sweep = spec.get("params_sweep", {})
 
-        # スイープ設定がない場合は単一のケースを作成
+        # スイープ設定がない場合はベース設定をそのまま追加
         if not params_sweep:
-            cases.append(
-                (current_type, {"pipeline": [{"_target_": target, **default_params}]})
-            )
+            cases.append((current_type, {"pipeline": [base_cfg]}))
             continue
 
-        # スイープ設定がある場合は複数ケースを展開
+        # スイープ設定がある場合は展開してベース設定を上書き
         sweep_key, sweep_value_cfg = _get_single_sweep_param(params_sweep)
         for val in _resolve_sweep_values(sweep_value_cfg):
+            # ベース設定を展開し、スイープ対象のキー(sweep_key)に値(val)をセット
+            pipeline_item = {**base_cfg, sweep_key: val}
             cases.append(
                 (
                     f"{current_type}_{val}",
-                    {
-                        "pipeline": [
-                            {"_target_": target, **default_params, sweep_key: val}
-                        ]
-                    },
+                    {"pipeline": [pipeline_item]},
                 )
             )
 
