@@ -83,3 +83,21 @@ def log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
         state_vars=["V", "latent1"],  # 実際のSINDyのターゲット変数名に合わせて変更
     )
     mlflow.log_figure(fig_phase, artifact_file="attractor_surr.png")
+
+
+def log_target_metric(train_run_id, target_metric):
+    # 指標として記録（グラフ描画やソート用）
+    with mlflow.start_run(train_run_id):
+        mlflow.log_metric("OPTUNA_TARGET_SCORE", target_metric)
+        mlflow.set_tag("is_optuna_trial", "true")
+
+        # ★ ここから追加：Run名を更新する ★
+        # 現在のRun情報を取得して、元の名前を取り出す
+        current_run = mlflow.get_run(train_run_id)
+        original_name = current_run.data.tags.get("mlflow.runName", "Training_run")
+
+        # スコアを小数点以下4桁などにフォーマットして名前に結合
+        new_run_name = f"{original_name} | Score:{target_metric:.4f}"
+
+        # mlflow.runName タグを上書きすることで、UI上の表示名が変わる
+        mlflow.set_tag("mlflow.runName", new_run_name)

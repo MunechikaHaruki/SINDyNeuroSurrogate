@@ -17,6 +17,7 @@ from utils.log_utils import (
     log_dataset_cfg,
     log_eval_result,
     log_surrogate_summary,
+    log_target_metric,
 )
 
 from neurosurrogate.modeling.calc_engine import unified_simulator
@@ -26,15 +27,11 @@ logger = logging.getLogger(__name__)
 
 @mlflow.trace
 def train_model(surrogate, train_dataset_cfg):
-    target_comp_id = train_dataset_cfg["target_comp_id"]
     train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
-    with mlflow.start_run(run_name=f"Training_run:{get_hydra_overrides()}") as run:
-        log_dataset_cfg(train_dataset_cfg)
-        logger.info(f"run_id:{run.info.run_id}:Start training")
-        surrogate.fit(train_ds, target_comp_id)
-        log_surrogate_summary(surrogate.get_loggable_summary())
-        log_surrogate_model(surrogate)
-        return run.info.run_id
+    log_dataset_cfg(train_dataset_cfg)
+    surrogate.fit(train_ds, train_dataset_cfg["target_comp_id"])
+    log_surrogate_summary(surrogate.get_loggable_summary())
+    log_surrogate_model(surrogate)
 
 
 @mlflow.trace
@@ -71,6 +68,9 @@ def eval_datasets(datasets_cfg: Dict, surrogate_model, train_run_id):
             mlflow.set_tag("error_msg", str(e))
             continue
 
+    score = 0
+    return score
+
 
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
@@ -78,9 +78,15 @@ def main(cfg: DictConfig) -> None:
     setup_all(cfg)
     datasets_cfg = build_full_datasets(cfg, MODEL_DEFINITIONS)
     surrogate_model = build_surrogate(cfg.sindy)
-    train_run_id = train_model(surrogate_model, datasets_cfg["train"])
-    eval_datasets(datasets_cfg, surrogate_model, train_run_id)
-    logger.info("Script ended")
+
+    with mlflow.start_run(run_name=f"Training_run:{get_hydra_overrides()}") as run:
+        train_run_id = run.info.run_id
+        logger.info(f"run_id:{run.info.run_id}:Start training")
+        train_model(surrogate_model, datasets_cfg["train"])
+    target_metric = eval_datasets(datasets_cfg, surrogate_model, train_run_id)
+    log_target_metric(train_run_id, target_metric)
+    logger.info(f"Script ended with metric: {target_metric}")
+    return target_metric
 
 
 if __name__ == "__main__":
