@@ -35,7 +35,7 @@ def train_model(surrogate, train_dataset_cfg):
 
 
 @mlflow.trace
-def eval_diff(dataset_cfg, surrogate_model):
+def eval_diff(dataset_cfg, surrogate_model, short_eval=False):
     log_dataset_cfg(dataset_cfg)
     original_ds = unified_simulator(**build_simulator_config(dataset_cfg))
     target_comp_id = dataset_cfg["target_comp_id"]
@@ -44,10 +44,11 @@ def eval_diff(dataset_cfg, surrogate_model):
         surrogate_target=target_comp_id,
         surrogate_model=surrogate_model,
     )
-    preprocessed_xr = surrogate_model.preprocessor.transform(
-        original_ds, target_comp_id=target_comp_id
-    )
-    log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
+    if short_eval is False:
+        preprocessed_xr = surrogate_model.preprocessor.transform(
+            original_ds, target_comp_id=target_comp_id
+        )
+        log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
 
 
 def eval_datasets(datasets_cfg: Dict, surrogate_model, train_run_id):
