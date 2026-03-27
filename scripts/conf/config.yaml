@@ -14,12 +14,15 @@ hydra:
 # ==========================================
 
 matplotlib_style: paper
-experiment_name: tryDifferentTeachingCurrent
+experiment_name: NeuroSurrogate
 
 # ==========================================
 # データセット設定
 # ==========================================
 datasets_settings:
+  sweep_catalog: steady
+  teaching_catalog: exp3
+
   common:
     dt: 0.01 #[ms]
     silence_duration: 10 #[ms]
@@ -28,36 +31,31 @@ datasets_settings:
       duration: 9000 #[ms]
     test:
       duration: 800 #[ms]
+      current_seed: 6
 
-  sweep_catalog: steady
-  teaching_catalog: exp3
-
-# ==========================================
-# datasetsカタログ設定
-# ==========================================
-datasets_catalog:
-  random:
-    data_type: hh
-    current:
-      pipeline:
-        - ${current_generators.rand_pulse}
-    sweep:
-      current_seed: [9919, 9920]
-  steady:
-    data_type: hh
-    current:
-      pipeline:
-        - ${current_generators.steady}
-    sweep:
+  catalog: #datasetsカタログ設定
+    random:
+      data_type: hh
       current:
-        pipeline_ind: 0
-        variable:
-          value: {start: 0, stop: 20, step: 5}
-  exp3:
-    data_type: hh
-    current:
-      pipeline: 
-        - ${current_generators.discretized}
+        pipeline:
+          - ${current_generators.rand_pulse}
+      sweep:
+        current_seed: [9919, 9920]
+    steady:
+      data_type: hh
+      current:
+        pipeline:
+          - ${current_generators.steady}
+      sweep:
+        current:
+          pipeline_ind: 0
+          variable:
+            value: {start: 0, stop: 20, step: 5}
+    exp3:
+      data_type: hh
+      current:
+        pipeline: 
+          - ${current_generators.discretized}
 
 # ==========================================
 # 5. SINDy Settings (モデル抽出設定)

@@ -3,7 +3,6 @@ import logging
 
 import numpy as np
 from conf.neuron_models import MODEL_DEFINITIONS
-from omegaconf import DictConfig, OmegaConf
 
 logger = logging.getLogger(__name__)
 
@@ -170,12 +169,8 @@ def _build_train_dataset(
     )
 
 
-def build_datasets(cfg_datasets, catalog):
-    if isinstance(cfg_datasets, DictConfig):
-        cfg_datasets = OmegaConf.to_container(cfg_datasets, resolve=True)
-    if isinstance(catalog, DictConfig):
-        catalog = OmegaConf.to_container(catalog, resolve=True)
-
+def build_datasets(cfg_datasets):
+    catalog = cfg_datasets["catalog"]
     common_cfg = cfg_datasets["common"]
 
     datasets = {}

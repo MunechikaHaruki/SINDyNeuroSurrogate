@@ -38,3 +38,4 @@ def setup_all(cfg):
     setup_proxy()
     setup_mlflow(cfg.experiment_name)
     setup_matplotlib(cfg.matplotlib_style)
+    return OmegaConf.to_container(cfg, resolve=True)

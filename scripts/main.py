@@ -75,9 +75,9 @@ def eval_datasets(datasets_cfg: Dict, surrogate_model, train_run_id):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
-    setup_all(cfg)
-    datasets_cfg = build_datasets(cfg.datasets_settings, cfg.datasets_catalog)
-    surrogate_model = build_surrogate(cfg.sindy)
+    cfg = setup_all(cfg)
+    datasets_cfg = build_datasets(cfg["datasets_settings"])
+    surrogate_model = build_surrogate(cfg["sindy"])
 
     with mlflow.start_run(run_name=f"Training_run:{get_hydra_overrides()}") as run:
         train_run_id = run.info.run_id

@@ -48,12 +48,12 @@ def build_surrogate(cfg_sindy):
         libraries, inputs = zip(*lib_input_pairs)
         return ps.GeneralizedLibrary(list(libraries), inputs_per_library=list(inputs))
 
-    library = _build_feature_library(cfg_sindy.library_specs)
+    library = _build_feature_library(cfg_sindy["library_specs"])
 
     # pySINDyの初期化
     initialized_sindy = ps.SINDy(
         feature_library=library,
-        optimizer=hydra.utils.instantiate(cfg_sindy.optimizer),
+        optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
     )
     from neurosurrogate.modeling import neuron_core
 
