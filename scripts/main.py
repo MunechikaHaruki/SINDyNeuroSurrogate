@@ -10,7 +10,7 @@ from utils.builder_core import (
     build_simulator_config,
     build_surrogate,
 )
-from utils.builder_datasets import build_full_datasets
+from utils.builder_datasets import build_datasets
 from utils.log_model import log_surrogate_model
 from utils.log_utils import (
     get_hydra_overrides,
@@ -77,7 +77,9 @@ def eval_datasets(datasets_cfg: Dict, surrogate_model, train_run_id):
 def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
     setup_all(cfg)
-    datasets_cfg = build_full_datasets(cfg, MODEL_DEFINITIONS)
+    datasets_cfg = build_datasets(
+        cfg.datasets_settings, cfg.datasets_catalog, MODEL_DEFINITIONS
+    )
     surrogate_model = build_surrogate(cfg.sindy)
 
     with mlflow.start_run(run_name=f"Training_run:{get_hydra_overrides()}") as run:

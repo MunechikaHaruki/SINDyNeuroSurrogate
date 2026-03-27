@@ -15,83 +15,50 @@ hydra:
 
 matplotlib_style: paper
 experiment_name: tryDifferentTeachingCurrent
-active_test: quick_check
-
-test_combinations:
-  quick_check:
-    models: [hh]
-    currents: [steady]
-  full_eval:
-    models: [php, hh]
-    currents: [steady, random]
-  random_only:
-    models: [php, hh]
-    currents: [random]
 
 # ==========================================
-# 2. Defaults (デフォルト値)
+# データセット設定
 # ==========================================
-datasets_default:
-  # デフォルト値の設定(シミュレーション)
-  simulator_default_dt: 0.01 #[ms]
-  simulator_default_duration: 800 #[ms]
-  # デフォルト値の設定(電流生成)
-  default_current_seed: 6
-  silence_duration: 10 #[ms]
-  train_duration: 9000 #[ms]
+datasets_settings:
+  common:
+    dt: 0.01 #[ms]
+    silence_duration: 10 #[ms]
+    train:
+      current_seed: 991927697
+      duration: 9000 #[ms]
+    test:
+      duration: 800 #[ms]
 
+  sweep_catalog: steady
+  teaching_catalog: exp3
 
 # ==========================================
-# テスト（スイープ）設定（カタログを参照してスイープを追加）
+# datasetsカタログ設定
 # ==========================================
-current_test_settings:
-  steady:
-    base: ${current_generators.steady}
-    params_sweep:
-      value: {start: 0, stop: 20, step: 5}
+datasets_catalog:
   random:
-    base: ${current_generators.rand_pulse}
-    params_sweep:
-      current_seed: [9919, 9920]
-  ramp:
-    base: ${current_generators.ramp}
-    params_sweep:
-      stop: {start: 5, stop: 20, step: 5}
-  sinusoidal:
-    base: ${current_generators.sinusoidal}
-    params_sweep:
-      amplitude: [2.0, 5.0, 10.0]
-  chirp:
-    base: ${current_generators.chirp}
-    params_sweep:
-      amplitude: [2.0, 5.0, 10.0]
-
-# ==========================================
-# 訓練（Teaching）設定
-# ==========================================
-teaching_settings:
-  bachelor_thesis:
     data_type: hh
     current:
-      pipeline: 
+      pipeline:
         - ${current_generators.rand_pulse}
-  exp2:
+    sweep:
+      current_seed: [9919, 9920]
+  steady:
     data_type: hh
     current:
-      pipeline: 
-        - ${current_generators.gauss_rand_pulse}
+      pipeline:
+        - ${current_generators.steady}
+    sweep:
+      current:
+        pipeline_ind: 0
+        variable:
+          value: {start: 0, stop: 20, step: 5}
   exp3:
     data_type: hh
-    target_comp_id: 0
     current:
       pipeline: 
         - ${current_generators.discretized}
-      current_seed: 991927697
-  exp4:
-    data_type: hh3
-    current:
-      pipeline: 
-        - ${current_generators.rand_pulse}
+
 # ==========================================
 # 5. SINDy Settings (モデル抽出設定)
 # ==========================================
@@ -116,5 +83,3 @@ sindy:
       inputs: [0, 1, 2]
     - type: base
       inputs: [0, 1, 2]
-  
-  teaching_current: exp3
