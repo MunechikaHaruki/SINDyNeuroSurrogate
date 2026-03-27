@@ -123,13 +123,14 @@ def build_sweep_cases(case_type: str, catalog_item) -> dict:
     return cases
 
 
-def _build_sweep_datasets(
-    sweep_name: str,
-    catalog_item: dict,
-    common_cfg: dict,
-) -> dict:
+def build_sweep_datasets(cfg_datasets) -> dict:
     """スイープ用のデータセット群を構築する"""
-    cases = build_sweep_cases(sweep_name, catalog_item)
+
+    catalog_name = cfg_datasets["sweep_catalog"]
+    catalog_item = cfg_datasets["catalog"][catalog_name]
+    common_cfg = cfg_datasets["common"]
+
+    cases = build_sweep_cases(catalog_name, catalog_item)
     dt = common_cfg["dt"]
     datasets = {}
     for case_name, case_cfg in cases.items():
@@ -146,14 +147,16 @@ def _build_sweep_datasets(
             pipeline=case_cfg["pipeline"],
             current_seed=seed,
         )
+    logger.info(f"Built {len(datasets)} datasets")
     return datasets
 
 
-def _build_train_dataset(
-    catalog_item: dict,
-    common_cfg: dict,
-) -> dict:
+def build_train_dataset(cfg_datasets) -> dict:
     """学習用の単一データセットを構築する"""
+    catalog_name = cfg_datasets["sweep_catalog"]
+    catalog_item = cfg_datasets["catalog"][catalog_name]
+    common_cfg = cfg_datasets["common"]
+
     model_name = catalog_item["data_type"]
     teach_seed = catalog_item["current"].get(
         "current_seed", common_cfg["train"]["current_seed"]
@@ -167,29 +170,3 @@ def _build_train_dataset(
         pipeline=catalog_item["current"]["pipeline"],
         current_seed=teach_seed,
     )
-
-
-def build_datasets(cfg_datasets):
-    catalog = cfg_datasets["catalog"]
-    common_cfg = cfg_datasets["common"]
-
-    datasets = {}
-
-    # 1. テスト（スイープ）用データセットの構築
-    sweep_name = cfg_datasets["sweep_catalog"]
-    sweep_datasets = _build_sweep_datasets(
-        sweep_name=sweep_name,
-        catalog_item=catalog[sweep_name],
-        common_cfg=common_cfg,
-    )
-    datasets.update(sweep_datasets)
-
-    # 2. 学習用データセットの構築
-    teach_name = cfg_datasets["teaching_catalog"]
-    datasets["train"] = _build_train_dataset(
-        catalog_item=catalog[teach_name],
-        common_cfg=common_cfg,
-    )
-
-    logger.info(f"Built {len(datasets)} datasets (including 'train').")
-    return datasets
