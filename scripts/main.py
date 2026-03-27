@@ -3,7 +3,6 @@ from typing import Dict
 
 import hydra
 import mlflow
-from conf.neuron_models import MODEL_DEFINITIONS
 from omegaconf import DictConfig
 from utils.boot import setup_all
 from utils.builder_core import (
@@ -77,9 +76,7 @@ def eval_datasets(datasets_cfg: Dict, surrogate_model, train_run_id):
 def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
     setup_all(cfg)
-    datasets_cfg = build_datasets(
-        cfg.datasets_settings, cfg.datasets_catalog, MODEL_DEFINITIONS
-    )
+    datasets_cfg = build_datasets(cfg.datasets_settings, cfg.datasets_catalog)
     surrogate_model = build_surrogate(cfg.sindy)
 
     with mlflow.start_run(run_name=f"Training_run:{get_hydra_overrides()}") as run:

@@ -2,7 +2,8 @@ import copy
 import logging
 
 import numpy as np
-from omegaconf import DictConfig, ListConfig, OmegaConf
+from conf.neuron_models import MODEL_DEFINITIONS
+from omegaconf import DictConfig, OmegaConf
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,9 @@ def build_models(definitions: dict):
     return {"mc_models": mc_models, "target_nodes": target_nodes}
 
 
+BUILT_MODELS = build_models(MODEL_DEFINITIONS)
+
+
 def build_dataset(
     model_name: str,
     dt: float,
@@ -32,7 +36,6 @@ def build_dataset(
     silence_steps: int,
     pipeline: list,
     current_seed: int,
-    built_models: dict,
 ) -> dict:
     return {
         "data_type": model_name,
@@ -43,8 +46,8 @@ def build_dataset(
             "pipeline": pipeline,
             "silence_steps": silence_steps,
         },
-        "target_comp_id": built_models["target_nodes"][model_name],
-        "net": built_models["mc_models"][model_name],
+        "target_comp_id": BUILT_MODELS["target_nodes"][model_name],
+        "net": BUILT_MODELS["mc_models"][model_name],
     }
 
 
@@ -76,9 +79,6 @@ def build_sweep_cases(case_type: str, catalog_item) -> dict:
     カタログスペックからスイープ設定を展開し、ケースごとの設定辞書を返す。
     Returns: { "case_name": {"pipeline": [...], "current_seed": ...}, ... }
     """
-    if isinstance(catalog_item, (DictConfig, ListConfig)):
-        catalog_item = OmegaConf.to_container(catalog_item, resolve=True)
-
     base_pipeline = catalog_item["current"]["pipeline"]
     base_seed = catalog_item["current"].get("current_seed")
     sweep_spec = catalog_item.get("sweep", {})
@@ -128,39 +128,24 @@ def _build_sweep_datasets(
     sweep_name: str,
     catalog_item: dict,
     common_cfg: dict,
-    built_models: dict,
 ) -> dict:
     """スイープ用のデータセット群を構築する"""
-    datasets = {}
-    model_name = catalog_item["data_type"]
-
-    # cfgのパースと計算
-    dt = common_cfg["dt"]
-    duration = common_cfg["test"]["duration"]
-    iteration = int(duration / dt)
-    silence_steps = int(common_cfg["silence_duration"] / dt)
-
-    # テスト用のシード値が明示されていない場合、学習用のシード値をフォールバックとして利用
-    default_seed = common_cfg["test"].get(
-        "current_seed", common_cfg["train"].get("current_seed")
-    )
-
     cases = build_sweep_cases(sweep_name, catalog_item)
-
+    dt = common_cfg["dt"]
+    datasets = {}
     for case_name, case_cfg in cases.items():
         seed = (
             case_cfg["current_seed"]
             if case_cfg["current_seed"] is not None
-            else default_seed
+            else common_cfg["test"]["current_seed"]
         )
         datasets[case_name] = build_dataset(
-            model_name=model_name,
+            model_name=catalog_item["data_type"],
             dt=dt,
-            iteration=iteration,
-            silence_steps=silence_steps,
+            iteration=int(common_cfg["test"]["duration"] / dt),
+            silence_steps=int(common_cfg["silence_duration"] / dt),
             pipeline=case_cfg["pipeline"],
             current_seed=seed,
-            built_models=built_models,
         )
     return datasets
 
@@ -168,40 +153,29 @@ def _build_sweep_datasets(
 def _build_train_dataset(
     catalog_item: dict,
     common_cfg: dict,
-    built_models: dict,
 ) -> dict:
     """学習用の単一データセットを構築する"""
     model_name = catalog_item["data_type"]
-
-    # cfgのパースと計算
+    teach_seed = catalog_item["current"].get(
+        "current_seed", common_cfg["train"]["current_seed"]
+    )
     dt = common_cfg["dt"]
-    duration = common_cfg["train"]["duration"]
-    iteration = int(duration / dt)
-    silence_steps = int(common_cfg["silence_duration"] / dt)
-    default_seed = common_cfg["train"]["current_seed"]
-
-    teach_seed = catalog_item["current"].get("current_seed", default_seed)
-
     return build_dataset(
         model_name=model_name,
         dt=dt,
-        iteration=iteration,
-        silence_steps=silence_steps,
+        iteration=int(common_cfg["train"]["duration"] / dt),
+        silence_steps=int(common_cfg["silence_duration"] / dt),
         pipeline=catalog_item["current"]["pipeline"],
         current_seed=teach_seed,
-        built_models=built_models,
     )
 
 
-def build_datasets(cfg_datasets, catalog, model_definitions):
+def build_datasets(cfg_datasets, catalog):
     if isinstance(cfg_datasets, DictConfig):
         cfg_datasets = OmegaConf.to_container(cfg_datasets, resolve=True)
     if isinstance(catalog, DictConfig):
         catalog = OmegaConf.to_container(catalog, resolve=True)
-    if isinstance(model_definitions, DictConfig):
-        model_definitions = OmegaConf.to_container(model_definitions, resolve=True)
 
-    built_models = build_models(model_definitions)
     common_cfg = cfg_datasets["common"]
 
     datasets = {}
@@ -212,7 +186,6 @@ def build_datasets(cfg_datasets, catalog, model_definitions):
         sweep_name=sweep_name,
         catalog_item=catalog[sweep_name],
         common_cfg=common_cfg,
-        built_models=built_models,
     )
     datasets.update(sweep_datasets)
 
@@ -221,7 +194,6 @@ def build_datasets(cfg_datasets, catalog, model_definitions):
     datasets["train"] = _build_train_dataset(
         catalog_item=catalog[teach_name],
         common_cfg=common_cfg,
-        built_models=built_models,
     )
 
     logger.info(f"Built {len(datasets)} datasets (including 'train').")
