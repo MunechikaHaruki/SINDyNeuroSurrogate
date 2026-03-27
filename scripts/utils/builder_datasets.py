@@ -82,18 +82,28 @@ def build_models(definitions: dict):
     return mc_models, target_nodes
 
 
-def _apply_dataset_defaults(
-    ds_dict: dict,
+def build_dataset(
+    model_name: str,
+    current_cfg: dict,
     cfg_default: dict,
     mc_models: dict,
     target_nodes: dict,
-    is_train: bool,
-):
-    """データセットの辞書にデフォルト値を適用する（破壊的変更）"""
+    is_train: bool = False,
+) -> dict:
+    """
+    単一のデータセット構成を作成し、デフォルト値とモデル情報を適用して返す。
+    """
+    # 基礎構造の作成
+    ds_dict = {
+        "data_type": model_name,
+        "current": current_cfg,
+    }
+
+    # デフォルト値の適用 (既存のロジックを流用)
     dt = cfg_default["simulator_default_dt"]
     ds_dict.setdefault("dt", dt)
 
-    current = ds_dict.setdefault("current", {})
+    current = ds_dict["current"]  # 参照を取得
     current.setdefault("current_seed", cfg_default["default_current_seed"])
     current.setdefault("silence_steps", int(cfg_default["silence_duration"] / dt))
 
@@ -103,17 +113,43 @@ def _apply_dataset_defaults(
     current.setdefault("iteration", default_iteration)
 
     # モデル情報の紐付け
-    model_name = ds_dict["data_type"]
     ds_dict["target_comp_id"] = target_nodes[model_name]
     ds_dict["net"] = mc_models[model_name]
 
+    return ds_dict
+
+
+def build_train_dataset(cfg, mc_models, target_nodes) -> dict:
+    """学習用データセットを構築する"""
+    cfg_default = cfg["datasets_default"]
+
+    # 設定の取得
+    train_raw = OmegaConf.to_container(
+        cfg.teaching_settings[cfg.sindy.teaching_current], resolve=True
+    )
+
+    # 共通の構築ロジックを呼び出す
+    return build_dataset(
+        model_name=train_raw["data_type"],
+        current_cfg=train_raw["current"],
+        cfg_default=cfg_default,
+        mc_models=mc_models,
+        target_nodes=target_nodes,
+        is_train=True,
+    )
+
 
 def build_full_datasets(cfg, model_definitions):
-    combo = cfg.test_combinations[cfg.active_test]
-    active_models = combo["models"]
-    active_currents = set(combo["currents"])  # 検索を高速化するために set に変換
+    # 1. 共通リソースの準備
+    mc_models, target_nodes = build_models(model_definitions)
+    cfg_default = cfg["datasets_default"]
 
-    # 1. 必要な current settings だけを抽出してビルド
+    # 2. 学習用データセットの生成 (切り出し)
+    datasets = {"train": build_train_dataset(cfg, mc_models, target_nodes)}
+
+    # 3. テスト用 Current Cases の生成
+    combo = cfg.test_combinations[cfg.active_test]
+    active_currents = set(combo["currents"])
     raw_current_settings = OmegaConf.to_container(
         cfg.current_test_settings, resolve=True
     )
@@ -122,34 +158,19 @@ def build_full_datasets(cfg, model_definitions):
     }
     current_cases = build_current_cases(filtered_settings)
 
-    # 2. モデルのビルド
-    mc_models, target_nodes = build_models(model_definitions)
-
-    # 3. テストデータセットの構築 (itertools.product でネストを解消)
-    datasets = {}
+    # 4. テストデータセットの構築 (ループ)
+    active_models = combo["models"]
     for model, (case_key, current_cfg) in itertools.product(
         active_models, current_cases
     ):
-        datasets[f"{case_key}_{model}"] = {
-            "data_type": model,
-            "current": current_cfg,
-        }
-
-    # 4. 学習用データセットの追加
-    datasets["train"] = OmegaConf.to_container(
-        cfg.teaching_settings[cfg.sindy.teaching_current], resolve=True
-    )
-
-    # 5. デフォルト値とモデル情報の適用
-    cfg_default = cfg["datasets_default"]
-    for key, ds_dict in datasets.items():
-        _apply_dataset_defaults(
-            ds_dict=ds_dict,
+        datasets[f"{case_key}_{model}"] = build_dataset(
+            model_name=model,
+            current_cfg=current_cfg,
             cfg_default=cfg_default,
             mc_models=mc_models,
             target_nodes=target_nodes,
-            is_train=(key == "train"),
+            is_train=False,
         )
 
-    logger.info(datasets)
+    logger.info(f"Built {len(datasets)} datasets (including 'train').")
     return datasets
