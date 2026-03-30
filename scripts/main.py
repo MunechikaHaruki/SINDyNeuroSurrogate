@@ -3,7 +3,6 @@ import logging
 import hydra
 import mlflow
 from eval import eval_with_model_reaction, eval_with_static_datasets
-from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from utils.boot import setup_all
 from utils.builder_core import (
@@ -46,10 +45,10 @@ def main(cfg: DictConfig) -> None:
         logger.info(f"run_id:{run.info.run_id}:Start training")
         train_model(surrogate_model, build_train_dataset(datasets_cfg))
 
-    if not (HydraConfig.get().mode.name == "MULTIRUN"):
-        eval_with_static_datasets(datasets_cfg, surrogate_model, train_run_id)
-    else:
+    if cfg["is_multirun"]:
         return eval_with_model_reaction(datasets_cfg, train_run_id)
+    else:
+        eval_with_static_datasets(datasets_cfg, surrogate_model, train_run_id)
 
 
 if __name__ == "__main__":

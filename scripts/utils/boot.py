@@ -1,6 +1,7 @@
 import os
 
 import mlflow
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,11 +15,14 @@ def setup_proxy():
     os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 
-def setup_mlflow(experiment_name):
+def setup_mlflow(is_multirun):
     MLRUN_DIR = os.path.join(PROJECT_ROOT, "mlruns")
     mlflow.set_tracking_uri(f"file://{MLRUN_DIR}")
     mlflow.enable_system_metrics_logging()
-    mlflow.set_experiment(experiment_name)
+    if is_multirun:
+        mlflow.set_experiment("test_dynamic_datasets")
+    else:
+        mlflow.set_experiment("test_static_params")
     os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
 
 
@@ -36,6 +40,9 @@ def setup_matplotlib(matplotlib_style):
 def setup_all(cfg):
     OmegaConf.resolve(cfg)
     setup_proxy()
-    setup_mlflow(cfg.experiment_name)
+    is_multirun = HydraConfig.get().mode.name == "MULTIRUN"
+    setup_mlflow(is_multirun)
     setup_matplotlib(cfg.matplotlib_style)
-    return OmegaConf.to_container(cfg, resolve=True)
+    cfg = OmegaConf.to_container(cfg, resolve=True)
+    cfg["is_multirun"] = is_multirun
+    return cfg

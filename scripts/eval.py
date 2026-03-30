@@ -97,8 +97,11 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
                     logger.info(f"Threshold reached at amplitude: {v}")
                     mlflow.log_metric("surr threshold", v)
                     return v
+        return None
 
     def calc_metric(surr_threshold: float):
+        if surr_threshold is None:
+            return 100
         orig_threshold = 6.5
         return abs(orig_threshold - surr_threshold)
 

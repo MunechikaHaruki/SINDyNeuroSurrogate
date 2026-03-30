@@ -2,15 +2,7 @@ defaults:
   - current_generators: base
   - _self_ # ショートカット定義は最後に設定
 
-
-
-
-# ==========================================
-# 1. Global Settings (全体設定)
-# ==========================================
-
 matplotlib_style: paper
-experiment_name: NeuroSurrogate
 
 # ==========================================
 # データセット設定
@@ -100,4 +92,4 @@ hydra:
     dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
   sweeper:
     params:
-      sindy.optimizer.alpha: range(1.0, 3.0,0.5)
+      sindy.optimizer.alpha: 0.01, 0.05, 0.1, 0.5, 1.0
