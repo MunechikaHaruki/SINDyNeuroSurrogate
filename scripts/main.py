@@ -1,8 +1,8 @@
 import logging
-from typing import Dict
 
 import hydra
 import mlflow
+from eval import eval_with_model_reaction, eval_with_static_datasets
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from utils.boot import setup_all
@@ -11,17 +11,13 @@ from utils.builder_core import (
     build_surrogate,
 )
 from utils.builder_datasets import (
-    build_steady_dataset,
-    build_sweep_datasets,
     build_train_dataset,
 )
-from utils.log_model import load_surrogate_model, log_surrogate_model
+from utils.log_model import log_surrogate_model
 from utils.log_utils import (
     get_hydra_overrides,
     log_dataset_cfg,
-    log_eval_result,
     log_surrogate_summary,
-    log_target_metric,
 )
 
 from neurosurrogate.modeling.calc_engine import unified_simulator
@@ -36,75 +32,6 @@ def train_model(surrogate, train_dataset_cfg):
     surrogate.fit(train_ds, train_dataset_cfg["target_comp_id"])
     log_surrogate_summary(surrogate.get_loggable_summary())
     log_surrogate_model(surrogate)
-
-
-def eval_with_static_datasets(datasets_cfg: Dict, surrogate_model, train_run_id):
-    @mlflow.trace
-    def eval_diff(dataset_cfg):
-        log_dataset_cfg(dataset_cfg)
-        original_ds = unified_simulator(**build_simulator_config(dataset_cfg))
-        target_comp_id = dataset_cfg["target_comp_id"]
-        surr_ds = unified_simulator(
-            **build_simulator_config(dataset_cfg),
-            surrogate_target=target_comp_id,
-            surrogate_model=surrogate_model,
-        )
-        preprocessed_xr = surrogate_model.preprocessor.transform(
-            original_ds, target_comp_id=target_comp_id
-        )
-        log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
-
-    logger.info("Start Flow:start generate eval data")
-    datasets = build_sweep_datasets(datasets_cfg)
-    for key, dataset in datasets.items():
-        logger.info(f"start {key}'s evaluation")
-        try:
-            with mlflow.start_run(
-                run_name=f"Eval_{key}",
-                tags={"mlflow.parentRunId": train_run_id, "eval_dataset": key},
-                nested=True,
-            ):
-                eval_diff(dataset)
-                logger.info(f"Successfully finished evaluation for {key}")
-        except Exception as e:
-            logger.exception(f"Failed to evaluate {key}: {str(e)}")
-            mlflow.set_tag("error_type", str(type(e).__name__))
-            mlflow.set_tag("error_msg", str(e))
-            continue
-
-
-def eval_with_model_reaction(datasets_cfg, train_run_id):
-    from scipy.signal import find_peaks
-
-    @mlflow.trace
-    def confirm_reaction(amptitide):
-        steady_cfg = build_steady_dataset(datasets_cfg, amptitide)
-        surr_xr = unified_simulator(
-            **build_simulator_config(steady_cfg),
-            surrogate_target=steady_cfg["target_comp_id"],
-            surrogate_model=surrogate_model,
-        )
-        target_data = (
-            surr_xr["vars"]
-            .sel(comp_id=steady_cfg["target_comp_id"], gate=False)
-            .to_numpy()
-            .squeeze()
-        )
-        peaks, _ = find_peaks(target_data, height=0.0)
-
-        return len(peaks) >= 5
-
-    surrogate_model = load_surrogate_model(train_run_id)
-    v = 0
-    with mlflow.start_run(
-        run_name=f"stady_{v}",
-        tags={"mlflow.parentRunId": train_run_id, "amptitude": v},
-        nested=True,
-    ):
-        flag = confirm_reaction(v)
-        raise NotImplementedError()
-
-    return 0
 
 
 @hydra.main(config_path="conf", config_name="config")
@@ -122,10 +49,7 @@ def main(cfg: DictConfig) -> None:
     if not (HydraConfig.get().mode.name == "MULTIRUN"):
         eval_with_static_datasets(datasets_cfg, surrogate_model, train_run_id)
     else:
-        target_metric = eval_with_model_reaction(datasets_cfg, train_run_id)
-        log_target_metric(train_run_id, target_metric)
-        logger.info(f"Script ended with metric: {target_metric}")
-        return float(target_metric)
+        return eval_with_model_reaction(datasets_cfg, train_run_id)
 
 
 if __name__ == "__main__":
