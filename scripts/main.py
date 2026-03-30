@@ -10,8 +10,12 @@ from utils.builder_core import (
     build_simulator_config,
     build_surrogate,
 )
-from utils.builder_datasets import build_sweep_datasets, build_train_dataset
-from utils.log_model import log_surrogate_model
+from utils.builder_datasets import (
+    build_steady_dataset,
+    build_sweep_datasets,
+    build_train_dataset,
+)
+from utils.log_model import load_surrogate_model, log_surrogate_model
 from utils.log_utils import (
     get_hydra_overrides,
     log_dataset_cfg,
@@ -51,7 +55,8 @@ def eval_with_static_datasets(datasets_cfg: Dict, surrogate_model, train_run_id)
         log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
 
     logger.info("Start Flow:start generate eval data")
-    for key, dataset in datasets_cfg.items():
+    datasets = build_sweep_datasets(datasets_cfg)
+    for key, dataset in datasets.items():
         logger.info(f"start {key}'s evaluation")
         try:
             with mlflow.start_run(
@@ -68,7 +73,36 @@ def eval_with_static_datasets(datasets_cfg: Dict, surrogate_model, train_run_id)
             continue
 
 
-def eval_with_model_reaction():
+def eval_with_model_reaction(datasets_cfg, train_run_id):
+    from scipy.signal import find_peaks
+
+    @mlflow.trace
+    def confirm_reaction(amptitide):
+        steady_cfg = build_steady_dataset(datasets_cfg, amptitide)
+        surr_xr = unified_simulator(
+            **build_simulator_config(steady_cfg),
+            surrogate_target=steady_cfg["target_comp_id"],
+            surrogate_model=surrogate_model,
+        )
+        target_data = (
+            surr_xr["vars"]
+            .sel(comp_id=steady_cfg["target_comp_id"], gate=False)
+            .to_numpy()
+            .squeeze()
+        )
+        peaks, _ = find_peaks(target_data, height=0.0)
+
+        return len(peaks) >= 5
+
+    surrogate_model = load_surrogate_model(train_run_id)
+    v = 0
+    with mlflow.start_run(
+        run_name=f"stady_{v}",
+        tags={"mlflow.parentRunId": train_run_id, "amptitude": v},
+        nested=True,
+    ):
+        flag = confirm_reaction(v)
+        raise NotImplementedError()
 
     return 0
 
@@ -79,16 +113,16 @@ def main(cfg: DictConfig) -> None:
     cfg = setup_all(cfg)
     surrogate_model = build_surrogate(cfg["sindy"])
 
+    datasets_cfg = cfg["datasets_settings"]
     with mlflow.start_run(run_name=f"Training_run:{get_hydra_overrides()}") as run:
         train_run_id = run.info.run_id
         logger.info(f"run_id:{run.info.run_id}:Start training")
-        train_model(surrogate_model, build_train_dataset(cfg["datasets_settings"]))
+        train_model(surrogate_model, build_train_dataset(datasets_cfg))
 
     if not (HydraConfig.get().mode.name == "MULTIRUN"):
-        test_datasets = build_sweep_datasets(cfg["datasets_settings"])
-        eval_with_static_datasets(test_datasets, surrogate_model, train_run_id)
+        eval_with_static_datasets(datasets_cfg, surrogate_model, train_run_id)
     else:
-        target_metric = eval_with_model_reaction()
+        target_metric = eval_with_model_reaction(datasets_cfg, train_run_id)
         log_target_metric(train_run_id, target_metric)
         logger.info(f"Script ended with metric: {target_metric}")
         return float(target_metric)

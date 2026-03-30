@@ -29,7 +29,7 @@ BUILT_MODELS = build_models(MODEL_DEFINITIONS)
 
 
 def build_dataset(case_cfg: dict) -> dict:
-    """単一のケース設定からデータセット辞書を構築する"""
+    """単一のケース設定(YAMLのcatalog_itemの階層構造そのまま)からデータセット辞書を構築する"""
     dt = case_cfg["dt"]
     model_name = case_cfg["data_type"]
 
@@ -37,9 +37,10 @@ def build_dataset(case_cfg: dict) -> dict:
         "data_type": model_name,
         "dt": dt,
         "current": {
-            "current_seed": case_cfg["current_seed"],
+            # フラットアクセスではなく、case_cfg["current"] のネストを参照する
+            "current_seed": case_cfg["current"]["current_seed"],
             "iteration": int(case_cfg["duration"] / dt),
-            "pipeline": case_cfg["pipeline"],
+            "pipeline": case_cfg["current"]["pipeline"],
             "silence_steps": int(case_cfg["silence_duration"] / dt),
         },
         "target_comp_id": BUILT_MODELS["target_nodes"][model_name],
@@ -71,35 +72,30 @@ def _resolve_sweep_values(value_cfg) -> list:
 
 
 def build_sweep_cases(case_type: str, catalog_item: dict) -> dict:
-    """カタログアイテムからベース設定を作り、スイープ展開する"""
+    """カタログアイテムをベースに、スイープ条件のみを差し替えた設定群を生成する"""
 
-    # 全てのベースとなる設定をまとめる
-    base_cfg = {
-        "data_type": catalog_item["data_type"],
-        "dt": catalog_item["dt"],
-        "duration": catalog_item["duration"],
-        "silence_duration": catalog_item["silence_duration"],
-        "current_seed": catalog_item["current"].get("current_seed", 0),
-        "pipeline": catalog_item["current"]["pipeline"],
-    }
+    # 1. ベース設定の作成（分解せず、まるごとコピー）
+    # catalog_item の中身がそのまま base になるため、フィールドが増えても修正不要
+    base_cfg = copy.deepcopy(catalog_item)
 
-    sweep_spec = catalog_item.get("sweep", {})
+    # 不要な sweep 定義は、個別のケース設定からは取り除いておく（クリーンにするため）
+    sweep_spec = base_cfg.pop("sweep", {})
     cases = {}
 
-    # 1. スイープ設定がない場合
+    # 2. スイープ設定がない場合はそのまま返す
     if not sweep_spec:
         cases[case_type] = base_cfg
         return cases
 
-    # 2. current_seed のスイープ
+    # 3. current_seed のスイープ (最上位階層の上書き)
     if "current_seed" in sweep_spec:
         for seed in sweep_spec["current_seed"]:
             case_cfg = copy.deepcopy(base_cfg)
-            case_cfg["current_seed"] = seed
+            case_cfg["current"]["current_seed"] = seed  # ネストに直接代入
             cases[f"{case_type}_{seed}"] = case_cfg
         return cases
 
-    # 3. pipeline 変数のスイープ
+    # 4. pipeline 変数のスイープ (深い階層の上書き)
     if "current" in sweep_spec:
         c_sweep = sweep_spec["current"]
         p_idx = c_sweep.get("pipeline_ind", 0)
@@ -111,7 +107,8 @@ def build_sweep_cases(case_type: str, catalog_item: dict) -> dict:
 
             for val in sweep_values:
                 case_cfg = copy.deepcopy(base_cfg)
-                case_cfg["pipeline"][p_idx][sweep_key] = val
+                # 決め打ちの分解ではなく、構造を維持したまま値を差し替える
+                case_cfg["current"]["pipeline"][p_idx][sweep_key] = val
                 cases[f"{case_type}_{val}"] = case_cfg
             return cases
 
@@ -137,14 +134,22 @@ def build_train_dataset(cfg_datasets) -> dict:
     """学習用の単一データセットを構築する"""
     catalog_name = cfg_datasets["teaching_catalog"]
     catalog_item = cfg_datasets["catalog"][catalog_name]
+    case_cfg = copy.deepcopy(catalog_item)
+    case_cfg.pop("sweep", None)
 
-    # スイープなしのベース設定をそのまま構築
-    base_cfg = {
-        "data_type": catalog_item["data_type"],
-        "dt": catalog_item["dt"],
-        "duration": catalog_item["duration"],
-        "silence_duration": catalog_item["silence_duration"],
-        "current_seed": catalog_item["current"].get("current_seed", 0),
-        "pipeline": catalog_item["current"]["pipeline"],
-    }
-    return build_dataset(base_cfg)
+    return build_dataset(case_cfg)
+
+
+def build_steady_dataset(cfg_datasets: dict, amplitude: float) -> dict:
+    """
+    catalog['steady'] をベースに、指定された強度の定常電流データセット設定を生成する。
+
+    Args:
+        cfg_datasets: datasets_settings 全体の辞書
+        amplitude: 注入する定常電流の強度
+    """
+    catalog_item = cfg_datasets["catalog"]["steady"]
+    case_cfg = copy.deepcopy(catalog_item)
+    case_cfg["current"]["pipeline"][0]["value"] = amplitude
+    case_cfg.pop("sweep", None)
+    return build_dataset(case_cfg)
