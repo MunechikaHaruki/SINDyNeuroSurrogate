@@ -12,6 +12,7 @@ from utils.builder_datasets import (
 )
 from utils.log_model import load_surrogate_model
 from utils.log_utils import (
+    _save_xarray,
     log_dataset_cfg,
     log_eval_result,
     log_target_metric,
@@ -70,6 +71,7 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
             surrogate_target=steady_cfg["target_comp_id"],
             surrogate_model=surrogate_model,
         )
+        _save_xarray(surr_xr, "surr")
         target_data = (
             surr_xr["vars"]
             .sel(comp_id=steady_cfg["target_comp_id"], gate=False)
@@ -78,11 +80,10 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
         )
         peaks, _ = find_peaks(target_data, height=0.0)
 
-        return len(peaks) >= 5
+        return len(peaks)
 
     def get_threshold():
         test_amplitudes = np.arange(0.0, 22.0, 2.0)
-        results = []
         for v in test_amplitudes:
             with mlflow.start_run(
                 run_name=f"steady_eval_{v}",
@@ -91,7 +92,6 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
             ):
                 count = get_firing_count(float(v))
                 mlflow.log_metric("spike_count", count)
-                results.append(count)
 
                 if count >= 10:  # 最初に5回以上発火した時の電流値を評価指標にする例
                     logger.info(f"Threshold reached at amplitude: {v}")
@@ -102,7 +102,10 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
     def calc_metric(surr_threshold: float):
         if surr_threshold is None:
             return 100
-        orig_threshold = 6.5
+        orig_threshold = (
+            6.5  # これはどのモデルを採用するかによって動的に変更することに注意
+        )
+
         return abs(orig_threshold - surr_threshold)
 
     v = get_threshold()

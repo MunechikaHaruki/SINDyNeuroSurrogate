@@ -47,7 +47,7 @@ datasets_settings:
         current:
           pipeline_ind: 0
           variable:
-            value: {start: 0, stop: 20, step: 5}
+            value: {start: 0, stop: 30, step: 1 }
 
     exp3:
       data_type: hh
@@ -60,7 +60,7 @@ datasets_settings:
           - ${current_generators.discretized}
 
 # ==========================================
-# 5. SINDy Settings (モデル抽出設定)
+# SINDy Settings (モデル抽出設定)
 # ==========================================
 sindy:
   optimizer:
