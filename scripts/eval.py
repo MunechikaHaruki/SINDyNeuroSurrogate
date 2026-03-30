@@ -60,6 +60,8 @@ def eval_with_static_datasets(datasets_cfg: Dict, surrogate_model, train_run_id)
 def eval_with_model_reaction(datasets_cfg, train_run_id):
     from scipy.signal import find_peaks
 
+    surrogate_model = load_surrogate_model(train_run_id)
+
     @mlflow.trace
     def get_firing_count(amptitide):
         steady_cfg = build_steady_dataset(datasets_cfg, amptitide)
@@ -78,28 +80,29 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
 
         return len(peaks) >= 5
 
+    def get_threshold():
+        test_amplitudes = np.arange(0.0, 22.0, 2.0)
+        results = []
+        for v in test_amplitudes:
+            with mlflow.start_run(
+                run_name=f"steady_eval_{v}",
+                tags={"mlflow.parentRunId": train_run_id, "amplitude": v},
+                nested=True,
+            ):
+                count = get_firing_count(float(v))
+                mlflow.log_metric("spike_count", count)
+                results.append(count)
+
+                if count >= 10:  # 最初に5回以上発火した時の電流値を評価指標にする例
+                    logger.info(f"Threshold reached at amplitude: {v}")
+                    mlflow.log_metric("surr threshold", v)
+                    return v
+
     def calc_metric(surr_threshold: float):
-        orig_threshold = None
-        raise NotImplementedError()
+        orig_threshold = 6.5
         return abs(orig_threshold - surr_threshold)
 
-    surrogate_model = load_surrogate_model(train_run_id)
-    test_amplitudes = np.arange(0.0, 22.0, 2.0)
-    results = []
-    for v in test_amplitudes:
-        with mlflow.start_run(
-            run_name=f"steady_eval_{v}",
-            tags={"mlflow.parentRunId": train_run_id, "amplitude": v},
-            nested=True,
-        ):
-            count = get_firing_count(float(v))
-            mlflow.log_metric("spike_count", count)
-            results.append(count)
-
-            if count >= 5:  # 最初に5回以上発火した時の電流値を評価指標にする例
-                logger.info(f"Threshold reached at amplitude: {v}")
-                mlflow.log_metric("surr threshold", v)
-                break
+    v = get_threshold()
     target_metric = calc_metric(v)
     log_target_metric(train_run_id, target_metric)
     logger.info(f"Script ended with metric: {target_metric}")
