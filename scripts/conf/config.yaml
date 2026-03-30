@@ -33,29 +33,43 @@ datasets_settings:
       duration: 800 #[ms]
       current_seed: 6
 
-  catalog: #datasetsカタログ設定
-    random:
-      data_type: hh
-      current:
-        pipeline:
-          - ${current_generators.rand_pulse}
-      sweep:
-        current_seed: [9919, 9920]
-    steady:
-      data_type: hh
-      current:
-        pipeline:
-          - ${current_generators.steady}
-      sweep:
+  catalog:
+      random:
+        data_type: hh
+        dt: 0.01
+        duration: 800
+        silence_duration: 10
         current:
-          pipeline_ind: 0
-          variable:
-            value: {start: 0, stop: 20, step: 5}
-    exp3:
-      data_type: hh
-      current:
-        pipeline: 
-          - ${current_generators.discretized}
+          current_seed: 6  # デフォルトのシード値
+          pipeline:
+            - ${current_generators.rand_pulse}
+        sweep:
+          current_seed: [9919, 9920]
+
+      steady:
+        data_type: hh
+        dt: 0.01
+        duration: 800
+        silence_duration: 10
+        current:
+          current_seed: 6
+          pipeline:
+            - ${current_generators.steady}
+        sweep:
+          current:
+            pipeline_ind: 0
+            variable:
+              value: {start: 0, stop: 20, step: 5}
+
+      exp3:
+        data_type: hh
+        dt: 0.01
+        duration: 9000
+        silence_duration: 10
+        current:
+          current_seed: 991927697
+          pipeline: 
+            - ${current_generators.discretized}
 
 # ==========================================
 # 5. SINDy Settings (モデル抽出設定)

@@ -28,22 +28,19 @@ def build_models(definitions: dict):
 BUILT_MODELS = build_models(MODEL_DEFINITIONS)
 
 
-def build_dataset(
-    model_name: str,
-    dt: float,
-    iteration: int,
-    silence_steps: int,
-    pipeline: list,
-    current_seed: int,
-) -> dict:
+def build_dataset(case_cfg: dict) -> dict:
+    """単一のケース設定からデータセット辞書を構築する"""
+    dt = case_cfg["dt"]
+    model_name = case_cfg["data_type"]
+
     return {
         "data_type": model_name,
         "dt": dt,
         "current": {
-            "current_seed": current_seed,
-            "iteration": iteration,
-            "pipeline": pipeline,
-            "silence_steps": silence_steps,
+            "current_seed": case_cfg["current_seed"],
+            "iteration": int(case_cfg["duration"] / dt),
+            "pipeline": case_cfg["pipeline"],
+            "silence_steps": int(case_cfg["silence_duration"] / dt),
         },
         "target_comp_id": BUILT_MODELS["target_nodes"][model_name],
         "net": BUILT_MODELS["mc_models"][model_name],
@@ -73,32 +70,36 @@ def _resolve_sweep_values(value_cfg) -> list:
     raise ValueError(f"params_sweepの値が不正です: {value_cfg}")
 
 
-def build_sweep_cases(case_type: str, catalog_item) -> dict:
-    """
-    カタログスペックからスイープ設定を展開し、ケースごとの設定辞書を返す。
-    Returns: { "case_name": {"pipeline": [...], "current_seed": ...}, ... }
-    """
-    base_pipeline = catalog_item["current"]["pipeline"]
-    base_seed = catalog_item["current"].get("current_seed")
-    sweep_spec = catalog_item.get("sweep", {})
+def build_sweep_cases(case_type: str, catalog_item: dict) -> dict:
+    """カタログアイテムからベース設定を作り、スイープ展開する"""
 
+    # 全てのベースとなる設定をまとめる
+    base_cfg = {
+        "data_type": catalog_item["data_type"],
+        "dt": catalog_item["dt"],
+        "duration": catalog_item["duration"],
+        "silence_duration": catalog_item["silence_duration"],
+        "current_seed": catalog_item["current"].get("current_seed", 0),
+        "pipeline": catalog_item["current"]["pipeline"],
+    }
+
+    sweep_spec = catalog_item.get("sweep", {})
     cases = {}
 
     # 1. スイープ設定がない場合
     if not sweep_spec:
-        cases[case_type] = {"pipeline": base_pipeline, "current_seed": base_seed}
+        cases[case_type] = base_cfg
         return cases
 
-    # 2. current_seed のスイープ (random 用)
+    # 2. current_seed のスイープ
     if "current_seed" in sweep_spec:
         for seed in sweep_spec["current_seed"]:
-            cases[f"{case_type}_{seed}"] = {
-                "pipeline": copy.deepcopy(base_pipeline),
-                "current_seed": seed,
-            }
+            case_cfg = copy.deepcopy(base_cfg)
+            case_cfg["current_seed"] = seed
+            cases[f"{case_type}_{seed}"] = case_cfg
         return cases
 
-    # 3. pipeline 変数のスイープ (steady 用)
+    # 3. pipeline 変数のスイープ
     if "current" in sweep_spec:
         c_sweep = sweep_spec["current"]
         p_idx = c_sweep.get("pipeline_ind", 0)
@@ -109,64 +110,41 @@ def build_sweep_cases(case_type: str, catalog_item) -> dict:
             sweep_values = _resolve_sweep_values(sweep_range_cfg)
 
             for val in sweep_values:
-                new_pipeline = copy.deepcopy(base_pipeline)
-                new_pipeline[p_idx][sweep_key] = val
-
-                cases[f"{case_type}_{val}"] = {
-                    "pipeline": new_pipeline,
-                    "current_seed": base_seed,
-                }
+                case_cfg = copy.deepcopy(base_cfg)
+                case_cfg["pipeline"][p_idx][sweep_key] = val
+                cases[f"{case_type}_{val}"] = case_cfg
             return cases
 
-    # どの条件にも合致しない場合はフォールバック
-    cases[case_type] = {"pipeline": base_pipeline, "current_seed": base_seed}
+    # フォールバック
+    cases[case_type] = base_cfg
     return cases
 
 
 def build_sweep_datasets(cfg_datasets) -> dict:
     """スイープ用のデータセット群を構築する"""
-
     catalog_name = cfg_datasets["sweep_catalog"]
     catalog_item = cfg_datasets["catalog"][catalog_name]
-    common_cfg = cfg_datasets["common"]
 
+    # case_cfg の辞書を展開し、そのまま build_dataset に渡すだけ
     cases = build_sweep_cases(catalog_name, catalog_item)
-    dt = common_cfg["dt"]
-    datasets = {}
-    for case_name, case_cfg in cases.items():
-        seed = (
-            case_cfg["current_seed"]
-            if case_cfg["current_seed"] is not None
-            else common_cfg["test"]["current_seed"]
-        )
-        datasets[case_name] = build_dataset(
-            model_name=catalog_item["data_type"],
-            dt=dt,
-            iteration=int(common_cfg["test"]["duration"] / dt),
-            silence_steps=int(common_cfg["silence_duration"] / dt),
-            pipeline=case_cfg["pipeline"],
-            current_seed=seed,
-        )
+    datasets = {name: build_dataset(cfg) for name, cfg in cases.items()}
+
     logger.info(f"Built {len(datasets)} datasets")
     return datasets
 
 
 def build_train_dataset(cfg_datasets) -> dict:
     """学習用の単一データセットを構築する"""
-    catalog_name = cfg_datasets["sweep_catalog"]
+    catalog_name = cfg_datasets["teaching_catalog"]
     catalog_item = cfg_datasets["catalog"][catalog_name]
-    common_cfg = cfg_datasets["common"]
 
-    model_name = catalog_item["data_type"]
-    teach_seed = catalog_item["current"].get(
-        "current_seed", common_cfg["train"]["current_seed"]
-    )
-    dt = common_cfg["dt"]
-    return build_dataset(
-        model_name=model_name,
-        dt=dt,
-        iteration=int(common_cfg["train"]["duration"] / dt),
-        silence_steps=int(common_cfg["silence_duration"] / dt),
-        pipeline=catalog_item["current"]["pipeline"],
-        current_seed=teach_seed,
-    )
+    # スイープなしのベース設定をそのまま構築
+    base_cfg = {
+        "data_type": catalog_item["data_type"],
+        "dt": catalog_item["dt"],
+        "duration": catalog_item["duration"],
+        "silence_duration": catalog_item["silence_duration"],
+        "current_seed": catalog_item["current"].get("current_seed", 0),
+        "pipeline": catalog_item["current"]["pipeline"],
+    }
+    return build_dataset(base_cfg)
