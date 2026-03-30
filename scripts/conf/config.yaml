@@ -2,11 +2,7 @@ defaults:
   - current_generators: base
   - _self_ # ショートカット定義は最後に設定
 
-hydra:
-  run:
-    dir: hydra-outputs/${now:%Y-%m-%d_%H-%M-%S}
-  sweep:
-    dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
+
 
 
 # ==========================================
@@ -95,3 +91,13 @@ sindy:
       inputs: [0, 1, 2]
     - type: base
       inputs: [0, 1, 2]
+
+
+hydra:
+  run:
+    dir: hydra-outputs/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
+  sweeper:
+    params:
+      sindy.optimizer.alpha: range(1.0, 3.0,0.5)
