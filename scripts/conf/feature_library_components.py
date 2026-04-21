@@ -8,7 +8,10 @@ from neurosurrogate.modeling.neuron_core import (
     beta_h,
     beta_m,
     beta_n,
+    njit,
 )
+
+njit
 
 FUNC_REGISTRY = {
     "alpha_m": alpha_m,

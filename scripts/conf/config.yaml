@@ -80,7 +80,7 @@ lib:
       inputs: []
   lib_bilinear:
     - type: gate_poly_volt
-      max_power: 3
+      max_power: 4
       inputs: [0, 1]
     - type: gate
       funcs: [alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n]
@@ -101,7 +101,7 @@ sindy:
   optimizer:
     _target_: pysindy.optimizers.STLSQ
     threshold: 0.01
-    normalize_columns: false
+    normalize_columns: true
     alpha: 2.0
   library_specs: ${lib.lib_bilinear}
 

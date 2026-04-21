@@ -55,7 +55,13 @@ def build_surrogate(cfg_sindy):
         feature_library=library,
         optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
     )
-    from neurosurrogate.modeling import neuron_core
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from scripts.conf import feature_library_components
 
     # surrogate_modelの初期化
-    return SINDySurrogateWrapper(initialized_sindy, neuron_core, FUNC_COST_MAP, HH_COST)
+    return SINDySurrogateWrapper(
+        initialized_sindy, feature_library_components, FUNC_COST_MAP, HH_COST
+    )
