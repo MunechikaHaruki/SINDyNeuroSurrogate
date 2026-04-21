@@ -62,14 +62,8 @@ datasets_settings:
 # ==========================================
 # SINDy Settings (モデル抽出設定)
 # ==========================================
-sindy:
-  optimizer:
-    _target_: pysindy.optimizers.STLSQ
-    threshold: 0.01
-    normalize_columns: false
-    alpha: 2.0
-  
-  library_specs:
+lib:
+  lib_base:
     - type: gate
       funcs: [alpha_m, alpha_h, alpha_n]
       is_product: false
@@ -83,6 +77,34 @@ sindy:
       inputs: [0, 1, 2]
     - type: base
       inputs: [0, 1, 2]
+  lib_bilinear:
+    # V の式用: g_0^k と g_0^k·V (k=1..3)
+    - type: gate_poly_volt
+      max_power: 3
+      inputs: [0, 1]
+    # ゲートの式用: α_x(V) 単体
+    - type: gate
+      funcs: [alpha_m, alpha_h, alpha_n]
+      is_product: false
+      inputs: [0]
+    # ゲートの式用: α_x(V)·g_0, β_x(V)·g_0
+    - type: gate
+      funcs: [alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n]
+      is_product: true
+      inputs: [0, 1]
+    # 線形項: 1, V, g_0, u
+    - type: base
+      inputs: [0, 1, 2]
+
+
+
+sindy:
+  optimizer:
+    _target_: pysindy.optimizers.STLSQ
+    threshold: 0.01
+    normalize_columns: false
+    alpha: 2.0
+  library_specs: ${lib.lib_bilinear}
 
 
 hydra:

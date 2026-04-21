@@ -60,6 +60,36 @@ def make_volt_lib(specs):
     return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
+def make_gate_poly_volt_lib(max_power: int):
+    """
+    V の式向け: g の k=1..max_power 次多項式と、それ × V のペアを生成。
+    inputs 順は (V, g) で固定。
+    """
+    f_list, n_list = [], []
+
+    def create_poly(p):
+        return (
+            lambda V, g: np.power(g, p),
+            lambda V, g: f"np.power({g}, {p})",
+        )
+
+    def create_poly_V(p):
+        return (
+            lambda V, g: np.power(g, p) * V,
+            lambda V, g: f"np.power({g}, {p}) * {V}",
+        )
+
+    for p in range(1, max_power + 1):
+        f, n = create_poly(p)
+        f_list.append(f)
+        n_list.append(n)
+        f, n = create_poly_V(p)
+        f_list.append(f)
+        n_list.append(n)
+
+    return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
+
+
 base_lib = ps.CustomLibrary(
     library_functions=[lambda x: x, lambda: 1],
     function_names=[lambda x: f"{x}", lambda: "1"],
@@ -83,4 +113,5 @@ LIB_BUILDER_REGISTRY = {
     ),
     "volt": lambda spec: make_volt_lib([tuple(s) for s in spec["specs"]]),
     "base": lambda spec: base_lib,
+    "gate_poly_volt": lambda spec: make_gate_poly_volt_lib(spec["max_power"]),
 }
