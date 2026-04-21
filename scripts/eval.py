@@ -15,7 +15,7 @@ from utils.log_utils import (
     _save_xarray,
     log_dataset_cfg,
     log_eval_result,
-    log_target_metric,
+    run_override,
 )
 
 from neurosurrogate.modeling.calc_engine import unified_simulator
@@ -37,7 +37,7 @@ def eval_with_static_datasets(datasets_cfg: Dict, surrogate_model, train_run_id)
         preprocessed_xr = surrogate_model.preprocessor.transform(
             original_ds, target_comp_id=target_comp_id
         )
-        log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
+        return log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
 
     logger.info("Start Flow:start generate eval data")
     datasets = build_sweep_datasets(datasets_cfg)
@@ -48,8 +48,9 @@ def eval_with_static_datasets(datasets_cfg: Dict, surrogate_model, train_run_id)
                 run_name=f"Eval_{key}",
                 tags={"mlflow.parentRunId": train_run_id, "eval_dataset": key},
                 nested=True,
-            ):
-                eval_diff(dataset)
+            ) as run:
+                representitive_score = eval_diff(dataset)
+                run_override(run.info.run_id, representitive_score)
                 logger.info(f"Successfully finished evaluation for {key}")
         except Exception as e:
             logger.exception(f"Failed to evaluate {key}: {str(e)}")
@@ -110,6 +111,9 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
 
     v = get_threshold()
     target_metric = calc_metric(v)
-    log_target_metric(train_run_id, target_metric)
+    with mlflow.start_run(train_run_id):
+        mlflow.log_metric("OPTUNA_TARGET_SCORE", target_metric)
+        mlflow.set_tag("is_optuna_trial", "true")
+        run_override(train_run_id, target_metric)
     logger.info(f"Script ended with metric: {target_metric}")
     return target_metric

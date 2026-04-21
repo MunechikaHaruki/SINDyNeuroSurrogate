@@ -62,7 +62,8 @@ def log_surrogate_summary(summary):
 def log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
     dt = dataset_cfg["dt"]
     target_comp_id = dataset_cfg["target_comp_id"]
-    mlflow.log_metrics(calc_dynamic_metrics(original_ds, surr_ds, target_comp_id, dt))
+    metrics = calc_dynamic_metrics(original_ds, surr_ds, target_comp_id, dt)
+    mlflow.log_metrics(metrics)
     names = ["orig", "preprocessed", "surr"]
     datasets = [original_ds, preprocessed_xr, surr_ds]
     for ds, name in zip(datasets, names):
@@ -83,21 +84,10 @@ def log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
         state_vars=["V", "latent1"],  # 実際のSINDyのターゲット変数名に合わせて変更
     )
     mlflow.log_figure(fig_phase, artifact_file="attractor_surr.png")
+    return metrics["periodicity_gap"]
 
 
-def log_target_metric(train_run_id, target_metric):
-    # 指標として記録（グラフ描画やソート用）
-    with mlflow.start_run(train_run_id):
-        mlflow.log_metric("OPTUNA_TARGET_SCORE", target_metric)
-        mlflow.set_tag("is_optuna_trial", "true")
-
-        # ★ ここから追加：Run名を更新する ★
-        # 現在のRun情報を取得して、元の名前を取り出す
-        current_run = mlflow.get_run(train_run_id)
-        original_name = current_run.data.tags.get("mlflow.runName", "Training_run")
-
-        # スコアを小数点以下4桁などにフォーマットして名前に結合
-        new_run_name = f"{original_name} | Score:{target_metric:.4f}"
-
-        # mlflow.runName タグを上書きすることで、UI上の表示名が変わる
-        mlflow.set_tag("mlflow.runName", new_run_name)
+def run_override(run_id, metric):
+    current_run = mlflow.get_run(run_id)
+    original_name = current_run.data.tags.get("mlflow.runName", "Run")
+    mlflow.set_tag("mlflow.runName", f"{original_name} | Score:{metric:.4f}")
