@@ -47,7 +47,7 @@ datasets_settings:
         current:
           pipeline_ind: 0
           variable:
-            value: {start: 0, stop: 30, step: 5 }
+            value: {start: 0, stop: 30, step: 1 }
 
     base_teaching_random:
       data_type: hh
@@ -78,7 +78,7 @@ lib:
       inputs: [0, 1, 2]
     - type: const
       inputs: []
-  lib_bilinear:
+  lib_hh_informed:
     - type: gate_poly_volt
       max_power: 4
       inputs: [0, 1]
@@ -94,7 +94,7 @@ lib:
       inputs: [0, 1, 2]
     - type: const
       inputs: []
-  lib_binded:
+  lib_hh_relaxation:
     - type: gate_poly_volt
       max_power: 4
       inputs: [0, 1]
@@ -118,9 +118,9 @@ sindy:
   optimizer:
     _target_: pysindy.optimizers.STLSQ
     threshold: 0.01
-    normalize_columns: true
+    normalize_columns: false
     alpha: 2.0
-  library_specs: ${lib.lib_bilinear}
+  library_specs: ${lib.lib_hh_informed}
 
 
 hydra:
