@@ -39,47 +39,50 @@ def make_gate_lib(func_names, is_product=False):
     return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
-def make_relaxation_lib(gates_list):
+GATE_PAIR_REGISTRY = {
+    "m": (alpha_m, beta_m),
+    "h": (alpha_h, beta_h),
+    "n": (alpha_n, beta_n),
+}
+
+
+def make_relaxation_1var_lib(gates_list):
     """
-    緩和ダイナミクス形式の基底関数を生成する。
-
-    各ゲート種 k に対して:
-      - x_inf_k(V) / tau_k(V) = alpha_k(V)           ... 1変数 (V のみ)
-      - g0 / tau_k(V)         = (alpha_k + beta_k)(V) * g0  ... 2変数 (V, g0)
-
-    gate_pairs: [(alpha_func, beta_func), ...] のリスト
+    緩和ダイナミクスの駆動項: alpha_k(V)
+    inputs: [0] (V のみ) で使うこと
     """
     GATE_PAIR_REGISTRY = {
         "m": (alpha_m, beta_m),
         "h": (alpha_h, beta_h),
         "n": (alpha_n, beta_n),
     }
-    gate_pairs = [GATE_PAIR_REGISTRY[g] for g in gates_list]
+    f_list, n_list = [], []
+    for g in gates_list:
+        alpha_f, _ = GATE_PAIR_REGISTRY[g]
+        a_name = alpha_f.__name__
+        f_list.append((lambda af: lambda x: af(x))(alpha_f))
+        n_list.append((lambda an: lambda x: f"{an}({x})")(a_name))
+    return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
-    f_list_1var = []  # alpha_k(V) 単体
-    n_list_1var = []
-    f_list_2var = []  # (alpha_k + beta_k)(V) * g0
-    n_list_2var = []
 
-    for alpha_f, beta_f in gate_pairs:
+def make_relaxation_2var_lib(gates_list):
+    """
+    緩和ダイナミクスの減衰項: (alpha_k + beta_k)(V) * g0
+    inputs: [0, 1] (V, g0) で使うこと
+    """
+
+    f_list, n_list = [], []
+    for g in gates_list:
+        alpha_f, beta_f = GATE_PAIR_REGISTRY[g]
         a_name = alpha_f.__name__
         b_name = beta_f.__name__
-
-        # --- x_inf / tau = alpha_k(V) : 1変数関数 ---
-        f_list_1var.append((lambda af: lambda x: af(x))(alpha_f))
-        n_list_1var.append((lambda an: lambda x: f"{an}({x})")(a_name))
-
-        # --- g0 / tau = (alpha_k + beta_k)(V) * g0 : 2変数関数 ---
-        f_list_2var.append(
+        f_list.append(
             (lambda af, bf: lambda x, y: (af(x) + bf(x)) * y)(alpha_f, beta_f)
         )
-        n_list_2var.append(
+        n_list.append(
             (lambda an, bn: lambda x, y: f"({an}({x})+{bn}({x}))*{y}")(a_name, b_name)
         )
-    return ps.CustomLibrary(
-        library_functions=f_list_1var + f_list_2var,
-        function_names=n_list_1var + n_list_2var,
-    )
+    return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
 def make_volt_lib():
@@ -137,5 +140,6 @@ LIB_BUILDER_REGISTRY = {
     "gate_poly_volt": lambda spec: make_gate_poly_volt_lib(spec["max_power"]),
     "identity": lambda spec: ps.IdentityLibrary(),
     "const": lambda spec: ps.PolynomialLibrary(degree=0, include_bias=True),
-    "relaxation": lambda spec: make_relaxation_lib(spec["gates"]),
+    "relaxation1": lambda spec: make_relaxation_1var_lib(spec["gates"]),
+    "relaxation2": lambda spec: make_relaxation_2var_lib(spec["gates"]),
 }

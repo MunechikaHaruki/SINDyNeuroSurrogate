@@ -9,7 +9,7 @@ matplotlib_style: paper
 # ==========================================
 datasets_settings:
   sweep_catalog: steady
-  teaching_catalog: exp3
+  teaching_catalog: base_teaching_random
 
   common:
     dt: 0.01 #[ms]
@@ -49,7 +49,7 @@ datasets_settings:
           variable:
             value: {start: 0, stop: 30, step: 5 }
 
-    exp3:
+    base_teaching_random:
       data_type: hh
       dt: ${datasets_settings.common.dt}
       duration: ${datasets_settings.common.train.duration}
@@ -105,7 +105,10 @@ lib:
     # --- dg0/dt 用 (relaxation形式) ---
     # alpha_k(V): 1変数 → inputs[0] = [0] (Vのみ)
     # (alpha_k+beta_k)(V)*g0: 2変数 → inputs[1] = [0, 1] (V, g0)
-    - type: relaxation
+    - type: relaxation1
+      gates: [m, h, n]
+      inputs: [0]
+    - type: relaxation2
       gates: [m, h, n]
       inputs: [0,1]
 
