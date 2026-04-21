@@ -39,6 +39,49 @@ def make_gate_lib(func_names, is_product=False):
     return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
+def make_relaxation_lib(gates_list):
+    """
+    緩和ダイナミクス形式の基底関数を生成する。
+
+    各ゲート種 k に対して:
+      - x_inf_k(V) / tau_k(V) = alpha_k(V)           ... 1変数 (V のみ)
+      - g0 / tau_k(V)         = (alpha_k + beta_k)(V) * g0  ... 2変数 (V, g0)
+
+    gate_pairs: [(alpha_func, beta_func), ...] のリスト
+    """
+    GATE_PAIR_REGISTRY = {
+        "m": (alpha_m, beta_m),
+        "h": (alpha_h, beta_h),
+        "n": (alpha_n, beta_n),
+    }
+    gate_pairs = [GATE_PAIR_REGISTRY[g] for g in gates_list]
+
+    f_list_1var = []  # alpha_k(V) 単体
+    n_list_1var = []
+    f_list_2var = []  # (alpha_k + beta_k)(V) * g0
+    n_list_2var = []
+
+    for alpha_f, beta_f in gate_pairs:
+        a_name = alpha_f.__name__
+        b_name = beta_f.__name__
+
+        # --- x_inf / tau = alpha_k(V) : 1変数関数 ---
+        f_list_1var.append((lambda af: lambda x: af(x))(alpha_f))
+        n_list_1var.append((lambda an: lambda x: f"{an}({x})")(a_name))
+
+        # --- g0 / tau = (alpha_k + beta_k)(V) * g0 : 2変数関数 ---
+        f_list_2var.append(
+            (lambda af, bf: lambda x, y: (af(x) + bf(x)) * y)(alpha_f, beta_f)
+        )
+        n_list_2var.append(
+            (lambda an, bn: lambda x, y: f"({an}({x})+{bn}({x}))*{y}")(a_name, b_name)
+        )
+    return ps.CustomLibrary(
+        library_functions=f_list_1var + f_list_2var,
+        function_names=n_list_1var + n_list_2var,
+    )
+
+
 def make_volt_lib():
     f_list = [
         lambda u, v, w: np.power(u, 3) * v * w,
@@ -94,4 +137,5 @@ LIB_BUILDER_REGISTRY = {
     "gate_poly_volt": lambda spec: make_gate_poly_volt_lib(spec["max_power"]),
     "identity": lambda spec: ps.IdentityLibrary(),
     "const": lambda spec: ps.PolynomialLibrary(degree=0, include_bias=True),
+    "relaxation": lambda spec: make_relaxation_lib(spec["gates"]),
 }

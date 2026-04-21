@@ -47,7 +47,7 @@ datasets_settings:
         current:
           pipeline_ind: 0
           variable:
-            value: {start: 0, stop: 30, step: 1 }
+            value: {start: 0, stop: 30, step: 5 }
 
     exp3:
       data_type: hh
@@ -94,6 +94,20 @@ lib:
       inputs: [0, 1, 2]
     - type: const
       inputs: []
+  lib_binded:
+    - type: gate_poly_volt
+      max_power: 4
+      inputs: [0, 1]
+    - type: identity
+      inputs: [0, 2]
+    - type: const
+      inputs: []
+    # --- dg0/dt 用 (relaxation形式) ---
+    # alpha_k(V): 1変数 → inputs[0] = [0] (Vのみ)
+    # (alpha_k+beta_k)(V)*g0: 2変数 → inputs[1] = [0, 1] (V, g0)
+    - type: relaxation
+      gates: [m, h, n]
+      inputs: [0,1]
 
 
 
