@@ -10,18 +10,29 @@ from neurosurrogate.modeling.neuron_core import (
     beta_n,
 )
 
+FUNC_REGISTRY = {
+    "alpha_m": alpha_m,
+    "alpha_h": alpha_h,
+    "alpha_n": alpha_n,
+    "beta_m": beta_m,
+    "beta_h": beta_h,
+    "beta_n": beta_n,
+}
 
-def make_gate_lib(funcs, is_product=False):
+
+def make_gate_lib(func_names, is_product=False):
     """Gate単体、または Gate * y のペアを生成するファクトリ"""
-    f_names = [f.__name__ for f in funcs]
     if not is_product:
         # 単体: lambda x: alpha_m(x)
-        f_list = [f for f in funcs]
-        n_list = [(lambda n: lambda x: f"{n}({x})")(n) for n in f_names]
+        f_list = [FUNC_REGISTRY[name] for name in func_names]
+        n_list = [(lambda n: lambda x: f"{n}({x})")(n) for n in func_names]
     else:
         # 積: lambda x, y: alpha_m(x) * y
-        f_list = [(lambda f: lambda x, y: f(x) * y)(f) for f in funcs]
-        n_list = [(lambda n: lambda x, y: f"{n}({x})*{y}")(n) for n in f_names]
+        f_list = [
+            (lambda f: lambda x, y: f(x) * y)(FUNC_REGISTRY[name])
+            for name in func_names
+        ]
+        n_list = [(lambda n: lambda x, y: f"{n}({x})*{y}")(n) for n in func_names]
     return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
@@ -71,19 +82,9 @@ def make_gate_poly_volt_lib(max_power: int):
     return ps.CustomLibrary(library_functions=f_list, function_names=n_list)
 
 
-FUNC_REGISTRY = {
-    "alpha_m": alpha_m,
-    "alpha_h": alpha_h,
-    "alpha_n": alpha_n,
-    "beta_m": beta_m,
-    "beta_h": beta_h,
-    "beta_n": beta_n,
-}
-
-
 LIB_BUILDER_REGISTRY = {
     "gate": lambda spec: make_gate_lib(
-        [FUNC_REGISTRY[f] for f in spec["funcs"]],
+        func_names=spec["funcs"],
         is_product=spec.get("is_product", False),
     ),
     "volt": lambda spec: make_volt_lib(),
