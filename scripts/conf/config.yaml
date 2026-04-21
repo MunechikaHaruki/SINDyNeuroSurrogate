@@ -83,7 +83,7 @@ lib:
       max_power: 4
       inputs: [0, 1]
     - type: gate
-      funcs: [alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n]
+      funcs: [alpha_m,  alpha_h, alpha_n]
       is_product: false
       inputs: [0]
     - type: gate
@@ -91,7 +91,7 @@ lib:
       is_product: true
       inputs: [0, 1]
     - type: identity
-      inputs: [0, 1, 2]
+      inputs: [0, 2]
     - type: const
       inputs: []
   lib_hh_relaxation:
