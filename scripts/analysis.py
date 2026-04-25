@@ -8,10 +8,15 @@ app = marimo.App(width="medium")
 def _():
     import marimo as mo
     import mlflow
+    import sys
+    from pathlib import Path
 
-    TARGET_EXP="tryDifferentTeachingCurrent"
-    mlflow.set_tracking_uri("file:./mlruns")
+    # プロジェクトルートをパスに追加
+    project_root = Path(__file__).parent.parent
+    sys.path.insert(0, str(project_root))
 
+    # これで以下がインポートできる
+    from scripts.utils.mlflow_handler import TARGET_EXP
     # ボタンを作成し、変数 'test_btn' に代入
     load_btn = mo.ui.button(label="ここをクリック！", value=False, on_click=lambda x: True)
     mo.md(f"""
