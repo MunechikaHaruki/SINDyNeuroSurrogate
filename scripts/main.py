@@ -19,7 +19,9 @@ from utils.log_utils import (
     log_surrogate_summary,
 )
 
+from neurosurrogate.modeling import get_loggable_summary
 from neurosurrogate.modeling.calc_engine import unified_simulator
+from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ def train_model(surrogate, train_dataset_cfg):
     train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
     log_dataset_cfg(train_dataset_cfg)
     surrogate.fit(train_ds, train_dataset_cfg["target_comp_id"])
-    log_surrogate_summary(surrogate.get_loggable_summary())
+    log_surrogate_summary(get_loggable_summary(surrogate, FUNC_COST_MAP, HH_COST))
     log_surrogate_model(surrogate)
 
 

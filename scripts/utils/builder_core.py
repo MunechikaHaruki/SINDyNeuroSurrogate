@@ -7,7 +7,6 @@ import pysindy as ps
 from conf.feature_library_components import LIB_BUILDER_REGISTRY
 
 from neurosurrogate.modeling import SINDySurrogateWrapper
-from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +61,4 @@ def build_surrogate(cfg_sindy):
     from scripts.conf import feature_library_components
 
     # surrogate_modelの初期化
-    return SINDySurrogateWrapper(
-        initialized_sindy, feature_library_components, FUNC_COST_MAP, HH_COST
-    )
+    return SINDySurrogateWrapper(initialized_sindy, feature_library_components)

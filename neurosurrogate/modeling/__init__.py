@@ -18,12 +18,9 @@ class PCAPreProcessorWrapper:
     def __init__(self):
         self.pca = PCA(n_components=1)
 
-    def fit(self, train_xr_dataset, target_comp_id):
-        self.train_gate_data = (
-            train_xr_dataset["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
-        )
-        logger.info("Fitting preprocessor...")
-        self.pca.fit(self.train_gate_data)
+    def fit(self, train_gate_data):
+        self.train_gate_data = train_gate_data
+        self.pca.fit(train_gate_data)
 
     def transform(self, xr_data, target_comp_id):
         xr_gate = xr_data["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
@@ -63,16 +60,16 @@ class PCAPreProcessorWrapper:
 
 
 class SINDySurrogateWrapper:
-    def __init__(self, initialized_sindy, target_module, base_cost_map, original_cost):
+    def __init__(self, initialized_sindy, target_module):
         self.sindy = initialized_sindy
         self.target_module = target_module
-        self.base_cost_map = base_cost_map
-        self.original_cost = original_cost
-
         self.preprocessor = PCAPreProcessorWrapper()
 
     def fit(self, train_xr, target_comp_id):
-        self.preprocessor.fit(train_xr, target_comp_id=target_comp_id)
+        train_gate_data = (
+            train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
+        )
+        self.preprocessor.fit(train_gate_data)
         self.preprocessed_xr = self.preprocessor.transform(
             train_xr, target_comp_id=target_comp_id
         )
@@ -98,44 +95,6 @@ class SINDySurrogateWrapper:
     @property
     def sindy_args(self):
         return (self.sindy.coefficients(), self.compute_theta)
-
-    def get_loggable_summary(self) -> dict:
-        coef = self.sindy.optimizer.coef_
-        nonzero_term_num = np.count_nonzero(coef)
-
-        feature_cost_map = build_feature_cost_map(
-            self.sindy.get_feature_names(), self.base_cost_map
-        )
-        active_features_map = build_feature_cost_map(
-            get_active_features(self.sindy), self.base_cost_map
-        )
-
-        return {
-            "metrics": {
-                "nonzero_term_num": str(nonzero_term_num),
-                "nonzero_term_ratio": str(nonzero_term_num / coef.size),
-                **static_calc_cost(self.sindy, feature_cost_map, self.original_cost),
-                **self.preprocessor.get_loggable_summary(),
-            },
-            "params": self.sindy.optimizer.get_params(),
-            "artifacts": {
-                # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
-                "texts": {
-                    "equations.txt": "\n".join(self.sindy.equations(precision=3)),
-                    "coef.txt": np.array2string(coef, precision=3),
-                    "features.md": self._format_to_table(feature_cost_map),
-                    "features_active.md": self._format_to_table(active_features_map),
-                    "misc/source.txt": self.source,
-                },
-                # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
-                "xarray": {"train": self.preprocessed_xr},
-            },
-            "model": {
-                "xi": coef,
-                "feature_names": self.sindy.get_feature_names(),
-                "target_names": self.preprocessed_xr.variable.values.tolist(),
-            },
-        }
 
     @staticmethod
     def _build_source(sindy):
@@ -163,10 +122,50 @@ def dynamic_compute_theta({input_features}):
     return res
         """
 
-    @staticmethod
+
+def get_loggable_summary(
+    surrogate: SINDySurrogateWrapper, base_cost_map, original_cost
+) -> dict:
     def _format_to_table(cost_map: dict) -> str:
         # 辞書をデータフレームに変換
         df = pd.DataFrame.from_dict(cost_map, orient="index")
         df.index.name = "Feature"
         # 欠損値を0で埋めて整数型にし、美しいMarkdownとして出力
         return df.fillna(0).astype(int).to_markdown()
+
+    coef = surrogate.sindy.optimizer.coef_
+    nonzero_term_num = np.count_nonzero(coef)
+
+    feature_cost_map = build_feature_cost_map(
+        surrogate.sindy.get_feature_names(), base_cost_map
+    )
+    active_features_map = build_feature_cost_map(
+        get_active_features(surrogate.sindy), base_cost_map
+    )
+
+    return {
+        "metrics": {
+            "nonzero_term_num": str(nonzero_term_num),
+            "nonzero_term_ratio": str(nonzero_term_num / coef.size),
+            **static_calc_cost(surrogate.sindy, feature_cost_map, original_cost),
+            **surrogate.preprocessor.get_loggable_summary(),
+        },
+        "params": surrogate.sindy.optimizer.get_params(),
+        "artifacts": {
+            # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
+            "texts": {
+                "equations.txt": "\n".join(surrogate.sindy.equations(precision=3)),
+                "coef.txt": np.array2string(coef, precision=3),
+                "features.md": _format_to_table(feature_cost_map),
+                "features_active.md": _format_to_table(active_features_map),
+                "misc/source.txt": surrogate.source,
+            },
+            # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
+            "xarray": {"train": surrogate.preprocessed_xr},
+        },
+        "model": {
+            "xi": coef,
+            "feature_names": surrogate.sindy.get_feature_names(),
+            "target_names": surrogate.preprocessed_xr.variable.values.tolist(),
+        },
+    }
