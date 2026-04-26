@@ -22,28 +22,6 @@ class PCAPreProcessorWrapper:
         self.train_gate_data = train_gate_data
         self.pca.fit(train_gate_data)
 
-    def transform(self, xr_data, target_comp_id):
-        xr_gate = xr_data["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
-        transformed_gate = self.pca.transform(xr_gate)
-        v_soma_da = xr_data["vars"].sel(gate=False, comp_id=target_comp_id)
-        new_vars = np.concatenate(
-            (v_soma_da.to_numpy().reshape(-1, 1), transformed_gate), axis=1
-        )
-
-        n_latent = transformed_gate.shape[1]
-        coords_config = {
-            "comp_id": [target_comp_id] * (n_latent + 1),
-            "variable": ["V"] + [f"latent{i + 1}" for i in range(n_latent)],
-            "gate": [False] + [True] * n_latent,
-        }
-        logger.info(coords_config)
-        return set_coords(
-            raw=new_vars,
-            u=xr_data["I_internal"].sel(node_id=target_comp_id).to_numpy(),
-            coords=coords_config,
-            dt=float(xr_data.time[1] - xr_data.time[0]),
-        )
-
     def get_loggable_summary(self):
         reconstructed = self.pca.inverse_transform(
             self.pca.transform(self.train_gate_data)
@@ -65,14 +43,13 @@ class SINDySurrogateWrapper:
         self.target_module = target_module
         self.preprocessor = PCAPreProcessorWrapper()
 
+    @staticmethod
+    def get_gate_numpy(train_xr, target_comp_id):
+        return train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
+
     def fit(self, train_xr, target_comp_id):
-        train_gate_data = (
-            train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
-        )
-        self.preprocessor.fit(train_gate_data)
-        self.preprocessed_xr = self.preprocessor.transform(
-            train_xr, target_comp_id=target_comp_id
-        )
+        self.preprocessor.fit(self.get_gate_numpy(train_xr, target_comp_id))
+        self.preprocessed_xr = self.transform(train_xr, target_comp_id=target_comp_id)
         input_features = self.preprocessed_xr.variable.values.tolist() + ["u"]
         logger.info(input_features)
         self.sindy.fit(
@@ -87,6 +64,28 @@ class SINDySurrogateWrapper:
         exec(self.source, vars(self.target_module), local_vars)
         self.compute_theta = local_vars["dynamic_compute_theta"]
         logger.info(self.source)
+
+    def transform(self, xr_data, target_comp_id):
+        xr_gate = self.get_gate_numpy(xr_data, target_comp_id)
+        transformed_gate = self.preprocessor.pca.transform(xr_gate)
+        v_soma_da = xr_data["vars"].sel(gate=False, comp_id=target_comp_id)
+        new_vars = np.concatenate(
+            (v_soma_da.to_numpy().reshape(-1, 1), transformed_gate), axis=1
+        )
+
+        n_latent = transformed_gate.shape[1]
+        coords_config = {
+            "comp_id": [target_comp_id] * (n_latent + 1),
+            "variable": ["V"] + [f"latent{i + 1}" for i in range(n_latent)],
+            "gate": [False] + [True] * n_latent,
+        }
+        logger.info(coords_config)
+        return set_coords(
+            raw=new_vars,
+            u=xr_data["I_internal"].sel(node_id=target_comp_id).to_numpy(),
+            coords=coords_config,
+            dt=float(xr_data.time[1] - xr_data.time[0]),
+        )
 
     @property
     def gate_init(self):
