@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 
 import mlflow
+import yaml
 
 TARGET_EXP = "test_static_params"
 mlflow.set_tracking_uri("file:./mlruns")
@@ -53,8 +54,8 @@ def get_model_informations(run_ids):
         model_info[run_id]["equations"] = mlflow.artifacts.load_text(
             f"runs:/{run_id}/equations.txt"
         )
-        model_info[run_id]["teaching_config"] = mlflow.artifacts.load_text(
-            f"runs:/{run_id}/dataset.yaml"
+        model_info[run_id]["teaching_config"] = yaml.safe_load(
+            mlflow.artifacts.load_text(f"runs:/{run_id}/dataset.yaml")
         )
     return model_info
 

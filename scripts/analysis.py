@@ -13,6 +13,8 @@ def _():
     project_root = Path(__file__).parent.parent
     sys.path.insert(0, str(project_root))
     from scripts.utils.mlflow_handler import TARGET_EXP,get_runs_df,get_child_runs,get_model_informations
+    from scripts.utils.builder_core import build_simulator_config
+
     # ボタンを作成し、変数 'test_btn' に代入
     load_btn = mo.ui.button(label="ここをクリック！", value=False, on_click=lambda x: True)
     mo.md(f"""
@@ -20,7 +22,14 @@ def _():
     - **ターゲット実験:** `{TARGET_EXP}`
     - **run_idを選択:** {load_btn}
     """)
-    return TARGET_EXP, get_model_informations, get_runs_df, load_btn, mo
+    return (
+        TARGET_EXP,
+        build_simulator_config,
+        get_model_informations,
+        get_runs_df,
+        load_btn,
+        mo,
+    )
 
 
 @app.cell
@@ -56,6 +65,21 @@ def _(get_model_informations, mo, run_selector):
         ])
         for run_id in run_ids
     ])
+    return model_infos, run_ids
+
+
+@app.cell
+def _(mo, run_ids):
+    dropdown=mo.ui.dropdown(options=run_ids)
+    dropdown
+    return (dropdown,)
+
+
+@app.cell
+def _(build_simulator_config, dropdown, model_infos):
+    from neurosurrogate.modeling.calc_engine import unified_simulator
+    simulator_config=model_infos[dropdown.value]["teaching_config"]
+    unified_simulator(**build_simulator_config(simulator_config))
     return
 
 
