@@ -8,56 +8,23 @@ matplotlib_style: paper
 # データセット設定
 # ==========================================
 datasets_settings:
-  sweep_catalog: steady
-  teaching_catalog: base_teaching_random
-
   common:
     dt: 0.01 #[ms]
     silence_duration: 10 #[ms]
-    train:
-      current_seed: 991927697
-      duration: 9000 #[ms]
-    test:
-      current_seed: 6
-      duration: 800 #[ms]
-
-  catalog:
-    random:
-      data_type: hh
-      dt: ${datasets_settings.common.dt}
-      duration: ${datasets_settings.common.test.duration}
-      silence_duration: ${datasets_settings.common.silence_duration}
-      current:
-        current_seed: ${datasets_settings.common.test.current_seed}
-        pipeline:
-          - ${current_generators.rand_pulse}
-      sweep:
-        current_seed: [9919, 9920]
-
-    steady:
-      data_type: hh
-      dt: ${datasets_settings.common.dt}
-      duration: ${datasets_settings.common.test.duration}
-      silence_duration: ${datasets_settings.common.silence_duration}
-      current:
-        current_seed: ${datasets_settings.common.test.current_seed}
-        pipeline:
-          - ${current_generators.steady}
-      sweep:
-        current:
-          pipeline_ind: 0
-          variable:
-            value: {start: 0, stop: 30, step: 1 }
-
-    base_teaching_random:
-      data_type: hh
-      dt: ${datasets_settings.common.dt}
-      duration: ${datasets_settings.common.train.duration}
-      silence_duration: ${datasets_settings.common.silence_duration}
-      current:
-        current_seed: ${datasets_settings.common.train.current_seed}
-        pipeline: 
-          - ${current_generators.discretized}
+  train:
+    duration: 9000 #[ms]
+    current_seed: 991927697
+    model_name: hh
+    pipeline: 
+      - ${current_generators.discretized}
+  sweep:
+    common:
+      model_name: hh
+      duration: 800
+    type: random
+    catalog:
+      random: [9919, 9920]
+      steady: {start: 0, stop: 30, step: 1 }
 
 # ==========================================
 # SINDy Settings (モデル抽出設定)

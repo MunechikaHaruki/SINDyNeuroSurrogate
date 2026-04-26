@@ -1,10 +1,3 @@
-
-steady:
-  _target_: neurosurrogate.utils.current_generators.generate_steady
-  value: 10
-rand_pulse:
-  _target_: neurosurrogate.utils.current_generators.generate_rand_pulse
-  baseline: 0
 gauss_rand_pulse:
   _target_: neurosurrogate.utils.current_generators.generate_gauss_rand_pulse
   mu: 6.2
