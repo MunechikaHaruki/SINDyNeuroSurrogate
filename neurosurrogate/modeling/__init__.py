@@ -14,41 +14,19 @@ from .xarray_utils import set_coords
 logger = logging.getLogger(__name__)
 
 
-class PCAPreProcessorWrapper:
-    def __init__(self):
-        self.pca = PCA(n_components=1)
-
-    def fit(self, train_gate_data):
-        self.train_gate_data = train_gate_data
-        self.pca.fit(train_gate_data)
-
-    def get_loggable_summary(self):
-        reconstructed = self.pca.inverse_transform(
-            self.pca.transform(self.train_gate_data)
-        )
-        mse = np.mean((self.train_gate_data - reconstructed) ** 2)
-        return {
-            "pca/explained_variance_ratio": float(
-                self.pca.explained_variance_ratio_[0]
-            ),
-            "pca/explained_variance": float(self.pca.explained_variance_[0]),
-            "pca/reconstruction_mse": float(mse),
-            "pca/reconstruction_mse_ratio": float(mse / np.var(self.train_gate_data)),
-        }
-
-
 class SINDySurrogateWrapper:
     def __init__(self, initialized_sindy, target_module):
         self.sindy = initialized_sindy
         self.target_module = target_module
-        self.preprocessor = PCAPreProcessorWrapper()
+        self.preprocessor = PCA(n_components=1)
 
     @staticmethod
     def get_gate_numpy(train_xr, target_comp_id):
         return train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
 
     def fit(self, train_xr, target_comp_id):
-        self.preprocessor.fit(self.get_gate_numpy(train_xr, target_comp_id))
+        self.train_gate_data = self.get_gate_numpy(train_xr, target_comp_id)
+        self.preprocessor.fit(self.train_gate_data)
         self.preprocessed_xr = self.transform(train_xr, target_comp_id=target_comp_id)
         input_features = self.preprocessed_xr.variable.values.tolist() + ["u"]
         logger.info(input_features)
@@ -67,7 +45,7 @@ class SINDySurrogateWrapper:
 
     def transform(self, xr_data, target_comp_id):
         xr_gate = self.get_gate_numpy(xr_data, target_comp_id)
-        transformed_gate = self.preprocessor.pca.transform(xr_gate)
+        transformed_gate = self.preprocessor.transform(xr_gate)
         v_soma_da = xr_data["vars"].sel(gate=False, comp_id=target_comp_id)
         new_vars = np.concatenate(
             (v_soma_da.to_numpy().reshape(-1, 1), transformed_gate), axis=1
@@ -147,7 +125,7 @@ def get_loggable_summary(
             "nonzero_term_num": str(nonzero_term_num),
             "nonzero_term_ratio": str(nonzero_term_num / coef.size),
             **static_calc_cost(surrogate.sindy, feature_cost_map, original_cost),
-            **surrogate.preprocessor.get_loggable_summary(),
+            **_get_pca_metrics(surrogate.preprocessor, surrogate.train_gate_data),
         },
         "params": surrogate.sindy.optimizer.get_params(),
         "artifacts": {
@@ -167,4 +145,15 @@ def get_loggable_summary(
             "feature_names": surrogate.sindy.get_feature_names(),
             "target_names": surrogate.preprocessed_xr.variable.values.tolist(),
         },
+    }
+
+
+def _get_pca_metrics(pca: PCA, train_gate_data):
+    reconstructed = pca.inverse_transform(pca.transform(train_gate_data))
+    mse = np.mean((train_gate_data - reconstructed) ** 2)
+    return {
+        "pca/explained_variance_ratio": float(pca.explained_variance_ratio_[0]),
+        "pca/explained_variance": float(pca.explained_variance_[0]),
+        "pca/reconstruction_mse": float(mse),
+        "pca/reconstruction_mse_ratio": float(mse / np.var(train_gate_data)),
     }
