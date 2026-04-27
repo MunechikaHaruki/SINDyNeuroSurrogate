@@ -3,6 +3,7 @@ import logging
 import hydra
 import mlflow
 
+from neurosurrogate.modeling import SINDySummary
 from neurosurrogate.modeling.profiler import calc_dynamic_metrics
 from neurosurrogate.utils.plots import (
     draw_engine,
@@ -40,21 +41,20 @@ def log_dataset_cfg(dataset_cfg):
     mlflow.log_dict(dataset_cfg, "dataset.yaml")
 
 
-def log_surrogate_summary(summary):
-    mlflow.log_metrics(summary["metrics"])
-    mlflow.log_params(summary["params"])
+def log_surrogate_summary(summary: SINDySummary):
+    mlflow.log_metrics(summary.metrics)
+    mlflow.log_params(summary.params)
 
-    for filename, content in summary["artifacts"]["texts"].items():
+    for filename, content in summary.texts.items():
         mlflow.log_text(content, artifact_file=filename)
 
-    for name, ds in summary["artifacts"]["xarray"].items():
+    for name, ds in summary.xarrays.items():
         _save_xarray(ds, name)
 
-    model = summary["model"]
     fig = plot_sindy_coefficients(
-        xi_matrix=model["xi"],
-        feature_names=model["feature_names"],
-        target_names=model["target_names"],
+        xi_matrix=summary.xi,
+        feature_names=summary.feature_names,
+        target_names=summary.target_names,
     )
     mlflow.log_figure(fig, artifact_file="sindy_coef.png")
 

@@ -1,7 +1,9 @@
 import logging
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 from sklearn.decomposition import PCA
 
 from .profiler import (
@@ -103,9 +105,20 @@ def transform_gate(preprocessor, xr_data, target_comp_id):
     )
 
 
+@dataclass
+class SINDySummary:
+    metrics: dict[str, float]
+    params: dict
+    texts: dict[str, str]  # filename -> content
+    xarrays: dict[str, xr.Dataset]
+    xi: np.ndarray
+    feature_names: list[str]
+    target_names: list[str]
+
+
 def get_loggable_summary(
     surrogate: SINDySurrogateWrapper, base_cost_map, original_cost
-) -> dict:
+) -> SINDySummary:
     def _format_to_table(cost_map: dict) -> str:
         # 辞書をデータフレームに変換
         df = pd.DataFrame.from_dict(cost_map, orient="index")
@@ -123,32 +136,26 @@ def get_loggable_summary(
         get_active_features(surrogate.sindy), base_cost_map
     )
 
-    return {
-        "metrics": {
+    return SINDySummary(
+        metrics={
             "nonzero_term_num": str(nonzero_term_num),
             "nonzero_term_ratio": str(nonzero_term_num / coef.size),
             **static_calc_cost(surrogate.sindy, feature_cost_map, original_cost),
             **_get_pca_metrics(surrogate.preprocessor, surrogate.train_gate_data),
         },
-        "params": surrogate.sindy.optimizer.get_params(),
-        "artifacts": {
-            # テキストファイルとして保存するもの (ファイル名: 中身の文字列)
-            "texts": {
-                "equations.txt": "\n".join(surrogate.sindy.equations(precision=3)),
-                "coef.txt": np.array2string(coef, precision=3),
-                "features.md": _format_to_table(feature_cost_map),
-                "features_active.md": _format_to_table(active_features_map),
-                "misc/source.txt": surrogate.source,
-            },
-            # 画像ファイルとして保存するもの (ファイル名: Figureオブジェクト)
-            "xarray": {"train": surrogate.preprocessed_xr},
+        params=surrogate.sindy.optimizer.get_params(),
+        texts={
+            "equations.txt": "\n".join(surrogate.sindy.equations(precision=3)),
+            "coef.txt": np.array2string(coef, precision=3),
+            "features.md": _format_to_table(feature_cost_map),
+            "features_active.md": _format_to_table(active_features_map),
+            "misc/source.txt": surrogate.source,
         },
-        "model": {
-            "xi": coef,
-            "feature_names": surrogate.sindy.get_feature_names(),
-            "target_names": surrogate.preprocessed_xr.variable.values.tolist(),
-        },
-    }
+        xarrays={"train": surrogate.preprocessed_xr},
+        xi=coef,
+        feature_names=surrogate.sindy.get_feature_names(),
+        target_names=surrogate.preprocessed_xr.variable.values.tolist(),
+    )
 
 
 def _get_pca_metrics(pca: PCA, train_gate_data):
