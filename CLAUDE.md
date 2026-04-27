@@ -58,7 +58,7 @@ scripts/                 # Hydra + MLflow オーケストレーション
   utils/
     boot.py              # setup_all: proxy無効化 + MLflow + matplotlib
     builder_core.py      # build_simulator_config, build_surrogate
-    builder_datasets.py  # catalog → sweep cases 展開
+    builder.py  # catalog → sweep cases 展開
     log_model.py         # pyfunc で SINDy モデル保存/復元
     log_utils.py         # メトリクス / 図 / xarray ロギング
 ```

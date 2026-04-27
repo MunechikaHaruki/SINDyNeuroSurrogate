@@ -5,11 +5,9 @@ import mlflow
 from eval import eval_with_model_reaction, eval_with_static_datasets
 from omegaconf import DictConfig
 from utils.boot import setup_all
-from utils.builder_core import (
+from utils.builder import (
     build_simulator_config,
     build_surrogate,
-)
-from utils.builder_datasets import (
     build_train_dataset,
 )
 from utils.log_model import log_surrogate_model
@@ -42,9 +40,8 @@ def main(cfg: DictConfig) -> None:
     surrogate_model = build_surrogate(cfg["sindy"])
 
     datasets_cfg = cfg["datasets_settings"]
-    with mlflow.start_run(run_name=f"Training_run:{get_hydra_overrides()}") as run:
+    with mlflow.start_run(run_name=f"train:{get_hydra_overrides()}") as run:
         train_run_id = run.info.run_id
-        logger.info(f"run_id:{run.info.run_id}:Start training")
         train_model(surrogate_model, build_train_dataset(datasets_cfg))
 
     if cfg["is_multirun"]:
