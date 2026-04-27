@@ -18,6 +18,7 @@ from utils.log_utils import (
     run_override,
 )
 
+from neurosurrogate.modeling import transform_gate
 from neurosurrogate.modeling.calc_engine import unified_simulator
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,8 @@ def eval_with_static_datasets(datasets_cfg: Dict, surrogate_model, train_run_id)
             surrogate_target=target_comp_id,
             surrogate_model=surrogate_model,
         )
-        preprocessed_xr = surrogate_model.transform(
-            original_ds, target_comp_id=target_comp_id
+        preprocessed_xr = transform_gate(
+            surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
         )
         return log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
 

@@ -3,6 +3,7 @@ import logging
 import tempfile
 from pathlib import Path
 
+import joblib
 import mlflow
 import numpy as np
 
@@ -27,6 +28,7 @@ class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
         xi_matrix = np.load(context.artifacts["xi_path"])
         self.gate_init = np.load(context.artifacts["gate_init_path"])
         self.sindy_args = (xi_matrix, compute_theta)
+        self.preprocessor = joblib.load(context.artifacts["preprocessor_path"])
 
     def predict(self, context, model_input):
         pass  # unified_simulatorに直接渡すので不要
@@ -39,6 +41,7 @@ def log_surrogate_model(surrogate: SINDySurrogateWrapper):
         np.save(tmpdir / "xi.npy", surrogate.sindy.coefficients())
         np.save(tmpdir / "gate_init.npy", surrogate.gate_init)
         (tmpdir / "source.py").write_text(surrogate.source)
+        joblib.dump(surrogate.preprocessor, tmpdir / "preprocessor.joblib")
 
         mlflow.pyfunc.log_model(
             artifact_path="surrogate_model",
@@ -48,16 +51,12 @@ def log_surrogate_model(surrogate: SINDySurrogateWrapper):
                 "gate_init_path": str(tmpdir / "gate_init.npy"),
                 "source_path": str(tmpdir / "source.py"),
                 "target_module_path": inspect.getfile(surrogate.target_module),
+                "preprocessor_path": str(tmpdir / "preprocessor.joblib"),
             },
         )
 
 
 def load_surrogate_model(run_id: str):
-    """
-    MLflowのrun_idからSINDySurrogateMLflowModelをロードし、
-    シミュレータが利用可能な状態（属性が復元された状態）で返す。
-    (あくまでunified_simulatorでしか使えないことに注意)
-    """
     # log_surrogate_model で指定した artifact_path を使用
     model_uri = f"runs:/{run_id}/surrogate_model"
     logger.info(f"Loading custom MLflow model from: {model_uri}")

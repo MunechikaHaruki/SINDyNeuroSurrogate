@@ -84,6 +84,21 @@ def _(build_simulator_config, dropdown, model_infos):
 
 
 @app.cell
+def _(run_ids):
+    from scripts.utils.log_model import load_surrogate_model
+    surrogate=load_surrogate_model(run_ids[0])
+    return
+
+
+app._unparsable_cell(
+    r"""
+    print(surrogate.)
+    """,
+    name="_"
+)
+
+
+@app.cell
 def _():
     return
 
