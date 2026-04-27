@@ -14,7 +14,6 @@ datasets_settings:
     silence_duration: 10 #[ms]
   train:
     duration: 9000 #[ms]
-    current_seed: 991927697
     model_name: hh
     pipeline: 
       - ${current_generators.discretized}

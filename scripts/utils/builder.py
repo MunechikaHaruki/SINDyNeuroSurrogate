@@ -1,5 +1,4 @@
 import logging
-import random
 
 import hydra
 import numpy as np
@@ -67,12 +66,8 @@ BUILT_MODELS = build_models(MODEL_DEFINITIONS)
 
 def build_simulator_config(dataset_cfg):
     def build_current_pipeline(current_cfg):
-        current_seed = current_cfg["current_seed"]
         iteration = current_cfg["iteration"]
         silence_steps = current_cfg["silence_steps"]
-        random.seed(current_seed)
-        np.random.seed(current_seed)
-
         dset_i_ext = np.zeros(iteration)
 
         for step_cfg in current_cfg["pipeline"]:
@@ -89,16 +84,13 @@ def build_simulator_config(dataset_cfg):
     return parsed_dict
 
 
-def build_dataset(
-    dt, silence_duration, duration, current_seed, model_name, pipeline
-) -> dict:
+def build_dataset(dt, silence_duration, duration, model_name, pipeline) -> dict:
     """単一のケース設定(YAMLのcatalog_itemの階層構造そのまま)からデータセット辞書を構築する"""
     return {
         "data_type": model_name,
         "dt": dt,
         "current": {
             # フラットアクセスではなく、case_cfg["current"] のネストを参照する
-            "current_seed": current_seed,
             "iteration": int(duration / dt),
             "pipeline": pipeline,
             "silence_steps": int(silence_duration / dt),
