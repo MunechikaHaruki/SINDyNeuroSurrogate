@@ -9,7 +9,6 @@ from utils.builder import (
     build_sweep_datasets,
 )
 from utils.log_model import (
-    _save_xarray,
     load_surrogate_model,
 )
 
@@ -64,16 +63,15 @@ def eval_datasets(datasets_cfg: Dict, surrogate_model):
         eval_dataset(surrogate_model, dataset_cfg)
 
 
-def run_override(run_id, metric):
-    current_run = mlflow.get_run(run_id)
-    original_name = current_run.data.tags.get("mlflow.runName", "Run")
-    mlflow.set_tag("mlflow.runName", f"{original_name} | Score:{metric:.4f}")
-
-
 def eval_with_model_reaction(datasets_cfg, train_run_id):
     from scipy.signal import find_peaks
 
     surrogate_model = load_surrogate_model(train_run_id)
+
+    def run_override(run_id, metric):
+        current_run = mlflow.get_run(run_id)
+        original_name = current_run.data.tags.get("mlflow.runName", "Run")
+        mlflow.set_tag("mlflow.runName", f"{original_name} | Score:{metric:.4f}")
 
     @mlflow.trace
     def get_firing_count(amptitide):
@@ -83,7 +81,6 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
             surrogate_target=steady_cfg["target_comp_id"],
             surrogate_model=surrogate_model,
         )
-        _save_xarray(surr_xr, "surr")
         target_data = (
             surr_xr["vars"]
             .sel(comp_id=steady_cfg["target_comp_id"], gate=False)

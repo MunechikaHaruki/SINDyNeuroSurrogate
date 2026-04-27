@@ -17,15 +17,6 @@ from neurosurrogate.utils.plots import (
 logger = logging.getLogger(__name__)
 
 
-def _save_xarray(ds, name):
-    """
-    plotlyでセーブされるhtmlは重い
-    """
-    datasets, spec = spec_simple(ds)
-    fig = draw_engine(datasets, spec, engine="matplotlib")
-    mlflow.log_figure(fig, artifact_file=f"{name}.png")
-
-
 def log_surrogate_summary(summary: SINDySummary):
     mlflow.log_metrics(summary.metrics)
     mlflow.log_params(summary.params)
@@ -34,7 +25,9 @@ def log_surrogate_summary(summary: SINDySummary):
         mlflow.log_text(content, artifact_file=filename)
 
     for name, ds in summary.xarrays.items():
-        _save_xarray(ds, name)
+        datasets, spec = spec_simple(ds)
+        fig = draw_engine(datasets, spec, engine="matplotlib")
+        mlflow.log_figure(fig, artifact_file=f"{name}.png")
 
     fig = plot_sindy_coefficients(
         xi_matrix=summary.xi,

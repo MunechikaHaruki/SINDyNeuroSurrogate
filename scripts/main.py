@@ -19,16 +19,10 @@ from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
 logger = logging.getLogger(__name__)
 
 
-def log_dataset_cfg(dataset_cfg):
-    mlflow.log_params(dataset_cfg)
-    mlflow.log_params(dataset_cfg["current"]["pipeline"][0])
-    mlflow.log_dict(dataset_cfg, "dataset.yaml")
-
-
 @mlflow.trace
 def train_model(surrogate, train_dataset_cfg):
     train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
-    log_dataset_cfg(train_dataset_cfg)
+    mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
     surrogate.fit(train_ds, train_dataset_cfg["target_comp_id"])
     log_surrogate_summary(get_loggable_summary(surrogate, FUNC_COST_MAP, HH_COST))
     log_surrogate_model(surrogate)
