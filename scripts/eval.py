@@ -11,51 +11,58 @@ from utils.builder import (
 from utils.log_model import load_surrogate_model
 from utils.log_utils import (
     _save_xarray,
-    log_dataset_cfg,
-    log_eval_result,
     run_override,
 )
 
 from neurosurrogate.modeling import transform_gate
 from neurosurrogate.modeling.calc_engine import unified_simulator
+from neurosurrogate.modeling.profiler import calc_dynamic_metrics
+from neurosurrogate.utils.plots import (
+    draw_engine,
+    plot_2d_attractor_comparison,
+    spec_diff,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def eval_with_static_datasets(datasets_cfg: Dict, surrogate_model, train_run_id):
-    @mlflow.trace
-    def eval_diff(dataset_cfg):
-        log_dataset_cfg(dataset_cfg)
-        original_ds = unified_simulator(**build_simulator_config(dataset_cfg))
-        target_comp_id = dataset_cfg["target_comp_id"]
-        surr_ds = unified_simulator(
-            **build_simulator_config(dataset_cfg),
-            surrogate_target=target_comp_id,
-            surrogate_model=surrogate_model,
-        )
-        preprocessed_xr = transform_gate(
-            surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
-        )
-        return log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
+def _log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
+    target_comp_id = dataset_cfg["target_comp_id"]
+    metrics = calc_dynamic_metrics(
+        original_ds, surr_ds, target_comp_id, dataset_cfg["dt"]
+    )
+    datasets, spec = spec_diff(
+        original_ds, preprocessed_xr, surr_ds, surr_id=target_comp_id
+    )
+    fig_diff = draw_engine(datasets, spec, engine="matplotlib")
+    fig_phase = plot_2d_attractor_comparison(
+        orig_ds=preprocessed_xr,
+        surr_ds=surr_ds,
+        comp_id=target_comp_id,
+        state_vars=["V", "latent1"],  # 実際のSINDyのターゲット変数名に合わせて変更
+    )
+    mlflow.log_figure(fig_phase, artifact_file="attractor_surr.png")
+    return {"figure": {"diff": fig_diff, "phase": fig_phase}, "metrics": metrics}
 
-    logger.info("Start Flow:start generate eval data")
+
+def eval_dataset(surrogate_model, dataset_cfg):
+    original_ds = unified_simulator(**build_simulator_config(dataset_cfg))
+    target_comp_id = dataset_cfg["target_comp_id"]
+    surr_ds = unified_simulator(
+        **build_simulator_config(dataset_cfg),
+        surrogate_target=target_comp_id,
+        surrogate_model=surrogate_model,
+    )
+    preprocessed_xr = transform_gate(
+        surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
+    )
+    return _log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
+
+
+def eval_datasets(datasets_cfg: Dict, surrogate_model):
     datasets = build_sweep_datasets(datasets_cfg)
-    for key, dataset in datasets.items():
-        logger.info(f"start {key}'s evaluation")
-        try:
-            with mlflow.start_run(
-                run_name=f"Eval_{key}",
-                tags={"mlflow.parentRunId": train_run_id, "eval_dataset": key},
-                nested=True,
-            ) as run:
-                representitive_score = eval_diff(dataset)
-                run_override(run.info.run_id, representitive_score)
-                logger.info(f"Successfully finished evaluation for {key}")
-        except Exception as e:
-            logger.exception(f"Failed to evaluate {key}: {str(e)}")
-            mlflow.set_tag("error_type", str(type(e).__name__))
-            mlflow.set_tag("error_msg", str(e))
-            continue
+    for key, dataset_cfg in datasets.items():
+        eval_dataset(surrogate_model, dataset_cfg)
 
 
 def eval_with_model_reaction(datasets_cfg, train_run_id):

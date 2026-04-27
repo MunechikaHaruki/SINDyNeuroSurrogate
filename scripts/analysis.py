@@ -29,17 +29,10 @@ def _():
     - **ターゲット実験:** `{TARGET_EXP}`
     - **run_idを選択:** {load_btn}
     """)
-    return (
-        TARGET_EXP,
-        build_simulator_config,
-        get_model_informations,
-        get_runs_df,
-        load_btn,
-        mo,
-    )
+    return TARGET_EXP, get_model_informations, get_runs_df, load_btn, mo
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(TARGET_EXP, get_runs_df, load_btn, mo):
     # ボタンが押されたときだけデータを読み込む
 
@@ -59,7 +52,7 @@ def _(TARGET_EXP, get_runs_df, load_btn, mo):
     return (run_selector,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(get_model_informations, mo, run_selector):
     # モデルの状態を確認するセル
     run_ids = run_selector.value["run_id"].tolist()
@@ -69,7 +62,7 @@ def _(get_model_informations, mo, run_selector):
             mo.vstack(
                 [
                     mo.md(
-                        f"run_id:{run_id[:8]}.. &nbsp;&nbsp;　runName:{model_infos[run_id]['runName']}"
+                        f"run_id:{run_id[:8]}.. &nbsp;&nbsp;　{model_infos[run_id]['runName']}"
                     ),
                     mo.md(f"{model_infos[run_id]['equations'][:40]}"),
                     mo.image(src=model_infos[run_id]["sindy_coef"]),
@@ -81,36 +74,25 @@ def _(get_model_informations, mo, run_selector):
     return model_infos, run_ids
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo, run_ids):
-    dropdown = mo.ui.dropdown(options=run_ids)
-    dropdown
+    dropdown=mo.ui.dropdown(options=run_ids)
+
+    mo.vstack([mo.md("教師電流を表示する実験を選択"),dropdown])
     return (dropdown,)
 
 
 @app.cell
-def _(build_simulator_config, dropdown, model_infos):
+def _(dropdown, mo, model_infos):
+    dropdown
+    mo.stop(dropdown.value is None,"実験を選択してください")
     from neurosurrogate.modeling.calc_engine import unified_simulator
-
-    simulator_config = model_infos[dropdown.value]["teaching_config"]
-    unified_simulator(**build_simulator_config(simulator_config))
-    return
-
-
-@app.cell
-def _(run_ids):
     from scripts.utils.log_model import load_surrogate_model
-
-    surrogate = load_surrogate_model(run_ids[0])
+    from scripts.eval import eval_dataset
+    surrogate = load_surrogate_model(dropdown.value)
+    simulator_config = model_infos[dropdown.value]["teaching_config"]
+    eval_dataset(surrogate,simulator_config)
     return
-
-
-app._unparsable_cell(
-    r"""
-    print(surrogate.)
-    """,
-    name="_"
-)
 
 
 @app.cell

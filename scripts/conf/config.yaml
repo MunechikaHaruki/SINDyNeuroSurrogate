@@ -3,6 +3,7 @@ defaults:
   - _self_ # ショートカット定義は最後に設定
 
 matplotlib_style: paper
+name: Default
 
 # ==========================================
 # データセット設定
