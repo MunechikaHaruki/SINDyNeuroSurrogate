@@ -10,17 +10,19 @@ from utils.builder import (
     build_surrogate,
     build_train_dataset,
 )
-from utils.log_model import log_surrogate_model
-from utils.log_utils import (
-    log_dataset_cfg,
-    log_surrogate_summary,
-)
+from utils.log_model import log_surrogate_model, log_surrogate_summary
 
 from neurosurrogate.modeling import get_loggable_summary
 from neurosurrogate.modeling.calc_engine import unified_simulator
 from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
 
 logger = logging.getLogger(__name__)
+
+
+def log_dataset_cfg(dataset_cfg):
+    mlflow.log_params(dataset_cfg)
+    mlflow.log_params(dataset_cfg["current"]["pipeline"][0])
+    mlflow.log_dict(dataset_cfg, "dataset.yaml")
 
 
 @mlflow.trace

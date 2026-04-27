@@ -8,10 +8,9 @@ from utils.builder import (
     build_steady_dataset,
     build_sweep_datasets,
 )
-from utils.log_model import load_surrogate_model
-from utils.log_utils import (
+from utils.log_model import (
     _save_xarray,
-    run_override,
+    load_surrogate_model,
 )
 
 from neurosurrogate.modeling import transform_gate
@@ -63,6 +62,12 @@ def eval_datasets(datasets_cfg: Dict, surrogate_model):
     datasets = build_sweep_datasets(datasets_cfg)
     for key, dataset_cfg in datasets.items():
         eval_dataset(surrogate_model, dataset_cfg)
+
+
+def run_override(run_id, metric):
+    current_run = mlflow.get_run(run_id)
+    original_name = current_run.data.tags.get("mlflow.runName", "Run")
+    mlflow.set_tag("mlflow.runName", f"{original_name} | Score:{metric:.4f}")
 
 
 def eval_with_model_reaction(datasets_cfg, train_run_id):
