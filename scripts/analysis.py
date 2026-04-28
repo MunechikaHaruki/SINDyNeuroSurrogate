@@ -71,27 +71,43 @@ def _(get_model_informations, mo, run_selector):
             for run_id in run_ids
         ]
     )
-    return model_infos, run_ids
+    return (run_ids,)
 
 
 @app.cell(hide_code=True)
 def _(mo, run_ids):
     dropdown=mo.ui.dropdown(options=run_ids)
+    from typing import get_args
+    from scripts.utils.builder import CurrentType
+    current_dropdown=mo.ui.dropdown(["train"]+list(get_args(CurrentType)))
 
-    mo.vstack([mo.md("教師電流を表示する実験を選択"),dropdown])
-    return (dropdown,)
+    first_row=mo.hstack([mo.md("select experiment"),dropdown])
+    second_row=mo.hstack([mo.md("choose type"),current_dropdown])
+    mo.vstack([first_row,second_row])
+    return current_dropdown, dropdown
 
 
 @app.cell
-def _(dropdown, mo, model_infos):
-    dropdown
-    mo.stop(dropdown.value is None,"実験を選択してください")
+def _(current_dropdown, dropdown, mo):
+    mo.stop(dropdown.value is None or current_dropdown.value is None,"実験を選択してください")
+    print(dropdown.value)
+    print(current_dropdown.value)
     from neurosurrogate.modeling.calc_engine import unified_simulator
+    from scripts.utils.builder import build_dataset_with_param
     from scripts.utils.log_model import load_surrogate_model
     from scripts.eval import eval_dataset
     surrogate = load_surrogate_model(dropdown.value)
-    simulator_config = model_infos[dropdown.value]["teaching_config"]
-    eval_dataset(surrogate,simulator_config)
+    # simulator_config = model_infos[dropdown.value]["teaching_config"]
+    # eval_dataset(surrogate,simulator_config)
+
+    # type: random
+    # catalog:
+    #   random: [9919, 9920]
+    #   steady: {start: 0, stop: 30, step: 1 }
+    #   sweep:
+    #     model_name: hh
+    #     duration: 800
+
     return
 
 

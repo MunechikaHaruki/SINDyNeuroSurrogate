@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 
 import hydra
 import numpy as np
@@ -108,53 +109,30 @@ def build_train_dataset(cfg_datasets) -> dict:
     )
 
 
-def build_steady_dataset(cfg_datasets: dict, amplitude: float) -> dict:
-    return build_dataset(
-        **cfg_datasets["common"],
-        **cfg_datasets["sweep"]["common"],
-        current_seed=0,  # placeholder
-        pipeline=[
-            {
-                "_target_": "neurosurrogate.utils.current_generators.generate_steady",
-                "value": amplitude,
-            }
-        ],
-    )
-
-
-def build_random_dataset(cfg_datasets: dict, current_seed: int) -> dict:
-    return build_dataset(
-        **cfg_datasets["common"],
-        **cfg_datasets["sweep"]["common"],
-        current_seed=current_seed,
-        pipeline=[
-            {
-                "_target_": "neurosurrogate.utils.current_generators.generate_rand_pulse",
-            }
-        ],
-    )
-
-
-DATASETS_BUILDER_FUNCTIONS = {
-    "steady": build_steady_dataset,
-    "random": build_random_dataset,
-}
-SWEEP_VALUE_RESOLVERS = {
-    "steady": lambda cfg: np.arange(
-        cfg["start"], cfg["stop"] + cfg["step"], cfg["step"]
-    ).tolist(),
-    "random": lambda cfg: cfg,
+PIPE_FUNCS = {
+    "steady": lambda amplitude: [
+        {
+            "_target_": "neurosurrogate.utils.current_generators.generate_steady",
+            "value": amplitude,
+        }
+    ],
+    "random": lambda seed: [
+        {
+            "_target_": "neurosurrogate.utils.current_generators.generate_rand_pulse",
+            "seed": seed,
+        }
+    ],
 }
 
+CurrentType = Literal["steady", "random"]
 
-def build_sweep_datasets(cfg_datasets) -> dict:
-    sweep_cfg = cfg_datasets["sweep"]
-    sweep_type = sweep_cfg["type"]
 
-    builder = DATASETS_BUILDER_FUNCTIONS[sweep_type]
-    resolver = SWEEP_VALUE_RESOLVERS[sweep_type]
-    values = resolver(sweep_cfg["catalog"][sweep_type])
-
-    datasets = {f"{sweep_type}_{v}": builder(cfg_datasets, v) for v in values}
-    logger.info(f"Built {len(datasets)} datasets (type={sweep_type})")
-    return datasets
+def build_dataset_with_param(
+    cfg_datasets, current_type: CurrentType, value, model_name, duration
+):
+    return build_dataset(
+        **cfg_datasets["common"],
+        model_name=model_name,
+        duration=duration,
+        pipeline=PIPE_FUNCS[current_type](value),
+    )

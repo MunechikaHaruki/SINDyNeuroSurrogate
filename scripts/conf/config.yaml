@@ -11,20 +11,13 @@ name: Default
 datasets_settings:
   common:
     dt: 0.01 #[ms]
-    silence_duration: 10 #[ms]
+    silence_duration: 50 #[ms]
   train:
     duration: 9000 #[ms]
     model_name: hh
     pipeline: 
       - ${current_generators.discretized}
-  sweep:
-    common:
-      model_name: hh
-      duration: 800
-    type: random
-    catalog:
-      random: [9919, 9920]
-      steady: {start: 0, stop: 30, step: 1 }
+
 
 # ==========================================
 # SINDy Settings (モデル抽出設定)

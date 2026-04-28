@@ -1,13 +1,8 @@
 import logging
-from typing import Dict
 
 import mlflow
 import numpy as np
-from utils.builder import (
-    build_simulator_config,
-    build_steady_dataset,
-    build_sweep_datasets,
-)
+from utils.builder import build_dataset_with_param, build_simulator_config
 from utils.log_model import (
     load_surrogate_model,
 )
@@ -57,12 +52,6 @@ def eval_dataset(surrogate_model, dataset_cfg):
     return _log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
 
 
-def eval_datasets(datasets_cfg: Dict, surrogate_model):
-    datasets = build_sweep_datasets(datasets_cfg)
-    for key, dataset_cfg in datasets.items():
-        eval_dataset(surrogate_model, dataset_cfg)
-
-
 def eval_with_model_reaction(datasets_cfg, train_run_id):
     from scipy.signal import find_peaks
 
@@ -75,7 +64,9 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
 
     @mlflow.trace
     def get_firing_count(amptitide):
-        steady_cfg = build_steady_dataset(datasets_cfg, amptitide)
+        steady_cfg = build_dataset_with_param(
+            datasets_cfg, "steady", amptitide, model_name="hh", duration=800
+        )
         surr_xr = unified_simulator(
             **build_simulator_config(steady_cfg),
             surrogate_target=steady_cfg["target_comp_id"],
