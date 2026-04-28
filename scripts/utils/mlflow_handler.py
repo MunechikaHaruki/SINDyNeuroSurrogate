@@ -14,7 +14,8 @@ from utils.plots import (
     spec_simple,
 )
 
-from neurosurrogate import SINDySummary, SINDySurrogateWrapper
+from neurosurrogate.model import SINDySurrogateWrapper
+from neurosurrogate.profiler import SINDySummary
 
 TARGET_EXP = "test_static_params"
 mlflow.set_tracking_uri("file:./mlruns")

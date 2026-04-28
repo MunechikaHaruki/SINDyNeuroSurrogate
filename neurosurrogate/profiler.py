@@ -1,8 +1,14 @@
 import re
 from collections import Counter
+from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
+import xarray as xr
 from scipy.signal import find_peaks
+from sklearn.decomposition import PCA
+
+from .model import SINDySurrogateWrapper
 
 
 def get_active_features(sindy_model):
@@ -191,3 +197,67 @@ def _calc_windowless_spike_metrics(orig_v, surr_v, dt):
         results[f"median_{key}_error"] = float(abs(o_med - s_med))
 
     return results
+
+
+@dataclass
+class SINDySummary:
+    metrics: dict[str, float]
+    params: dict
+    texts: dict[str, str]  # filename -> content
+    xarrays: dict[str, xr.Dataset]
+    xi: np.ndarray
+    feature_names: list[str]
+    target_names: list[str]
+
+
+def get_loggable_summary(
+    surrogate: SINDySurrogateWrapper, base_cost_map, original_cost
+) -> SINDySummary:
+    def _format_to_table(cost_map: dict) -> str:
+        # 辞書をデータフレームに変換
+        df = pd.DataFrame.from_dict(cost_map, orient="index")
+        df.index.name = "Feature"
+        # 欠損値を0で埋めて整数型にし、美しいMarkdownとして出力
+        return df.fillna(0).astype(int).to_markdown()
+
+    coef = surrogate.sindy.optimizer.coef_
+    nonzero_term_num = np.count_nonzero(coef)
+
+    feature_cost_map = build_feature_cost_map(
+        surrogate.sindy.get_feature_names(), base_cost_map
+    )
+    active_features_map = build_feature_cost_map(
+        get_active_features(surrogate.sindy), base_cost_map
+    )
+
+    return SINDySummary(
+        metrics={
+            "nonzero_term_num": str(nonzero_term_num),
+            "nonzero_term_ratio": str(nonzero_term_num / coef.size),
+            **static_calc_cost(surrogate.sindy, feature_cost_map, original_cost),
+            **_get_pca_metrics(surrogate.preprocessor, surrogate.train_gate_data),
+        },
+        params=surrogate.sindy.optimizer.get_params(),
+        texts={
+            "equations.txt": "\n".join(surrogate.sindy.equations(precision=3)),
+            "coef.txt": np.array2string(coef, precision=3),
+            "features.md": _format_to_table(feature_cost_map),
+            "features_active.md": _format_to_table(active_features_map),
+            "misc/source.txt": surrogate.source,
+        },
+        xarrays={"train": surrogate.preprocessed_xr},
+        xi=coef,
+        feature_names=surrogate.sindy.get_feature_names(),
+        target_names=surrogate.preprocessed_xr.variable.values.tolist(),
+    )
+
+
+def _get_pca_metrics(pca: PCA, train_gate_data):
+    reconstructed = pca.inverse_transform(pca.transform(train_gate_data))
+    mse = np.mean((train_gate_data - reconstructed) ** 2)
+    return {
+        "pca/explained_variance_ratio": float(pca.explained_variance_ratio_[0]),
+        "pca/explained_variance": float(pca.explained_variance_[0]),
+        "pca/reconstruction_mse": float(mse),
+        "pca/reconstruction_mse_ratio": float(mse / np.var(train_gate_data)),
+    }
