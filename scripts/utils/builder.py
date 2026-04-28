@@ -85,13 +85,13 @@ def build_simulator_config(dataset_cfg):
 PIPE_FUNCS = {
     "steady": lambda amplitude: [
         {
-            "_target_": "neurosurrogate.utils.current_generators.generate_steady",
+            "_target_": "conf.current_generators.generate_steady",
             "value": amplitude,
         }
     ],
     "random": lambda seed: [
         {
-            "_target_": "neurosurrogate.utils.current_generators.generate_rand_pulse",
+            "_target_": "conf.current_generators.generate_rand_pulse",
             "seed": seed,
         }
     ],
