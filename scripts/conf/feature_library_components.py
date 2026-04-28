@@ -1,7 +1,7 @@
 import numpy as np
 import pysindy as ps
 
-from neurosurrogate.modeling.neuron_core import (
+from neurosurrogate.neuron_core import (
     alpha_h,
     alpha_m,
     alpha_n,

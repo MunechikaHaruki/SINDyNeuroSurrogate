@@ -7,7 +7,7 @@ import pysindy as ps
 from conf.feature_library_components import LIB_BUILDER_REGISTRY
 from conf.neuron_models import MODEL_DEFINITIONS
 
-from neurosurrogate.modeling import SINDySurrogateWrapper
+from neurosurrogate import SINDySurrogateWrapper
 
 logger = logging.getLogger(__name__)
 

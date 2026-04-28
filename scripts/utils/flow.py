@@ -14,10 +14,10 @@ from utils.plots import (
     spec_diff,
 )
 
-from neurosurrogate.modeling import get_loggable_summary, transform_gate
-from neurosurrogate.modeling.calc_engine import unified_simulator
-from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
-from neurosurrogate.modeling.profiler import calc_dynamic_metrics
+from neurosurrogate import get_loggable_summary, transform_gate
+from neurosurrogate.calc_engine import unified_simulator
+from neurosurrogate.neuron_core import FUNC_COST_MAP, HH_COST
+from neurosurrogate.profiler import calc_dynamic_metrics
 
 logger = logging.getLogger(__name__)
 
