@@ -14,7 +14,6 @@ def _():
     project_root = Path(__file__).parent.parent
     sys.path.insert(0, str(project_root))
     from scripts.utils.mlflow_handler import (
-        TARGET_EXP,
         get_model_informations,
         get_runs_df,
     )
@@ -25,10 +24,9 @@ def _():
     )
     mo.md(f"""
     ### MLflow データ解析
-    - **ターゲット実験:** `{TARGET_EXP}`
     - **run_idを選択:** {load_btn}
     """)
-    return TARGET_EXP, get_model_informations, get_runs_df, load_btn, mo
+    return get_model_informations, get_runs_df, load_btn, mo
 
 
 @app.cell(hide_code=True)

@@ -41,9 +41,6 @@ def build_surrogate(cfg_sindy):
     return SINDySurrogateWrapper(initialized_sindy, feature_library_components)
 
 
-logger = logging.getLogger(__name__)
-
-
 def build_models(definitions: dict):
     mc_models = {}
     target_nodes = {}

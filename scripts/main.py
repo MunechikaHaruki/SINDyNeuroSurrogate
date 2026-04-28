@@ -1,43 +1,58 @@
 import logging
+import os
 
 import hydra
 import mlflow
-from eval import eval_with_model_reaction
-from omegaconf import DictConfig
-from utils.boot import setup_all
-from utils.builder import build_dataset, build_simulator_config, build_surrogate
-from utils.mlflow_handler import log_surrogate_model, log_surrogate_summary
-
-from neurosurrogate.modeling import get_loggable_summary
-from neurosurrogate.modeling.calc_engine import unified_simulator
-from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig, OmegaConf
+from utils.flow import cli_flow
 
 logger = logging.getLogger(__name__)
 
 
-@mlflow.trace
-def train_model(surrogate, train_dataset_cfg):
-    train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
-    mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
-    surrogate.fit(train_ds, train_dataset_cfg["target_comp_id"])
-    log_surrogate_summary(get_loggable_summary(surrogate, FUNC_COST_MAP, HH_COST))
-    log_surrogate_model(surrogate)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.join(CURRENT_DIR, "../")
+
+
+def setup_proxy():
+    # プロキシ設定を一時的に無効化
+    os.environ["HTTP_PROXY"] = ""
+    os.environ["HTTPS_PROXY"] = ""
+    os.environ["NO_PROXY"] = "localhost,127.0.0.1"
+
+
+def setup_mlflow(is_multirun):
+    MLRUN_DIR = os.path.join(PROJECT_ROOT, "mlruns")
+    mlflow.set_tracking_uri(f"file://{MLRUN_DIR}")
+    mlflow.enable_system_metrics_logging()
+    os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
+    if is_multirun:
+        mlflow.set_experiment("test_dynamic_datasets")
+    else:
+        mlflow.set_experiment("test_static_params")
+
+
+def setup_matplotlib(matplotlib_style):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    STYLE_DIR = os.path.join(PROJECT_ROOT, "./scripts/conf/style")
+    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
+    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
 
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     logger.info("Activate Script")
-    cfg = setup_all(cfg)
-    surrogate_model = build_surrogate(cfg["sindy"])
-
-    with mlflow.start_run(run_name=f"train:{cfg['name']}") as run:
-        train_run_id = run.info.run_id
-        train_model(
-            surrogate_model,
-            build_dataset(**cfg["sindy"]["datasets"]),
-        )
-    if cfg["is_multirun"]:
-        return eval_with_model_reaction(cfg["sindy"]["datasets"], train_run_id)
+    OmegaConf.resolve(cfg)
+    cfg = OmegaConf.to_container(cfg, resolve=True)
+    setup_proxy()
+    is_multirun = HydraConfig.get().mode.name == "MULTIRUN"
+    setup_mlflow(is_multirun)
+    setup_matplotlib(cfg["matplotlib_style"])
+    cli_flow(is_multirun, cfg["sindy"])
 
 
 if __name__ == "__main__":

@@ -2,13 +2,16 @@ import logging
 
 import mlflow
 import numpy as np
-from utils.builder import build_dataset, build_simulator_config
+from utils.builder import build_dataset, build_simulator_config, build_surrogate
 from utils.mlflow_handler import (
     load_surrogate_model,
+    log_surrogate_model,
+    log_surrogate_summary,
 )
 
-from neurosurrogate.modeling import transform_gate
+from neurosurrogate.modeling import get_loggable_summary, transform_gate
 from neurosurrogate.modeling.calc_engine import unified_simulator
+from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
 from neurosurrogate.modeling.profiler import calc_dynamic_metrics
 from neurosurrogate.utils.plots import (
     draw_engine,
@@ -17,6 +20,26 @@ from neurosurrogate.utils.plots import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def cli_flow(is_multirun, cfg_sindy):
+    surrogate_model = build_surrogate(cfg_sindy)
+    with mlflow.start_run(run_name=f"train:{cfg_sindy['name']}") as run:
+        train_run_id = run.info.run_id
+        train_model(
+            surrogate_model,
+            build_dataset(**cfg_sindy["datasets"]),
+        )
+    if is_multirun:
+        return eval_with_model_reaction(cfg_sindy["datasets"], train_run_id)
+
+
+def train_model(surrogate, train_dataset_cfg):
+    train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
+    mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
+    surrogate.fit(train_ds, train_dataset_cfg["target_comp_id"])
+    log_surrogate_summary(get_loggable_summary(surrogate, FUNC_COST_MAP, HH_COST))
+    log_surrogate_model(surrogate)
 
 
 def _log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
