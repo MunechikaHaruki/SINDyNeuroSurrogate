@@ -13,10 +13,7 @@ def _():
 
     project_root = Path(__file__).parent.parent
     sys.path.insert(0, str(project_root))
-    from scripts.utils.mlflow_handler import (
-        get_model_informations,
-        get_runs_df,
-    )
+    from scripts.utils.plots import draw_engine,plot_sindy_coefficients
 
     # ボタンを作成し、変数 'test_btn' に代入
     load_btn = mo.ui.button(
@@ -26,18 +23,18 @@ def _():
     ### MLflow データ解析
     - **run_idを選択:** {load_btn}
     """)
-    return get_model_informations, get_runs_df, load_btn, mo
+    return load_btn, mo, plot_sindy_coefficients
 
 
 @app.cell(hide_code=True)
-def _(TARGET_EXP, get_runs_df, load_btn, mo):
+def _(load_btn, mo):
     # ボタンが押されたときだけデータを読み込む
-
+    from scripts.utils.mlflow_handler import get_runs_df
     with mo.status.spinner(title="MLflowからデータを読み込み中..."):
         if load_btn.value:
             runs_df = get_runs_df()
             if runs_df is None:
-                run_selector = mo.md(f"⚠️ 実験 `{TARGET_EXP}` が見つかりませんでした。")
+                run_selector = mo.md(f"⚠️ 実験が見つかりませんでした。")
             run_selector = mo.ui.table(
                 runs_df[["tags.mlflow.runName", "run_id"]],
                 label="比較・解析したいRunを複数選択してください（Shift/Ctrl+クリック）",
@@ -50,10 +47,21 @@ def _(TARGET_EXP, get_runs_df, load_btn, mo):
 
 
 @app.cell(hide_code=True)
-def _(get_model_informations, mo, run_selector):
+def _(mo, plot_sindy_coefficients, run_selector):
     # モデルの状態を確認するセル
+    from scripts.utils.mlflow_handler import get_run_info
     run_ids = run_selector.value["run_id"].tolist()
-    model_infos = get_model_informations(run_ids)
+
+    model_infos={}
+    for run_id in run_ids:
+        run_info=get_run_info(run_id)
+        model_infos[run_id]={}
+        model_infos[run_id]["runName"]= run_info["runName"]
+        model_infos[run_id]["equations"]=run_info["equations"]
+        model_infos[run_id]["dataset"]=run_info["dataset"]
+        model_infos[run_id]["sindy_coef"]=plot_sindy_coefficients(**run_info["sindy_coef"])
+    
+
     mo.vstack(
         [
             mo.vstack(
@@ -62,13 +70,13 @@ def _(get_model_informations, mo, run_selector):
                         f"run_id:{run_id[:8]}.. &nbsp;&nbsp;　{model_infos[run_id]['runName']}"
                     ),
                     mo.md(f"{model_infos[run_id]['equations'][:40]}"),
-                    mo.image(src=model_infos[run_id]["sindy_coef"]),
+                    mo.mpl.interactive(model_infos[run_id]["sindy_coef"]),
                 ]
             )
             for run_id in run_ids
         ]
     )
-    return (run_ids,)
+    return model_infos, run_ids
 
 
 @app.cell(hide_code=True)
@@ -87,7 +95,7 @@ def _(mo, run_ids):
 
 
 @app.cell
-def _(current_dropdown, dropdown, mo):
+def _(current_dropdown, dropdown, mo, model_infos):
     mo.stop(
         dropdown.value is None or current_dropdown.value is None,
         "実験を選択してください",
@@ -97,8 +105,12 @@ def _(current_dropdown, dropdown, mo):
     from scripts.utils.mlflow_handler import load_surrogate_model
 
     surrogate = load_surrogate_model(dropdown.value)
-    # simulator_config = model_infos[dropdown.value]["teaching_config"]
-    # eval_dataset(surrogate,simulator_config)
+    simulator_config = model_infos[dropdown.value]["dataset"]
+    print(simulator_config)
+
+    from scripts.utils.flow import eval_dataset
+
+    eval_dataset(surrogate,simulator_config)
 
     # type: random
     # catalog:

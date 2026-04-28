@@ -8,25 +8,23 @@ import joblib
 import mlflow
 import numpy as np
 import yaml
-from utils.plots import (
-    draw_engine,
-    plot_sindy_coefficients,
-    spec_simple,
-)
 
 from neurosurrogate.model import SINDySurrogateWrapper
 from neurosurrogate.profiler import SINDySummary
 
 TARGET_EXP = "test_static_params"
-mlflow.set_tracking_uri("file:./mlruns")
 
 
 logger = logging.getLogger(__name__)
 
+CURRENT_DIR = Path(__file__).parent
+PROJECT_ROOT = CURRENT_DIR.parent.parent  # 階層に応じて調整
+mlflow.set_tracking_uri(f"file://{PROJECT_ROOT}/mlruns")
+mlflow.enable_system_metrics_logging()
+os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
+
 
 def setup_mlflow(is_multirun):
-    mlflow.enable_system_metrics_logging()
-    os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
     if is_multirun:
         mlflow.set_experiment("test_dynamic_datasets")
     else:
@@ -40,17 +38,32 @@ def log_surrogate_summary(summary: SINDySummary):
     for filename, content in summary.texts.items():
         mlflow.log_text(content, artifact_file=filename)
 
-    for name, ds in summary.xarrays.items():
-        datasets, spec = spec_simple(ds)
-        fig = draw_engine(datasets, spec, engine="matplotlib")
-        mlflow.log_figure(fig, artifact_file=f"{name}.png")
-
-    fig = plot_sindy_coefficients(
-        xi_matrix=summary.xi,
-        feature_names=summary.feature_names,
-        target_names=summary.target_names,
+    mlflow.log_dict(
+        {
+            "xi_matrix": summary.xi.tolist(),  # numpy → list
+            "feature_names": summary.feature_names,
+            "target_names": summary.target_names,
+        },
+        artifact_file="sindy_coef.json",
     )
-    mlflow.log_figure(fig, artifact_file="sindy_coef.png")
+
+
+def get_run_info(run_id: str) -> dict:
+    client = mlflow.MlflowClient()
+
+    def load_yaml(run_id: str, filename: str) -> dict:
+        return yaml.safe_load(mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}"))
+
+    def load_text(run_id: str, filename: str) -> str:
+        return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
+
+    return {
+        "sindy_coef": load_yaml(run_id, "sindy_coef.json"),
+        "dataset": load_yaml(run_id, "dataset.yaml"),  # 同じファイルなら参照共有でOK
+        "runName": client.get_run(run_id).data.tags["mlflow.runName"],
+        "run_id": run_id,
+        "equations": load_text(run_id, "equations.txt"),
+    }
 
 
 class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
@@ -122,54 +135,24 @@ def load_surrogate_model(run_id: str):
 
 def get_runs_df():
     experiment = mlflow.get_experiment_by_name(TARGET_EXP)
-    if experiment:
-        all_runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
-        # 親runのみを抽出
-        runs_df = all_runs_df[all_runs_df["tags.mlflow.parentRunId"].isna()].copy()
-        # start_time に基づいて降順（最新が上）にソート、表示変更
-        runs_df = runs_df.sort_values("start_time", ascending=False)
-        runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
-
-        # カラムの整理（run_id, start_time を先頭に）
-        cols = [
-            c
-            for c in runs_df.columns
-            if "metrics" in c or "params" in c or c == "run_id"
-        ]
-        runs_df = runs_df[
-            ["tags.mlflow.runName", "run_id", "start_time"]
-            + [c for c in cols if c != "run_id"]
-        ]
-        return runs_df
-    else:
-        return None
-
-
-def get_model_informations(run_ids):
-    client = mlflow.MlflowClient()
-    artifact_path = "sindy_coef.png"
-    download_dir = Path(tempfile.mkdtemp())
-    model_info = {}
-    for run_id in run_ids:
-        model_info[run_id] = {}
-        dest = download_dir / run_id
-        dest.mkdir(exist_ok=True)
-
-        local_path = client.download_artifacts(
-            run_id=run_id, path=artifact_path, dst_path=str(dest)
+    if experiment is None:
+        raise ValueError(
+            f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
         )
-
-        model_info[run_id]["sindy_coef"] = local_path
-        model_info[run_id]["runName"] = client.get_run(run_id).data.tags[
-            "mlflow.runName"
-        ]
-        model_info[run_id]["equations"] = mlflow.artifacts.load_text(
-            f"runs:/{run_id}/equations.txt"
-        )
-        model_info[run_id]["teaching_config"] = yaml.safe_load(
-            mlflow.artifacts.load_text(f"runs:/{run_id}/dataset.yaml")
-        )
-    return model_info
+    all_runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
+    if all_runs_df.empty:
+        raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
+    runs_df = all_runs_df.copy()
+    runs_df = runs_df.sort_values("start_time", ascending=False)
+    runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
+    cols = [
+        c for c in runs_df.columns if "metrics" in c or "params" in c or c == "run_id"
+    ]
+    runs_df = runs_df[
+        ["tags.mlflow.runName", "run_id", "start_time"]
+        + [c for c in cols if c != "run_id"]
+    ]
+    return runs_df
 
 
 def get_child_runs(parent_run_ids):

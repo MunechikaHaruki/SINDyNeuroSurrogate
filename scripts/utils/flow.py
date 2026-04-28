@@ -9,11 +9,6 @@ from utils.mlflow_handler import (
     log_surrogate_model,
     log_surrogate_summary,
 )
-from utils.plots import (
-    draw_engine,
-    plot_2d_attractor_comparison,
-    spec_diff,
-)
 
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model import transform_gate
@@ -24,42 +19,18 @@ logger = logging.getLogger(__name__)
 
 
 def cli_flow(is_multirun, cfg_sindy):
-    surrogate_model = build_surrogate(cfg_sindy)
+    surrogate = build_surrogate(cfg_sindy)
     with mlflow.start_run(run_name=f"train:{cfg_sindy['name']}") as run:
+        # train
         train_run_id = run.info.run_id
-        train_model(
-            surrogate_model,
-            build_dataset(**cfg_sindy["datasets"]),
-        )
+        train_dataset_cfg = build_dataset(**cfg_sindy["datasets"])
+        train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
+        mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
+        surrogate.fit(train_ds, train_dataset_cfg["target_comp_id"])
+        log_surrogate_summary(get_loggable_summary(surrogate, FUNC_COST_MAP, HH_COST))
+        log_surrogate_model(surrogate)
     if is_multirun:
         return eval_with_model_reaction(cfg_sindy["datasets"], train_run_id)
-
-
-def train_model(surrogate, train_dataset_cfg):
-    train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
-    mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
-    surrogate.fit(train_ds, train_dataset_cfg["target_comp_id"])
-    log_surrogate_summary(get_loggable_summary(surrogate, FUNC_COST_MAP, HH_COST))
-    log_surrogate_model(surrogate)
-
-
-def _log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
-    target_comp_id = dataset_cfg["target_comp_id"]
-    metrics = calc_dynamic_metrics(
-        original_ds, surr_ds, target_comp_id, dataset_cfg["dt"]
-    )
-    datasets, spec = spec_diff(
-        original_ds, preprocessed_xr, surr_ds, surr_id=target_comp_id
-    )
-    fig_diff = draw_engine(datasets, spec, engine="matplotlib")
-    fig_phase = plot_2d_attractor_comparison(
-        orig_ds=preprocessed_xr,
-        surr_ds=surr_ds,
-        comp_id=target_comp_id,
-        state_vars=["V", "latent1"],  # 実際のSINDyのターゲット変数名に合わせて変更
-    )
-    mlflow.log_figure(fig_phase, artifact_file="attractor_surr.png")
-    return {"figure": {"diff": fig_diff, "phase": fig_phase}, "metrics": metrics}
 
 
 def _format_to_table(cost_map: dict) -> str:
@@ -81,7 +52,26 @@ def eval_dataset(surrogate_model, dataset_cfg):
     preprocessed_xr = transform_gate(
         surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
     )
-    return _log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg)
+    target_comp_id = dataset_cfg["target_comp_id"]
+    return {
+        "figure_args": {
+            "plot_2d_attractor_comparison": {
+                "orig_ds": preprocessed_xr,
+                "surr_ds": surr_ds,
+                "comp_id": target_comp_id,
+                "state_vars": ["V", "latent1"],
+            },
+            "spec_diff": {
+                "original": original_ds,
+                "preprocessed": preprocessed_xr,
+                "surrogate": surr_ds,
+                "surr_id": target_comp_id,
+            },
+        },
+        "metrics": calc_dynamic_metrics(
+            original_ds, surr_ds, target_comp_id, dataset_cfg["dt"]
+        ),
+    }
 
 
 def eval_with_model_reaction(datasets_cfg, train_run_id):

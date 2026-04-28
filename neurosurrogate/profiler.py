@@ -4,7 +4,6 @@ from collections import Counter
 from dataclasses import dataclass
 
 import numpy as np
-import xarray as xr
 from scipy.signal import find_peaks
 from sklearn.decomposition import PCA
 
@@ -204,7 +203,6 @@ class SINDySummary:
     metrics: dict[str, float]
     params: dict
     texts: dict[str, str]  # filename -> content
-    xarrays: dict[str, xr.Dataset]
     xi: np.ndarray
     feature_names: list[str]
     target_names: list[str]
@@ -238,7 +236,6 @@ def get_loggable_summary(
             "features_active.json": json.dumps(active_features_map),
             "misc/source.txt": surrogate.source,
         },
-        xarrays={"train": surrogate.preprocessed_xr},
         xi=coef,
         feature_names=surrogate.sindy.get_feature_names(),
         target_names=surrogate.preprocessed_xr.variable.values.tolist(),

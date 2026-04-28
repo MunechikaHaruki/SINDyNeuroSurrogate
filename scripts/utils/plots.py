@@ -302,7 +302,7 @@ def spec_diff(original, preprocessed, surrogate, surr_id):
 def plot_sindy_coefficients(
     xi_matrix, feature_names=None, target_names=None, figsize=(15, 3)
 ):
-
+    xi_matrix = np.asarray(xi_matrix)
     fig, ax = plt.subplots(figsize=figsize)
 
     # 係数の最大・最小値からカラーマップの範囲を決定

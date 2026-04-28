@@ -5,7 +5,6 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from utils.flow import cli_flow
 from utils.mlflow_handler import setup_mlflow
-from utils.plots import setup_matplotlib
 
 
 def setup_proxy():
@@ -22,7 +21,6 @@ def main(cfg: DictConfig) -> None:
     setup_proxy()
     is_multirun = HydraConfig.get().mode.name == "MULTIRUN"
     setup_mlflow(is_multirun)
-    setup_matplotlib(cfg["matplotlib_style"])
     cli_flow(is_multirun, cfg["sindy"])
 
 

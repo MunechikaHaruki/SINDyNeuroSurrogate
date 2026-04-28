@@ -2,8 +2,6 @@ defaults:
   - current_generators: base
   - _self_ # ショートカット定義は最後に設定
 
-matplotlib_style: paper
-
 # ==========================================
 # SINDy Settings (基底関数の設定)
 # ==========================================
