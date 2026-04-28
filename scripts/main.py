@@ -1,17 +1,10 @@
-import logging
 import os
 
 import hydra
-import mlflow
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from utils.flow import cli_flow
-
-logger = logging.getLogger(__name__)
-
-
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.join(CURRENT_DIR, "../")
+from utils.mlflow_handler import setup_mlflow
 
 
 def setup_proxy():
@@ -21,23 +14,14 @@ def setup_proxy():
     os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 
-def setup_mlflow(is_multirun):
-    MLRUN_DIR = os.path.join(PROJECT_ROOT, "mlruns")
-    mlflow.set_tracking_uri(f"file://{MLRUN_DIR}")
-    mlflow.enable_system_metrics_logging()
-    os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
-    if is_multirun:
-        mlflow.set_experiment("test_dynamic_datasets")
-    else:
-        mlflow.set_experiment("test_static_params")
-
-
 def setup_matplotlib(matplotlib_style):
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.join(CURRENT_DIR, "../")
     STYLE_DIR = os.path.join(PROJECT_ROOT, "./scripts/conf/style")
     plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
     plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
@@ -45,7 +29,6 @@ def setup_matplotlib(matplotlib_style):
 
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
-    logger.info("Activate Script")
     OmegaConf.resolve(cfg)
     cfg = OmegaConf.to_container(cfg, resolve=True)
     setup_proxy()

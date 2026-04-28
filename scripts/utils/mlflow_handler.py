@@ -1,5 +1,6 @@
 import inspect
 import logging
+import os
 import tempfile
 from pathlib import Path
 
@@ -20,6 +21,15 @@ mlflow.set_tracking_uri("file:./mlruns")
 
 
 logger = logging.getLogger(__name__)
+
+
+def setup_mlflow(is_multirun):
+    mlflow.enable_system_metrics_logging()
+    os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
+    if is_multirun:
+        mlflow.set_experiment("test_dynamic_datasets")
+    else:
+        mlflow.set_experiment("test_static_params")
 
 
 def log_surrogate_summary(summary: SINDySummary):
