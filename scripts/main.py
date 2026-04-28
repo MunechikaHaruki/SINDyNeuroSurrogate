@@ -5,6 +5,7 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from utils.flow import cli_flow
 from utils.mlflow_handler import setup_mlflow
+from utils.plots import setup_matplotlib
 
 
 def setup_proxy():
@@ -12,19 +13,6 @@ def setup_proxy():
     os.environ["HTTP_PROXY"] = ""
     os.environ["HTTPS_PROXY"] = ""
     os.environ["NO_PROXY"] = "localhost,127.0.0.1"
-
-
-def setup_matplotlib(matplotlib_style):
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-    PROJECT_ROOT = os.path.join(CURRENT_DIR, "../")
-    STYLE_DIR = os.path.join(PROJECT_ROOT, "./scripts/conf/style")
-    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
-    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
 
 @hydra.main(config_path="conf", config_name="config")

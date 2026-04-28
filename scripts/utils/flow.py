@@ -8,16 +8,16 @@ from utils.mlflow_handler import (
     log_surrogate_model,
     log_surrogate_summary,
 )
+from utils.plots import (
+    draw_engine,
+    plot_2d_attractor_comparison,
+    spec_diff,
+)
 
 from neurosurrogate.modeling import get_loggable_summary, transform_gate
 from neurosurrogate.modeling.calc_engine import unified_simulator
 from neurosurrogate.modeling.neuron_core import FUNC_COST_MAP, HH_COST
 from neurosurrogate.modeling.profiler import calc_dynamic_metrics
-from neurosurrogate.utils.plots import (
-    draw_engine,
-    plot_2d_attractor_comparison,
-    spec_diff,
-)
 
 logger = logging.getLogger(__name__)
 

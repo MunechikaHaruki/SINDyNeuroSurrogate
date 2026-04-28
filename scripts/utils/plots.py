@@ -1,11 +1,23 @@
 # mypy: ignore-errors
-import matplotlib.pyplot as plt
+import os
+
+import matplotlib
 import numpy as np
 import plotly.graph_objects as go
 import seaborn as sns
+from plotly.subplots import make_subplots
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
-from plotly.subplots import make_subplots
+
+
+def setup_matplotlib(matplotlib_style):
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    STYLE_DIR = os.path.join(CURRENT_DIR, "../conf/style")
+    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
+    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
 
 def draw_engine(datasets, spec, engine="matplotlib", figsize_width=10):

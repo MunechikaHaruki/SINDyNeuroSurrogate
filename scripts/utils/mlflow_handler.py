@@ -8,13 +8,13 @@ import joblib
 import mlflow
 import numpy as np
 import yaml
-
-from neurosurrogate.modeling import SINDySummary, SINDySurrogateWrapper
-from neurosurrogate.utils.plots import (
+from utils.plots import (
     draw_engine,
     plot_sindy_coefficients,
     spec_simple,
 )
+
+from neurosurrogate.modeling import SINDySummary, SINDySurrogateWrapper
 
 TARGET_EXP = "test_static_params"
 mlflow.set_tracking_uri("file:./mlruns")
