@@ -1,9 +1,9 @@
+import json
 import re
 from collections import Counter
 from dataclasses import dataclass
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 from scipy.signal import find_peaks
 from sklearn.decomposition import PCA
@@ -213,13 +213,6 @@ class SINDySummary:
 def get_loggable_summary(
     surrogate: SINDySurrogateWrapper, base_cost_map, original_cost
 ) -> SINDySummary:
-    def _format_to_table(cost_map: dict) -> str:
-        # 辞書をデータフレームに変換
-        df = pd.DataFrame.from_dict(cost_map, orient="index")
-        df.index.name = "Feature"
-        # 欠損値を0で埋めて整数型にし、美しいMarkdownとして出力
-        return df.fillna(0).astype(int).to_markdown()
-
     coef = surrogate.sindy.optimizer.coef_
     nonzero_term_num = np.count_nonzero(coef)
 
@@ -241,8 +234,8 @@ def get_loggable_summary(
         texts={
             "equations.txt": "\n".join(surrogate.sindy.equations(precision=3)),
             "coef.txt": np.array2string(coef, precision=3),
-            "features.md": _format_to_table(feature_cost_map),
-            "features_active.md": _format_to_table(active_features_map),
+            "features.json": json.dumps(feature_cost_map),
+            "features_active.json": json.dumps(active_features_map),
             "misc/source.txt": surrogate.source,
         },
         xarrays={"train": surrogate.preprocessed_xr},

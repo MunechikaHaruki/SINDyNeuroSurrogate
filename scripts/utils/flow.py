@@ -2,6 +2,7 @@ import logging
 
 import mlflow
 import numpy as np
+import pandas as pd
 from utils.builder import build_dataset, build_simulator_config, build_surrogate
 from utils.mlflow_handler import (
     load_surrogate_model,
@@ -59,6 +60,14 @@ def _log_eval_result(original_ds, surr_ds, preprocessed_xr, dataset_cfg):
     )
     mlflow.log_figure(fig_phase, artifact_file="attractor_surr.png")
     return {"figure": {"diff": fig_diff, "phase": fig_phase}, "metrics": metrics}
+
+
+def _format_to_table(cost_map: dict) -> str:
+    # 辞書をデータフレームに変換
+    df = pd.DataFrame.from_dict(cost_map, orient="index")
+    df.index.name = "Feature"
+    # 欠損値を0で埋めて整数型にし、美しいMarkdownとして出力
+    return df.fillna(0).astype(int).to_markdown()
 
 
 def eval_dataset(surrogate_model, dataset_cfg):
