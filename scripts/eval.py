@@ -2,8 +2,8 @@ import logging
 
 import mlflow
 import numpy as np
-from utils.builder import build_dataset_with_param, build_simulator_config
-from utils.log_model import (
+from utils.builder import build_dataset, build_simulator_config
+from utils.mlflow_handler import (
     load_surrogate_model,
 )
 
@@ -64,8 +64,12 @@ def eval_with_model_reaction(datasets_cfg, train_run_id):
 
     @mlflow.trace
     def get_firing_count(amptitide):
-        steady_cfg = build_dataset_with_param(
-            datasets_cfg, "steady", amptitide, model_name="hh", duration=800
+        steady_cfg = build_dataset(  # あとでちゃんと実装
+            dt=datasets_cfg["dt"],
+            duration=datasets_cfg["duration"],
+            model_name="hh",
+            current_type="steady",
+            value=amptitide,
         )
         surr_xr = unified_simulator(
             **build_simulator_config(steady_cfg),

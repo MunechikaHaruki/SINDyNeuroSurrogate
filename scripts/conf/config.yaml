@@ -5,22 +5,9 @@ defaults:
 matplotlib_style: paper
 name: Default
 
-# ==========================================
-# データセット設定
-# ==========================================
-datasets_settings:
-  common:
-    dt: 0.01 #[ms]
-    silence_duration: 50 #[ms]
-  train:
-    duration: 9000 #[ms]
-    model_name: hh
-    pipeline: 
-      - ${current_generators.discretized}
-
 
 # ==========================================
-# SINDy Settings (モデル抽出設定)
+# SINDy Settings (基底関数の設定)
 # ==========================================
 lib:
   lib_base:
@@ -81,6 +68,13 @@ sindy:
     normalize_columns: false
     alpha: 2.0
   library_specs: ${lib.lib_hh_informed}
+  datasets:
+    dt: 0.01 #[ms]
+    silence_duration: 50 #[ms]
+    duration: 9000 #[ms]
+    model_name: hh
+    pipeline: 
+      - ${current_generators.discretized}
 
 
 hydra:

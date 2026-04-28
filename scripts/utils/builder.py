@@ -85,30 +85,6 @@ def build_simulator_config(dataset_cfg):
     return parsed_dict
 
 
-def build_dataset(dt, silence_duration, duration, model_name, pipeline) -> dict:
-    """単一のケース設定(YAMLのcatalog_itemの階層構造そのまま)からデータセット辞書を構築する"""
-    return {
-        "data_type": model_name,
-        "dt": dt,
-        "current": {
-            # フラットアクセスではなく、case_cfg["current"] のネストを参照する
-            "iteration": int(duration / dt),
-            "pipeline": pipeline,
-            "silence_steps": int(silence_duration / dt),
-        },
-        "target_comp_id": BUILT_MODELS["target_nodes"][model_name],
-        "net": BUILT_MODELS["mc_models"][model_name],
-    }
-
-
-def build_train_dataset(cfg_datasets) -> dict:
-    """学習用の単一データセットを構築する"""
-    return build_dataset(
-        **cfg_datasets["common"],
-        **cfg_datasets["train"],
-    )
-
-
 PIPE_FUNCS = {
     "steady": lambda amplitude: [
         {
@@ -127,12 +103,29 @@ PIPE_FUNCS = {
 CurrentType = Literal["steady", "random"]
 
 
-def build_dataset_with_param(
-    cfg_datasets, current_type: CurrentType, value, model_name, duration
-):
-    return build_dataset(
-        **cfg_datasets["common"],
-        model_name=model_name,
-        duration=duration,
-        pipeline=PIPE_FUNCS[current_type](value),
-    )
+def build_dataset(
+    dt,
+    silence_duration,
+    duration,
+    model_name,
+    pipeline=None,
+    current_type=None,
+    value=None,
+) -> dict:
+    """単一のケース設定(YAMLのcatalog_itemの階層構造そのまま)からデータセット辞書を構築する"""
+
+    if pipeline is None:
+        pipeline = PIPE_FUNCS[current_type](value)
+
+    return {
+        "data_type": model_name,
+        "dt": dt,
+        "current": {
+            # フラットアクセスではなく、case_cfg["current"] のネストを参照する
+            "iteration": int(duration / dt),
+            "pipeline": pipeline,
+            "silence_steps": int(silence_duration / dt),
+        },
+        "target_comp_id": BUILT_MODELS["target_nodes"][model_name],
+        "net": BUILT_MODELS["mc_models"][model_name],
+    }

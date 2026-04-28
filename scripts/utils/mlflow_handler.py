@@ -1,11 +1,112 @@
+import inspect
+import logging
 import tempfile
 from pathlib import Path
 
+import joblib
 import mlflow
+import numpy as np
 import yaml
+
+from neurosurrogate.modeling import SINDySummary, SINDySurrogateWrapper
+from neurosurrogate.utils.plots import (
+    draw_engine,
+    plot_sindy_coefficients,
+    spec_simple,
+)
 
 TARGET_EXP = "test_static_params"
 mlflow.set_tracking_uri("file:./mlruns")
+
+
+logger = logging.getLogger(__name__)
+
+
+def log_surrogate_summary(summary: SINDySummary):
+    mlflow.log_metrics(summary.metrics)
+    mlflow.log_params(summary.params)
+
+    for filename, content in summary.texts.items():
+        mlflow.log_text(content, artifact_file=filename)
+
+    for name, ds in summary.xarrays.items():
+        datasets, spec = spec_simple(ds)
+        fig = draw_engine(datasets, spec, engine="matplotlib")
+        mlflow.log_figure(fig, artifact_file=f"{name}.png")
+
+    fig = plot_sindy_coefficients(
+        xi_matrix=summary.xi,
+        feature_names=summary.feature_names,
+        target_names=summary.target_names,
+    )
+    mlflow.log_figure(fig, artifact_file="sindy_coef.png")
+
+
+class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
+    def load_context(self, context):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "target_module", context.artifacts["target_module_path"]
+        )
+        target_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(target_module)
+        source = open(context.artifacts["source_path"]).read()
+        local_vars = {}
+        exec(source, vars(target_module), local_vars)
+        compute_theta = local_vars["dynamic_compute_theta"]
+        xi_matrix = np.load(context.artifacts["xi_path"])
+        self.gate_init = np.load(context.artifacts["gate_init_path"])
+        self.sindy_args = (xi_matrix, compute_theta)
+        self.preprocessor = joblib.load(context.artifacts["preprocessor_path"])
+
+    def predict(self, context, model_input):
+        pass  # unified_simulatorに直接渡すので不要
+
+
+def log_surrogate_model(surrogate: SINDySurrogateWrapper):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        np.save(tmpdir / "xi.npy", surrogate.sindy.coefficients())
+        np.save(tmpdir / "gate_init.npy", surrogate.gate_init)
+        (tmpdir / "source.py").write_text(surrogate.source)
+        joblib.dump(surrogate.preprocessor, tmpdir / "preprocessor.joblib")
+
+        mlflow.pyfunc.log_model(
+            artifact_path="surrogate_model",
+            python_model=SINDySurrogateMLflowModel(),
+            artifacts={
+                "xi_path": str(tmpdir / "xi.npy"),
+                "gate_init_path": str(tmpdir / "gate_init.npy"),
+                "source_path": str(tmpdir / "source.py"),
+                "target_module_path": inspect.getfile(surrogate.target_module),
+                "preprocessor_path": str(tmpdir / "preprocessor.joblib"),
+            },
+        )
+
+
+def load_surrogate_model(run_id: str):
+    # log_surrogate_model で指定した artifact_path を使用
+    model_uri = f"runs:/{run_id}/surrogate_model"
+    logger.info(f"Loading custom MLflow model from: {model_uri}")
+
+    try:
+        # pyfuncとしてロード（内部で load_context が実行される）
+        pyfunc_model = mlflow.pyfunc.load_model(model_uri)
+
+        # PythonModelの実体（SINDySurrogateMLflowModelのインスタンス）を取り出す
+        surrogate = pyfunc_model._model_impl.python_model
+
+        # ログ用に属性の存在確認（任意）
+        if hasattr(surrogate, "xi_matrix"):
+            logger.info(f"Model loaded. Xi matrix shape: {surrogate.xi_matrix.shape}")
+
+        return surrogate
+
+    except Exception as e:
+        logger.error(f"Failed to load surrogate from MLflow: {e}")
+        raise
 
 
 def get_runs_df():
@@ -88,83 +189,3 @@ def get_child_runs(parent_run_ids):
 #     mo.md("**子Runが見つかりません**")
 
 # child_selector
-
-# # 子Runが選択されていない場合は停止
-# import mlflow
-# mo.stop(len(child_selector.value) == 0)
-
-# target_run_id = child_selector.value.iloc[0]["run_id"]
-
-# with mo.status.spinner(title="Artifactリストを取得中..."):
-#     client = mlflow.tracking.MlflowClient()
-#     # Artifactのリスト（ファイル一覧）を取得
-#     artifacts = client.list_artifacts(target_run_id)
-
-#     # ファイル名の一覧を作成
-#     artifact_paths = [a.path for a in artifacts]
-
-# # Artifactを選択するドロップダウン
-# artifact_selector = mo.ui.dropdown(
-#     options=artifact_paths,
-#     label="表示するArtifactを選択:"
-# )
-
-# artifact_selector
-
-# mo.stop(not artifact_selector.value)
-
-# path = artifact_selector.value
-# local_path = client.download_artifacts(target_run_id, path)
-
-# if path.endswith((".png", ".jpg", ".jpeg")):
-#     # 画像の場合
-#     content = mo.image(local_path)
-# elif path.endswith((".txt", ".yaml", ".json", ".log")):
-#     # テキスト系の場合
-#     with open(local_path, "r") as f:
-#         content = mo.plain_text(f.read())
-# else:
-#     content = mo.md(f"📁 ファイルをダウンロードしました: `{local_path}`")
-
-# mo.vstack([
-#     mo.md(f"### Artifact: {path}"),
-#     content
-# ])
-
-# import matplotlib.pyplot as plt
-# import numpy as np
-# import yaml
-
-# from scripts.flow import build_current_pipeline
-
-# # yaml読み込み
-# with open("./scripts/conf/config.yaml") as f:
-#     cfg = yaml.safe_load(f)
-
-# # UI
-# selected = mo.ui.dropdown(
-#     options=list(cfg["current_train_pipelines"].keys()), label="experiment"
-# )
-# mo.hstack([selected])
-
-# # 選択されたexpの電流を生成して表示
-# pipeline = cfg["current_train_pipelines"][selected.value]
-
-# current_cfg = {"pipeline": pipeline}
-
-# defaults = cfg["datasets_default"]
-# dt = defaults["simulator_default_dt"]
-# iteration = int(defaults["simulator_default_duration"] / dt)
-# current_cfg.setdefault("current_seed", defaults["default_current_seed"])
-# current_cfg.setdefault("iteration", iteration)
-# current_cfg.setdefault("silence_steps", int(defaults["silence_duration"] / dt))
-
-# # パイプライン実行
-# u = build_current_pipeline(current_cfg)
-# t = np.arange(iteration) * dt
-
-# fig, ax = plt.subplots()
-# ax.plot(t, u)
-# ax.set_xlabel("time [ms]")
-# ax.set_ylabel("I_ext")
-# mo.mpl.interactive(fig)
