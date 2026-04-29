@@ -11,9 +11,8 @@ from utils.mlflow_handler import (
 )
 
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model import transform_gate
 from neurosurrogate.neuron_core import FUNC_COST_MAP, HH_COST
-from neurosurrogate.profiler import calc_dynamic_metrics, get_loggable_summary
+from neurosurrogate.profiler import get_loggable_summary
 
 logger = logging.getLogger(__name__)
 
@@ -39,39 +38,6 @@ def _format_to_table(cost_map: dict) -> str:
     df.index.name = "Feature"
     # 欠損値を0で埋めて整数型にし、美しいMarkdownとして出力
     return df.fillna(0).astype(int).to_markdown()
-
-
-def eval_dataset(surrogate_model, dataset_cfg):
-    original_ds = unified_simulator(**build_simulator_config(dataset_cfg))
-    target_comp_id = dataset_cfg["target_comp_id"]
-    surr_ds = unified_simulator(
-        **build_simulator_config(dataset_cfg),
-        surrogate_target=target_comp_id,
-        surrogate_model=surrogate_model,
-    )
-    preprocessed_xr = transform_gate(
-        surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
-    )
-    target_comp_id = dataset_cfg["target_comp_id"]
-    return {
-        "figure_args": {
-            "plot_2d_attractor_comparison": {
-                "orig_ds": preprocessed_xr,
-                "surr_ds": surr_ds,
-                "comp_id": target_comp_id,
-                "state_vars": ["V", "latent1"],
-            },
-            "spec_diff": {
-                "original": original_ds,
-                "preprocessed": preprocessed_xr,
-                "surrogate": surr_ds,
-                "surr_id": target_comp_id,
-            },
-        },
-        "metrics": calc_dynamic_metrics(
-            original_ds, surr_ds, target_comp_id, dataset_cfg["dt"]
-        ),
-    }
 
 
 def eval_with_model_reaction(datasets_cfg, train_run_id):

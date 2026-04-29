@@ -101,10 +101,10 @@ CurrentType = Literal["steady", "random"]
 
 
 def build_dataset(
-    dt,
-    silence_duration,
-    duration,
-    model_name,
+    dt=0.01,
+    silence_duration=80,
+    duration=800,
+    model_name="hh",
     pipeline=None,
     current_type=None,
     value=None,

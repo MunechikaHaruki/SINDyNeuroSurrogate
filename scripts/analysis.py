@@ -13,7 +13,7 @@ def _():
 
     project_root = Path(__file__).parent.parent
     sys.path.insert(0, str(project_root))
-    from scripts.utils.plots import draw_engine,plot_sindy_coefficients
+    from scripts.utils.plots import plot_sindy_coefficients
 
     # ボタンを作成し、変数 'test_btn' に代入
     load_btn = mo.ui.button(
@@ -30,11 +30,12 @@ def _():
 def _(load_btn, mo):
     # ボタンが押されたときだけデータを読み込む
     from scripts.utils.mlflow_handler import get_runs_df
+
     with mo.status.spinner(title="MLflowからデータを読み込み中..."):
         if load_btn.value:
             runs_df = get_runs_df()
             if runs_df is None:
-                run_selector = mo.md(f"⚠️ 実験が見つかりませんでした。")
+                run_selector = mo.md("⚠️ 実験が見つかりませんでした。")
             run_selector = mo.ui.table(
                 runs_df[["tags.mlflow.runName", "run_id"]],
                 label="比較・解析したいRunを複数選択してください（Shift/Ctrl+クリック）",
@@ -50,17 +51,19 @@ def _(load_btn, mo):
 def _(mo, plot_sindy_coefficients, run_selector):
     # モデルの状態を確認するセル
     from scripts.utils.mlflow_handler import get_run_info
+
     run_ids = run_selector.value["run_id"].tolist()
 
-    model_infos={}
+    model_infos = {}
     for run_id in run_ids:
-        run_info=get_run_info(run_id)
-        model_infos[run_id]={}
-        model_infos[run_id]["runName"]= run_info["runName"]
-        model_infos[run_id]["equations"]=run_info["equations"]
-        model_infos[run_id]["dataset"]=run_info["dataset"]
-        model_infos[run_id]["sindy_coef"]=plot_sindy_coefficients(**run_info["sindy_coef"])
-    
+        run_info = get_run_info(run_id)
+        model_infos[run_id] = {}
+        model_infos[run_id]["runName"] = run_info["runName"]
+        model_infos[run_id]["equations"] = run_info["equations"]
+        model_infos[run_id]["dataset"] = run_info["dataset"]
+        model_infos[run_id]["sindy_coef"] = plot_sindy_coefficients(
+            **run_info["sindy_coef"]
+        )
 
     mo.vstack(
         [
@@ -81,49 +84,72 @@ def _(mo, plot_sindy_coefficients, run_selector):
 
 @app.cell(hide_code=True)
 def _(mo, run_ids):
-    dropdown = mo.ui.dropdown(options=run_ids)
+
     from typing import get_args
 
     from scripts.utils.builder import CurrentType
-
+    dropdown = mo.ui.dropdown(options=run_ids)
     current_dropdown = mo.ui.dropdown(["train"] + list(get_args(CurrentType)))
+    value_slider = mo.ui.slider(start=0,stop=30,step=1)
 
     first_row = mo.hstack([mo.md("select experiment"), dropdown])
     second_row = mo.hstack([mo.md("choose type"), current_dropdown])
-    mo.vstack([first_row, second_row])
-    return current_dropdown, dropdown
+    third_row = mo.hstack([mo.md("value"),value_slider])
+    mo.vstack([first_row, second_row,third_row])
+    return current_dropdown, dropdown, value_slider
 
 
-@app.cell
-def _(current_dropdown, dropdown, mo, model_infos):
+@app.cell(hide_code=True)
+def _(current_dropdown, dropdown, mo, model_infos, value_slider):
     mo.stop(
         dropdown.value is None or current_dropdown.value is None,
         "実験を選択してください",
     )
-    print(dropdown.value)
-    print(current_dropdown.value)
+
     from scripts.utils.mlflow_handler import load_surrogate_model
+    from scripts.utils.builder import build_simulator_config,build_dataset
+    from neurosurrogate.calc_engine import unified_simulator
+    from neurosurrogate.model import transform_gate
+    from neurosurrogate.profiler import calc_dynamic_metrics
 
     surrogate = load_surrogate_model(dropdown.value)
-    simulator_config = model_infos[dropdown.value]["dataset"]
+
+    if current_dropdown.value == "train":
+        simulator_config = model_infos[dropdown.value]["dataset"]
+    else:
+        simulator_config = build_dataset(current_type=current_dropdown.value,value=value_slider.value)
     print(simulator_config)
 
-    from scripts.utils.flow import eval_dataset
 
-    eval_dataset(surrogate,simulator_config)
+    def eval_dataset(surrogate_model, dataset_cfg):
+        original_ds = unified_simulator(**build_simulator_config(dataset_cfg))
+        target_comp_id = dataset_cfg["target_comp_id"]
+        surr_ds = unified_simulator(
+            **build_simulator_config(dataset_cfg),
+            surrogate_target=target_comp_id,
+            surrogate_model=surrogate_model,
+        )
+        preprocessed_xr = transform_gate(
+            surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
+        )
+        target_comp_id = dataset_cfg["target_comp_id"]
+        return {
+            "datasets":{
+                "original": original_ds,
+                "preprocessed":preprocessed_xr,
+                "surrogate":surr_ds,
+                "surr_id":target_comp_id},
+            "metrics": calc_dynamic_metrics(
+                original_ds, surr_ds, target_comp_id, dataset_cfg["dt"]
+            ),
+        }
 
-    # type: random
-    # catalog:
-    #   random: [9919, 9920]
-    #   steady: {start: 0, stop: 30, step: 1 }
-    #   sweep:
-    #     model_name: hh
-    #     duration: 800
-    return
+    result=eval_dataset(surrogate, simulator_config)
 
+    from scripts.utils.plots import spec_simple,spec_diff,draw_engine
+    # draw_engine(spec_simple(result["datasets"]["orig"]))
+    draw_engine(spec_diff(**result["datasets"]))
 
-@app.cell
-def _():
     return
 
 

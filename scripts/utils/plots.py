@@ -5,6 +5,7 @@ import matplotlib
 import numpy as np
 import plotly.graph_objects as go
 import seaborn as sns
+import xarray as xr
 from plotly.subplots import make_subplots
 
 matplotlib.use("Agg")
@@ -20,7 +21,7 @@ def setup_matplotlib(matplotlib_style):
     plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
 
-def draw_engine(datasets, spec, engine="matplotlib", figsize_width=10):
+def draw_engine(spec, engine="matplotlib", figsize_width=10):
     """
     datasets: {"ds_name": xr.Dataset} の辞書
     spec: パネル(サブプロット)ごとの描画仕様のリスト
@@ -30,26 +31,11 @@ def draw_engine(datasets, spec, engine="matplotlib", figsize_width=10):
     for panel_spec in spec:
         traces = []
         for tr in panel_spec["traces"]:
-            # 指定されたデータセットと変数を取得
-            ds = datasets[tr["ds"]]
-            data = ds[tr["var"]]
-
-            # sel が指定されていれば xarray の機能で抽出
-            if "sel" in tr:
-                data = data.sel(**tr["sel"])
-
-            # プロット用の純粋な配列に変換
-            x = (
-                data.time.values
-                if hasattr(data, "time")
-                else np.arange(len(data.values.squeeze()))
-            )
-            y = data.values.squeeze()
-
+            data = tr["data"]  # xarray
             traces.append(
                 {
-                    "x": x,
-                    "y": y,
+                    "x": data.time.values,
+                    "y": data.values.squeeze(),
                     "label": tr.get("label"),
                     "color": tr.get("color"),
                     "style": tr.get("style", "-"),
@@ -148,44 +134,48 @@ def _style_to_dash(style):
     }.get(style, "solid")
 
 
+def trace(data: xr.DataArray, *, label=None, color=None, style=None):
+    t = {"data": data}
+    for k, v in [("label", label), ("color", color), ("style", style)]:
+        if v is not None:
+            t[k] = v
+    return t
+
+
+def panel(ylabel, traces):
+    # 単一 trace を渡された場合も list 化
+    if isinstance(traces, dict):
+        traces = [traces]
+    return {"ylabel": ylabel, "traces": list(traces)}
+
+
 def spec_simple(ds):
-    spec = []
     comp_ids = np.unique(ds.coords["comp_id"].values)
-
-    # 1. I_ext
-    spec.append({"ylabel": "I_ext", "traces": [{"ds": "main", "var": "I_ext"}]})
-
-    # 2. I_internal
+    spec = []
+    spec.append(panel("I_ext", trace(ds["I_ext"])))
     if "I_internal" in ds:
         spec.append(
-            {
-                "ylabel": "I_internal",
-                "traces": [
-                    {
-                        "ds": "main",
-                        "var": "I_internal",
-                        "sel": {"node_id": i},
-                        "label": f"Comp {i}",
-                    }
+            panel(
+                "I_internal",
+                [
+                    trace(ds["I_internal"].sel(node_id=i), label=f"Comp {i}")
                     for i in comp_ids
                 ],
-            }
+            )
         )
 
     # 3. V(t)
     spec.append(
-        {
-            "ylabel": "V(t) [mV]",
-            "traces": [
-                {
-                    "ds": "main",
-                    "var": "vars",
-                    "sel": {"gate": False, "comp_id": i},
-                    "label": f"V (Comp {i})" if len(comp_ids) > 1 else None,
-                }
+        panel(
+            "V(t) [mV]",
+            [
+                trace(
+                    ds["vars"].sel(gate=False, comp_id=i),
+                    label=f"V (Comp {i})" if len(comp_ids) > 1 else None,
+                )
                 for i in comp_ids
             ],
-        }
+        )
     )
 
     # 4. Gates / Latent
@@ -196,107 +186,77 @@ def spec_simple(ds):
             vars_in_comp = np.unique(g_data.sel(comp_id=i).coords["variable"].values)
             for v_name in vars_in_comp:
                 traces.append(
-                    {
-                        "ds": "main",
-                        "var": "vars",
-                        "sel": {"gate": True, "comp_id": i, "variable": v_name},
-                        "label": f"{v_name} (Comp {i})",
-                    }
+                    trace(
+                        g_data.sel(comp_id=i, variable=v_name),
+                        label=f"{v_name} (Comp {i})",
+                    )
                 )
         if traces:
-            spec.append({"ylabel": "Gates / Latent", "traces": traces})
+            spec.append(panel("Gates / Latent", traces))
     except KeyError:
         pass
-    return ({"main": ds}, spec)
+
+    return spec
 
 
 def spec_diff(original, preprocessed, surrogate, surr_id):
-
-    datasets = {"orig": original, "prep": preprocessed, "surr": surrogate}
     spec = []
 
     # 1. I_ext
-    spec.append(
-        {
-            "ylabel": "I_ext(t)",
-            "traces": [{"ds": "orig", "var": "I_ext", "color": "gold"}],
-        }
-    )
+    spec.append(panel("I_ext(t)", trace(original["I_ext"], color="gold")))
 
     # 2. V の比較
+    v_sel = {"comp_id": surr_id, "variable": "V"}
     spec.append(
-        {
-            "ylabel": "V [mV]",
-            "traces": [
-                {
-                    "ds": "orig",
-                    "var": "vars",
-                    "sel": {"comp_id": surr_id, "variable": "V"},
-                    "label": "orig V",
-                    "color": "blue",
-                },
-                {
-                    "ds": "surr",
-                    "var": "vars",
-                    "sel": {"comp_id": surr_id, "variable": "V"},
-                    "label": "surr V",
-                    "color": "red",
-                    "style": "--",
-                },
+        panel(
+            "V [mV]",
+            [
+                trace(original["vars"].sel(**v_sel), label="orig V", color="blue"),
+                trace(
+                    surrogate["vars"].sel(**v_sel),
+                    label="surr V",
+                    color="red",
+                    style="--",
+                ),
             ],
-        }
+        )
     )
 
-    # 3. Latent変数の比較
+    # 3. Latent 変数の比較
     prep_vars = preprocessed.coords["variable"].values.tolist()
     latent_vars = [v for v in prep_vars if v != "V"]
 
     for latent in latent_vars:
         spec.append(
-            {
-                "ylabel": latent,
-                "traces": [
-                    {
-                        "ds": "prep",
-                        "var": "vars",
-                        "sel": {"variable": latent},
-                        "label": f"target {latent}",
-                        "color": "blue",
-                    },
-                    {
-                        "ds": "surr",
-                        "var": "vars",
-                        "sel": {"comp_id": surr_id, "variable": latent},
-                        "label": f"surr {latent}",
-                        "color": "red",
-                        "style": "--",
-                    },
+            panel(
+                latent,
+                [
+                    trace(
+                        preprocessed["vars"].sel(variable=latent),
+                        label=f"target {latent}",
+                        color="blue",
+                    ),
+                    trace(
+                        surrogate["vars"].sel(comp_id=surr_id, variable=latent),
+                        label=f"surr {latent}",
+                        color="red",
+                        style="--",
+                    ),
                 ],
-            }
+            )
         )
 
     # 4. Original の Gate 変数
-    gate_names = (
-        original["vars"]
-        .sel(comp_id=surr_id, gate=True)
-        .coords["variable"]
-        .values.tolist()
-    )
+    gate_data = original["vars"].sel(comp_id=surr_id, gate=True)
+    gate_names = gate_data.coords["variable"].values.tolist()
     spec.append(
-        {
-            "ylabel": "orig gates",
-            "traces": [
-                {
-                    "ds": "orig",
-                    "var": "vars",
-                    "sel": {"comp_id": surr_id, "variable": name},
-                    "label": name,
-                }
-                for name in gate_names
-            ],
-        }
+        panel(
+            "orig gates",
+            [trace(gate_data.sel(variable=name), label=name) for name in gate_names],
+        )
     )
-    return (datasets, spec)
+
+    return spec
 
 
 def plot_sindy_coefficients(
