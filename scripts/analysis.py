@@ -99,6 +99,11 @@ def _(mo, run_ids):
     return current_dropdown, dropdown, value_slider
 
 
+@app.cell
+def _():
+    return
+
+
 @app.cell(hide_code=True)
 def _(current_dropdown, dropdown, mo, model_infos, value_slider):
     mo.stop(
@@ -147,9 +152,14 @@ def _(current_dropdown, dropdown, mo, model_infos, value_slider):
     result=eval_dataset(surrogate, simulator_config)
 
     from scripts.utils.plots import spec_simple,spec_diff,draw_engine
-    # draw_engine(spec_simple(result["datasets"]["orig"]))
+    #draw_engine(spec_simple(result["datasets"]["preprocessed"]))
     draw_engine(spec_diff(**result["datasets"]))
 
+    return
+
+
+@app.cell
+def _():
     return
 
 

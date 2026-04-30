@@ -13,12 +13,19 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 
 
+# 1. encoder関数
 def encoder(params, x):
-    return jnp.tanh(x @ params["W"] + params["b"])
+    h = jnp.tanh(x @ params["W1"] + params["b1"])
+    return jnp.tanh(h @ params["W2"] + params["b2"])
 
 
+# 2. decoder関数
 def decoder(params, z):
-    return z @ params["W"] + params["b"]
+    h = jnp.tanh(z @ params["W1"] + params["b1"])
+    return h @ params["W2"] + params["b2"]
+
+
+# 3. _init_params（クラス内）
 
 
 def loss_fn(params, x):
@@ -46,7 +53,7 @@ class AutoEncoderPreprocessor:
         学習率。
     """
 
-    def __init__(self, n_components: int = 1, epochs: int = 200, lr: float = 1e-3):
+    def __init__(self, n_components: int = 1, epochs: int = 1000, lr: float = 3e-2):
         self.n_components = n_components
         self.epochs = epochs
         self.lr = lr
@@ -54,16 +61,21 @@ class AutoEncoderPreprocessor:
         self._mean = None
         self._std = None
 
-    def _init_params(self, input_dim: int, key: jax.Array) -> dict:
-        k1, k2, k3, k4 = jax.random.split(key, 4)
+    def _init_params(self, input_dim, key):
+        k1, k2, k3, k4, k5, k6, k7, k8 = jax.random.split(key, 8)
+        hidden = 16
         return {
             "enc": {
-                "W": jax.random.normal(k1, (input_dim, self.n_components)) * 0.1,
-                "b": jax.random.normal(k2, (self.n_components,)) * 0.1,
+                "W1": jax.random.normal(k1, (input_dim, hidden)) * 0.1,
+                "b1": jax.random.normal(k2, (hidden,)) * 0.1,
+                "W2": jax.random.normal(k3, (hidden, self.n_components)) * 0.1,
+                "b2": jax.random.normal(k4, (self.n_components,)) * 0.1,
             },
             "dec": {
-                "W": jax.random.normal(k3, (self.n_components, input_dim)) * 0.1,
-                "b": jax.random.normal(k4, (input_dim,)) * 0.1,
+                "W1": jax.random.normal(k5, (self.n_components, hidden)) * 0.1,
+                "b1": jax.random.normal(k6, (hidden,)) * 0.1,
+                "W2": jax.random.normal(k7, (hidden, input_dim)) * 0.1,
+                "b2": jax.random.normal(k8, (input_dim,)) * 0.1,
             },
         }
 
@@ -103,7 +115,11 @@ class AutoEncoderPreprocessor:
         if self._params is None:
             raise RuntimeError("fit()を先に呼んでください。")
         X_norm = jnp.array((np.asarray(X, dtype=np.float32) - self._mean) / self._std)
-        return np.array(encoder(self._params["enc"], X_norm))
+
+        z = np.array(encoder(self._params["enc"], X_norm))
+        # 標準化して分散を1に揃える
+        z = (z - z.mean(axis=0)) / (z.std(axis=0) + 1e-8)
+        return z
 
     def fit_transform(self, X: np.ndarray) -> np.ndarray:
         return self.fit(X).transform(X)

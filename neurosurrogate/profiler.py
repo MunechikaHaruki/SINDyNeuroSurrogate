@@ -221,12 +221,19 @@ def get_loggable_summary(
         get_active_features(surrogate.sindy), base_cost_map
     )
 
+    if isinstance(surrogate.preprocessor, PCA):
+        preprocessor_metrics = _get_pca_metrics(
+            surrogate.preprocessor, surrogate.train_gate_data
+        )
+    else:
+        preprocessor_metrics = {}
+
     return SINDySummary(
         metrics={
             "nonzero_term_num": str(nonzero_term_num),
             "nonzero_term_ratio": str(nonzero_term_num / coef.size),
             **static_calc_cost(surrogate.sindy, feature_cost_map, original_cost),
-            **_get_pca_metrics(surrogate.preprocessor, surrogate.train_gate_data),
+            **preprocessor_metrics,
         },
         params=surrogate.sindy.optimizer.get_params(),
         texts={

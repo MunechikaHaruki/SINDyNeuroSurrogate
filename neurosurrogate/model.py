@@ -13,6 +13,7 @@ class SINDySurrogateWrapper:
         self.sindy = initialized_sindy
         self.target_module = target_module
         self.preprocessor = PCA(n_components=1)
+        # self.preprocessor = AutoEncoderPreprocessor()
 
     @staticmethod
     def get_gate_numpy(train_xr, target_comp_id):
