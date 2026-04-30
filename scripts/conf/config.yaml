@@ -59,6 +59,9 @@ lib:
 
 sindy:
   name: Default
+  preprocessor:
+    _target_: sklearn.decomposition.PCA
+    n_components: 1
   optimizer:
     _target_: pysindy.optimizers.STLSQ
     threshold: 0.01

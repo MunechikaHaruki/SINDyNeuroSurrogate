@@ -41,7 +41,7 @@ neurosurrogate/          # コアライブラリ（scripts 非依存）
     calc_engine.py       # unified_simulator, generic_euler_solver @njit
     xarray_utils.py      # build_indices, set_coords (MultiIndex)
     profiler.py          # コスト静的解析, 波形/スパイク指標
-    __init__.py          # SINDySurrogateWrapper, PCAPreProcessorWrapper
+    __init__.py          # SINDyNeuroSurrogate, PCAPreProcessorWrapper
   utils/
     current_generators.py  # apply(arr) -> None を返す高階関数
     plots.py               # draw_engine (matplotlib/plotly), spec_*
@@ -82,12 +82,12 @@ scripts/                 # Hydra + MLflow オーケストレーション
 
 ### 動的 Numba 関数生成
 
-`SINDySurrogateWrapper._build_source` が pysindy の `feature_names` から Python ソース文字列を組み立てて `exec` で `neuron_core` 名前空間にコンパイル。置換ルール:
+`SINDyNeuroSurrogate._build_source` が pysindy の `feature_names` から Python ソース文字列を組み立てて `exec` で `neuron_core` 名前空間にコンパイル。置換ルール:
 
 - `1` → `1.0` (Numba 型推論のため)
 - `^` → `**`
 
-生成関数 `dynamic_compute_theta` に `@njit` が適用される前提で `neuron_core` の名前空間を使っているため、`neuron_core` を改名・移動する場合は `SINDySurrogateWrapper.fit` の `target_module` 引数経路と `log_model.SINDySurrogateMLflowModel.load_context` の両方を更新。
+生成関数 `dynamic_compute_theta` に `@njit` が適用される前提で `neuron_core` の名前空間を使っているため、`neuron_core` を改名・移動する場合は `SINDyNeuroSurrogate.fit` の `target_module` 引数経路と `log_model.SINDySurrogateMLflowModel.load_context` の両方を更新。
 
 ### 演算コスト map の整合性
 

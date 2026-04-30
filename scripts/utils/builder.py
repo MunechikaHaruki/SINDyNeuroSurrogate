@@ -7,7 +7,7 @@ import pysindy as ps
 from conf.feature_library_components import LIB_BUILDER_REGISTRY
 from conf.neuron_models import MODEL_DEFINITIONS
 
-from neurosurrogate.model import SINDySurrogateWrapper
+from neurosurrogate.model import SINDyNeuroSurrogate
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,8 @@ def build_surrogate(cfg_sindy):
 
     library = _build_feature_library(cfg_sindy["library_specs"])
 
+    # preprocessorの初期化
+    preprocessor = hydra.utils.instantiate(cfg_sindy["preprocessor"])
     # pySINDyの初期化
     initialized_sindy = ps.SINDy(
         feature_library=library,
@@ -38,7 +40,9 @@ def build_surrogate(cfg_sindy):
     from scripts.conf import feature_library_components
 
     # surrogate_modelの初期化
-    return SINDySurrogateWrapper(initialized_sindy, feature_library_components)
+    return SINDyNeuroSurrogate(
+        preprocessor, initialized_sindy, feature_library_components
+    )
 
 
 def build_models(definitions: dict):

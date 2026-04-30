@@ -7,7 +7,7 @@ import numpy as np
 from scipy.signal import find_peaks
 from sklearn.decomposition import PCA
 
-from .model import SINDySurrogateWrapper
+from .model import SINDyNeuroSurrogate
 
 
 def get_active_features(sindy_model):
@@ -209,7 +209,7 @@ class SINDySummary:
 
 
 def get_loggable_summary(
-    surrogate: SINDySurrogateWrapper, base_cost_map, original_cost
+    surrogate: SINDyNeuroSurrogate, base_cost_map, original_cost
 ) -> SINDySummary:
     coef = surrogate.sindy.optimizer.coef_
     nonzero_term_num = np.count_nonzero(coef)

@@ -1,19 +1,17 @@
 import logging
 
 import numpy as np
-from sklearn.decomposition import PCA
 
 from .xarray_utils import set_coords
 
 logger = logging.getLogger(__name__)
 
 
-class SINDySurrogateWrapper:
-    def __init__(self, initialized_sindy, target_module):
+class SINDyNeuroSurrogate:
+    def __init__(self, preprocessor, initialized_sindy, target_module):
+        self.preprocessor = preprocessor
         self.sindy = initialized_sindy
         self.target_module = target_module
-        self.preprocessor = PCA(n_components=1)
-        # self.preprocessor = AutoEncoderPreprocessor()
 
     @staticmethod
     def get_gate_numpy(train_xr, target_comp_id):
@@ -76,7 +74,7 @@ def dynamic_compute_theta({input_features}):
 
 
 def transform_gate(preprocessor, xr_data, target_comp_id):
-    xr_gate = SINDySurrogateWrapper.get_gate_numpy(xr_data, target_comp_id)
+    xr_gate = SINDyNeuroSurrogate.get_gate_numpy(xr_data, target_comp_id)
     transformed_gate = preprocessor.transform(xr_gate)
     v_soma_da = xr_data["vars"].sel(gate=False, comp_id=target_comp_id)
     new_vars = np.concatenate(

@@ -9,7 +9,7 @@ import mlflow
 import numpy as np
 import yaml
 
-from neurosurrogate.model import SINDySurrogateWrapper
+from neurosurrogate.model import SINDyNeuroSurrogate
 from neurosurrogate.profiler import SINDySummary
 
 TARGET_EXP = "test_static_params"
@@ -88,7 +88,7 @@ class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
         pass  # unified_simulatorに直接渡すので不要
 
 
-def log_surrogate_model(surrogate: SINDySurrogateWrapper):
+def log_surrogate_model(surrogate: SINDyNeuroSurrogate):
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
