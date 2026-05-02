@@ -1,6 +1,6 @@
 import copy
 import logging
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 
 import numpy as np
 from numba import njit
@@ -40,45 +40,52 @@ def generic_euler_solver(init, u, dt, model_args):
     return x_history
 
 
+ModelArgs = namedtuple(
+    "ModelArgs",
+    ["C_matrix", "params", "stim_idx", "indice_args", "xi_matrix", "compute_theta"],
+)
+
+IndiceArgs = namedtuple(
+    "IndiceArgs", ["gate_offsets", "passive_ids", "hh_ids", "surr_ids"]
+)
+
+
 @njit
 def calc_universal_deriv(curr_x, u_t, model_args, dvar):
     """物理モデル用の汎用微分計算エンジン"""
-    net_args, indice_args, sindy_args = model_args
-    gate_offsets, passive_ids, hh_ids, surr_ids = indice_args
-    p, C_matrix, stim_idx = net_args
-    xi_matrix, compute_theta = sindy_args
-    N = C_matrix.shape[0]
+    indice_args: IndiceArgs = model_args.indice_args
+    N = model_args.C_matrix.shape[0]
 
     # 1. 電位ベクトルの抽出と網内電流の計算 (グラフラプラシアン)
     v_vec = curr_x[:N]
-    I_internal = v_vec @ C_matrix
-    I_internal[stim_idx] += u_t
+    I_internal = v_vec @ model_args.C_matrix
+    I_internal[model_args.stim_idx] += u_t
 
     # 2. Passive コンパートメントの計算 (if分岐なしのSoA処理)
-    for i in passive_ids:
-        dvar[i] = calc_passive_channel(p, I_internal[i], v_vec[i])
+    for i in indice_args.passive_ids:
+        dvar[i] = calc_passive_channel(model_args.params, I_internal[i], v_vec[i])
 
     # 3. Hodgkin-Huxley コンパートメントの計算 (if分岐なしのSoA処理)
-    for i in hh_ids:
-        g_idx = gate_offsets[i]
+    for i in indice_args.hh_ids:
+        g_idx = indice_args.gate_offsets[i]
         # HHは m, h, n の3つのゲート変数を持つ前提
         dvar[i] = calc_hh_channel(
-            p,
+            model_args.params,
             I_internal[i],
             v_vec[i],
             curr_x[g_idx : g_idx + 3],
             dvar[g_idx : g_idx + 3],
         )
     # SINDy代理モデルの計算
-    for i in surr_ids:
-        g_idx = gate_offsets[i]
+    for i in indice_args.surr_ids:
+        g_idx = indice_args.gate_offsets[i]
         latent = curr_x[g_idx]  # サロゲートは1つの潜在変数 (latent) を持つ前提
 
         # 動的にコンパイルされた Theta 関数の呼び出し
-        theta = compute_theta(v_vec[i], latent, I_internal[i])
+        theta = model_args.compute_theta(v_vec[i], latent, I_internal[i])
 
-        dvar[i] = xi_matrix[0] @ theta
-        dvar[g_idx] = xi_matrix[1] @ theta
+        dvar[i] = model_args.xi_matrix[0] @ theta
+        dvar[g_idx] = model_args.xi_matrix[1] @ theta
 
 
 def build_indices(nodes: list, surr_comp: dict):
@@ -113,7 +120,12 @@ def build_indices(nodes: list, surr_comp: dict):
         ids[k] = np.array(v, dtype=np.int32)
 
     return {
-        "indice_args": (gate_offsets, ids["passive"], ids["hh"], ids["surr"]),
+        "indice_args": IndiceArgs(
+            gate_offsets=gate_offsets,
+            passive_ids=ids["passive"],
+            hh_ids=ids["hh"],
+            surr_ids=ids["surr"],
+        ),
         "init": acc.to_init(),
         "coords": acc.to_coords(),
     }
@@ -156,18 +168,20 @@ def unified_simulator(
         )
 
     surr_net = build_surrogate_net(net, surrogate_target)
-
     indice = build_indices(surr_net["nodes"], surr_comp)
-
-    net_args = (params, C_matrix, net["stim_node"])
-
-    args = (net_args, indice["indice_args"], surrogate_model.sindy_args)
-    raw = generic_euler_solver(indice["init"], u, dt, args)
+    raw = generic_euler_solver(
+        indice["init"],
+        u,
+        dt,
+        ModelArgs(
+            params=params,
+            C_matrix=C_matrix,
+            stim_idx=net["stim_node"],
+            indice_args=indice["indice_args"],
+            xi_matrix=surrogate_model.sindy_args[0],
+            compute_theta=surrogate_model.sindy_args[1],
+        ),
+    )
     dataset = set_coords(raw, u, indice["coords"], dt)
-
-    I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
-    stim_idx = net["stim_node"]  # 設定から注入先を取得
-    I_ext_2d[:, stim_idx] = u  # 指定されたコンパートメントにだけ u を流し込む
-    set_i_internal(dataset, C_matrix, I_ext_2d)
-
+    set_i_internal(dataset, C_matrix, net["stim_node"], u)
     return dataset
