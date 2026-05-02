@@ -118,14 +118,8 @@ def load_surrogate_model(run_id: str):
     try:
         # pyfuncとしてロード（内部で load_context が実行される）
         pyfunc_model = mlflow.pyfunc.load_model(model_uri)
-
         # PythonModelの実体（SINDySurrogateMLflowModelのインスタンス）を取り出す
         surrogate = pyfunc_model._model_impl.python_model
-
-        # ログ用に属性の存在確認（任意）
-        if hasattr(surrogate, "xi_matrix"):
-            logger.info(f"Model loaded. Xi matrix shape: {surrogate.xi_matrix.shape}")
-
         return surrogate
 
     except Exception as e:

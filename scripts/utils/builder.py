@@ -4,6 +4,7 @@ from typing import Literal
 import hydra
 import numpy as np
 import pysindy as ps
+from conf import feature_library_components
 from conf.feature_library_components import LIB_BUILDER_REGISTRY
 from conf.neuron_models import MODEL_DEFINITIONS
 
@@ -33,11 +34,6 @@ def build_surrogate(cfg_sindy):
         feature_library=library,
         optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
     )
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from scripts.conf import feature_library_components
 
     # surrogate_modelの初期化
     return SINDyNeuroSurrogate(
