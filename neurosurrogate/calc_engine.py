@@ -41,43 +41,6 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
     return x_history
 
 
-def get_surrogate_network(
-    origi_net: dict,
-    origi_comp: dict,
-    surr_indice: int,  # サロゲート化するノードのインデックスのリスト
-    surr_gate_init: list | np.ndarray,  # 外から渡される潜在変数の初期値
-):
-    if surr_indice is None:
-        return origi_net, origi_comp
-    # ネットワークのディープコピー（元の配線図を汚さない）
-    surr_net = copy.deepcopy(origi_net)
-    origi_node_type = surr_net["nodes"][surr_indice]
-    surr_net["nodes"][surr_indice] = "surr"
-
-    # V の初期値を元のカタログから引き継ぐ
-    origi_v_init = origi_comp[origi_node_type]["init"][0]
-
-    # V の初期値と、外から来たゲート初期値を結合 (★カッコで囲んで安全に結合！)
-    full_init = np.concatenate(
-        (
-            np.array([origi_v_init], dtype=np.float64),
-            np.array(surr_gate_init, dtype=np.float64),
-        )
-    )
-
-    # 潜在変数の次元数から、変数名(vars)とゲートフラグ(gates)を自動生成
-    num_latents = len(surr_gate_init)
-    surr_vars = ["V"] + [f"latent{i + 1}" for i in range(num_latents)]
-    surr_gates = [False] + [True] * num_latents
-
-    # 結合演算子 `|` を使って "surr" 部品を新規追加した新しいカタログを作る
-    surr_comp = origi_comp | {
-        "surr": {"init": full_init, "vars": surr_vars, "gate": surr_gates}
-    }
-    # 新しい配線図と、新しいカタログのセットを返す
-    return surr_net, surr_comp
-
-
 def calc_graph_laplacian(connections, N):
     G_matrix = np.zeros((N, N), dtype=np.float64)
     if N == 1 or connections is None:
@@ -155,11 +118,9 @@ def unified_simulator(
     N = len(net["nodes"])
     C_matrix = calc_graph_laplacian(net["edges"], N)
 
-    surr_net, surr_comp = get_surrogate_network(
-        net,
-        COMPARTMENT_TEMPLATES,
-        surrogate_target,
-        surrogate_model.gate_init,
+    surr_net = build_surrogate_net(net, surrogate_target)
+    surr_comp = build_surrogate_comp(
+        net, COMPARTMENT_TEMPLATES, surrogate_target, surrogate_model.gate_init
     )
     indice = build_indices(surr_net, surr_comp)
 
@@ -180,3 +141,31 @@ def unified_simulator(
     set_i_internal(dataset, C_matrix, I_ext_2d)
 
     return dataset
+
+
+def build_surrogate_net(origi_net, surr_indice):
+    if surr_indice is None:
+        return origi_net
+    surr_net = copy.deepcopy(origi_net)
+    surr_net["nodes"][surr_indice] = "surr"
+    return surr_net
+
+
+def build_surrogate_comp(origi_net, origi_comp, surr_indice, surr_gate_init):
+    if surr_indice is None:
+        return origi_comp
+    origi_node_type = origi_net["nodes"][surr_indice]
+    origi_v_init = origi_comp[origi_node_type]["init"][0]
+    full_init = np.concatenate(
+        (
+            np.array([origi_v_init], dtype=np.float64),
+            np.array(surr_gate_init, dtype=np.float64),
+        )
+    )
+    num_latents = len(surr_gate_init)
+    surr_entry = {
+        "init": full_init,
+        "vars": ["V"] + [f"latent{i + 1}" for i in range(num_latents)],
+        "gate": [False] + [True] * num_latents,
+    }
+    return origi_comp | {"surr": surr_entry}
