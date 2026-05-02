@@ -190,3 +190,19 @@ COMPARTMENT_TEMPLATES = {
     },
     "passive": {"init": np.array([E_REST]), "vars": ["V"], "gate": [False]},
 }
+
+
+def get_surr_comp(origi_node_type, surr_gate_init):
+    origi_v_init = COMPARTMENT_TEMPLATES[origi_node_type]["init"][0]
+    full_init = np.concatenate(
+        (
+            np.array([origi_v_init], dtype=np.float64),
+            np.array(surr_gate_init, dtype=np.float64),
+        )
+    )
+    num_latents = len(surr_gate_init)
+    return {
+        "init": full_init,
+        "vars": ["V"] + [f"latent{i + 1}" for i in range(num_latents)],
+        "gate": [False] + [True] * num_latents,
+    }

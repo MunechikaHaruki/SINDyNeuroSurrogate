@@ -1,20 +1,19 @@
 import copy
 import logging
+from collections import defaultdict
 
 import numpy as np
 from numba import njit
 
+from .model import DummySurrogate
 from .neuron_core import (
     COMPARTMENT_TEMPLATES,
     HH_Params_numba,
     calc_hh_channel,
     calc_passive_channel,
+    get_surr_comp,
 )
-from .xarray_utils import (
-    build_indices,
-    set_coords,
-    set_i_internal,
-)
+from .xarray_utils import StateAccumulator, set_coords, set_i_internal
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +38,6 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
         x_history[t + 1] = curr_x
 
     return x_history
-
-
-def calc_graph_laplacian(connections, N):
-    G_matrix = np.zeros((N, N), dtype=np.float64)
-    if N == 1 or connections is None:
-        pass
-    else:
-        for i, j, g in connections:
-            G_matrix[i, j] = G_matrix[j, i] = g
-    D_matrix = np.diag(np.sum(G_matrix, axis=1))
-    C_matrix = G_matrix - D_matrix  # 流入を正とするグラフラプラシアンの符号反転
-
-    return C_matrix
 
 
 @njit
@@ -95,19 +81,64 @@ def calc_universal_deriv(curr_x, u_t, model_args, dvar):
         dvar[g_idx] = xi_matrix[1] @ theta
 
 
-class DummySurrogate:
-    @njit
-    def dummy_theta(v, latent, i_int):
-        return np.zeros(1, dtype=np.float64)
+def build_indices(nodes: list, surr_comp: dict):
+    if surr_comp is None:
+        compartments = COMPARTMENT_TEMPLATES
+    else:
+        compartments = COMPARTMENT_TEMPLATES | surr_comp
 
-    @property
-    def sindy_args(self):
-        dummy_xi = np.zeros((2, 1), dtype=np.float64)
-        return (dummy_xi, self.dummy_theta)
+    N = len(nodes)
+    gate_offsets = np.full(N, -1, dtype=np.int32)
+    ids_list = {k: [] for k in compartments.keys()}
+    acc = StateAccumulator()
 
-    @property
-    def gate_init(self):
-        return [0.0]
+    # [Pass 1] 電位変数の収集
+    for i, node_type in enumerate(nodes):
+        comp = compartments[node_type]
+        acc.add(i, [comp["vars"][0]], [comp["gate"][0]], [comp["init"][0]])
+        ids_list[node_type].append(i)
+
+    # [Pass 2] ゲート変数の収集
+    current_offset = N
+    for i, node_type in enumerate(nodes):
+        comp = compartments[node_type]
+        gate_vars = comp["vars"][1:]
+        if len(gate_vars) > 0:
+            gate_offsets[i] = current_offset
+            acc.add(i, comp["vars"][1:], comp["gate"][1:], comp["init"][1:])
+            current_offset += len(gate_vars)
+
+    ids = defaultdict(lambda: np.array([], dtype=np.int32))
+    for k, v in ids_list.items():
+        ids[k] = np.array(v, dtype=np.int32)
+
+    return {
+        "ids": ids,
+        "gate_offsets": gate_offsets,
+        "init": acc.to_init(),
+        "coords": acc.to_coords(),
+    }
+
+
+def build_surrogate_net(origi_net, surr_indice):
+    if surr_indice is None:
+        return origi_net
+    surr_net = copy.deepcopy(origi_net)
+    surr_net["nodes"][surr_indice] = "surr"
+    return surr_net
+
+
+def calc_graph_laplacian(connections, N):
+    G_matrix = np.zeros((N, N), dtype=np.float64)
+    if N == 1 or connections is None:
+        pass
+    else:
+        for i, j, g in connections:
+            G_matrix[i, j] = G_matrix[j, i] = g
+    D_matrix = np.diag(np.sum(G_matrix, axis=1))
+    C_matrix = G_matrix - D_matrix  # 流入を正とするグラフラプラシアンの符号反転
+
+    return C_matrix
 
 
 def unified_simulator(
@@ -118,11 +149,16 @@ def unified_simulator(
     N = len(net["nodes"])
     C_matrix = calc_graph_laplacian(net["edges"], N)
 
+    if surrogate_target is None:
+        surr_comp = None
+    else:
+        surr_comp = get_surr_comp(
+            net["nodes"][surrogate_target], surrogate_model.gate_init
+        )
+
     surr_net = build_surrogate_net(net, surrogate_target)
-    surr_comp = build_surrogate_comp(
-        net, COMPARTMENT_TEMPLATES, surrogate_target, surrogate_model.gate_init
-    )
-    indice = build_indices(surr_net, surr_comp)
+
+    indice = build_indices(surr_net["nodes"], surr_comp)
 
     net_args = (params, C_matrix, net["stim_node"])
     indice_args = (
@@ -141,31 +177,3 @@ def unified_simulator(
     set_i_internal(dataset, C_matrix, I_ext_2d)
 
     return dataset
-
-
-def build_surrogate_net(origi_net, surr_indice):
-    if surr_indice is None:
-        return origi_net
-    surr_net = copy.deepcopy(origi_net)
-    surr_net["nodes"][surr_indice] = "surr"
-    return surr_net
-
-
-def build_surrogate_comp(origi_net, origi_comp, surr_indice, surr_gate_init):
-    if surr_indice is None:
-        return origi_comp
-    origi_node_type = origi_net["nodes"][surr_indice]
-    origi_v_init = origi_comp[origi_node_type]["init"][0]
-    full_init = np.concatenate(
-        (
-            np.array([origi_v_init], dtype=np.float64),
-            np.array(surr_gate_init, dtype=np.float64),
-        )
-    )
-    num_latents = len(surr_gate_init)
-    surr_entry = {
-        "init": full_init,
-        "vars": ["V"] + [f"latent{i + 1}" for i in range(num_latents)],
-        "gate": [False] + [True] * num_latents,
-    }
-    return origi_comp | {"surr": surr_entry}

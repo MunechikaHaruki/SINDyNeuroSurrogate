@@ -1,10 +1,26 @@
 import logging
 
 import numpy as np
+from numba import njit
 
 from .xarray_utils import StateAccumulator, set_coords
 
 logger = logging.getLogger(__name__)
+
+
+class DummySurrogate:
+    @njit
+    def dummy_theta(v, latent, i_int):
+        return np.zeros(1, dtype=np.float64)
+
+    @property
+    def sindy_args(self):
+        dummy_xi = np.zeros((2, 1), dtype=np.float64)
+        return (dummy_xi, self.dummy_theta)
+
+    @property
+    def gate_init(self):
+        return [0.0]
 
 
 class SINDyNeuroSurrogate:
