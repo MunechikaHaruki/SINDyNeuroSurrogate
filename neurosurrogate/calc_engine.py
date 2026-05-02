@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @njit
-def generic_euler_solver(deriv_func, init, u, dt, model_args):
+def generic_euler_solver(init, u, dt, model_args):
     n_steps = len(u)
     n_vars = len(init)
     x_history = np.zeros((n_steps, n_vars))
@@ -30,7 +30,7 @@ def generic_euler_solver(deriv_func, init, u, dt, model_args):
 
     for t in range(n_steps - 1):
         # 微分計算関数の呼び出し。model_argsはタプル。
-        deriv_func(curr_x, u[t], model_args, dvar)
+        calc_universal_deriv(curr_x, u[t], model_args, dvar)
 
         # 状態更新
         for i in range(n_vars):
@@ -113,8 +113,7 @@ def build_indices(nodes: list, surr_comp: dict):
         ids[k] = np.array(v, dtype=np.int32)
 
     return {
-        "ids": ids,
-        "gate_offsets": gate_offsets,
+        "indice_args": (gate_offsets, ids["passive"], ids["hh"], ids["surr"]),
         "init": acc.to_init(),
         "coords": acc.to_coords(),
     }
@@ -161,14 +160,9 @@ def unified_simulator(
     indice = build_indices(surr_net["nodes"], surr_comp)
 
     net_args = (params, C_matrix, net["stim_node"])
-    indice_args = (
-        indice["gate_offsets"],
-        indice["ids"]["passive"],
-        indice["ids"]["hh"],
-        indice["ids"]["surr"],
-    )
-    args = (net_args, indice_args, surrogate_model.sindy_args)
-    raw = generic_euler_solver(calc_universal_deriv, indice["init"], u, dt, args)
+
+    args = (net_args, indice["indice_args"], surrogate_model.sindy_args)
+    raw = generic_euler_solver(indice["init"], u, dt, args)
     dataset = set_coords(raw, u, indice["coords"], dt)
 
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
