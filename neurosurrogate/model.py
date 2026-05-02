@@ -2,7 +2,7 @@ import logging
 
 import numpy as np
 
-from .xarray_utils import set_coords
+from .xarray_utils import StateAccumulator, set_coords
 
 logger = logging.getLogger(__name__)
 
@@ -82,15 +82,16 @@ def transform_gate(preprocessor, xr_data, target_comp_id):
     )
 
     n_latent = transformed_gate.shape[1]
-    coords_config = {
-        "comp_id": [target_comp_id] * (n_latent + 1),
-        "variable": ["V"] + [f"latent{i + 1}" for i in range(n_latent)],
-        "gate": [False] + [True] * n_latent,
-    }
-    logger.info(coords_config)
+
+    coords = StateAccumulator(
+        comp_id=[target_comp_id] * (n_latent + 1),
+        variable=["V"] + [f"latent{i + 1}" for i in range(n_latent)],
+        gate=[False] + [True] * n_latent,
+    ).to_coords()
+
     return set_coords(
         raw=new_vars,
         u=xr_data["I_internal"].sel(node_id=target_comp_id).to_numpy(),
-        coords=coords_config,
+        coords=coords,
         dt=float(xr_data.time[1] - xr_data.time[0]),
     )
