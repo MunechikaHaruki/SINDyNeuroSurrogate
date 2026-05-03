@@ -31,3 +31,4 @@ datasets:
       weights: [0.3, 1, 1, 1]
       sigma: 1
       seed: 991927697
+train_comp_identifier: soma

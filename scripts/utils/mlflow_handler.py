@@ -80,7 +80,7 @@ class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
         exec(source, vars(target_module), local_vars)
         compute_theta = local_vars["dynamic_compute_theta"]
         xi_matrix = np.load(context.artifacts["xi_path"])
-        self.gate_init = np.load(context.artifacts["gate_init_path"])
+        self.surr_comp = joblib.load(context.artifacts["surr_comp_path"])
         self.sindy_args = (xi_matrix, compute_theta)
         self.preprocessor = joblib.load(context.artifacts["preprocessor_path"])
 
@@ -93,7 +93,7 @@ def log_surrogate_model(surrogate: SINDyNeuroSurrogate):
         tmpdir = Path(tmpdir)
 
         np.save(tmpdir / "xi.npy", surrogate.sindy.coefficients())
-        np.save(tmpdir / "gate_init.npy", surrogate.gate_init)
+        joblib.dump(surrogate.surr_comp, tmpdir / "surr_comp.joblib")
         (tmpdir / "source.py").write_text(surrogate.source)
         joblib.dump(surrogate.preprocessor, tmpdir / "preprocessor.joblib")
 
@@ -102,7 +102,7 @@ def log_surrogate_model(surrogate: SINDyNeuroSurrogate):
             python_model=SINDySurrogateMLflowModel(),
             artifacts={
                 "xi_path": str(tmpdir / "xi.npy"),
-                "gate_init_path": str(tmpdir / "gate_init.npy"),
+                "surr_comp_path": str(tmpdir / "surr_comp.joblib"),
                 "source_path": str(tmpdir / "source.py"),
                 "target_module_path": inspect.getfile(surrogate.target_module),
                 "preprocessor_path": str(tmpdir / "preprocessor.joblib"),

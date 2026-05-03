@@ -1,22 +1,19 @@
 MODEL_DEFINITIONS = {
-    "hh": {"nodes": {"soma": "hh"}, "edges": [], "stim": "soma", "target": "soma"},
+    "hh": {"nodes": {"soma": "hh"}, "edges": [], "stim": "soma"},
     "php": {
         "nodes": {"p1": "passive", "h1": "hh", "p2": "passive"},
         "edges": [("p1", "h1", 1.0), ("h1", "p2", 0.7)],
         "stim": "p1",
-        "target": "h1",
     },
     "hhp": {
         "nodes": {"h1": "hh", "h2": "hh", "p1": "passive"},
         "edges": [("h1", "h2", 1.0), ("h2", "p1", 0.7)],
         "stim": "h1",
-        "target": "h2",
     },
     "phh": {
         "nodes": {"p1": "passive", "h1": "hh", "h2": "hh"},
         "edges": [("p1", "h1", 1.0), ("h1", "h2", 0.7)],
         "stim": "p1",
-        "target": "h1",
     },
     "phhpp": {
         "nodes": {
@@ -33,7 +30,6 @@ MODEL_DEFINITIONS = {
             ("p2", "p3", 0.5),
         ],
         "stim": "p1",
-        "target": "h2",
     },
     "pphhp": {
         "nodes": {
@@ -50,7 +46,6 @@ MODEL_DEFINITIONS = {
             ("h2", "p3", 0.5),
         ],
         "stim": "p1",
-        "target": "h1",
     },
     "phhhp": {
         "nodes": {"p1": "passive", "h1": "hh", "h2": "hh", "h3": "hh", "p2": "passive"},
@@ -61,7 +56,6 @@ MODEL_DEFINITIONS = {
             ("h3", "p2", 0.5),
         ],
         "stim": "p1",
-        "target": "h2",
     },
     "hh7": {
         "nodes": {
@@ -82,6 +76,5 @@ MODEL_DEFINITIONS = {
             ("h4", "p3", 0.6),
         ],
         "stim": "p1",
-        "target": "h2",
     },
 }

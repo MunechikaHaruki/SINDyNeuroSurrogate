@@ -41,27 +41,6 @@ def build_surrogate(cfg_sindy):
     )
 
 
-def build_models(definitions: dict):
-    mc_models = {}
-    target_nodes = {}
-
-    for name, spec in definitions.items():
-        nodes_dict = spec["nodes"]
-        name_to_idx = {n: i for i, n in enumerate(nodes_dict.keys())}
-
-        mc_models[name] = {
-            "nodes": list(nodes_dict.values()),
-            "edges": [(name_to_idx[u], name_to_idx[v], g) for u, v, g in spec["edges"]],
-            "stim_node": name_to_idx[spec["stim"]],
-        }
-        target_nodes[name] = name_to_idx[spec["target"]]
-
-    return {"mc_models": mc_models, "target_nodes": target_nodes}
-
-
-BUILT_MODELS = build_models(MODEL_DEFINITIONS)
-
-
 def build_simulator_config(dataset_cfg):
     def build_current_pipeline(current_cfg):
         iteration = current_cfg["iteration"]
@@ -97,6 +76,20 @@ PIPE_FUNCS = {
     ],
 }
 
+
+def build_model(neuron_type):
+    spec = MODEL_DEFINITIONS[neuron_type]
+    nodes_dict = spec["nodes"]
+    name_to_idx = {n: i for i, n in enumerate(nodes_dict.keys())}
+
+    return {
+        "name_to_idx_dict": name_to_idx,
+        "nodes": list(nodes_dict.values()),
+        "edges": [(name_to_idx[u], name_to_idx[v], g) for u, v, g in spec["edges"]],
+        "stim_node": name_to_idx[spec["stim"]],
+    }
+
+
 CurrentType = Literal["steady", "random"]
 
 
@@ -123,6 +116,5 @@ def build_dataset(
             "pipeline": pipeline,
             "silence_steps": int(silence_duration / dt),
         },
-        "target_comp_id": BUILT_MODELS["target_nodes"][model_name],
-        "net": BUILT_MODELS["mc_models"][model_name],
+        "net": build_model(model_name),
     }

@@ -19,8 +19,12 @@ class DummySurrogate:
         return (dummy_xi, self.dummy_theta)
 
     @property
-    def gate_init(self):
-        return [0.0]
+    def surr_comp(self):
+        return {
+            "init": np.array([0, 0]),
+            "vars": ["V"] + [f"latent{i + 1}" for i in range(1)],
+            "gate": [False] + [True],
+        }
 
 
 class SINDyNeuroSurrogate:
@@ -55,8 +59,14 @@ class SINDyNeuroSurrogate:
         logger.info(self.source)
 
     @property
-    def gate_init(self):
-        return self.preprocessed_xr["vars"].to_numpy()[0][1:]
+    def surr_comp(self):
+        full_init = self.preprocessed_xr["vars"].to_numpy()[0]
+        num_latents = len(self.preprocessed_xr["vars"].to_numpy()[0][1:])
+        return {
+            "init": full_init,
+            "vars": ["V"] + [f"latent{i + 1}" for i in range(num_latents)],
+            "gate": [False] + [True] * num_latents,
+        }
 
     @property
     def sindy_args(self):

@@ -1,4 +1,3 @@
-import copy
 import logging
 from collections import defaultdict, namedtuple
 
@@ -11,7 +10,6 @@ from .neuron_core import (
     HH_Params_numba,
     calc_hh_channel,
     calc_passive_channel,
-    get_surr_comp,
 )
 from .xarray_utils import StateAccumulator, set_coords, set_i_internal
 
@@ -92,7 +90,7 @@ def build_indices(nodes: list, surr_comp: dict):
     if surr_comp is None:
         compartments = COMPARTMENT_TEMPLATES
     else:
-        compartments = COMPARTMENT_TEMPLATES | surr_comp
+        compartments = COMPARTMENT_TEMPLATES | {"surr": surr_comp}
 
     N = len(nodes)
     gate_offsets = np.full(N, -1, dtype=np.int32)
@@ -131,14 +129,6 @@ def build_indices(nodes: list, surr_comp: dict):
     }
 
 
-def build_surrogate_net(origi_net, surr_indice):
-    if surr_indice is None:
-        return origi_net
-    surr_net = copy.deepcopy(origi_net)
-    surr_net["nodes"][surr_indice] = "surr"
-    return surr_net
-
-
 def calc_graph_laplacian(connections, N):
     G_matrix = np.zeros((N, N), dtype=np.float64)
     if N == 1 or connections is None:
@@ -152,23 +142,11 @@ def calc_graph_laplacian(connections, N):
     return C_matrix
 
 
-def unified_simulator(
-    dt, u, net, surrogate_target=None, surrogate_model=DummySurrogate()
-):
+def unified_simulator(dt, u, net, surrogate_model=DummySurrogate()):
     params = HH_Params_numba()
-
     N = len(net["nodes"])
     C_matrix = calc_graph_laplacian(net["edges"], N)
-
-    if surrogate_target is None:
-        surr_comp = None
-    else:
-        surr_comp = get_surr_comp(
-            net["nodes"][surrogate_target], surrogate_model.gate_init
-        )
-
-    surr_net = build_surrogate_net(net, surrogate_target)
-    indice = build_indices(surr_net["nodes"], surr_comp)
+    indice = build_indices(net["nodes"], surrogate_model.surr_comp)
     raw = generic_euler_solver(
         indice["init"],
         u,

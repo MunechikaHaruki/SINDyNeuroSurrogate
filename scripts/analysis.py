@@ -99,11 +99,6 @@ def _(mo, run_ids):
     return current_dropdown, dropdown, value_slider
 
 
-@app.cell
-def _():
-    return
-
-
 @app.cell(hide_code=True)
 def _(current_dropdown, dropdown, mo, model_infos, value_slider):
     mo.stop(
@@ -116,7 +111,7 @@ def _(current_dropdown, dropdown, mo, model_infos, value_slider):
     from neurosurrogate.calc_engine import unified_simulator
     from neurosurrogate.model import transform_gate
     from neurosurrogate.profiler import calc_dynamic_metrics
-
+    import copy
     surrogate = load_surrogate_model(dropdown.value)
 
     if current_dropdown.value == "train":
@@ -127,17 +122,21 @@ def _(current_dropdown, dropdown, mo, model_infos, value_slider):
 
 
     def eval_dataset(surrogate_model, dataset_cfg):
-        original_ds = unified_simulator(**build_simulator_config(dataset_cfg))
-        target_comp_id = dataset_cfg["target_comp_id"]
+        built_cfg=build_simulator_config(dataset_cfg)
+        net=built_cfg["net"]
+        original_ds = unified_simulator(**built_cfg)
+        surr_net = copy.deepcopy(net)
+
+        target_comp_id=0
+    
+        surr_net["nodes"][target_comp_id]="surr"
         surr_ds = unified_simulator(
-            **build_simulator_config(dataset_cfg),
-            surrogate_target=target_comp_id,
-            surrogate_model=surrogate_model,
+            dt = built_cfg["dt"],u=built_cfg["u"],net=surr_net,
+            surrogate_model=surrogate_model
         )
         preprocessed_xr = transform_gate(
             surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
         )
-        target_comp_id = dataset_cfg["target_comp_id"]
         return {
             "datasets":{
                 "original": original_ds,
@@ -154,7 +153,6 @@ def _(current_dropdown, dropdown, mo, model_infos, value_slider):
     from scripts.utils.plots import spec_simple,spec_diff,draw_engine
     #draw_engine(spec_simple(result["datasets"]["preprocessed"]))
     draw_engine(spec_diff(**result["datasets"]))
-
     return
 
 

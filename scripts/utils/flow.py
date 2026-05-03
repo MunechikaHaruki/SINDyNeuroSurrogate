@@ -25,7 +25,10 @@ def cli_flow(is_multirun, cfg_sindy):
         train_dataset_cfg = build_dataset(**cfg_sindy["datasets"])
         train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
         mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
-        surrogate.fit(train_ds, train_dataset_cfg["target_comp_id"])
+        train_comp_id = train_dataset_cfg["net"]["name_to_idx_dict"][
+            cfg_sindy["train_comp_identifier"]
+        ]
+        surrogate.fit(train_ds, train_comp_id)
         log_surrogate_summary(get_loggable_summary(surrogate, FUNC_COST_MAP, HH_COST))
         log_surrogate_model(surrogate)
     if is_multirun:
