@@ -8,8 +8,8 @@ from utils.mlflow_handler import TARGET_EXP, load_surrogate_model
 from utils.plots import draw_engine, plot_sindy_coefficients, spec_diff
 
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model import transform_gate
 from neurosurrogate.profiler import calc_dynamic_metrics
+from neurosurrogate.xarray_utils import transform_gate
 
 CurrentList: list = ["train"] + list(get_args(CurrentType))
 

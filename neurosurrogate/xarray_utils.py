@@ -61,3 +61,31 @@ def set_i_internal(dataset, C_matrix, stim_idx, u):
         },
         dims=["time", "node_id"],
     )
+
+
+def get_gate_numpy(train_xr, target_comp_id):
+    return train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
+
+
+def transform_gate(preprocessor, xr_data, target_comp_id):
+    xr_gate = get_gate_numpy(xr_data, target_comp_id)
+    transformed_gate = preprocessor.transform(xr_gate)
+    v_soma_da = xr_data["vars"].sel(gate=False, comp_id=target_comp_id)
+    new_vars = np.concatenate(
+        (v_soma_da.to_numpy().reshape(-1, 1), transformed_gate), axis=1
+    )
+
+    n_latent = transformed_gate.shape[1]
+
+    coords = StateAccumulator(
+        comp_id=[target_comp_id] * (n_latent + 1),
+        variable=["V"] + [f"latent{i + 1}" for i in range(n_latent)],
+        gate=[False] + [True] * n_latent,
+    ).to_coords()
+
+    return set_coords(
+        raw=new_vars,
+        u=xr_data["I_internal"].sel(node_id=target_comp_id).to_numpy(),
+        coords=coords,
+        dt=float(xr_data.time[1] - xr_data.time[0]),
+    )
