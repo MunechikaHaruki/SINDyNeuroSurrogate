@@ -6,14 +6,13 @@ app = marimo.App(width="medium")
 
 @app.cell(hide_code=True)
 def _():
-    import sys
-    from pathlib import Path
+
 
     import marimo as mo
+    import analysis
 
-    project_root = Path(__file__).parent.parent
-    sys.path.insert(0, str(project_root))
-    from scripts.utils.plots import plot_sindy_coefficients
+
+
 
     # ボタンを作成し、変数 'test_btn' に代入
     load_btn = mo.ui.button(
@@ -23,17 +22,16 @@ def _():
     ### MLflow データ解析
     - **run_idを選択:** {load_btn}
     """)
-    return load_btn, mo, plot_sindy_coefficients
+    return analysis, load_btn, mo
 
 
 @app.cell(hide_code=True)
-def _(load_btn, mo):
+def _(analysis, load_btn, mo):
     # ボタンが押されたときだけデータを読み込む
-    from scripts.utils.mlflow_handler import get_runs_df
 
     with mo.status.spinner(title="MLflowからデータを読み込み中..."):
         if load_btn.value:
-            runs_df = get_runs_df()
+            runs_df = analysis.get_runs_df()
             if runs_df is None:
                 run_selector = mo.md("⚠️ 実験が見つかりませんでした。")
             run_selector = mo.ui.table(
@@ -48,9 +46,9 @@ def _(load_btn, mo):
 
 
 @app.cell(hide_code=True)
-def _(mo, plot_sindy_coefficients, run_selector):
+def _(mo, run_selector):
     # モデルの状態を確認するセル
-    from scripts.utils.mlflow_handler import get_run_info
+    from analysis import get_run_info
 
     run_ids = run_selector.value["run_id"].tolist()
 
@@ -61,9 +59,7 @@ def _(mo, plot_sindy_coefficients, run_selector):
         model_infos[run_id]["runName"] = run_info["runName"]
         model_infos[run_id]["equations"] = run_info["equations"]
         model_infos[run_id]["dataset"] = run_info["dataset"]
-        model_infos[run_id]["sindy_coef"] = plot_sindy_coefficients(
-            **run_info["sindy_coef"]
-        )
+        model_infos[run_id]["sindy_coef"] = run_info["sindy_coef"]
 
     mo.vstack(
         [
@@ -83,13 +79,9 @@ def _(mo, plot_sindy_coefficients, run_selector):
 
 
 @app.cell(hide_code=True)
-def _(mo, run_ids):
-
-    from typing import get_args
-
-    from scripts.utils.builder import CurrentType
+def _(analysis, mo, run_ids):
     dropdown = mo.ui.dropdown(options=run_ids)
-    current_dropdown = mo.ui.dropdown(["train"] + list(get_args(CurrentType)))
+    current_dropdown = mo.ui.dropdown(analysis.CurrentList)
     value_slider = mo.ui.slider(start=0,stop=30,step=1)
 
     first_row = mo.hstack([mo.md("select experiment"), dropdown])
@@ -106,6 +98,10 @@ def _(current_dropdown, dropdown, mo, model_infos, value_slider):
         "実験を選択してください",
     )
 
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).parent.parent
+    sys.path.insert(0, str(project_root))
     from scripts.utils.mlflow_handler import load_surrogate_model
     from scripts.utils.builder import build_simulator_config,build_dataset
     from neurosurrogate.calc_engine import unified_simulator
@@ -128,7 +124,7 @@ def _(current_dropdown, dropdown, mo, model_infos, value_slider):
         surr_net = copy.deepcopy(net)
 
         target_comp_id=0
-    
+
         surr_net["nodes"][target_comp_id]="surr"
         surr_ds = unified_simulator(
             dt = built_cfg["dt"],u=built_cfg["u"],net=surr_net,

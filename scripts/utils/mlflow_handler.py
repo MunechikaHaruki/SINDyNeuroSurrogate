@@ -7,7 +7,6 @@ from pathlib import Path
 import joblib
 import mlflow
 import numpy as np
-import yaml
 
 from neurosurrogate.model import SINDyNeuroSurrogate
 from neurosurrogate.profiler import SINDySummary
@@ -46,24 +45,6 @@ def log_surrogate_summary(summary: SINDySummary):
         },
         artifact_file="sindy_coef.json",
     )
-
-
-def get_run_info(run_id: str) -> dict:
-    client = mlflow.MlflowClient()
-
-    def load_yaml(run_id: str, filename: str) -> dict:
-        return yaml.safe_load(mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}"))
-
-    def load_text(run_id: str, filename: str) -> str:
-        return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
-
-    return {
-        "sindy_coef": load_yaml(run_id, "sindy_coef.json"),
-        "dataset": load_yaml(run_id, "dataset.yaml"),  # 同じファイルなら参照共有でOK
-        "runName": client.get_run(run_id).data.tags["mlflow.runName"],
-        "run_id": run_id,
-        "equations": load_text(run_id, "equations.txt"),
-    }
 
 
 class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
@@ -125,28 +106,6 @@ def load_surrogate_model(run_id: str):
     except Exception as e:
         logger.error(f"Failed to load surrogate from MLflow: {e}")
         raise
-
-
-def get_runs_df():
-    experiment = mlflow.get_experiment_by_name(TARGET_EXP)
-    if experiment is None:
-        raise ValueError(
-            f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
-        )
-    all_runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
-    if all_runs_df.empty:
-        raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
-    runs_df = all_runs_df.copy()
-    runs_df = runs_df.sort_values("start_time", ascending=False)
-    runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
-    cols = [
-        c for c in runs_df.columns if "metrics" in c or "params" in c or c == "run_id"
-    ]
-    runs_df = runs_df[
-        ["tags.mlflow.runName", "run_id", "start_time"]
-        + [c for c in cols if c != "run_id"]
-    ]
-    return runs_df
 
 
 def get_child_runs(parent_run_ids):
