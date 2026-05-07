@@ -42,21 +42,9 @@ def _(analysis, load_btn, mo):
 
 
 @app.cell(hide_code=True)
-def _(mo, run_selector):
-    # モデルの状態を確認するセル
-    from analysis import get_run_info
-
+def _(analysis, mo, run_selector):
     run_ids = run_selector.value["run_id"].tolist()
-
-    model_infos = {}
-    for run_id in run_ids:
-        run_info = get_run_info(run_id)
-        model_infos[run_id] = {}
-        model_infos[run_id]["runName"] = run_info["runName"]
-        model_infos[run_id]["equations"] = run_info["equations"]
-        model_infos[run_id]["dataset"] = run_info["dataset"]
-        model_infos[run_id]["sindy_coef"] = run_info["sindy_coef"]
-
+    model_infos = analysis.get_model_infos(run_ids)
     mo.vstack(
         [
             mo.vstack(
@@ -94,20 +82,12 @@ def _(analysis, current_dropdown, dropdown, mo, model_infos, value_slider):
         "実験を選択してください",
     )
 
-    import sys
-    from pathlib import Path
-
     simulator_config=analysis.resolve_config(model_infos,dropdown.value,current_dropdown.value,value_slider.value)
     print(simulator_config)
 
     result = analysis.eval_dataset(dropdown.value, simulator_config)
 
     analysis.view_dataset(result)
-    return
-
-
-@app.cell
-def _():
     return
 
 

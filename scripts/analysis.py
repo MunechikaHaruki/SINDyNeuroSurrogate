@@ -36,22 +36,40 @@ def get_runs_df():
     return runs_df
 
 
-def get_run_info(run_id: str) -> dict:
-    client = mlflow.MlflowClient()
+def get_model_infos(run_ids):
 
-    def load_yaml(run_id: str, filename: str) -> dict:
-        return yaml.safe_load(mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}"))
+    def get_run_info(run_id: str) -> dict:
+        client = mlflow.MlflowClient()
 
-    def load_text(run_id: str, filename: str) -> str:
-        return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
+        def load_yaml(run_id: str, filename: str) -> dict:
+            return yaml.safe_load(
+                mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
+            )
 
-    return {
-        "sindy_coef": plot_sindy_coefficients(**load_yaml(run_id, "sindy_coef.json")),
-        "dataset": load_yaml(run_id, "dataset.yaml"),  # 同じファイルなら参照共有でOK
-        "runName": client.get_run(run_id).data.tags["mlflow.runName"],
-        "run_id": run_id,
-        "equations": load_text(run_id, "equations.txt"),
-    }
+        def load_text(run_id: str, filename: str) -> str:
+            return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
+
+        return {
+            "sindy_coef": plot_sindy_coefficients(
+                **load_yaml(run_id, "sindy_coef.json")
+            ),
+            "dataset": load_yaml(
+                run_id, "dataset.yaml"
+            ),  # 同じファイルなら参照共有でOK
+            "runName": client.get_run(run_id).data.tags["mlflow.runName"],
+            "run_id": run_id,
+            "equations": load_text(run_id, "equations.txt"),
+        }
+
+    model_infos = {}
+    for run_id in run_ids:
+        run_info = get_run_info(run_id)
+        model_infos[run_id] = {}
+        model_infos[run_id]["runName"] = run_info["runName"]
+        model_infos[run_id]["equations"] = run_info["equations"]
+        model_infos[run_id]["dataset"] = run_info["dataset"]
+        model_infos[run_id]["sindy_coef"] = run_info["sindy_coef"]
+    return model_infos
 
 
 def resolve_config(model_infos, run_id, current_type, value):
@@ -95,4 +113,4 @@ def eval_dataset(run_id: str, dataset_cfg: dict):
 
 # draw_engine(spec_simple(result["datasets"]["preprocessed"]))
 def view_dataset(result):
-    draw_engine(spec_diff(**result["datasets"]))
+    return draw_engine(spec_diff(**result["datasets"]))

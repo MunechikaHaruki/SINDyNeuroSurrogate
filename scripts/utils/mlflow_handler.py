@@ -106,33 +106,3 @@ def load_surrogate_model(run_id: str):
     except Exception as e:
         logger.error(f"Failed to load surrogate from MLflow: {e}")
         raise
-
-
-def get_child_runs(parent_run_ids):
-    # 親Runのexperiment_idを取得
-    experiment_id = mlflow.get_run(parent_run_ids[0]).info.experiment_id
-    # 全Runを取得してからPythonで子Runをフィルタリング
-    all_runs_df = mlflow.search_runs(experiment_ids=[experiment_id])
-
-    # 親Runに紐付く子Runをフィルタリング
-    child_runs_df = all_runs_df[
-        all_runs_df["tags.mlflow.parentRunId"].isin(parent_run_ids)
-    ].reset_index(drop=True)
-    return child_runs_df
-
-
-# # 親が選択されていない場合は停止
-# mo.stop(len(run_selector.value) == 0)
-# with mo.status.spinner(title="子Runを取得中..."):
-#     child_runs_df=get_child_runs(run_selector.value["run_id"].tolist())
-# # 子Runを一覧表示（ここから特定の評価結果を選ぶ）
-# if len(child_runs_df) > 0:
-#     child_selector = mo.ui.table(
-#         child_runs_df[["tags.mlflow.runName", "run_id", "tags.eval_dataset", "start_time"]],
-#         label="Artifactを確認したい子Runを選択してください",
-#         selection="single"
-#     )
-# else:
-#     mo.md("**子Runが見つかりません**")
-
-# child_selector
