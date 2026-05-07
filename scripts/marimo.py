@@ -7,12 +7,8 @@ app = marimo.App(width="medium")
 @app.cell(hide_code=True)
 def _():
 
-
-    import marimo as mo
     import analysis
-
-
-
+    import marimo as mo
 
     # ボタンを作成し、変数 'test_btn' に代入
     load_btn = mo.ui.button(
@@ -82,17 +78,17 @@ def _(mo, run_selector):
 def _(analysis, mo, run_ids):
     dropdown = mo.ui.dropdown(options=run_ids)
     current_dropdown = mo.ui.dropdown(analysis.CurrentList)
-    value_slider = mo.ui.slider(start=0,stop=30,step=1)
+    value_slider = mo.ui.slider(start=0, stop=30, step=1)
 
     first_row = mo.hstack([mo.md("select experiment"), dropdown])
     second_row = mo.hstack([mo.md("choose type"), current_dropdown])
-    third_row = mo.hstack([mo.md("value"),value_slider])
-    mo.vstack([first_row, second_row,third_row])
+    third_row = mo.hstack([mo.md("value"), value_slider])
+    mo.vstack([first_row, second_row, third_row])
     return current_dropdown, dropdown, value_slider
 
 
 @app.cell(hide_code=True)
-def _(current_dropdown, dropdown, mo, model_infos, value_slider):
+def _(analysis, current_dropdown, dropdown, mo, model_infos, value_slider):
     mo.stop(
         dropdown.value is None or current_dropdown.value is None,
         "実験を選択してください",
@@ -100,55 +96,13 @@ def _(current_dropdown, dropdown, mo, model_infos, value_slider):
 
     import sys
     from pathlib import Path
-    project_root = Path(__file__).parent.parent
-    sys.path.insert(0, str(project_root))
-    from scripts.utils.mlflow_handler import load_surrogate_model
-    from scripts.utils.builder import build_simulator_config,build_dataset
-    from neurosurrogate.calc_engine import unified_simulator
-    from neurosurrogate.model import transform_gate
-    from neurosurrogate.profiler import calc_dynamic_metrics
-    import copy
-    surrogate = load_surrogate_model(dropdown.value)
 
-    if current_dropdown.value == "train":
-        simulator_config = model_infos[dropdown.value]["dataset"]
-    else:
-        simulator_config = build_dataset(current_type=current_dropdown.value,value=value_slider.value)
+    simulator_config=analysis.resolve_config(model_infos,dropdown.value,current_dropdown.value,value_slider.value)
     print(simulator_config)
 
+    result = analysis.eval_dataset(dropdown.value, simulator_config)
 
-    def eval_dataset(surrogate_model, dataset_cfg):
-        built_cfg=build_simulator_config(dataset_cfg)
-        net=built_cfg["net"]
-        original_ds = unified_simulator(**built_cfg)
-        surr_net = copy.deepcopy(net)
-
-        target_comp_id=0
-
-        surr_net["nodes"][target_comp_id]="surr"
-        surr_ds = unified_simulator(
-            dt = built_cfg["dt"],u=built_cfg["u"],net=surr_net,
-            surrogate_model=surrogate_model
-        )
-        preprocessed_xr = transform_gate(
-            surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
-        )
-        return {
-            "datasets":{
-                "original": original_ds,
-                "preprocessed":preprocessed_xr,
-                "surrogate":surr_ds,
-                "surr_id":target_comp_id},
-            "metrics": calc_dynamic_metrics(
-                original_ds, surr_ds, target_comp_id, dataset_cfg["dt"]
-            ),
-        }
-
-    result=eval_dataset(surrogate, simulator_config)
-
-    from scripts.utils.plots import spec_simple,spec_diff,draw_engine
-    #draw_engine(spec_simple(result["datasets"]["preprocessed"]))
-    draw_engine(spec_diff(**result["datasets"]))
+    analysis.view_dataset(result)
     return
 
 

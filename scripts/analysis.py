@@ -1,12 +1,17 @@
+import copy
 from typing import get_args
 
 import mlflow
 import yaml
-from utils.builder import CurrentType
-from utils.mlflow_handler import TARGET_EXP
-from utils.plots import plot_sindy_coefficients
+from utils.builder import CurrentType, build_dataset, build_simulator_config
+from utils.mlflow_handler import TARGET_EXP, load_surrogate_model
+from utils.plots import draw_engine, plot_sindy_coefficients, spec_diff
 
-CurrentList = ["train"] + list(get_args(CurrentType))
+from neurosurrogate.calc_engine import unified_simulator
+from neurosurrogate.model import transform_gate
+from neurosurrogate.profiler import calc_dynamic_metrics
+
+CurrentList: list = ["train"] + list(get_args(CurrentType))
 
 
 def get_runs_df():
@@ -47,3 +52,47 @@ def get_run_info(run_id: str) -> dict:
         "run_id": run_id,
         "equations": load_text(run_id, "equations.txt"),
     }
+
+
+def resolve_config(model_infos, run_id, current_type, value):
+    if current_type == "train":
+        return model_infos[run_id]["dataset"]
+    return build_dataset(current_type=current_type, value=value)
+
+
+def eval_dataset(run_id: str, dataset_cfg: dict):
+
+    surrogate_model = load_surrogate_model(run_id)
+    built_cfg = build_simulator_config(dataset_cfg)
+    net = built_cfg["net"]
+    original_ds = unified_simulator(**built_cfg)
+    surr_net = copy.deepcopy(net)
+
+    target_comp_id = 0
+
+    surr_net["nodes"][target_comp_id] = "surr"
+    surr_ds = unified_simulator(
+        dt=built_cfg["dt"],
+        u=built_cfg["u"],
+        net=surr_net,
+        surrogate_model=surrogate_model,
+    )
+    preprocessed_xr = transform_gate(
+        surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
+    )
+    return {
+        "datasets": {
+            "original": original_ds,
+            "preprocessed": preprocessed_xr,
+            "surrogate": surr_ds,
+            "surr_id": target_comp_id,
+        },
+        "metrics": calc_dynamic_metrics(
+            original_ds, surr_ds, target_comp_id, dataset_cfg["dt"]
+        ),
+    }
+
+
+# draw_engine(spec_simple(result["datasets"]["preprocessed"]))
+def view_dataset(result):
+    draw_engine(spec_diff(**result["datasets"]))
