@@ -19,7 +19,11 @@ library_specs:
   - type: volt
     inputs: [0, 1, 2]
   - type: identity
-    inputs: [0, 1, 2]
+    inputs: [0]
+  - type: identity
+    inputs: [1]
+  - type: identity
+    inputs: [2]
   - type: const
     inputs: []
 datasets:

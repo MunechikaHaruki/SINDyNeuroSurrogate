@@ -83,7 +83,7 @@ def get_loggable_summary(
     result: SINDyResult, original_cost: OpCost, feature_cost_map: dict[str, OpCost]
 ) -> SurrogateSummary:
     nonzero_term_num = np.count_nonzero(result.coef)
-    active_features = get_active_features(result.coef, result.base_names)
+    active_features = get_active_features(result.coef, feature_cost_map.keys())
     active_features_map = {k: feature_cost_map[k] for k in active_features}
 
     if isinstance(result.preprocessor, PCA):
@@ -99,7 +99,7 @@ def get_loggable_summary(
             "nonzero_term_ratio": float(nonzero_term_num / result.coef.size),
             **stat_calc_cost(
                 result.coef,
-                result.base_names,
+                feature_cost_map.keys(),
                 feature_cost_map,
                 original_cost,
             ),
@@ -108,7 +108,7 @@ def get_loggable_summary(
         params=result.params,
         view={
             "xi_matrix": result.coef.tolist(),
-            "feature_names": result.base_names,
+            "feature_names": feature_cost_map.keys(),
             "target_names": result.target_names,
         },
         texts={

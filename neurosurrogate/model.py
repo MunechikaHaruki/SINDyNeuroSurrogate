@@ -28,7 +28,6 @@ class SINDyResult:
     train_gate_data: np.ndarray
     coef: np.ndarray
     target_names: list
-    base_names: list
     equations: str
     source: str
 
@@ -65,7 +64,6 @@ class SINDyNeuroSurrogate:
             train_gate_data=train_gate_data,
             coef=self.sindy.optimizer.coef_,
             target_names=preprocessed_xr.variable.values.tolist(),
-            base_names=self.sindy.get_feature_names(),
             equations="\n".join(self.sindy.equations(precision=3)),
             source=self.source,
         )

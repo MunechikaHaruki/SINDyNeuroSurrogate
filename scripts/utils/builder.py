@@ -1,21 +1,36 @@
 import logging
-import re
 from typing import Literal
 
 import hydra
 import numpy as np
 import pysindy as ps
 from conf import feature_library_components
-from conf.feature_library_components import LIB_BUILDER_REGISTRY
+from conf.feature_library_components import LIB_BUILDER_REGISTRY, LibraryEntry
 from conf.neuron_models import MODEL_DEFINITIONS
 
+from neurosurrogate.calc_utils import OpCost
 from neurosurrogate.model import SINDyNeuroSurrogate
-from neurosurrogate.profiler import OpCost
 
 logger = logging.getLogger(__name__)
 
 
 def build_surrogate(cfg_sindy):
+
+    def _entries_to_basecost(
+        entries: list[LibraryEntry], inputs_list: list
+    ) -> dict[str:OpCost]:
+        base_cost_map = {}
+        for entry in entries:
+            input_names: list = [f"inputs{input_id}" for input_id in inputs_list]
+            base_cost_map[f"{entry.name_func(*input_names)}"] = entry.cost
+        return base_cost_map
+
+    def _entries_to_library(entries: list[LibraryEntry]) -> ps.CustomLibrary:
+        return ps.CustomLibrary(
+            library_functions=[e.func for e in entries],
+            function_names=[e.name_func for e in entries],
+        )
+
     def _build_one(spec):
         builder = LIB_BUILDER_REGISTRY.get(spec["type"])
         if builder is None:
@@ -23,11 +38,33 @@ def build_surrogate(cfg_sindy):
         return builder(spec)
 
     def _build_feature_library(library_specs):
-        lib_input_pairs = [(_build_one(s), s["inputs"]) for s in library_specs]
-        libraries, inputs = zip(*lib_input_pairs)
-        return ps.GeneralizedLibrary(list(libraries), inputs_per_library=list(inputs))
+        libraries = []
+        inputs_per_library = []
+        base_cost = {}
+        for s in library_specs:
+            inputs_list: list = s["inputs"]
+            new_entries: list[LibraryEntry] = _build_one(s)
+            libraries.append(_entries_to_library(new_entries))
 
-    library = _build_feature_library(cfg_sindy["library_specs"])
+            new_data = _entries_to_basecost(new_entries, inputs_list)
+            duplicates = base_cost.keys() & new_data.keys()
+            if duplicates:
+                detail = "\n".join(
+                    [
+                        f"  - Key: {k}\n    Existing Value: {base_cost[k]}\n    New Value: {new_data[k]}"
+                        for k in duplicates
+                    ]
+                )
+                raise KeyError(
+                    f"辞書の結合中にキーの重複が発生しました。上書きを防止します:\n{detail}"
+                )
+            base_cost |= new_data
+            inputs_per_library.append(inputs_list)
+        return ps.GeneralizedLibrary(
+            libraries, inputs_per_library=inputs_per_library
+        ), base_cost
+
+    library, base_cost = _build_feature_library(cfg_sindy["library_specs"])
 
     # preprocessorの初期化
     preprocessor = hydra.utils.instantiate(cfg_sindy["preprocessor"])
@@ -40,36 +77,7 @@ def build_surrogate(cfg_sindy):
     # surrogate_modelの初期化
     return SINDyNeuroSurrogate(
         preprocessor, initialized_sindy, feature_library_components
-    )
-
-
-def build_feature_cost_map(
-    feature_names: list, base_cost_map: dict[str, OpCost]
-) -> dict[str, OpCost]:
-    feature_cost_map = {}
-    sorted_funcs = sorted(base_cost_map.keys(), key=len, reverse=True)
-
-    for feature in feature_names:
-        cost = OpCost()
-        work_str = feature
-
-        for func_name in sorted_funcs:
-            count = work_str.count(func_name)
-            if count > 0:
-                fc = base_cost_map[func_name]
-                cost = cost + fc * count
-                work_str = work_str.replace(func_name, "")
-
-        powers = re.findall(r"np\.power\(.*?, (\d+)\)", work_str)
-        work_str = re.sub(r"np\.power\(.*?, \d+\)", "", work_str)
-        cost = cost + OpCost(
-            mul=sum(int(p) - 1 for p in powers) + work_str.count("*"),
-            pm=work_str.count("+") + work_str.count("-"),
-        )
-
-        feature_cost_map[feature] = cost
-
-    return feature_cost_map
+    ), base_cost
 
 
 def build_simulator_config(dataset_cfg):
