@@ -1,12 +1,33 @@
 import json
 import re
-from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import numpy as np
 from sklearn.decomposition import PCA
 
 from .model import SINDyResult
+
+
+@dataclass(frozen=True)
+class OpCost:
+    exp: int = 0
+    div: int = 0
+    pm: int = 0
+    mul: int = 0
+
+    def __add__(self, other: "OpCost") -> "OpCost":
+        return OpCost(
+            **{
+                f.name: getattr(self, f.name) + getattr(other, f.name)
+                for f in fields(self)
+            }
+        )
+
+    def __mul__(self, n: int) -> "OpCost":
+        return OpCost(**{f.name: getattr(self, f.name) * n for f in fields(self)})
+
+    def to_dict(self) -> dict[str, int]:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
 
 
 def get_active_features(coef, base_names):
@@ -19,55 +40,27 @@ def get_active_features(coef, base_names):
     return active_features
 
 
-def static_calc_cost(coef, base_names, cost_map, original_cost):
-    """ "
-    expの演算回数が~~~,+の演算回数が~~~みたいに計算
-    """
-
-    surrogate_raw = {
-        "exp": 0,
-        "div": 0,
-        "pm": 0,
-        "mul": 0,
-    }
+def static_calc_cost(
+    coef, base_names, cost_map: dict[str, OpCost], original_cost: OpCost
+):
     nnz = np.count_nonzero(coef).item()
-    surrogate_raw["mul"] = nnz
-    surrogate_raw["pm"] = max(0, nnz - int(coef.shape[0]))
+    surrogate = OpCost(mul=nnz, pm=max(0, nnz - int(coef.shape[0])))
 
-    active_features = get_active_features(coef, base_names)
-
-    for feature in active_features:
-        # 騒々しく失敗する (Fail Fast, Fail Loudly)
+    for feature in get_active_features(coef, base_names):
         if feature not in cost_map:
             raise ValueError(
                 f"未知の基底関数 '{feature}' が見つかりました。"
                 "注入された cost_map にこの基底関数の定義を追加してください。"
             )
+        surrogate = surrogate + cost_map[feature]
 
-        # 辞書から直接コストを引いて足すだけ（超高速＆確実）
-        feature_cost = cost_map[feature]
-        for op, val in feature_cost.items():
-            surrogate_raw[op] += val
-
-    # 3. 階層化辞書の構築
-    result = {}
-
-    # surrogate / original カテゴリ
-    for k, v in surrogate_raw.items():
-        result[f"cost/surrogate/{k}"] = v
-    for k, v in original_cost.items():
-        result[f"cost/original/{k}"] = v
-
-    # diff / reduction_pct カテゴリ
-    # 基本演算(exp, div, pm, mul)について比較
-    for k in original_cost.keys():
-        v_orig = original_cost[k]
-        v_surr = surrogate_raw.get(k, 0)
-
-        # 差分 (削減量)
-        result[f"cost/diff/{k}"] = v_surr - v_orig
-
-    return result
+    surr_d = surrogate.to_dict()
+    orig_d = original_cost.to_dict()
+    return {
+        **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
+        **{f"cost/original/{k}": v for k, v in orig_d.items()},
+        **{f"cost/diff/{k}": surr_d[k] - orig_d[k] for k in orig_d},
+    }
 
 
 def _get_pca_metrics(pca: PCA, train_gate_data):
@@ -81,40 +74,31 @@ def _get_pca_metrics(pca: PCA, train_gate_data):
     }
 
 
-def build_feature_cost_map(feature_names: list, base_cost_map: dict) -> dict:
-    """
-    SINDyが生成したすべての基底関数名(文字列)を解析し、
-    O(1)で引ける完全一致のコスト辞書を自動生成する。
-    """
+def build_feature_cost_map(
+    feature_names: list, base_cost_map: dict[str, OpCost]
+) -> dict[str, OpCost]:
     feature_cost_map = {}
-
-    # 部分一致バグを防ぐため、名前が長い順にソートして処理
     sorted_funcs = sorted(base_cost_map.keys(), key=len, reverse=True)
 
     for feature in feature_names:
-        cost = Counter({"exp": 0, "div": 0, "pm": 0, "mul": 0})
+        cost = OpCost()
         work_str = feature
 
-        # ステップ1: 基礎物理関数のコストを抽出し、文字列から消去
         for func_name in sorted_funcs:
             count = work_str.count(func_name)
             if count > 0:
-                for op, val in base_cost_map[func_name].items():
-                    cost[op] += val * count
+                fc = base_cost_map[func_name]
+                cost = cost + fc * count
                 work_str = work_str.replace(func_name, "")
 
-        # ステップ2: べき乗 (np.power) の展開コスト
-        # np.power(x, 3) なら (3-1)=2回の掛け算
         powers = re.findall(r"np\.power\(.*?, (\d+)\)", work_str)
-        cost["mul"] += sum(int(p) - 1 for p in powers)
         work_str = re.sub(r"np\.power\(.*?, \d+\)", "", work_str)
+        cost = cost + OpCost(
+            mul=sum(int(p) - 1 for p in powers) + work_str.count("*"),
+            pm=work_str.count("+") + work_str.count("-"),
+        )
 
-        # ステップ3: 残った演算子 (* や +) のカウント
-        cost["mul"] += work_str.count("*")
-        cost["pm"] += work_str.count("+") + work_str.count("-")
-
-        # 辞書に登録
-        feature_cost_map[feature] = dict(cost)
+        feature_cost_map[feature] = cost
 
     return feature_cost_map
 
@@ -165,8 +149,12 @@ def get_loggable_summary(
         texts={
             "equations.txt": result.equations,
             "coef.txt": np.array2string(result.coef, precision=3),
-            "features.json": json.dumps(feature_cost_map),
-            "features_active.json": json.dumps(active_features_map),
+            "features.json": json.dumps(
+                {k: v.to_dict() for k, v in feature_cost_map.items()}
+            ),
+            "features_active.json": json.dumps(
+                {k: v.to_dict() for k, v in active_features_map.items()}
+            ),
             "misc/source.txt": result.source,
         },
     )

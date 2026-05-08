@@ -2,6 +2,8 @@ import numpy as np
 from numba import float64, njit
 from numba.experimental import jitclass
 
+from .profiler import OpCost
+
 
 @njit
 def lin_exp_form(x):
@@ -49,82 +51,36 @@ def beta_n(v):
     return 0.125 * np.exp(-v / 80.0)
 
 
-FUNC_COST_MAP = {
-    "alpha_m": {
-        "exp": 1,
-        "div": 1,
-        "pm": 2,  # 2.5 - 0.1v (1回分) と 分母の - 1.0
-        "mul": 2,  # 0.1 * v (1回分)
-    },
-    "beta_m": {
-        "exp": 1,
-        "div": 1,
-        "pm": 1,  # -v
-        "mul": 1,  # 4.0 * exp
-    },
-    "alpha_h": {
-        "exp": 1,
-        "div": 1,
-        "pm": 1,
-        "mul": 1,
-    },
-    "beta_h": {
-        "exp": 1,
-        "div": 1,
-        "pm": 2,  # 3.0 - 0.1v と + 1.0
-        "mul": 1,  # 0.1 * v
-    },
-    "alpha_n": {
-        "exp": 1,
-        "div": 1,
-        "pm": 2,
-        "mul": 2,
-    },
-    "beta_n": {
-        "exp": 1,
-        "div": 1,
-        "pm": 1,
-        "mul": 1,
-    },
+FUNC_COST_MAP: dict[str, OpCost] = {
+    "alpha_m": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_m": OpCost(exp=1, div=1, pm=1, mul=1),
+    "alpha_h": OpCost(exp=1, div=1, pm=1, mul=1),
+    "beta_h": OpCost(exp=1, div=1, pm=2, mul=1),
+    "alpha_n": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_n": OpCost(exp=1, div=1, pm=1, mul=1),
 }
 
 
-def _get_original_hh_cost(base_cost_map):
+def _get_original_hh_cost():
     """
     提供された calc_deriv_hh / hh3 のコードを静的にトレースした演算コスト。
     """
-    res = {"exp": 0, "div": 0, "pm": 0, "mul": 0}
-
+    gate_cost = OpCost()
     # 1. alpha/beta (6個分)
-    for func in ["alpha_m", "beta_m", "alpha_h", "beta_h", "alpha_n", "beta_n"]:
-        for op, val in base_cost_map[func].items():
-            res[op] += val
+    for op in FUNC_COST_MAP.values():
+        gate_cost = gate_cost + op
 
-    # 2. Gating variables (m0, h0, n0, tau_m, tau_h, tau_n) の計算
-    # m0 = alpha / (alpha + beta) -> 1pm, 1div
-    # tau = 1 / (alpha + beta) -> 1pm, 1div
-    res["pm"] += (1 + 1) * 3
-    res["div"] += (1 + 1) * 3
-
-    # 3. calc_deriv_hh 内部
-    res["pm"] += 1  # v_rel = v - p.E_REST
-    res["pm"] += 1
-    res["mul"] += 1  # i_leak
-    res["pm"] += 1
-    res["mul"] += 5  # i_na (m*m*m*h*(v-E))
-    res["pm"] += 1
-    res["mul"] += 5  # i_k (n*n*n*n*(v-E))
-
-    res["pm"] += 4
-    res["div"] += 1  # dvar[0]
-    res["pm"] += 2 * 3
-    res["mul"] += 1 * 3
-    res["div"] += 1 * 3  # dvar[1-3]
-
-    return res
+    gating_cost = OpCost(pm=6, div=6)
+    # 3. calc_hh_channel 内部
+    channel_cost = OpCost(
+        pm=1 + 1 + 1 + 1 + 4 + 6,  # v_rel, i_leak, i_na, i_k, dvar[0], dvar[1-3]×2
+        mul=1 + 5 + 5 + 3,  # i_leak, i_na, i_k, dvar[1-3]
+        div=1 + 3,  # dvar[0], dvar[1-3]
+    )
+    return gate_cost + gating_cost + channel_cost
 
 
-HH_COST = _get_original_hh_cost(FUNC_COST_MAP)
+HH_COST = _get_original_hh_cost()
 
 
 @jitclass(
