@@ -88,6 +88,17 @@ def _(analysis, current_dropdown, dropdown, mo, model_infos, value_slider):
     result = analysis.eval_dataset(dropdown.value, simulator_config)
 
     analysis.view_dataset(result)
+    return (result,)
+
+
+@app.cell
+def _(result):
+    result["metrics"]
+    return
+
+
+@app.cell
+def _():
     return
 
 
