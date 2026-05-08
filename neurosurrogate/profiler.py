@@ -9,19 +9,17 @@ from sklearn.decomposition import PCA
 from .model import SINDyNeuroSurrogate
 
 
-def get_active_features(sindy_model):
+def get_active_features(coef, base_names):
     # 係数が非ゼロのインデックスを取得
-    coefs = sindy_model.coefficients()
     # 各変数（v, m, h等）の微分方程式において、一つでも非ゼロ係数を持つ項のマスク
-    active_mask = np.any(coefs != 0, axis=0)
+    active_mask = np.any(coef != 0, axis=0)
 
     # すべての特徴量名を取得し、アクティブなものだけに絞り込む
-    all_features = sindy_model.get_feature_names()
-    active_features = [f for i, f in enumerate(all_features) if active_mask[i]]
+    active_features = [f for i, f in enumerate(base_names) if active_mask[i]]
     return active_features
 
 
-def static_calc_cost(sindy_model, cost_map, original_cost):
+def static_calc_cost(coef, base_names, cost_map, original_cost):
     """ "
     expの演算回数が~~~,+の演算回数が~~~みたいに計算
     """
@@ -32,12 +30,11 @@ def static_calc_cost(sindy_model, cost_map, original_cost):
         "pm": 0,
         "mul": 0,
     }
-    coef = sindy_model.coefficients()
     nnz = np.count_nonzero(coef).item()
     surrogate_raw["mul"] = nnz
     surrogate_raw["pm"] = max(0, nnz - int(coef.shape[0]))
 
-    active_features = get_active_features(sindy_model)
+    active_features = get_active_features(coef, base_names)
 
     for feature in active_features:
         # 騒々しく失敗する (Fail Fast, Fail Loudly)
@@ -124,20 +121,23 @@ class SINDySummary:
 def get_loggable_summary(
     surrogate: SINDyNeuroSurrogate, base_cost_map, original_cost
 ) -> SINDySummary:
-    coef = surrogate.sindy.optimizer.coef_
+    preprocessor = surrogate.preprocessor
+    params: dict = surrogate.sindy.optimizer.get_params()
+    train_gate_data: np.ndarray = surrogate.train_gate_data
+    coef: np.ndarray = surrogate.sindy.optimizer.coef_
+    target_names: list = surrogate.preprocessed_xr.variable.values.tolist()
+    base_names: list = surrogate.sindy.get_feature_names()
+    equations: str = "\n".join(surrogate.sindy.equations(precision=3))
+    source: str = surrogate.source
+
     nonzero_term_num = np.count_nonzero(coef)
-
-    feature_cost_map = build_feature_cost_map(
-        surrogate.sindy.get_feature_names(), base_cost_map
-    )
+    feature_cost_map = build_feature_cost_map(base_names, base_cost_map)
     active_features_map = build_feature_cost_map(
-        get_active_features(surrogate.sindy), base_cost_map
+        get_active_features(coef, base_names), base_cost_map
     )
 
-    if isinstance(surrogate.preprocessor, PCA):
-        preprocessor_metrics = _get_pca_metrics(
-            surrogate.preprocessor, surrogate.train_gate_data
-        )
+    if isinstance(preprocessor, PCA):
+        preprocessor_metrics = _get_pca_metrics(preprocessor, train_gate_data)
     else:
         preprocessor_metrics = {}
 
@@ -145,20 +145,25 @@ def get_loggable_summary(
         metrics={
             "nonzero_term_num": str(nonzero_term_num),
             "nonzero_term_ratio": str(nonzero_term_num / coef.size),
-            **static_calc_cost(surrogate.sindy, feature_cost_map, original_cost),
+            **static_calc_cost(
+                coef,
+                base_names,
+                feature_cost_map,
+                original_cost,
+            ),
             **preprocessor_metrics,
         },
-        params=surrogate.sindy.optimizer.get_params(),
+        params=params,
         texts={
-            "equations.txt": "\n".join(surrogate.sindy.equations(precision=3)),
+            "equations.txt": equations,
             "coef.txt": np.array2string(coef, precision=3),
             "features.json": json.dumps(feature_cost_map),
             "features_active.json": json.dumps(active_features_map),
-            "misc/source.txt": surrogate.source,
+            "misc/source.txt": source,
         },
         xi=coef,
-        feature_names=surrogate.sindy.get_feature_names(),
-        target_names=surrogate.preprocessed_xr.variable.values.tolist(),
+        feature_names=base_names,
+        target_names=target_names,
     )
 
 
