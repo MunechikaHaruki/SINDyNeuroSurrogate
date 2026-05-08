@@ -1,3 +1,4 @@
+import importlib
 import logging
 from typing import Literal
 
@@ -6,7 +7,6 @@ import numpy as np
 import pysindy as ps
 from conf import feature_library_components
 from conf.feature_library_components import LIB_BUILDER_REGISTRY, LibraryEntry
-from conf.neuron_models import MODEL_DEFINITIONS
 
 from neurosurrogate.calc_utils import OpCost
 from neurosurrogate.model import SINDyNeuroSurrogate
@@ -117,15 +117,18 @@ PIPE_FUNCS = {
 
 
 def build_model(neuron_type):
-    spec = MODEL_DEFINITIONS[neuron_type]
-    nodes_dict = spec["nodes"]
+    neuron_module = importlib.import_module("conf.neuron_models")
+    neuron_spec = getattr(neuron_module, neuron_type)
+    nodes_dict = neuron_spec["nodes"]
     name_to_idx = {n: i for i, n in enumerate(nodes_dict.keys())}
 
     return {
         "name_to_idx_dict": name_to_idx,
         "nodes": list(nodes_dict.values()),
-        "edges": [(name_to_idx[u], name_to_idx[v], g) for u, v, g in spec["edges"]],
-        "stim_node": name_to_idx[spec["stim"]],
+        "edges": [
+            (name_to_idx[u], name_to_idx[v], g) for u, v, g in neuron_spec["edges"]
+        ],
+        "stim_node": name_to_idx[neuron_spec["stim"]],
     }
 
 

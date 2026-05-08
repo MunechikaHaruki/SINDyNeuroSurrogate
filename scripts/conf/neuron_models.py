@@ -1,80 +1,80 @@
-MODEL_DEFINITIONS = {
-    "hh": {"nodes": {"soma": "hh"}, "edges": [], "stim": "soma"},
-    "php": {
+hh = {"nodes": {"soma": "hh"}, "edges": [], "stim": "soma"}
+php = (
+    {
         "nodes": {"p1": "passive", "h1": "hh", "p2": "passive"},
         "edges": [("p1", "h1", 1.0), ("h1", "p2", 0.7)],
         "stim": "p1",
     },
-    "hhp": {
-        "nodes": {"h1": "hh", "h2": "hh", "p1": "passive"},
-        "edges": [("h1", "h2", 1.0), ("h2", "p1", 0.7)],
-        "stim": "h1",
+)
+hhp = {
+    "nodes": {"h1": "hh", "h2": "hh", "p1": "passive"},
+    "edges": [("h1", "h2", 1.0), ("h2", "p1", 0.7)],
+    "stim": "h1",
+}
+phh = {
+    "nodes": {"p1": "passive", "h1": "hh", "h2": "hh"},
+    "edges": [("p1", "h1", 1.0), ("h1", "h2", 0.7)],
+    "stim": "p1",
+}
+phhpp = {
+    "nodes": {
+        "p1": "passive",
+        "h1": "hh",
+        "h2": "hh",
+        "p2": "passive",
+        "p3": "passive",
     },
-    "phh": {
-        "nodes": {"p1": "passive", "h1": "hh", "h2": "hh"},
-        "edges": [("p1", "h1", 1.0), ("h1", "h2", 0.7)],
-        "stim": "p1",
+    "edges": [
+        ("p1", "h1", 1.0),
+        ("h1", "h2", 0.7),
+        ("h2", "p2", 0.7),
+        ("p2", "p3", 0.5),
+    ],
+    "stim": "p1",
+}
+pphhp = {
+    "nodes": {
+        "p1": "passive",
+        "p2": "passive",
+        "h1": "hh",
+        "h2": "hh",
+        "p3": "passive",
     },
-    "phhpp": {
-        "nodes": {
-            "p1": "passive",
-            "h1": "hh",
-            "h2": "hh",
-            "p2": "passive",
-            "p3": "passive",
-        },
-        "edges": [
-            ("p1", "h1", 1.0),
-            ("h1", "h2", 0.7),
-            ("h2", "p2", 0.7),
-            ("p2", "p3", 0.5),
-        ],
-        "stim": "p1",
+    "edges": [
+        ("p1", "p2", 1.0),
+        ("p2", "h1", 0.7),
+        ("h1", "h2", 0.7),
+        ("h2", "p3", 0.5),
+    ],
+    "stim": "p1",
+}
+phhhp = {
+    "nodes": {"p1": "passive", "h1": "hh", "h2": "hh", "h3": "hh", "p2": "passive"},
+    "edges": [
+        ("p1", "h1", 1.0),
+        ("h1", "h2", 0.7),
+        ("h2", "h3", 0.7),
+        ("h3", "p2", 0.5),
+    ],
+    "stim": "p1",
+}
+hh7 = {
+    "nodes": {
+        "p1": "passive",
+        "h1": "hh",
+        "h2": "hh",
+        "h3": "hh",
+        "h4": "hh",
+        "p2": "passive",
+        "p3": "passive",
     },
-    "pphhp": {
-        "nodes": {
-            "p1": "passive",
-            "p2": "passive",
-            "h1": "hh",
-            "h2": "hh",
-            "p3": "passive",
-        },
-        "edges": [
-            ("p1", "p2", 1.0),
-            ("p2", "h1", 0.7),
-            ("h1", "h2", 0.7),
-            ("h2", "p3", 0.5),
-        ],
-        "stim": "p1",
-    },
-    "phhhp": {
-        "nodes": {"p1": "passive", "h1": "hh", "h2": "hh", "h3": "hh", "p2": "passive"},
-        "edges": [
-            ("p1", "h1", 1.0),
-            ("h1", "h2", 0.7),
-            ("h2", "h3", 0.7),
-            ("h3", "p2", 0.5),
-        ],
-        "stim": "p1",
-    },
-    "hh7": {
-        "nodes": {
-            "p1": "passive",
-            "h1": "hh",
-            "h2": "hh",
-            "h3": "hh",
-            "h4": "hh",
-            "p2": "passive",
-            "p3": "passive",
-        },
-        "edges": [
-            ("p1", "h1", 1.0),
-            ("h1", "h2", 0.7),
-            ("h2", "h3", 0.7),
-            ("h2", "h4", 0.5),
-            ("h3", "p2", 0.5),
-            ("h4", "p3", 0.6),
-        ],
-        "stim": "p1",
-    },
+    "edges": [
+        ("p1", "h1", 1.0),
+        ("h1", "h2", 0.7),
+        ("h2", "h3", 0.7),
+        ("h2", "h4", 0.5),
+        ("h3", "p2", 0.5),
+        ("h4", "p3", 0.6),
+    ],
+    "stim": "p1",
 }
