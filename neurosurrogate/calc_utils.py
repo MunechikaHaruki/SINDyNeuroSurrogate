@@ -28,6 +28,27 @@ class OpCost:
         return {f.name: getattr(self, f.name) for f in fields(self)}
 
 
+class Compartment:
+    def __init__(
+        self, gate_inits: list[float], gate_names: list[str], v_init: float = -65
+    ):
+        self.v_init = v_init
+        self.gate_inits = gate_inits
+        self.gate_names = gate_names
+
+    @property
+    def vars(self):
+        return ["V"] + self.gate_names
+
+    @property
+    def gate(self):
+        return [False] + [True] * len(self.gate_names)
+
+    @property
+    def init(self):
+        return [self.v_init] + self.gate_inits
+
+
 @dataclass
 class StateAccumulator:
     comp_id: list = field(default_factory=list)
@@ -66,18 +87,18 @@ def build_indices(nodes: list, surr_comp: dict):
 
     # [Pass 1] 電位変数の収集
     for i, node_type in enumerate(nodes):
-        comp = compartments[node_type]
-        acc.add(i, [comp["vars"][0]], [comp["gate"][0]], [comp["init"][0]])
+        comp: Compartment = compartments[node_type]
+        acc.add(i, [comp.vars[0]], [comp.gate[0]], [comp.init[0]])
         ids_list[node_type].append(i)
 
     # [Pass 2] ゲート変数の収集
     current_offset = N
     for i, node_type in enumerate(nodes):
-        comp = compartments[node_type]
-        gate_vars = comp["vars"][1:]
+        comp: Compartment = compartments[node_type]
+        gate_vars = comp.vars[1:]
         if len(gate_vars) > 0:
             gate_offsets[i] = current_offset
-            acc.add(i, comp["vars"][1:], comp["gate"][1:], comp["init"][1:])
+            acc.add(i, comp.vars[1:], comp.gate[1:], comp.init[1:])
             current_offset += len(gate_vars)
 
     ids = defaultdict(lambda: np.array([], dtype=np.int32))

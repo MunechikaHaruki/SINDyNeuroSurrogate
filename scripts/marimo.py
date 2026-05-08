@@ -75,6 +75,19 @@ def _(analysis, mo, run_ids):
     return current_dropdown, dropdown, value_slider
 
 
+@app.cell
+def _(analysis, dropdown):
+    surrogate_model = analysis.load_surrogate_model(dropdown.value)
+    print(surrogate_model.surr_comp.gate_names)
+    print(type(surrogate_model.surr_comp))
+    print(surrogate_model.sindy_args[0].shape)  # xi_matrixのshape
+
+    print(surrogate_model.surr_comp.vars)
+    print(surrogate_model.surr_comp.gate)
+    print(surrogate_model.surr_comp.init)
+    return
+
+
 @app.cell(hide_code=True)
 def _(analysis, current_dropdown, dropdown, mo, model_infos, value_slider):
     mo.stop(

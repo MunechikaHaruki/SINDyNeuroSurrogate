@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 from numba import njit
 
-from .calc_utils import get_gate_numpy, transform_gate
+from .calc_utils import Compartment, get_gate_numpy, transform_gate
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,7 @@ def _dummy_theta(v, latent, i_int):
 _dummy_xi = np.zeros((2, 1), dtype=np.float64)
 
 DUMMY_SINDY_ARGS = (_dummy_xi, _dummy_theta)
-DUMMY_SURR_COMP = {
-    "init": np.array([0, 0]),
-    "vars": ["V"] + [f"latent{i + 1}" for i in range(1)],
-    "gate": [False] + [True],
-}
+DUMMY_SURR_COMP = Compartment(gate_inits=[0], gate_names="latent1")
 
 
 @dataclass
@@ -49,7 +45,7 @@ class SINDyNeuroSurrogate:
         preprocessed_xr = transform_gate(
             self.preprocessor, train_xr, target_comp_id=target_comp_id
         )
-        self._full_init = preprocessed_xr["vars"].to_numpy()[0]
+        self._gate_inits: list = preprocessed_xr["vars"].to_numpy()[0][1:].tolist()
         input_features = preprocessed_xr.variable.values.tolist() + ["u"]
         logger.info(input_features)
         self.sindy.fit(
@@ -76,12 +72,10 @@ class SINDyNeuroSurrogate:
 
     @property
     def surr_comp(self):
-        num_latents = len(self._full_init[1:])
-        return {
-            "init": self._full_init,
-            "vars": ["V"] + [f"latent{i + 1}" for i in range(num_latents)],
-            "gate": [False] + [True] * num_latents,
-        }
+        return Compartment(
+            gate_inits=self._gate_inits,
+            gate_names=[f"latent{i + 1}" for i in range(len(self._gate_inits))],
+        )
 
     @property
     def sindy_args(self):
