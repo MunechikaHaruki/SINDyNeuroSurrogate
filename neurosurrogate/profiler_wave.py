@@ -26,8 +26,13 @@ def _calc_spike_metrics(orig_feat: dict, surr_feat: dict) -> dict:
             f"{prefix}_std_isi": _safe_float(np.std(isi) if isi is not None else None),
         }
 
-    orig_peaks = orig_feat.get("peak_indices") or []
-    surr_peaks = surr_feat.get("peak_indices") or []
+    def _to_list(val):
+        if val is None:
+            return []
+        return list(val)
+
+    orig_peaks = _to_list(orig_feat.get("peak_indices"))
+    surr_peaks = _to_list(surr_feat.get("peak_indices"))
     orig_isi = orig_feat.get("ISI_values")
     surr_isi = surr_feat.get("ISI_values")
     orig_tfs = orig_feat.get("time_to_first_spike")

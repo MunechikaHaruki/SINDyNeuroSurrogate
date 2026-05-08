@@ -35,8 +35,10 @@ def cli_flow(is_multirun, cfg_sindy):
         train_comp_id = train_dataset_cfg["net"]["name_to_idx_dict"][
             cfg_sindy["train_comp_identifier"]
         ]
-        surrogate.fit(train_ds, train_comp_id)
-        log_surrogate_summary(get_loggable_summary(surrogate, FUNC_COST_MAP, HH_COST))
+        surrogate_result = surrogate.fit(train_ds, train_comp_id)
+        log_surrogate_summary(
+            get_loggable_summary(surrogate_result, FUNC_COST_MAP, HH_COST)
+        )
         log_surrogate_model(surrogate)
     if is_multirun:
         pass

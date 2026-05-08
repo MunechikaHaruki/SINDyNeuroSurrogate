@@ -1,4 +1,6 @@
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from numba import njit
@@ -23,6 +25,18 @@ DUMMY_SURR_COMP = {
 }
 
 
+@dataclass
+class SINDyResult:
+    preprocessor: Any
+    params: dict
+    train_gate_data: np.ndarray
+    coef: np.ndarray
+    target_names: list
+    base_names: list
+    equations: str
+    source: str
+
+
 class SINDyNeuroSurrogate:
     def __init__(self, preprocessor, initialized_sindy, target_module):
         self.preprocessor = preprocessor
@@ -30,16 +44,17 @@ class SINDyNeuroSurrogate:
         self.target_module = target_module
 
     def fit(self, train_xr, target_comp_id):
-        self.train_gate_data = get_gate_numpy(train_xr, target_comp_id)
-        self.preprocessor.fit(self.train_gate_data)
-        self.preprocessed_xr = transform_gate(
+        train_gate_data = get_gate_numpy(train_xr, target_comp_id)
+        self.preprocessor.fit(train_gate_data)
+        preprocessed_xr = transform_gate(
             self.preprocessor, train_xr, target_comp_id=target_comp_id
         )
-        input_features = self.preprocessed_xr.variable.values.tolist() + ["u"]
+        self._full_init = preprocessed_xr["vars"].to_numpy()[0]
+        input_features = preprocessed_xr.variable.values.tolist() + ["u"]
         logger.info(input_features)
         self.sindy.fit(
-            self.preprocessed_xr["vars"].sel(comp_id=target_comp_id).to_numpy(),
-            u=self.preprocessed_xr["I_ext"].to_numpy(),
+            preprocessed_xr["vars"].sel(comp_id=target_comp_id).to_numpy(),
+            u=preprocessed_xr["I_ext"].to_numpy(),
             t=train_xr["time"].to_numpy(),
             feature_names=input_features,
         )
@@ -48,12 +63,22 @@ class SINDyNeuroSurrogate:
         logger.info(self.source)
         self.compute_theta = self._compile_source(self.source, self.target_module)
 
+        return SINDyResult(
+            preprocessor=self.preprocessor,
+            params=self.sindy.optimizer.get_params(),
+            train_gate_data=train_gate_data,
+            coef=self.sindy.optimizer.coef_,
+            target_names=preprocessed_xr.variable.values.tolist(),
+            base_names=self.sindy.get_feature_names(),
+            equations="\n".join(self.sindy.equations(precision=3)),
+            source=self.source,
+        )
+
     @property
     def surr_comp(self):
-        full_init = self.preprocessed_xr["vars"].to_numpy()[0]
-        num_latents = len(self.preprocessed_xr["vars"].to_numpy()[0][1:])
+        num_latents = len(self._full_init[1:])
         return {
-            "init": full_init,
+            "init": self._full_init,
             "vars": ["V"] + [f"latent{i + 1}" for i in range(num_latents)],
             "gate": [False] + [True] * num_latents,
         }

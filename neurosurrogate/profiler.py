@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 from sklearn.decomposition import PCA
 
-from .model import SINDyNeuroSurrogate
+from .model import SINDyResult
 
 
 def get_active_features(coef, base_names):
@@ -70,6 +70,17 @@ def static_calc_cost(coef, base_names, cost_map, original_cost):
     return result
 
 
+def _get_pca_metrics(pca: PCA, train_gate_data):
+    reconstructed = pca.inverse_transform(pca.transform(train_gate_data))
+    mse = np.mean((train_gate_data - reconstructed) ** 2)
+    return {
+        "pca/explained_variance_ratio": float(pca.explained_variance_ratio_[0]),
+        "pca/explained_variance": float(pca.explained_variance_[0]),
+        "pca/reconstruction_mse": float(mse),
+        "pca/reconstruction_mse_ratio": float(mse / np.var(train_gate_data)),
+    }
+
+
 def build_feature_cost_map(feature_names: list, base_cost_map: dict) -> dict:
     """
     SINDyが生成したすべての基底関数名(文字列)を解析し、
@@ -119,60 +130,43 @@ class SINDySummary:
 
 
 def get_loggable_summary(
-    surrogate: SINDyNeuroSurrogate, base_cost_map, original_cost
+    result: SINDyResult, base_cost_map, original_cost
 ) -> SINDySummary:
-    preprocessor = surrogate.preprocessor
-    params: dict = surrogate.sindy.optimizer.get_params()
-    train_gate_data: np.ndarray = surrogate.train_gate_data
-    coef: np.ndarray = surrogate.sindy.optimizer.coef_
-    target_names: list = surrogate.preprocessed_xr.variable.values.tolist()
-    base_names: list = surrogate.sindy.get_feature_names()
-    equations: str = "\n".join(surrogate.sindy.equations(precision=3))
-    source: str = surrogate.source
 
-    nonzero_term_num = np.count_nonzero(coef)
-    feature_cost_map = build_feature_cost_map(base_names, base_cost_map)
+    nonzero_term_num = np.count_nonzero(result.coef)
+    feature_cost_map = build_feature_cost_map(result.base_names, base_cost_map)
     active_features_map = build_feature_cost_map(
-        get_active_features(coef, base_names), base_cost_map
+        get_active_features(result.coef, result.base_names), base_cost_map
     )
 
-    if isinstance(preprocessor, PCA):
-        preprocessor_metrics = _get_pca_metrics(preprocessor, train_gate_data)
+    if isinstance(result.preprocessor, PCA):
+        preprocessor_metrics = _get_pca_metrics(
+            result.preprocessor, result.train_gate_data
+        )
     else:
         preprocessor_metrics = {}
 
     return SINDySummary(
         metrics={
             "nonzero_term_num": str(nonzero_term_num),
-            "nonzero_term_ratio": str(nonzero_term_num / coef.size),
+            "nonzero_term_ratio": str(nonzero_term_num / result.coef.size),
             **static_calc_cost(
-                coef,
-                base_names,
+                result.coef,
+                result.base_names,
                 feature_cost_map,
                 original_cost,
             ),
             **preprocessor_metrics,
         },
-        params=params,
+        params=result.params,
         texts={
-            "equations.txt": equations,
-            "coef.txt": np.array2string(coef, precision=3),
+            "equations.txt": result.equations,
+            "coef.txt": np.array2string(result.coef, precision=3),
             "features.json": json.dumps(feature_cost_map),
             "features_active.json": json.dumps(active_features_map),
-            "misc/source.txt": source,
+            "misc/source.txt": result.source,
         },
-        xi=coef,
-        feature_names=base_names,
-        target_names=target_names,
+        xi=result.coef,
+        feature_names=result.base_names,
+        target_names=result.target_names,
     )
-
-
-def _get_pca_metrics(pca: PCA, train_gate_data):
-    reconstructed = pca.inverse_transform(pca.transform(train_gate_data))
-    mse = np.mean((train_gate_data - reconstructed) ** 2)
-    return {
-        "pca/explained_variance_ratio": float(pca.explained_variance_ratio_[0]),
-        "pca/explained_variance": float(pca.explained_variance_[0]),
-        "pca/reconstruction_mse": float(mse),
-        "pca/reconstruction_mse_ratio": float(mse / np.var(train_gate_data)),
-    }
