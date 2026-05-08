@@ -578,6 +578,35 @@ wheels = [
 ]
 
 [[package]]
+name = "efel"
+version = "5.7.23"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "neo" },
+    { name = "numpy" },
+    { name = "scipy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ed/5d/3804433e708a4c95937575177f19e7eb185cfebfa3b549fc7db16f958efe/efel-5.7.23.tar.gz", hash = "sha256:4ce6ca44b649243a042edd8afa32994ba306c500520e7085f9171767c0f5fd00", size = 140930, upload-time = "2026-04-17T13:35:55.62Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/09/07/dde14f93970474dce79e4bf5b1accb9ef731b9ce8027c52521770b026f69/efel-5.7.23-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:a8bd40d8d4b2a17f0831f682d8b8ab8fc2552907175f8b18c7ba41875a2b2bfa", size = 253705, upload-time = "2026-04-17T13:35:32.371Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/65/506e50c639c4262670589eea585ea0c8491deb087ddae8210c922130df83/efel-5.7.23-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:bf73710705a7aa4932bbdc7eeebf6d8c5333774afc619c1a254a1e4b93e4426c", size = 3019324, upload-time = "2026-04-17T13:35:33.867Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/c9/785b2ecf5ede3862dd4787e84e6d903b1818ed56d73961c2cc547d7ccc3d/efel-5.7.23-cp311-cp311-win_amd64.whl", hash = "sha256:3401838f625ae66bf9bfd06903e6bda6fcceea94eac805cb508ae1f1ad5de3ad", size = 238010, upload-time = "2026-04-17T13:35:35.385Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/6f/c60bf419ccb2d9d91e9e3de8756b1007e1d493f695af20d3b603d5f09049/efel-5.7.23-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:c626024bf59fabb212fb2bf27d69c6d072a3562b20d7016988d9501d9f2324d0", size = 253821, upload-time = "2026-04-17T13:35:36.654Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/ca/8e1bab2f69ddf19099fc41ffee1a9dea07b6603ee25d97bb3e3b418c792f/efel-5.7.23-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4a6f738170ca7439e98ade2a6eb7b8ad9f4a76bbaff4e4cff61426f639cc8163", size = 3019487, upload-time = "2026-04-17T13:35:38.065Z" },
+    { url = "https://files.pythonhosted.org/packages/00/e5/3fad5e3a4bf3789fae4c43dc2d3691cb5558a02467dcc9330d6f27516576/efel-5.7.23-cp312-cp312-win_amd64.whl", hash = "sha256:2afb07c9e166f5b700c8272b451048c3e765c46f12f51cb1ef4230bbab9b55f2", size = 238062, upload-time = "2026-04-17T13:35:39.667Z" },
+    { url = "https://files.pythonhosted.org/packages/10/19/f5842b2c88e56f5b2460343a4ae49ca57a2e19f6e33c735a366fe9e9d25f/efel-5.7.23-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:4095e6a70d49fc5f60440884366d2d57587aa980d4f809a4804afeddbc2083fe", size = 253822, upload-time = "2026-04-17T13:35:41.436Z" },
+    { url = "https://files.pythonhosted.org/packages/35/8c/26e840e8b6ca9416516d5ccf58e28081aacc5f14a288479fa1f22f160832/efel-5.7.23-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9cdf2b5bf64931f4ef65f554e367cc8a77f588bda96bab56605e49d073b64b46", size = 3019629, upload-time = "2026-04-17T13:35:42.849Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/c9/1e504fbc306b0edd82961a3b379e3ceb73b60f9758c1aac65e42c5090140/efel-5.7.23-cp313-cp313-win_amd64.whl", hash = "sha256:10472b7363926e0e45e0f0a8af2360ba8447d76084de62baf6fe7426244bce54", size = 238068, upload-time = "2026-04-17T13:35:44.549Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/c4/9b8fc131b9852ea461ed252aee619724b138f52bbecff1be1df65ebe6207/efel-5.7.23-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:50a933bfa0d9d822f0d38106456d7a893a382c474de23374f9c363bf8b0b52a8", size = 253822, upload-time = "2026-04-17T13:35:46.153Z" },
+    { url = "https://files.pythonhosted.org/packages/60/8c/dc7938785f2b8cec3bcb976bf3e1af497f82bbbe6b0c90c7974e79f26b3f/efel-5.7.23-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4973ae71c53d7a0cf106006ada478f80b945013e9e5c94e88aab91c2d3acbfd9", size = 3019663, upload-time = "2026-04-17T13:35:47.621Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/9b/297ee404d45a4b9afac85b789b7e16af4ee9140415dae8fedba1b536e120/efel-5.7.23-cp314-cp314-win_amd64.whl", hash = "sha256:e52bf956265bc6060ee93ff1284fb8473a389695e4c5db4383602fe32ac6bc23", size = 242297, upload-time = "2026-04-17T13:35:49.513Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/8c/5b7f67440f583927e8caefcc4822ab9c9226b7b3ec537720fc7b198a881c/efel-5.7.23-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:9d2f92dc1fa0553cfa8552622bf936fcce1df892737ecdfd57d43fba0d230023", size = 254077, upload-time = "2026-04-17T13:35:51.203Z" },
+    { url = "https://files.pythonhosted.org/packages/61/dd/b5a363c177c0021de318ddf8c82d23bc5005aa426f37397a6f16998f0244/efel-5.7.23-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e24ec95961cc90aeeaeae1297163e9cbb67d8006d99d874f0f614966b72f670f", size = 3023070, upload-time = "2026-04-17T13:35:52.644Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/3a/ca150269a6b4f056f5e75fc95816409cb82c6f6b931639c8250e04f260bb/efel-5.7.23-cp314-cp314t-win_amd64.whl", hash = "sha256:630b7d6789acd7cb62cda36def2ab88fc588b575d4d4af09fe199070c13f5f65", size = 242440, upload-time = "2026-04-17T13:35:54.252Z" },
+]
+
+[[package]]
 name = "fastapi"
 version = "0.135.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1846,10 +1875,25 @@ wheels = [
 ]
 
 [[package]]
+name = "neo"
+version = "0.14.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "quantities" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7f/b1/e9228d616c817098b673ab990e82acb431856559f4e0235a687854df1ef4/neo-0.14.4.tar.gz", hash = "sha256:cbe24031c514543005ec698d8fe024b95a0839e9efd469bf6f8290dc3d86b3b5", size = 5085927, upload-time = "2026-03-12T09:59:56.893Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/66/93359047a9c7ede7c6319f58b2cee3be19552f57ef5380fe95cb812272fb/neo-0.14.4-py3-none-any.whl", hash = "sha256:0cd863424e35dddd768d713cfcc48cb06ab127fe1b5b132a0793c82975de5be4", size = 697727, upload-time = "2026-03-12T09:59:54.609Z" },
+]
+
+[[package]]
 name = "neurosurrogate"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "efel" },
     { name = "hydra-core" },
     { name = "hydra-optuna-sweeper" },
     { name = "japanize-matplotlib" },
@@ -1885,6 +1929,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "efel", specifier = ">=5.7.23" },
     { name = "hydra-core", specifier = ">=1.3.2" },
     { name = "hydra-optuna-sweeper", specifier = ">=1.2.0" },
     { name = "japanize-matplotlib", specifier = ">=1.1.3" },
@@ -2811,6 +2856,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/da/92/1446574745d74df0c92e6aa4a7b0b3130706a4142b2d1a5869f2eaa423c6/pyyaml-6.0.3-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:16249ee61e95f858e83976573de0f5b2893b3677ba71c9dd36b9cf8be9ac6d65", size = 829923, upload-time = "2025-09-25T21:32:54.537Z" },
     { url = "https://files.pythonhosted.org/packages/f0/7a/1c7270340330e575b92f397352af856a8c06f230aa3e76f86b39d01b416a/pyyaml-6.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4ad1906908f2f5ae4e5a8ddfce73c320c2a1429ec52eafd27138b7f1cbe341c9", size = 174062, upload-time = "2025-09-25T21:32:55.767Z" },
     { url = "https://files.pythonhosted.org/packages/f1/12/de94a39c2ef588c7e6455cfbe7343d3b2dc9d6b6b2f40c4c6565744c873d/pyyaml-6.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:ebc55a14a21cb14062aa4162f906cd962b28e2e9ea38f9b4391244cd8de4ae0b", size = 149341, upload-time = "2025-09-25T21:32:56.828Z" },
+]
+
+[[package]]
+name = "quantities"
+version = "0.16.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/aa/50/19194d2cf428239ecbda876d81bbfddb76697a248c5a7478ae83d0b98fee/quantities-0.16.4.tar.gz", hash = "sha256:f5b6deb74f6ed814ec56b204dcf7b5d3c526456157de48e5a78681064f98bf36", size = 100726, upload-time = "2026-01-16T10:43:48.858Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cd/1f/9751abbc14422092754423d41c89b0884dba3abc236125adc427d108216a/quantities-0.16.4-py3-none-any.whl", hash = "sha256:cd8e82339eb553d8bee0bda0e41a80b91e21795e1174e7d8a82db8e6de2663f6", size = 104009, upload-time = "2026-01-16T10:43:47.252Z" },
 ]
 
 [[package]]

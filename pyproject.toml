@@ -26,6 +26,7 @@ dependencies = [
     "hydra-optuna-sweeper>=1.2.0",
     "jax>=0.10.0",
     "optax>=0.2.8",
+    "efel>=5.7.23",
 ]
 
 [dependency-groups]
