@@ -5,7 +5,12 @@ import hydra
 import mlflow
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
-from utils.builder import build_dataset, build_simulator_config, build_surrogate
+from utils.builder import (
+    build_dataset,
+    build_feature_cost_map,
+    build_simulator_config,
+    build_surrogate,
+)
 from utils.mlflow_handler import (
     log_surrogate_model,
     log_surrogate_summary,
@@ -36,8 +41,11 @@ def cli_flow(is_multirun, cfg_sindy):
             cfg_sindy["train_comp_identifier"]
         ]
         surrogate_result = surrogate.fit(train_ds, train_comp_id)
+        feature_cost = build_feature_cost_map(
+            surrogate_result.base_names, FUNC_COST_MAP
+        )
         log_surrogate_summary(
-            get_loggable_summary(surrogate_result, FUNC_COST_MAP, HH_COST)
+            get_loggable_summary(surrogate_result, HH_COST, feature_cost)
         )
         log_surrogate_model(surrogate)
     if is_multirun:

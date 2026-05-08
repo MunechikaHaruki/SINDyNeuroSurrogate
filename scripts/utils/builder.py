@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Literal
 
 import hydra
@@ -9,6 +10,7 @@ from conf.feature_library_components import LIB_BUILDER_REGISTRY
 from conf.neuron_models import MODEL_DEFINITIONS
 
 from neurosurrogate.model import SINDyNeuroSurrogate
+from neurosurrogate.profiler import OpCost
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,35 @@ def build_surrogate(cfg_sindy):
     return SINDyNeuroSurrogate(
         preprocessor, initialized_sindy, feature_library_components
     )
+
+
+def build_feature_cost_map(
+    feature_names: list, base_cost_map: dict[str, OpCost]
+) -> dict[str, OpCost]:
+    feature_cost_map = {}
+    sorted_funcs = sorted(base_cost_map.keys(), key=len, reverse=True)
+
+    for feature in feature_names:
+        cost = OpCost()
+        work_str = feature
+
+        for func_name in sorted_funcs:
+            count = work_str.count(func_name)
+            if count > 0:
+                fc = base_cost_map[func_name]
+                cost = cost + fc * count
+                work_str = work_str.replace(func_name, "")
+
+        powers = re.findall(r"np\.power\(.*?, (\d+)\)", work_str)
+        work_str = re.sub(r"np\.power\(.*?, \d+\)", "", work_str)
+        cost = cost + OpCost(
+            mul=sum(int(p) - 1 for p in powers) + work_str.count("*"),
+            pm=work_str.count("+") + work_str.count("-"),
+        )
+
+        feature_cost_map[feature] = cost
+
+    return feature_cost_map
 
 
 def build_simulator_config(dataset_cfg):

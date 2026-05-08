@@ -1,5 +1,4 @@
 import json
-import re
 from dataclasses import dataclass, fields
 
 import numpy as np
@@ -40,7 +39,7 @@ def get_active_features(coef, base_names):
     return active_features
 
 
-def static_calc_cost(
+def stat_calc_cost(
     coef, base_names, cost_map: dict[str, OpCost], original_cost: OpCost
 ):
     nnz = np.count_nonzero(coef).item()
@@ -74,35 +73,6 @@ def _get_pca_metrics(pca: PCA, train_gate_data):
     }
 
 
-def build_feature_cost_map(
-    feature_names: list, base_cost_map: dict[str, OpCost]
-) -> dict[str, OpCost]:
-    feature_cost_map = {}
-    sorted_funcs = sorted(base_cost_map.keys(), key=len, reverse=True)
-
-    for feature in feature_names:
-        cost = OpCost()
-        work_str = feature
-
-        for func_name in sorted_funcs:
-            count = work_str.count(func_name)
-            if count > 0:
-                fc = base_cost_map[func_name]
-                cost = cost + fc * count
-                work_str = work_str.replace(func_name, "")
-
-        powers = re.findall(r"np\.power\(.*?, (\d+)\)", work_str)
-        work_str = re.sub(r"np\.power\(.*?, \d+\)", "", work_str)
-        cost = cost + OpCost(
-            mul=sum(int(p) - 1 for p in powers) + work_str.count("*"),
-            pm=work_str.count("+") + work_str.count("-"),
-        )
-
-        feature_cost_map[feature] = cost
-
-    return feature_cost_map
-
-
 @dataclass
 class SurrogateSummary:
     metrics: dict[str, float]
@@ -112,14 +82,11 @@ class SurrogateSummary:
 
 
 def get_loggable_summary(
-    result: SINDyResult, base_cost_map, original_cost
+    result: SINDyResult, original_cost: OpCost, feature_cost_map: dict[str, OpCost]
 ) -> SurrogateSummary:
-
     nonzero_term_num = np.count_nonzero(result.coef)
-    feature_cost_map = build_feature_cost_map(result.base_names, base_cost_map)
-    active_features_map = build_feature_cost_map(
-        get_active_features(result.coef, result.base_names), base_cost_map
-    )
+    active_features = get_active_features(result.coef, result.base_names)
+    active_features_map = {k: feature_cost_map[k] for k in active_features}
 
     if isinstance(result.preprocessor, PCA):
         preprocessor_metrics = _get_pca_metrics(
@@ -130,9 +97,9 @@ def get_loggable_summary(
 
     return SurrogateSummary(
         metrics={
-            "nonzero_term_num": str(nonzero_term_num),
-            "nonzero_term_ratio": str(nonzero_term_num / result.coef.size),
-            **static_calc_cost(
+            "nonzero_term_num": int(nonzero_term_num),
+            "nonzero_term_ratio": float(nonzero_term_num / result.coef.size),
+            **stat_calc_cost(
                 result.coef,
                 result.base_names,
                 feature_cost_map,
