@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 from numba import njit
 
-from .xarray_utils import get_gate_numpy, transform_gate
+from .calc_utils import get_gate_numpy, transform_gate
 
 logger = logging.getLogger(__name__)
 

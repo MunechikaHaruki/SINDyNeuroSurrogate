@@ -4,6 +4,7 @@ from collections import defaultdict, namedtuple
 import numpy as np
 from numba import njit
 
+from .calc_utils import StateAccumulator, set_coords, set_i_internal
 from .model import DUMMY_SINDY_ARGS, DUMMY_SURR_COMP, SINDyNeuroSurrogate
 from .neuron_core import (
     COMPARTMENT_TEMPLATES,
@@ -11,7 +12,6 @@ from .neuron_core import (
     calc_hh_channel,
     calc_passive_channel,
 )
-from .xarray_utils import StateAccumulator, set_coords, set_i_internal
 
 logger = logging.getLogger(__name__)
 
