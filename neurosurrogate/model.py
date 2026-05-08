@@ -44,11 +44,9 @@ class SINDyNeuroSurrogate:
             feature_names=input_features,
         )
         # 関数のビルド
-        self.source = self._build_source(self.sindy)
-        local_vars = {}
-        exec(self.source, vars(self.target_module), local_vars)
-        self.compute_theta = local_vars["dynamic_compute_theta"]
+        self.source = self._build_source(self.sindy.get_feature_names(), input_features)
         logger.info(self.source)
+        self.compute_theta = self._compile_source(self.source, self.target_module)
 
     @property
     def surr_comp(self):
@@ -65,11 +63,14 @@ class SINDyNeuroSurrogate:
         return (self.sindy.coefficients(), self.compute_theta)
 
     @staticmethod
-    def _build_source(sindy):
-        # 関数組み立て
-        feature_names = sindy.get_feature_names()
-        num_features = len(feature_names)
+    def _compile_source(source, module):
+        local_vars = {}
+        exec(source, vars(module), local_vars)
+        return local_vars["dynamic_compute_theta"]
 
+    @staticmethod
+    def _build_source(feature_names: list, input_features: list):
+        num_features = len(feature_names)
         # 各要素を res[i] = ... の形に変換
         assignments = []
         for i, name in enumerate(feature_names):
@@ -78,13 +79,10 @@ class SINDyNeuroSurrogate:
             # SINDyの出力する '^'（べき乗）を Python の '**' に置換
             safe_name = safe_name.replace("^", "**")
             assignments.append(f"    res[{i}] = {safe_name}")
-
         array_content = "\n".join(assignments)
-        input_features = ",".join(sindy.feature_names)
-
         # 3. テンプレートを組み立て
         return f"""@njit
-def dynamic_compute_theta({input_features}):
+def dynamic_compute_theta({",".join(input_features)}):
     res = np.empty({num_features}, dtype=np.float64)
 {array_content}
     return res
