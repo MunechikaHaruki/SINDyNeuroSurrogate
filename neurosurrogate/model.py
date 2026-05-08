@@ -8,23 +8,19 @@ from .xarray_utils import get_gate_numpy, transform_gate
 logger = logging.getLogger(__name__)
 
 
-class DummySurrogate:
-    @njit
-    def dummy_theta(v, latent, i_int):
-        return np.zeros(1, dtype=np.float64)
+@njit
+def _dummy_theta(v, latent, i_int):
+    return np.zeros(1, dtype=np.float64)
 
-    @property
-    def sindy_args(self):
-        dummy_xi = np.zeros((2, 1), dtype=np.float64)
-        return (dummy_xi, self.dummy_theta)
 
-    @property
-    def surr_comp(self):
-        return {
-            "init": np.array([0, 0]),
-            "vars": ["V"] + [f"latent{i + 1}" for i in range(1)],
-            "gate": [False] + [True],
-        }
+_dummy_xi = np.zeros((2, 1), dtype=np.float64)
+
+DUMMY_SINDY_ARGS = (_dummy_xi, _dummy_theta)
+DUMMY_SURR_COMP = {
+    "init": np.array([0, 0]),
+    "vars": ["V"] + [f"latent{i + 1}" for i in range(1)],
+    "gate": [False] + [True],
+}
 
 
 class SINDyNeuroSurrogate:

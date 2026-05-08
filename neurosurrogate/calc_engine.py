@@ -4,7 +4,7 @@ from collections import defaultdict, namedtuple
 import numpy as np
 from numba import njit
 
-from .model import DummySurrogate
+from .model import DUMMY_SINDY_ARGS, DUMMY_SURR_COMP, SINDyNeuroSurrogate
 from .neuron_core import (
     COMPARTMENT_TEMPLATES,
     HH_Params_numba,
@@ -142,11 +142,16 @@ def calc_graph_laplacian(connections, N):
     return C_matrix
 
 
-def unified_simulator(dt, u, net, surrogate_model=DummySurrogate()):
+def unified_simulator(dt, u, net, surrogate_model: SINDyNeuroSurrogate = None):
+    if surrogate_model is None:
+        sindy_args, surr_comp = DUMMY_SINDY_ARGS, DUMMY_SURR_COMP
+    else:
+        sindy_args, surr_comp = surrogate_model.sindy_args, surrogate_model.surr_comp
+
     params = HH_Params_numba()
     N = len(net["nodes"])
     C_matrix = calc_graph_laplacian(net["edges"], N)
-    indice = build_indices(net["nodes"], surrogate_model.surr_comp)
+    indice = build_indices(net["nodes"], surr_comp)
     raw = generic_euler_solver(
         indice["init"],
         u,
@@ -156,8 +161,8 @@ def unified_simulator(dt, u, net, surrogate_model=DummySurrogate()):
             C_matrix=C_matrix,
             stim_idx=net["stim_node"],
             indice_args=indice["indice_args"],
-            xi_matrix=surrogate_model.sindy_args[0],
-            compute_theta=surrogate_model.sindy_args[1],
+            xi_matrix=sindy_args[0],
+            compute_theta=sindy_args[1],
         ),
     )
     dataset = set_coords(raw, u, indice["coords"], dt)
