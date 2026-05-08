@@ -8,10 +8,8 @@ from neurosurrogate.neuron_core import (
     beta_h,
     beta_m,
     beta_n,
-    njit,
+    njit,  # noqa: F401
 )
-
-njit
 
 FUNC_REGISTRY = {
     "alpha_m": alpha_m,
