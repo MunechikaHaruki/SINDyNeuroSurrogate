@@ -130,19 +130,41 @@ def calc_passive_channel(p, u_t, v):
     return (-p.G_LEAK * (v - p.E_LEAK) + u_t) / p.C
 
 
+class Compartment:
+    def __init__(
+        self, gate_inits: list[float], gate_names: list[str], v_init: float = -65
+    ):
+        self.v_init = v_init
+        self.gate_inits = gate_inits
+        self.gate_names = gate_names
+
+    @property
+    def vars(self):
+        return ["V"] + self.gate_names
+
+    @property
+    def gate(self):
+        return [False] + [True] * len(self.gate_names)
+
+    @property
+    def init(self):
+        return [self.v_init] + self.gate_inits
+
+
 E_REST = -65
 V_INIT = -65
 V_REL = V_INIT - E_REST
 
-m_init = alpha_m(V_REL) / (alpha_m(V_REL) + beta_m(V_REL))
-h_init = alpha_h(V_REL) / (alpha_h(V_REL) + beta_h(V_REL))
-n_init = alpha_n(V_REL) / (alpha_n(V_REL) + beta_n(V_REL))
-
 COMPARTMENT_TEMPLATES = {
     "hh": {
-        "init": np.array([V_INIT, m_init, h_init, n_init]),
+        "init": [
+            V_INIT,
+            alpha_m(V_REL) / (alpha_m(V_REL) + beta_m(V_REL)),
+            alpha_h(V_REL) / (alpha_h(V_REL) + beta_h(V_REL)),
+            alpha_n(V_REL) / (alpha_n(V_REL) + beta_n(V_REL)),
+        ],
         "vars": ["V", "M", "H", "N"],
         "gate": [False, True, True, True],
     },
-    "passive": {"init": np.array([E_REST]), "vars": ["V"], "gate": [False]},
+    "passive": {"init": [E_REST], "vars": ["V"], "gate": [False]},
 }
