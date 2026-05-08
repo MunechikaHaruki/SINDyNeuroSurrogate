@@ -7,6 +7,25 @@ from sklearn.decomposition import PCA
 from .calc_utils import OpCost
 from .model import SINDyResult
 
+HH_RATE_COST_MAP: dict[str, OpCost] = {
+    "alpha_m": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_m": OpCost(exp=1, div=1, pm=1, mul=1),
+    "alpha_h": OpCost(exp=1, div=1, pm=1, mul=1),
+    "beta_h": OpCost(exp=1, div=1, pm=2, mul=1),
+    "alpha_n": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_n": OpCost(exp=1, div=1, pm=1, mul=1),
+}
+
+
+HH_COST = (
+    sum(HH_RATE_COST_MAP.values(), OpCost())  # レート関数
+    + OpCost(pm=1)  # 反転電位
+    + OpCost(pm=3, mul=5) * 2  # Na,K電流
+    + OpCost(pm=1, mul=1)  # leak電流
+    + OpCost(pm=6, mul=6)  # dg/dt
+    + OpCost(pm=3, div=1)  # dv/dtの計算
+)
+
 
 def get_active_features(coef, base_names):
     # 係数が非ゼロのインデックスを取得

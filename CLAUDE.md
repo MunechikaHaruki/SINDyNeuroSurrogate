@@ -44,7 +44,7 @@ MLflow experiment は `is_multirun` で切替：
 ```
 neurosurrogate/                # コアライブラリ（フラット構造、scripts 非依存）
   neuron_core.py               # HH パラメータ jitclass / ゲート関数 @njit
-                               # FUNC_COST_MAP, HH_COST, COMPARTMENT_TEMPLATES
+                               # HH_RATE_COST_MAP, HH_COST, COMPARTMENT_TEMPLATES
   calc_engine.py               # unified_simulator, generic_euler_solver @njit
                                # ModelArgs / IndiceArgs namedtuple
                                # build_indices, calc_graph_laplacian
@@ -134,7 +134,7 @@ scripts/                       # Hydra + MLflow オーケストレーション
 
 ### 演算コスト map の整合性
 
-`profiler.build_feature_cost_map` は SINDy feature 名を regex でパースし `FUNC_COST_MAP` を参照する。
+`profiler.build_feature_cost_map` は SINDy feature 名を regex でパースし `HH_RATE_COST_MAP` を参照する。
 
 - `np.power(x, k)` → `(k-1)` 回の mul として展開
 - 残った `*` は mul、`+`/`-` は pm でカウント
@@ -143,7 +143,7 @@ scripts/                       # Hydra + MLflow オーケストレーション
 `static_calc_cost` は **未知の基底関数に対して fail-fast**（`ValueError`）。
 
 新しい `@njit` 関数を SINDy ライブラリに追加したら：
-1. `neuron_core.FUNC_COST_MAP` にコスト `{exp, div, pm, mul}` 追加
+1. `neuron_core.HH_RATE_COST_MAP` にコスト `{exp, div, pm, mul}` 追加
 2. `feature_library_components.FUNC_REGISTRY` に登録（`make_gate_lib` で参照される）
 
 `HH_COST` は `_get_original_hh_cost` で `calc_hh_channel` のソースを静的トレースした基準値。HH 微分計算側を変えたらここも更新する。
@@ -190,7 +190,7 @@ hydra:
 | 電流生成関数         | `scripts/conf/current_generators.py` + 各 `sindy/*.yaml::datasets.pipeline` |
 | ニューロン構造       | `scripts/conf/neuron_models.py::MODEL_DEFINITIONS`                        |
 | SINDy ライブラリ型   | `scripts/conf/feature_library_components.py::LIB_BUILDER_REGISTRY`        |
-| 基底関数             | `neuron_core.py` (@njit) + `FUNC_COST_MAP` + `FUNC_REGISTRY`              |
+| 基底関数             | `neuron_core.py` (@njit) + `HH_RATE_COST_MAP` + `FUNC_REGISTRY`              |
 | コンパートメント種   | `COMPARTMENT_TEMPLATES` + `build_indices` + `calc_universal_deriv`        |
 | Preprocessor         | `scripts/conf/preprocessor.py` + `sindy/*.yaml::preprocessor._target_`    |
 

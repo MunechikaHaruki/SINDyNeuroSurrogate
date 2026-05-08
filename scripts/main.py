@@ -18,8 +18,7 @@ from utils.mlflow_handler import (
 )
 
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.neuron_core import FUNC_COST_MAP, HH_COST
-from neurosurrogate.profiler import get_loggable_summary
+from neurosurrogate.profiler import HH_COST, HH_RATE_COST_MAP, get_loggable_summary
 
 # プロキシ設定を一時的に無効化
 os.environ["HTTP_PROXY"] = ""
@@ -42,7 +41,7 @@ def cli_flow(is_multirun, cfg_sindy):
         ]
         surrogate_result = surrogate.fit(train_ds, train_comp_id)
         feature_cost = build_feature_cost_map(
-            surrogate_result.base_names, FUNC_COST_MAP
+            surrogate_result.base_names, HH_RATE_COST_MAP
         )
         log_surrogate_summary(
             get_loggable_summary(surrogate_result, HH_COST, feature_cost)
