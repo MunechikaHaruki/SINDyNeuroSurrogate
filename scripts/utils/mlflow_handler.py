@@ -9,7 +9,7 @@ import mlflow
 import numpy as np
 
 from neurosurrogate.model import SINDyNeuroSurrogate
-from neurosurrogate.profiler import SINDySummary
+from neurosurrogate.profiler import SurrogateSummary
 
 TARGET_EXP = "test_static_params"
 
@@ -30,21 +30,16 @@ def setup_mlflow(is_multirun):
         mlflow.set_experiment("test_static_params")
 
 
-def log_surrogate_summary(summary: SINDySummary):
+def log_surrogate_summary(summary: SurrogateSummary):
     mlflow.log_metrics(summary.metrics)
     mlflow.log_params(summary.params)
+    mlflow.log_dict(
+        summary.view,
+        artifact_file="view.json",
+    )
 
     for filename, content in summary.texts.items():
         mlflow.log_text(content, artifact_file=filename)
-
-    mlflow.log_dict(
-        {
-            "xi_matrix": summary.xi.tolist(),  # numpy → list
-            "feature_names": summary.feature_names,
-            "target_names": summary.target_names,
-        },
-        artifact_file="sindy_coef.json",
-    )
 
 
 class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):

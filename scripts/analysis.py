@@ -49,10 +49,10 @@ def get_model_infos(run_ids):
         def load_text(run_id: str, filename: str) -> str:
             return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
 
+        view_cfg = load_yaml(run_id, "view.json")
+
         return {
-            "sindy_coef": plot_sindy_coefficients(
-                **load_yaml(run_id, "sindy_coef.json")
-            ),
+            "sindy_coef": plot_sindy_coefficients(**view_cfg),
             "dataset": load_yaml(
                 run_id, "dataset.yaml"
             ),  # 同じファイルなら参照共有でOK

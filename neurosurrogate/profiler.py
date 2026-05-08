@@ -120,18 +120,16 @@ def build_feature_cost_map(feature_names: list, base_cost_map: dict) -> dict:
 
 
 @dataclass
-class SINDySummary:
+class SurrogateSummary:
     metrics: dict[str, float]
     params: dict
+    view: dict
     texts: dict[str, str]  # filename -> content
-    xi: np.ndarray
-    feature_names: list[str]
-    target_names: list[str]
 
 
 def get_loggable_summary(
     result: SINDyResult, base_cost_map, original_cost
-) -> SINDySummary:
+) -> SurrogateSummary:
 
     nonzero_term_num = np.count_nonzero(result.coef)
     feature_cost_map = build_feature_cost_map(result.base_names, base_cost_map)
@@ -146,7 +144,7 @@ def get_loggable_summary(
     else:
         preprocessor_metrics = {}
 
-    return SINDySummary(
+    return SurrogateSummary(
         metrics={
             "nonzero_term_num": str(nonzero_term_num),
             "nonzero_term_ratio": str(nonzero_term_num / result.coef.size),
@@ -159,6 +157,11 @@ def get_loggable_summary(
             **preprocessor_metrics,
         },
         params=result.params,
+        view={
+            "xi_matrix": result.coef.tolist(),
+            "feature_names": result.base_names,
+            "target_names": result.target_names,
+        },
         texts={
             "equations.txt": result.equations,
             "coef.txt": np.array2string(result.coef, precision=3),
@@ -166,7 +169,4 @@ def get_loggable_summary(
             "features_active.json": json.dumps(active_features_map),
             "misc/source.txt": result.source,
         },
-        xi=result.coef,
-        feature_names=result.base_names,
-        target_names=result.target_names,
     )
