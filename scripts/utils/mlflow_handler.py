@@ -9,7 +9,7 @@ import mlflow
 import numpy as np
 
 from neurosurrogate.model import SINDyNeuroSurrogate
-from neurosurrogate.profiler import SurrogateSummary
+from neurosurrogate.profiler import SINDyAnalyzer
 
 TARGET_EXP = "test_static_params"
 
@@ -30,7 +30,7 @@ def setup_mlflow(is_multirun):
         mlflow.set_experiment("test_static_params")
 
 
-def log_surrogate_summary(summary: SurrogateSummary):
+def log_surrogate_summary(summary: SINDyAnalyzer):
     mlflow.log_metrics(summary.metrics)
     mlflow.log_params(summary.params)
     mlflow.log_dict(

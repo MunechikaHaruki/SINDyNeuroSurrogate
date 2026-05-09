@@ -38,7 +38,7 @@ class SINDyNeuroSurrogate:
         self.sindy = initialized_sindy
         self.target_module = target_module
 
-    def fit(self, train_xr, target_comp_id):
+    def fit(self, train_xr, target_comp_id) -> SINDyResult:
         train_gate_data = get_gate_numpy(train_xr, target_comp_id)
         self.preprocessor.fit(train_gate_data)
         preprocessed_xr = transform_gate(

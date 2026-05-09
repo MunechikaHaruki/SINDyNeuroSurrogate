@@ -17,7 +17,7 @@ from utils.mlflow_handler import (
 )
 
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.profiler import HH_COST, get_loggable_summary
+from neurosurrogate.profiler import HH_COST, SINDyAnalyzer
 
 # プロキシ設定を一時的に無効化
 os.environ["HTTP_PROXY"] = ""
@@ -40,9 +40,7 @@ def cli_flow(is_multirun, cfg_sindy):
             cfg_sindy["train_comp_identifier"]
         ]
         surrogate_result = surrogate.fit(train_ds, train_comp_id)
-        log_surrogate_summary(
-            get_loggable_summary(surrogate_result, HH_COST, base_cost)
-        )
+        log_surrogate_summary(SINDyAnalyzer(surrogate_result, base_cost, HH_COST))
         log_surrogate_model(surrogate)
     if is_multirun:
         pass
