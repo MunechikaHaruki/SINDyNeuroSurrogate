@@ -20,7 +20,7 @@ TARGET_EXP = "test_static_params"
 logger = logging.getLogger(__name__)
 
 CURRENT_DIR = Path(__file__).parent
-PROJECT_ROOT = CURRENT_DIR.parent.parent  # 階層に応じて調整
+PROJECT_ROOT = CURRENT_DIR.parent  # 階層に応じて調整
 mlflow.set_tracking_uri(f"file://{PROJECT_ROOT}/mlruns")
 mlflow.enable_system_metrics_logging()
 os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"

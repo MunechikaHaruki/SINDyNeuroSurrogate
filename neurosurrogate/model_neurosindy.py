@@ -76,7 +76,6 @@ class SINDyNeuroSurrogate:
         )
         self._gate_inits: list = preprocessed_xr["vars"].to_numpy()[0][1:].tolist()
         input_features = preprocessed_xr.variable.values.tolist() + ["u"]
-        logger.info(input_features)
         self.sindy.fit(
             preprocessed_xr["vars"].sel(comp_id=target_comp_id).to_numpy(),
             u=preprocessed_xr["I_ext"].to_numpy(),

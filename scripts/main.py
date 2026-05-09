@@ -5,18 +5,16 @@ import hydra
 import mlflow
 import pysindy as ps
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
-from utils.builder import (
-    build_simulator_config,
-)
-from utils.io_handler import (
+from io_handler import (
     build_dataset,
     log_surrogate_model,
     log_surrogate_summary,
     setup_mlflow,
 )
+from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate import build_feature_library
+from neurosurrogate.build_current import build_current_pipeline
 from neurosurrogate.build_feature_library import build_featurelib_and_basecost
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model_neurosindy import SINDyNeuroSurrogate
@@ -50,11 +48,15 @@ def build_surrogate(cfg_sindy):
 
 def cli_flow(is_multirun, cfg_sindy):
     surrogate, base_cost = build_surrogate(cfg_sindy)
-    logger.info(base_cost)
     with mlflow.start_run(run_name=f"train:{cfg_sindy['name']}"):
         # train
         train_dataset_cfg = build_dataset(**cfg_sindy["datasets"])
-        train_ds = unified_simulator(**build_simulator_config(train_dataset_cfg))
+
+        train_ds = unified_simulator(
+            dt=train_dataset_cfg["dt"],
+            u=build_current_pipeline(train_dataset_cfg["current"]),
+            net=train_dataset_cfg["net"],
+        )
         mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
         train_comp_id = train_dataset_cfg["net"]["name_to_idx_dict"][
             cfg_sindy["train_comp_identifier"]

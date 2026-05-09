@@ -5,10 +5,9 @@ from typing import get_args
 import matplotlib.pyplot as plt
 import mlflow
 import yaml
-from utils.builder import build_simulator_config
-from utils.io_handler import TARGET_EXP, build_dataset, load_surrogate_model
+from io_handler import TARGET_EXP, build_dataset, load_surrogate_model
 
-from neurosurrogate.build_current import CurrentType
+from neurosurrogate.build_current import CurrentType, build_current_pipeline
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model_neurosindy import transform_gate
 from neurosurrogate.profiler_view import draw_engine, spec_diff, view_model
@@ -19,7 +18,7 @@ CurrentList: list = ["train"] + list(get_args(CurrentType))
 
 def setup_matplotlib(matplotlib_style):
     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-    STYLE_DIR = os.path.join(CURRENT_DIR, "../conf/style")
+    STYLE_DIR = os.path.join(CURRENT_DIR, "./conf/style")
     plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
     plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
@@ -91,17 +90,16 @@ def resolve_config(model_infos, run_id, current_type, value):
 def eval_dataset(run_id: str, dataset_cfg: dict):
 
     surrogate_model = load_surrogate_model(run_id)
-    built_cfg = build_simulator_config(dataset_cfg)
-    net = built_cfg["net"]
-    original_ds = unified_simulator(**built_cfg)
-    surr_net = copy.deepcopy(net)
+    u = build_current_pipeline(dataset_cfg["current"])
+    original_ds = unified_simulator(dt=dataset_cfg["dt"], u=u, net=dataset_cfg["net"])
+    surr_net = copy.deepcopy(dataset_cfg["net"])
 
     target_comp_id = 0
 
     surr_net["nodes"][target_comp_id] = "surr"
     surr_ds = unified_simulator(
-        dt=built_cfg["dt"],
-        u=built_cfg["u"],
+        dt=dataset_cfg["dt"],
+        u=u,
         net=surr_net,
         surrogate_model=surrogate_model,
     )
