@@ -1,6 +1,36 @@
 import math
 
+import hydra
 import numpy as np
+
+PIPE_FUNCS = {
+    "steady": lambda amplitude: [
+        {
+            "_target_": "neurosurrogate.build_current.generate_steady",
+            "value": amplitude,
+        }
+    ],
+    "random": lambda seed: [
+        {
+            "_target_": "neurosurrogate.build_current.generate_rand_pulse",
+            "seed": seed,
+        }
+    ],
+}
+
+
+def build_current_pipeline(current_cfg):
+    iteration = current_cfg["iteration"]
+    silence_steps = current_cfg["silence_steps"]
+    dset_i_ext = np.zeros(iteration)
+
+    for step_cfg in current_cfg["pipeline"]:
+        func = hydra.utils.instantiate(step_cfg)
+        func(dset_i_ext)
+
+    dset_i_ext[:silence_steps] = 0
+    dset_i_ext[-silence_steps:] = 0
+    return dset_i_ext
 
 
 def generate_rand_pulse(

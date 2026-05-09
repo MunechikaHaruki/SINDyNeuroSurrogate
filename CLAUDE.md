@@ -164,7 +164,7 @@ hydra:
       sindy.optimizer.alpha: 0.01, 0.05, 0.1, 0.5, 1.0
 ```
 
-`sindy/*.yaml` 側で preprocessor / optimizer / library_specs / datasets / train_comp_identifier を持つ。`datasets.pipeline` の `_target_` は `conf.current_generators.*` を指す。
+`sindy/*.yaml` 側で preprocessor / optimizer / library_specs / datasets / train_comp_identifier を持つ。`datasets.pipeline` の `_target_` は `neurosurrogate.build_current.*` を指す。
 
 ### MLflow run 構造
 

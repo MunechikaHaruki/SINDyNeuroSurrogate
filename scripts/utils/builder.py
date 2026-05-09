@@ -3,11 +3,11 @@ import logging
 from typing import Literal
 
 import hydra
-import numpy as np
 import pysindy as ps
 from conf import feature_library_components
 from conf.feature_library_components import LIB_BUILDER_REGISTRY, LibraryEntry
 
+from neurosurrogate.build_current import PIPE_FUNCS, build_current_pipeline
 from neurosurrogate.calc_utils import OpCost
 from neurosurrogate.model import SINDyNeuroSurrogate
 
@@ -81,39 +81,11 @@ def build_surrogate(cfg_sindy):
 
 
 def build_simulator_config(dataset_cfg):
-    def build_current_pipeline(current_cfg):
-        iteration = current_cfg["iteration"]
-        silence_steps = current_cfg["silence_steps"]
-        dset_i_ext = np.zeros(iteration)
-
-        for step_cfg in current_cfg["pipeline"]:
-            func = hydra.utils.instantiate(step_cfg)
-            func(dset_i_ext)
-
-        dset_i_ext[:silence_steps] = 0
-        dset_i_ext[-silence_steps:] = 0
-        return dset_i_ext
 
     u = build_current_pipeline(dataset_cfg["current"])
     dt = dataset_cfg["dt"]
     parsed_dict = {"u": u, "dt": dt, "net": dataset_cfg["net"]}
     return parsed_dict
-
-
-PIPE_FUNCS = {
-    "steady": lambda amplitude: [
-        {
-            "_target_": "conf.current_generators.generate_steady",
-            "value": amplitude,
-        }
-    ],
-    "random": lambda seed: [
-        {
-            "_target_": "conf.current_generators.generate_rand_pulse",
-            "seed": seed,
-        }
-    ],
-}
 
 
 def build_model(neuron_type):
