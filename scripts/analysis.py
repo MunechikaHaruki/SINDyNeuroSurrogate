@@ -5,9 +5,10 @@ from typing import get_args
 import matplotlib.pyplot as plt
 import mlflow
 import yaml
-from utils.builder import CurrentType, build_dataset, build_simulator_config
+from utils.builder import build_dataset, build_simulator_config
 from utils.mlflow_handler import TARGET_EXP, load_surrogate_model
 
+from neurosurrogate.build_current import CurrentType
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model_neurosindy import transform_gate
 from neurosurrogate.profiler_view import draw_engine, spec_diff, view_model

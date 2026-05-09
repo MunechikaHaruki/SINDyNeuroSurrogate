@@ -1,84 +1,10 @@
 import importlib
 import logging
-from typing import Literal
-
-import hydra
-import pysindy as ps
-from conf import feature_library_components
-from conf.feature_library_components import LIB_BUILDER_REGISTRY, LibraryEntry
 
 from neurosurrogate.build_current import PIPE_FUNCS, build_current_pipeline
 from neurosurrogate.build_neuron import build_model
-from neurosurrogate.model_neurosindy import SINDyNeuroSurrogate
-from neurosurrogate.profiler_model import OpCost
 
 logger = logging.getLogger(__name__)
-
-
-def build_surrogate(cfg_sindy):
-
-    def _entries_to_basecost(
-        entries: list[LibraryEntry], inputs_list: list
-    ) -> dict[str:OpCost]:
-        base_cost_map = {}
-        for entry in entries:
-            input_names: list = [f"inputs{input_id}" for input_id in inputs_list]
-            base_cost_map[f"{entry.name_func(*input_names)}"] = entry.cost
-        return base_cost_map
-
-    def _entries_to_library(entries: list[LibraryEntry]) -> ps.CustomLibrary:
-        return ps.CustomLibrary(
-            library_functions=[e.func for e in entries],
-            function_names=[e.name_func for e in entries],
-        )
-
-    def _build_one(spec):
-        builder = LIB_BUILDER_REGISTRY.get(spec["type"])
-        if builder is None:
-            raise ValueError(f"未知のlibrary type: {spec['type']}")
-        return builder(spec)
-
-    def _build_feature_library(library_specs):
-        libraries = []
-        inputs_per_library = []
-        base_cost = {}
-        for s in library_specs:
-            inputs_list: list = s["inputs"]
-            new_entries: list[LibraryEntry] = _build_one(s)
-            libraries.append(_entries_to_library(new_entries))
-
-            new_data = _entries_to_basecost(new_entries, inputs_list)
-            duplicates = base_cost.keys() & new_data.keys()
-            if duplicates:
-                detail = "\n".join(
-                    [
-                        f"  - Key: {k}\n    Existing Value: {base_cost[k]}\n    New Value: {new_data[k]}"
-                        for k in duplicates
-                    ]
-                )
-                raise KeyError(
-                    f"辞書の結合中にキーの重複が発生しました。上書きを防止します:\n{detail}"
-                )
-            base_cost |= new_data
-            inputs_per_library.append(inputs_list)
-        return ps.GeneralizedLibrary(
-            libraries, inputs_per_library=inputs_per_library
-        ), base_cost
-
-    library, base_cost = _build_feature_library(cfg_sindy["library_specs"])
-
-    # preprocessorの初期化
-    preprocessor = hydra.utils.instantiate(cfg_sindy["preprocessor"])
-    # pySINDyの初期化
-    initialized_sindy = ps.SINDy(
-        feature_library=library,
-        optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
-    )
-
-    # surrogate_modelの初期化
-    return SINDyNeuroSurrogate(
-        preprocessor, initialized_sindy, feature_library_components
-    ), base_cost
 
 
 def build_simulator_config(dataset_cfg):
@@ -87,9 +13,6 @@ def build_simulator_config(dataset_cfg):
     dt = dataset_cfg["dt"]
     parsed_dict = {"u": u, "dt": dt, "net": dataset_cfg["net"]}
     return parsed_dict
-
-
-CurrentType = Literal["steady", "random"]
 
 
 def build_dataset(
@@ -101,7 +24,7 @@ def build_dataset(
     current_type=None,
     value=None,
 ) -> dict:
-    """単一のケース設定(YAMLのcatalog_itemの階層構造そのまま)からデータセット辞書を構築する"""
+    """yamlとの境界"""
 
     if pipeline is None:
         pipeline = PIPE_FUNCS[current_type](value)

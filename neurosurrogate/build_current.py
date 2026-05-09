@@ -1,7 +1,11 @@
 import math
+from typing import Literal
 
 import hydra
 import numpy as np
+
+CurrentType = Literal["steady", "random"]
+
 
 PIPE_FUNCS = {
     "steady": lambda amplitude: [

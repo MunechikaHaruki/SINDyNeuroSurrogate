@@ -3,12 +3,12 @@ import os
 
 import hydra
 import mlflow
+import pysindy as ps
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from utils.builder import (
     build_dataset,
     build_simulator_config,
-    build_surrogate,
 )
 from utils.mlflow_handler import (
     log_surrogate_model,
@@ -16,7 +16,10 @@ from utils.mlflow_handler import (
     setup_mlflow,
 )
 
+from neurosurrogate import build_feature_library
+from neurosurrogate.build_feature_library import build_featurelib_and_basecost
 from neurosurrogate.calc_engine import unified_simulator
+from neurosurrogate.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler_model import HH_COST, SINDyAnalyzer
 
 # プロキシ設定を一時的に無効化
@@ -26,6 +29,23 @@ os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 
 logger = logging.getLogger(__name__)
+
+
+def build_surrogate(cfg_sindy):
+    library, base_cost = build_featurelib_and_basecost(cfg_sindy["library_specs"])
+
+    # preprocessorの初期化
+    preprocessor = hydra.utils.instantiate(cfg_sindy["preprocessor"])
+    # pySINDyの初期化
+    initialized_sindy = ps.SINDy(
+        feature_library=library,
+        optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
+    )
+
+    # surrogate_modelの初期化
+    return SINDyNeuroSurrogate(
+        preprocessor, initialized_sindy, build_feature_library
+    ), base_cost
 
 
 def cli_flow(is_multirun, cfg_sindy):
