@@ -8,7 +8,7 @@ import joblib
 import mlflow
 import numpy as np
 
-from neurosurrogate.model import SINDyNeuroSurrogate
+from neurosurrogate.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler_model import SINDyAnalyzer
 
 TARGET_EXP = "test_static_params"

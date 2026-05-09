@@ -5,8 +5,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .model_neuron import Compartment
-from .neuron_core import COMPARTMENT_TEMPLATES
+from .model_compartments import COMPARTMENT_TEMPLATES, Compartment
 
 
 @dataclass

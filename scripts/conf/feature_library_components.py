@@ -3,7 +3,7 @@ from typing import Callable
 
 import numpy as np
 
-from neurosurrogate.neuron_core import (
+from neurosurrogate.model_compartments import (
     alpha_h,
     alpha_m,
     alpha_n,

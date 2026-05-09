@@ -1,3 +1,18 @@
+def build_model(neuron_spec: dict):
+
+    nodes_dict = neuron_spec["nodes"]
+    name_to_idx = {n: i for i, n in enumerate(nodes_dict.keys())}
+
+    return {
+        "name_to_idx_dict": name_to_idx,
+        "nodes": list(nodes_dict.values()),
+        "edges": [
+            (name_to_idx[u], name_to_idx[v], g) for u, v, g in neuron_spec["edges"]
+        ],
+        "stim_node": name_to_idx[neuron_spec["stim"]],
+    }
+
+
 hh = {"nodes": {"soma": "hh"}, "edges": [], "stim": "soma"}
 php = (
     {

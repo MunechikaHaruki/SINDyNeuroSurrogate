@@ -8,7 +8,8 @@ from conf import feature_library_components
 from conf.feature_library_components import LIB_BUILDER_REGISTRY, LibraryEntry
 
 from neurosurrogate.build_current import PIPE_FUNCS, build_current_pipeline
-from neurosurrogate.model import SINDyNeuroSurrogate
+from neurosurrogate.build_neuron import build_model
+from neurosurrogate.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler_model import OpCost
 
 logger = logging.getLogger(__name__)
@@ -88,22 +89,6 @@ def build_simulator_config(dataset_cfg):
     return parsed_dict
 
 
-def build_model(neuron_type):
-    neuron_module = importlib.import_module("conf.neuron_models")
-    neuron_spec = getattr(neuron_module, neuron_type)
-    nodes_dict = neuron_spec["nodes"]
-    name_to_idx = {n: i for i, n in enumerate(nodes_dict.keys())}
-
-    return {
-        "name_to_idx_dict": name_to_idx,
-        "nodes": list(nodes_dict.values()),
-        "edges": [
-            (name_to_idx[u], name_to_idx[v], g) for u, v, g in neuron_spec["edges"]
-        ],
-        "stim_node": name_to_idx[neuron_spec["stim"]],
-    }
-
-
 CurrentType = Literal["steady", "random"]
 
 
@@ -121,6 +106,8 @@ def build_dataset(
     if pipeline is None:
         pipeline = PIPE_FUNCS[current_type](value)
 
+    neuron_module = importlib.import_module("neurosurrogate.build_neuron")
+    neuron_spec = getattr(neuron_module, model_name)
     return {
         "data_type": model_name,
         "dt": dt,
@@ -130,5 +117,5 @@ def build_dataset(
             "pipeline": pipeline,
             "silence_steps": int(silence_duration / dt),
         },
-        "net": build_model(model_name),
+        "net": build_model(neuron_spec),
     }

@@ -5,12 +5,12 @@ import numpy as np
 from numba import njit
 
 from .build_coords import build_indices, set_coords, set_i_internal
-from .model import DUMMY_SINDY_ARGS, DUMMY_SURR_COMP, SINDyNeuroSurrogate
-from .neuron_core import (
+from .model_compartments import (
     HH_Params_numba,
     calc_hh_channel,
     calc_passive_channel,
 )
+from .model_neurosindy import DUMMY_SINDY_ARGS, DUMMY_SURR_COMP, SINDyNeuroSurrogate
 
 logger = logging.getLogger(__name__)
 

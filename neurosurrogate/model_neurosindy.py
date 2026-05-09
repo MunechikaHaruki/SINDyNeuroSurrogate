@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 from numba import njit
 
-from .model_neuron import Compartment
+from .model_compartments import Compartment
 
 logger = logging.getLogger(__name__)
 
