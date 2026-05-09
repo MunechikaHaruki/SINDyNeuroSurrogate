@@ -2,7 +2,7 @@ import numpy as np
 from numba import float64, njit
 from numba.experimental import jitclass
 
-from .calc_utils import Compartment
+from .model_neuron import Compartment
 
 
 @njit

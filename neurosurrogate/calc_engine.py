@@ -4,7 +4,7 @@ from collections import namedtuple
 import numpy as np
 from numba import njit
 
-from .calc_utils import build_indices, set_coords, set_i_internal
+from .build_coords import build_indices, set_coords, set_i_internal
 from .model import DUMMY_SINDY_ARGS, DUMMY_SURR_COMP, SINDyNeuroSurrogate
 from .neuron_core import (
     HH_Params_numba,

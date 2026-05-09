@@ -3,7 +3,6 @@ from typing import Callable
 
 import numpy as np
 
-from neurosurrogate.calc_utils import OpCost
 from neurosurrogate.neuron_core import (
     alpha_h,
     alpha_m,
@@ -13,7 +12,7 @@ from neurosurrogate.neuron_core import (
     beta_n,
     njit,  # noqa: F401
 )
-from neurosurrogate.profiler_model import HH_RATE_COST_MAP
+from neurosurrogate.profiler_model import HH_RATE_COST_MAP, OpCost
 
 FUNC_REGISTRY = {
     "alpha_m": alpha_m,

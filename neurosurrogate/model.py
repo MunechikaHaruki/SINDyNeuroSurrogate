@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 from numba import njit
 
-from .calc_utils import Compartment, get_gate_numpy, transform_gate
+from .model_neuron import Compartment
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,36 @@ _dummy_xi = np.zeros((2, 1), dtype=np.float64)
 
 DUMMY_SINDY_ARGS = (_dummy_xi, _dummy_theta)
 DUMMY_SURR_COMP = Compartment(gate_inits=[0], gate_names="latent1")
+
+
+def get_gate_numpy(train_xr, target_comp_id):
+    return train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
+
+
+def transform_gate(preprocessor, xr_data, target_comp_id):
+    from .build_coords import StateAccumulator, set_coords
+
+    xr_gate = get_gate_numpy(xr_data, target_comp_id)
+    transformed_gate = preprocessor.transform(xr_gate)
+    v_soma_da = xr_data["vars"].sel(gate=False, comp_id=target_comp_id)
+    new_vars = np.concatenate(
+        (v_soma_da.to_numpy().reshape(-1, 1), transformed_gate), axis=1
+    )
+
+    n_latent = transformed_gate.shape[1]
+
+    coords = StateAccumulator(
+        comp_id=[target_comp_id] * (n_latent + 1),
+        variable=["V"] + [f"latent{i + 1}" for i in range(n_latent)],
+        gate=[False] + [True] * n_latent,
+    ).to_coords()
+
+    return set_coords(
+        raw=new_vars,
+        u=xr_data["I_internal"].sel(node_id=target_comp_id).to_numpy(),
+        coords=coords,
+        dt=float(xr_data.time[1] - xr_data.time[0]),
+    )
 
 
 @dataclass

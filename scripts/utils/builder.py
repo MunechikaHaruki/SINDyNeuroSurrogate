@@ -8,8 +8,8 @@ from conf import feature_library_components
 from conf.feature_library_components import LIB_BUILDER_REGISTRY, LibraryEntry
 
 from neurosurrogate.build_current import PIPE_FUNCS, build_current_pipeline
-from neurosurrogate.calc_utils import OpCost
 from neurosurrogate.model import SINDyNeuroSurrogate
+from neurosurrogate.profiler_model import OpCost
 
 logger = logging.getLogger(__name__)
 
