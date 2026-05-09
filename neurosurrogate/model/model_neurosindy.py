@@ -26,7 +26,7 @@ def get_gate_numpy(train_xr, target_comp_id):
 
 
 def transform_gate(preprocessor, xr_data, target_comp_id):
-    from .build_coords import StateAccumulator, set_coords
+    from ..builder.build_coords import StateAccumulator, set_coords
 
     xr_gate = get_gate_numpy(xr_data, target_comp_id)
     transformed_gate = preprocessor.transform(xr_gate)

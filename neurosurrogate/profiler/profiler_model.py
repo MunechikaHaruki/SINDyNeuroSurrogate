@@ -4,7 +4,7 @@ from dataclasses import dataclass, fields
 import numpy as np
 from sklearn.decomposition import PCA
 
-from .model_neurosindy import SINDyResult
+from ..model.model_neurosindy import SINDyResult
 
 
 @dataclass(frozen=True)

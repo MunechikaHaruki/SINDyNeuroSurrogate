@@ -13,12 +13,12 @@ from io_handler import (
 )
 from omegaconf import DictConfig, OmegaConf
 
-from neurosurrogate import build_feature_library
-from neurosurrogate.build_current import build_current_pipeline
-from neurosurrogate.build_feature_library import build_featurelib_and_basecost
+from neurosurrogate.builder import build_feature_library
+from neurosurrogate.builder.build_current import build_current_pipeline
+from neurosurrogate.builder.build_feature_library import build_featurelib_and_basecost
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model_neurosindy import SINDyNeuroSurrogate
-from neurosurrogate.profiler_model import HH_COST, SINDyAnalyzer
+from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
+from neurosurrogate.profiler.profiler_model import HH_COST, SINDyAnalyzer
 
 # プロキシ設定を一時的に無効化
 os.environ["HTTP_PROXY"] = ""

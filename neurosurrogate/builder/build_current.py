@@ -10,13 +10,13 @@ CurrentType = Literal["steady", "random"]
 PIPE_FUNCS = {
     "steady": lambda amplitude: [
         {
-            "_target_": "neurosurrogate.build_current.generate_steady",
+            "_target_": "neurosurrogate.builder.build_current.generate_steady",
             "value": amplitude,
         }
     ],
     "random": lambda seed: [
         {
-            "_target_": "neurosurrogate.build_current.generate_rand_pulse",
+            "_target_": "neurosurrogate.builder.build_current.generate_rand_pulse",
             "seed": seed,
         }
     ],

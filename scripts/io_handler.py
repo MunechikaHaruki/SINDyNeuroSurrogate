@@ -9,10 +9,10 @@ import joblib
 import mlflow
 import numpy as np
 
-from neurosurrogate.build_current import PIPE_FUNCS
-from neurosurrogate.build_neuron import build_model
-from neurosurrogate.model_neurosindy import SINDyNeuroSurrogate
-from neurosurrogate.profiler_model import SINDyAnalyzer
+from neurosurrogate.builder.build_current import PIPE_FUNCS
+from neurosurrogate.builder.build_neuron import build_model
+from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
+from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
 
 TARGET_EXP = "test_static_params"
 
@@ -40,7 +40,7 @@ def build_dataset(
     if pipeline is None:
         pipeline = PIPE_FUNCS[current_type](value)
 
-    neuron_module = importlib.import_module("neurosurrogate.build_neuron")
+    neuron_module = importlib.import_module("neurosurrogate.builder.build_neuron")
     neuron_spec = getattr(neuron_module, model_name)
     return {
         "data_type": model_name,

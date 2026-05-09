@@ -7,11 +7,11 @@ import mlflow
 import yaml
 from io_handler import TARGET_EXP, build_dataset, load_surrogate_model
 
-from neurosurrogate.build_current import CurrentType, build_current_pipeline
+from neurosurrogate.builder.build_current import CurrentType, build_current_pipeline
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model_neurosindy import transform_gate
-from neurosurrogate.profiler_view import draw_engine, spec_diff, view_model
-from neurosurrogate.profiler_wave import calc_dynamic_metrics
+from neurosurrogate.model.model_neurosindy import transform_gate
+from neurosurrogate.profiler.profiler_view import draw_engine, spec_diff, view_model
+from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
 
 CurrentList: list = ["train"] + list(get_args(CurrentType))
 

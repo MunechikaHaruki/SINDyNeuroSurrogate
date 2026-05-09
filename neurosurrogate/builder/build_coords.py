@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .model_compartments import COMPARTMENT_TEMPLATES, Compartment
+from ..model.model_compartments import COMPARTMENT_TEMPLATES, Compartment
 
 
 @dataclass
