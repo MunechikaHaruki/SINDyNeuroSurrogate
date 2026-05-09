@@ -81,7 +81,7 @@ scripts/                       # Hydra + MLflow オーケストレーション
                                # log_surrogate_model, load_surrogate_model
                                # SINDySurrogateMLflowModel (pyfunc)
     plots.py                   # draw_engine (matplotlib/plotly), spec_simple,
-                               # spec_diff, plot_sindy_coefficients,
+                               # spec_diff, view_model,
                                # plot_2d_attractor_comparison
 ```
 

@@ -17,7 +17,7 @@ from utils.mlflow_handler import (
 )
 
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.profiler import HH_COST, SINDyAnalyzer
+from neurosurrogate.profiler_model import HH_COST, SINDyAnalyzer
 
 # プロキシ設定を一時的に無効化
 os.environ["HTTP_PROXY"] = ""

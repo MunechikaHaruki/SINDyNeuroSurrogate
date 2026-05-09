@@ -1,17 +1,26 @@
 import copy
+import os
 from typing import get_args
 
+import matplotlib.pyplot as plt
 import mlflow
 import yaml
 from utils.builder import CurrentType, build_dataset, build_simulator_config
 from utils.mlflow_handler import TARGET_EXP, load_surrogate_model
-from utils.plots import draw_engine, plot_sindy_coefficients, spec_diff
 
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.calc_utils import transform_gate
+from neurosurrogate.profiler_view import draw_engine, spec_diff, view_model
 from neurosurrogate.profiler_wave import calc_dynamic_metrics
 
 CurrentList: list = ["train"] + list(get_args(CurrentType))
+
+
+def setup_matplotlib(matplotlib_style):
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    STYLE_DIR = os.path.join(CURRENT_DIR, "../conf/style")
+    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
+    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
 
 def get_runs_df():
@@ -52,7 +61,7 @@ def get_model_infos(run_ids):
         view_cfg = load_yaml(run_id, "view.json")
 
         return {
-            "sindy_coef": plot_sindy_coefficients(**view_cfg),
+            "sindy_coef": view_model(**view_cfg),
             "dataset": load_yaml(
                 run_id, "dataset.yaml"
             ),  # 同じファイルなら参照共有でOK

@@ -13,7 +13,7 @@ from neurosurrogate.neuron_core import (
     beta_n,
     njit,  # noqa: F401
 )
-from neurosurrogate.profiler import HH_RATE_COST_MAP
+from neurosurrogate.profiler_model import HH_RATE_COST_MAP
 
 FUNC_REGISTRY = {
     "alpha_m": alpha_m,

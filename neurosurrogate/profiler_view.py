@@ -1,24 +1,13 @@
 # mypy: ignore-errors
-import os
 
-import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 import seaborn as sns
 import xarray as xr
-from plotly.subplots import make_subplots
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
-
-
-def setup_matplotlib(matplotlib_style):
-    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-    STYLE_DIR = os.path.join(CURRENT_DIR, "../conf/style")
-    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
-    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
+from plotly.subplots import make_subplots
 
 
 def draw_engine(spec, engine="matplotlib", figsize_width=10):
@@ -259,9 +248,7 @@ def spec_diff(original, preprocessed, surrogate, surr_id):
     return spec
 
 
-def plot_sindy_coefficients(
-    xi_matrix, feature_names=None, target_names=None, figsize=(15, 3)
-):
+def view_model(xi_matrix, feature_names=None, target_names=None, figsize=(15, 3)):
     xi_matrix = np.asarray(xi_matrix)
     fig, ax = plt.subplots(figsize=figsize)
 
