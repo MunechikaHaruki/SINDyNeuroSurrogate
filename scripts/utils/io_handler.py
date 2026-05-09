@@ -1,3 +1,4 @@
+import importlib
 import inspect
 import logging
 import os
@@ -8,6 +9,8 @@ import joblib
 import mlflow
 import numpy as np
 
+from neurosurrogate.build_current import PIPE_FUNCS
+from neurosurrogate.build_neuron import build_model
 from neurosurrogate.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler_model import SINDyAnalyzer
 
@@ -21,6 +24,35 @@ PROJECT_ROOT = CURRENT_DIR.parent.parent  # 階層に応じて調整
 mlflow.set_tracking_uri(f"file://{PROJECT_ROOT}/mlruns")
 mlflow.enable_system_metrics_logging()
 os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
+
+
+def build_dataset(
+    dt=0.01,
+    silence_duration=80,
+    duration=800,
+    model_name="hh",
+    pipeline=None,
+    current_type=None,
+    value=None,
+) -> dict:
+    """yamlとの境界"""
+
+    if pipeline is None:
+        pipeline = PIPE_FUNCS[current_type](value)
+
+    neuron_module = importlib.import_module("neurosurrogate.build_neuron")
+    neuron_spec = getattr(neuron_module, model_name)
+    return {
+        "data_type": model_name,
+        "dt": dt,
+        "current": {
+            # フラットアクセスではなく、case_cfg["current"] のネストを参照する
+            "iteration": int(duration / dt),
+            "pipeline": pipeline,
+            "silence_steps": int(silence_duration / dt),
+        },
+        "net": build_model(neuron_spec),
+    }
 
 
 def setup_mlflow(is_multirun):

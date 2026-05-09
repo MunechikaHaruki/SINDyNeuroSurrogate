@@ -5,8 +5,8 @@ from typing import get_args
 import matplotlib.pyplot as plt
 import mlflow
 import yaml
-from utils.builder import build_dataset, build_simulator_config
-from utils.mlflow_handler import TARGET_EXP, load_surrogate_model
+from utils.builder import build_simulator_config
+from utils.io_handler import TARGET_EXP, build_dataset, load_surrogate_model
 
 from neurosurrogate.build_current import CurrentType
 from neurosurrogate.calc_engine import unified_simulator

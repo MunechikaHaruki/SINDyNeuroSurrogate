@@ -7,10 +7,10 @@ import pysindy as ps
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from utils.builder import (
-    build_dataset,
     build_simulator_config,
 )
-from utils.mlflow_handler import (
+from utils.io_handler import (
+    build_dataset,
     log_surrogate_model,
     log_surrogate_summary,
     setup_mlflow,
