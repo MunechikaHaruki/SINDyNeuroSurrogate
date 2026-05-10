@@ -18,7 +18,7 @@ def generate_rand_pulse(
     pulse_step: int = 2000,
     flow_rate: float = 0.5,
     baseline: float = 0.0,
-    seed: int | None = None,
+    seed: int = 0,
 ):
     def apply(dset_i_ext: np.ndarray) -> None:
         rng = np.random.default_rng(seed)
@@ -54,64 +54,6 @@ def generate_step(values: list, step_duration: int):
     return apply
 
 
-thisfile = "neurosurrogate.builder.build_current"
-
-PIPE_FUNCS = {
-    "steady": lambda **kw: {"_target_": f"{thisfile}.generate_steady", **kw},
-    "random": lambda **kw: {"_target_": f"{thisfile}.generate_rand_pulse", **kw},
-    "ramp": lambda **kw: {"_target_": f"{thisfile}.generate_ramp", **kw},
-    "step": lambda **kw: {"_target_": f"{thisfile}.generate_step", **kw},
-}
-
-FUNC_MAP = {
-    "steady": generate_steady,
-    "random": generate_rand_pulse,
-    "ramp": generate_ramp,
-    "step": generate_step,
-}
-
-
-def build_current_pipeline(current_cfg):
-    iteration = current_cfg["iteration"]
-    silence_steps = current_cfg["silence_steps"]
-    dset_i_ext = np.zeros(iteration)
-
-    func = hydra.utils.instantiate(current_cfg["pipeline"])
-    func(dset_i_ext)
-
-    dset_i_ext[:silence_steps] = 0
-    dset_i_ext[-silence_steps:] = 0
-    return dset_i_ext
-
-
-def generate_discretized(
-    pulse_step: int = 2000,
-    options: list = [-5, 6.2, 6.3, 5],
-    weights: list = [1, 1, 1, 1],
-    sigma: float = 0.1,
-    seed: int | None = None,
-):
-    def apply(dset_i_ext: np.ndarray) -> None:
-        rng = np.random.default_rng(seed)
-        p = np.array(weights) / sum(weights)
-        iteration = len(dset_i_ext)
-        for n in range(math.floor(iteration / pulse_step)):
-            chosen = rng.choice(options, p=p) + rng.normal(0, sigma)
-            dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = chosen
-
-    return apply
-
-
-def add_white_noise(sigma: float = 0.1):
-    def apply(dset_i_ext: np.ndarray) -> None:
-        dset_i_ext += np.random.normal(0, sigma, len(dset_i_ext))
-
-    return apply
-
-
-# テスト用の電流
-
-
 def generate_sinusoidal(amplitude: float, frequency: float):
     """サイン波電流を生成する　frequencyの単位はHz、dtは秒"""
 
@@ -136,3 +78,60 @@ def generate_chirp(
         dset_i_ext[:] = baseline + amplitude * np.sin(phase)
 
     return apply
+
+
+def generate_discretized(
+    pulse_step: int = 2000,
+    options: list = [-5, 6.2, 6.3, 5],
+    weights: list = [1, 1, 1, 1],
+    sigma: float = 0.1,
+    seed: int = 0,
+):
+    def apply(dset_i_ext: np.ndarray) -> None:
+        rng = np.random.default_rng(seed)
+        p = np.array(weights) / sum(weights)
+        iteration = len(dset_i_ext)
+        for n in range(math.floor(iteration / pulse_step)):
+            chosen = rng.choice(options, p=p) + rng.normal(0, sigma)
+            dset_i_ext[n * pulse_step : (n + 1) * pulse_step] = chosen
+
+    return apply
+
+
+def add_white_noise(sigma: float = 0.1):
+    def apply(dset_i_ext: np.ndarray) -> None:
+        dset_i_ext += np.random.normal(0, sigma, len(dset_i_ext))
+
+    return apply
+
+
+FUNC_MAP = {
+    "steady": generate_steady,
+    "random": generate_rand_pulse,
+    "ramp": generate_ramp,
+    "step": generate_step,
+    "sinousoidal": generate_sinusoidal,
+    "chirp": generate_chirp,
+    "discretized": generate_discretized,
+    "noise": add_white_noise,
+}
+
+
+def build_current_setting(current_type: str, kw: dict):
+    return {
+        "_target_": f"neurosurrogate.builder.build_current.{FUNC_MAP[current_type].__name__}",
+        **kw,
+    }
+
+
+def build_current_pipeline(current_cfg):
+    iteration = current_cfg["iteration"]
+    silence_steps = current_cfg["silence_steps"]
+    dset_i_ext = np.zeros(iteration)
+
+    func = hydra.utils.instantiate(current_cfg["pipeline"])
+    func(dset_i_ext)
+
+    dset_i_ext[:silence_steps] = 0
+    dset_i_ext[-silence_steps:] = 0
+    return dset_i_ext
