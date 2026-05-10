@@ -85,6 +85,7 @@ def _(analysis, dropdown):
     print(surrogate_model.surr_comp.vars)
     print(surrogate_model.surr_comp.gate)
     print(surrogate_model.surr_comp.init)
+    print(analysis.CurrentList)
     return
 
 

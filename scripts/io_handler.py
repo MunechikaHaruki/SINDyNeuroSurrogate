@@ -9,7 +9,6 @@ import joblib
 import mlflow
 import numpy as np
 
-from neurosurrogate.builder.build_current import PIPE_FUNCS
 from neurosurrogate.builder.build_neuron import build_model
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
@@ -32,14 +31,8 @@ def build_dataset(
     duration=800,
     model_name="hh",
     pipeline=None,
-    current_type=None,
-    value=None,
 ) -> dict:
     """yamlとの境界"""
-
-    if pipeline is None:
-        pipeline = PIPE_FUNCS[current_type](value)
-
     neuron_module = importlib.import_module("neurosurrogate.builder.build_neuron")
     neuron_spec = getattr(neuron_module, model_name)
     return {

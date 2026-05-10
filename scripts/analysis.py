@@ -1,19 +1,21 @@
 import copy
 import os
-from typing import get_args
 
 import matplotlib.pyplot as plt
 import mlflow
 import yaml
 from io_handler import TARGET_EXP, build_dataset, load_surrogate_model
 
-from neurosurrogate.builder.build_current import CurrentType, build_current_pipeline
+from neurosurrogate.builder.build_current import (
+    PIPE_FUNCS,
+    build_current_pipeline,
+)
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.profiler.profiler_view import draw_engine, spec_diff, view_model
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
 
-CurrentList: list = ["train"] + list(get_args(CurrentType))
+CurrentList: list = ["train"] + list(PIPE_FUNCS.keys())
 
 
 def setup_matplotlib(matplotlib_style):
@@ -84,7 +86,7 @@ def get_model_infos(run_ids):
 def resolve_config(model_infos, run_id, current_type, value):
     if current_type == "train":
         return model_infos[run_id]["dataset"]
-    return build_dataset(current_type=current_type, value=value)
+    return build_dataset(pipeline=PIPE_FUNCS[current_type](value))
 
 
 def eval_dataset(run_id: str, dataset_cfg: dict):
