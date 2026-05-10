@@ -1,12 +1,15 @@
 import copy
+import inspect
 import os
 
+import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
 import yaml
 from io_handler import TARGET_EXP, build_dataset, load_surrogate_model
 
 from neurosurrogate.builder.build_current import (
+    FUNC_MAP,
     PIPE_FUNCS,
     build_current_pipeline,
 )
@@ -83,10 +86,35 @@ def get_model_infos(run_ids):
     return model_infos
 
 
-def resolve_config(model_infos, run_id, current_type, value):
+def _make_ui_element(name: str, annotation: type, default):
+    if annotation is int:
+        return mo.ui.number(value=int(default), step=1, label=name)
+    elif annotation is float:
+        return mo.ui.number(value=float(default), step=0.1, label=name)
+    elif annotation is bool:
+        return mo.ui.checkbox(value=bool(default), label=name)
+    else:
+        raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
+
+
+def get_param_ui(current_type: str) -> mo.ui.dictionary:
+    sig = inspect.signature(FUNC_MAP[current_type])
+    return mo.ui.dictionary(
+        {
+            name: _make_ui_element(
+                name,
+                param.annotation,
+                param.default if param.default is not inspect.Parameter.empty else 0,
+            )
+            for name, param in sig.parameters.items()
+        }
+    )
+
+
+def resolve_config(model_infos, run_id, current_type, params: dict):
     if current_type == "train":
         return model_infos[run_id]["dataset"]
-    return build_dataset(pipeline=PIPE_FUNCS[current_type](value))
+    return build_dataset(pipeline=PIPE_FUNCS[current_type](**params))
 
 
 def eval_dataset(run_id: str, dataset_cfg: dict):

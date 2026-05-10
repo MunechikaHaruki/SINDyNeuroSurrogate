@@ -66,17 +66,24 @@ def _(analysis, mo, run_selector):
 def _(analysis, mo, run_ids):
     dropdown = mo.ui.dropdown(options=run_ids)
     current_dropdown = mo.ui.dropdown(analysis.CurrentList)
-    value_slider = mo.ui.slider(start=0, stop=30, step=1)
+    # value_slider = mo.ui.slider(start=0, stop=30, step=1)
 
     first_row = mo.hstack([mo.md("select experiment"), dropdown])
     second_row = mo.hstack([mo.md("choose type"), current_dropdown])
-    third_row = mo.hstack([mo.md("value"), value_slider])
-    mo.vstack([first_row, second_row, third_row])
-    return current_dropdown, dropdown, value_slider
+    # third_row = mo.hstack([mo.md("value"), value_slider])
+    mo.vstack([first_row, second_row])
+    return current_dropdown, dropdown
 
 
 @app.cell
-def _(analysis, dropdown):
+def _(analysis, current_dropdown):
+    param_ui=analysis.get_param_ui(current_dropdown.value)
+    param_ui
+    return (param_ui,)
+
+
+@app.cell
+def _(analysis, dropdown, param_ui):
     surrogate_model = analysis.load_surrogate_model(dropdown.value)
     print(surrogate_model.surr_comp.gate_names)
     print(type(surrogate_model.surr_comp))
@@ -86,17 +93,18 @@ def _(analysis, dropdown):
     print(surrogate_model.surr_comp.gate)
     print(surrogate_model.surr_comp.init)
     print(analysis.CurrentList)
+    print(param_ui.value)
     return
 
 
 @app.cell(hide_code=True)
-def _(analysis, current_dropdown, dropdown, mo, model_infos, value_slider):
+def _(analysis, current_dropdown, dropdown, mo, model_infos, param_ui):
     mo.stop(
         dropdown.value is None or current_dropdown.value is None,
         "実験を選択してください",
     )
 
-    simulator_config=analysis.resolve_config(model_infos,dropdown.value,current_dropdown.value,value_slider.value)
+    simulator_config=analysis.resolve_config(model_infos,dropdown.value,current_dropdown.value,param_ui.value)
     print(simulator_config)
 
     result = analysis.eval_dataset(dropdown.value, simulator_config)

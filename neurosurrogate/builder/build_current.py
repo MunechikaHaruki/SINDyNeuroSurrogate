@@ -57,25 +57,17 @@ def generate_step(values: list, step_duration: int):
 thisfile = "neurosurrogate.builder.build_current"
 
 PIPE_FUNCS = {
-    "steady": lambda amplitude: [
-        {
-            "_target_": f"{thisfile}.generate_steady",
-            "value": amplitude,
-        }
-    ],
-    "random": lambda seed: [
-        {
-            "_target_": f"{thisfile}.generate_rand_pulse",
-            "seed": seed,
-        }
-    ],
-    "ramp": lambda stop: [
-        {
-            "_target_": f"{thisfile}.generate_ramp",
-            "start": 0,
-            "stop": stop,
-        },
-    ],
+    "steady": lambda **kw: {"_target_": f"{thisfile}.generate_steady", **kw},
+    "random": lambda **kw: {"_target_": f"{thisfile}.generate_rand_pulse", **kw},
+    "ramp": lambda **kw: {"_target_": f"{thisfile}.generate_ramp", **kw},
+    "step": lambda **kw: {"_target_": f"{thisfile}.generate_step", **kw},
+}
+
+FUNC_MAP = {
+    "steady": generate_steady,
+    "random": generate_rand_pulse,
+    "ramp": generate_ramp,
+    "step": generate_step,
 }
 
 
@@ -84,9 +76,8 @@ def build_current_pipeline(current_cfg):
     silence_steps = current_cfg["silence_steps"]
     dset_i_ext = np.zeros(iteration)
 
-    for step_cfg in current_cfg["pipeline"]:
-        func = hydra.utils.instantiate(step_cfg)
-        func(dset_i_ext)
+    func = hydra.utils.instantiate(current_cfg["pipeline"])
+    func(dset_i_ext)
 
     dset_i_ext[:silence_steps] = 0
     dset_i_ext[-silence_steps:] = 0
