@@ -5,6 +5,7 @@ import numpy as np
 import pysindy as ps
 
 from neurosurrogate.model.model_compartments import (
+    HH_RATE_COST_MAP,
     alpha_h,
     alpha_m,
     alpha_n,
@@ -13,7 +14,7 @@ from neurosurrogate.model.model_compartments import (
     beta_n,
     njit,  # noqa: F401
 )
-from neurosurrogate.profiler.profiler_model import HH_RATE_COST_MAP, OpCost
+from neurosurrogate.profiler.profiler_model import OpCost
 
 FUNC_REGISTRY = {
     "alpha_m": alpha_m,

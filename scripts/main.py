@@ -17,8 +17,9 @@ from neurosurrogate.builder import build_feature_library
 from neurosurrogate.builder.build_current import build_current_pipeline
 from neurosurrogate.builder.build_feature_library import build_featurelib_and_basecost
 from neurosurrogate.calc_engine import unified_simulator
+from neurosurrogate.model.model_compartments import COMPARTMENT_TEMPLATES
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
-from neurosurrogate.profiler.profiler_model import HH_COST, SINDyAnalyzer
+from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
 
 # プロキシ設定を一時的に無効化
 os.environ["HTTP_PROXY"] = ""
@@ -62,7 +63,13 @@ def cli_flow(is_multirun, cfg_sindy):
             cfg_sindy["train_comp_identifier"]
         ]
         surrogate_result = surrogate.fit(train_ds, train_comp_id)
-        log_surrogate_summary(SINDyAnalyzer(surrogate_result, base_cost, HH_COST))
+        log_surrogate_summary(
+            SINDyAnalyzer(
+                surrogate_result,
+                base_cost,
+                original_cost=COMPARTMENT_TEMPLATES["hh"].OpCost,
+            )
+        )
         log_surrogate_model(surrogate)
     if is_multirun:
         pass

@@ -1,10 +1,9 @@
 import json
 from dataclasses import dataclass, fields
+from typing import Any
 
 import numpy as np
 from sklearn.decomposition import PCA
-
-from ..model.model_neurosindy import SINDyResult
 
 
 @dataclass(frozen=True)
@@ -29,26 +28,6 @@ class OpCost:
         return {f.name: getattr(self, f.name) for f in fields(self)}
 
 
-HH_RATE_COST_MAP: dict[str, OpCost] = {
-    "alpha_m": OpCost(exp=1, div=1, pm=2, mul=2),
-    "beta_m": OpCost(exp=1, div=1, pm=1, mul=1),
-    "alpha_h": OpCost(exp=1, div=1, pm=1, mul=1),
-    "beta_h": OpCost(exp=1, div=1, pm=2, mul=1),
-    "alpha_n": OpCost(exp=1, div=1, pm=2, mul=2),
-    "beta_n": OpCost(exp=1, div=1, pm=1, mul=1),
-}
-
-
-HH_COST = (
-    sum(HH_RATE_COST_MAP.values(), OpCost())  # レート関数
-    + OpCost(pm=1)  # 反転電位
-    + OpCost(pm=3, mul=5) * 2  # Na,K電流
-    + OpCost(pm=1, mul=1)  # leak電流
-    + OpCost(pm=6, mul=6)  # dg/dt
-    + OpCost(pm=3, div=1)  # dv/dtの計算
-)
-
-
 def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):
     def _get_pca_metrics(pca: PCA, train_gate_data):
         reconstructed = pca.inverse_transform(pca.transform(train_gate_data))
@@ -67,11 +46,22 @@ def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):
     return preprocessor_metrics
 
 
+@dataclass
+class SINDyResult:
+    preprocessor: Any
+    params: dict
+    train_gate_data: np.ndarray
+    coef: np.ndarray
+    target_names: list
+    equations: str
+    source: str
+
+
 @dataclass(frozen=True)
 class SINDyAnalyzer:
     result: SINDyResult
     feature_cost_map: dict[str, OpCost]
-    original_cost: OpCost
+    original_cost: OpCost = None
 
     @property
     def _active_features(self):

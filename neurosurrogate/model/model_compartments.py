@@ -2,6 +2,8 @@ import numpy as np
 from numba import float64, njit
 from numba.experimental import jitclass
 
+from ..profiler.profiler_model import OpCost
+
 
 @njit
 def lin_exp_form(x):
@@ -87,6 +89,16 @@ def calc_passive_channel(p, u_t, v):
     return (-p.G_LEAK * (v - p.E_LEAK) + u_t) / p.C
 
 
+HH_RATE_COST_MAP: dict[str, OpCost] = {
+    "alpha_m": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_m": OpCost(exp=1, div=1, pm=1, mul=1),
+    "alpha_h": OpCost(exp=1, div=1, pm=1, mul=1),
+    "beta_h": OpCost(exp=1, div=1, pm=2, mul=1),
+    "alpha_n": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_n": OpCost(exp=1, div=1, pm=1, mul=1),
+}
+
+
 @jitclass(
     [
         ("E_REST", float64),
@@ -116,11 +128,17 @@ V_REL = (-65) - (-65)  # V_INIT - E_REST
 
 class Compartment:
     def __init__(
-        self, gate_inits: list[float], gate_names: list[str], v_init: float = -65
+        self,
+        gate_inits: list[float],
+        gate_names: list[str],
+        v_init: float = -65,
+        OpCost: OpCost = None,
     ):
+
         self.v_init = v_init
         self.gate_inits = gate_inits
         self.gate_names = gate_names
+        self._opcost = OpCost
 
     @property
     def vars(self):
@@ -134,11 +152,25 @@ class Compartment:
     def init(self):
         return [self.v_init] + self.gate_inits
 
+    @property
+    def OpCost(self):
+        return self._opcost
+
 
 COMPARTMENT_TEMPLATES = {
     "hh": Compartment(
         gate_inits=[m_inf(V_REL), h_inf(V_REL), n_inf(V_REL)],
         gate_names=["M", "H", "N"],
+        OpCost=(
+            sum(HH_RATE_COST_MAP.values(), OpCost())  # レート関数
+            + OpCost(pm=1)  # 反転電位
+            + OpCost(pm=3, mul=5) * 2  # Na,K電流
+            + OpCost(pm=1, mul=1)  # leak電流
+            + OpCost(pm=6, mul=6)  # dg/dt
+            + OpCost(pm=3, div=1)  # dv/dtの計算
+        ),
     ),
-    "passive": Compartment(gate_inits=[], gate_names=[]),
+    "passive": Compartment(
+        gate_inits=[], gate_names=[], OpCost=OpCost(div=1, pm=2, mul=1)
+    ),
 }

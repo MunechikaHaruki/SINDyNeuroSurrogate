@@ -1,10 +1,9 @@
 import logging
-from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
 from numba import njit
 
+from ..profiler.profiler_model import SINDyResult
 from .model_compartments import Compartment
 
 logger = logging.getLogger(__name__)
@@ -49,17 +48,6 @@ def transform_gate(preprocessor, xr_data, target_comp_id):
         coords=coords,
         dt=float(xr_data.time[1] - xr_data.time[0]),
     )
-
-
-@dataclass
-class SINDyResult:
-    preprocessor: Any
-    params: dict
-    train_gate_data: np.ndarray
-    coef: np.ndarray
-    target_names: list
-    equations: str
-    source: str
 
 
 class SINDyNeuroSurrogate:
