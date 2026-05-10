@@ -14,13 +14,11 @@ def build_model(neuron_spec: dict):
 
 
 hh = {"nodes": {"soma": "hh"}, "edges": [], "stim": "soma"}
-php = (
-    {
-        "nodes": {"p1": "passive", "h1": "hh", "p2": "passive"},
-        "edges": [("p1", "h1", 1.0), ("h1", "p2", 0.7)],
-        "stim": "p1",
-    },
-)
+php = {
+    "nodes": {"p1": "passive", "h1": "hh", "p2": "passive"},
+    "edges": [("p1", "h1", 1.0), ("h1", "p2", 0.7)],
+    "stim": "p1",
+}
 hhp = {
     "nodes": {"h1": "hh", "h2": "hh", "p1": "passive"},
     "edges": [("h1", "h2", 1.0), ("h2", "p1", 0.7)],

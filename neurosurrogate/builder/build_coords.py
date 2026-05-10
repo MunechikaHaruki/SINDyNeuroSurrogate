@@ -31,7 +31,7 @@ class StateAccumulator:
         return np.array(self.init, dtype=np.float64)
 
 
-def build_indices(nodes: list, surr_comp: dict):
+def build_indices(nodes: list, surr_comp: Compartment):
 
     if surr_comp is None:
         compartments = COMPARTMENT_TEMPLATES
