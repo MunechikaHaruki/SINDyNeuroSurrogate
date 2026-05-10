@@ -79,9 +79,9 @@ class SINDyAnalyzer:
         return {k: self.feature_cost_map[k] for k in self._active_features}
 
     @property
-    def _stat_calc_cost(self):
+    def surr_opcost(self):
         nnz = np.count_nonzero(self.result.coef).item()
-        surrogate = OpCost(mul=nnz, pm=max(0, nnz - int(self.result.coef.shape[0])))
+        surr_op = OpCost(mul=nnz, pm=max(0, nnz - int(self.result.coef.shape[0])))
 
         for feature in self._active_features:
             if feature not in self.feature_cost_map:
@@ -89,9 +89,12 @@ class SINDyAnalyzer:
                     f"未知の基底関数 '{feature}' が見つかりました。"
                     "注入された cost_map にこの基底関数の定義を追加してください。"
                 )
-            surrogate = surrogate + self.feature_cost_map[feature]
+            surr_op = surr_op + self.feature_cost_map[feature]
+        return surr_op
 
-        surr_d = surrogate.to_dict()
+    @property
+    def _stat_calc_cost(self):
+        surr_d = self.surr_opcost.to_dict()
         orig_d = self.original_cost.to_dict()
         return {
             **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
