@@ -21,6 +21,9 @@ def lin_exp_form(x):
     return np.where(condition, approx, raw)
 
 
+# rate functions
+
+
 @njit
 def alpha_m(v):
     return lin_exp_form(2.5 - 0.1 * v)
@@ -51,6 +54,9 @@ def beta_n(v):
     return 0.125 * np.exp(-v / 80.0)
 
 
+# inf
+
+
 @njit
 def m_inf(v):
     return alpha_m(v) / (alpha_m(v) + beta_m(v))
@@ -66,27 +72,56 @@ def n_inf(v):
     return alpha_n(v) / (alpha_n(v) + beta_n(v))
 
 
+# dgdt
+
+
 @njit
-def calc_hh_channel(p, u_t, v, curr_gate, dvar_gate):
+def dmdt(v, m):
+    return alpha_m(v) * (1.0 - m) - beta_m(v) * m
+
+
+@njit
+def dhdt(v, h):
+    return alpha_h(v) * (1.0 - h) - beta_h(v) * h
+
+
+@njit
+def dndt(v, n):
+    return alpha_n(v) * (1.0 - n) - beta_n(v) * n
+
+
+@njit
+def calc_ion_currents(v, curr_gate, p):
     m = curr_gate[0]
     h = curr_gate[1]
     n = curr_gate[2]
-    v_rel = v - p.E_REST
-
-    i_leak = p.G_LEAK * (v - p.E_LEAK)
     i_na = p.G_NA * np.pow(m, 3) * h * (v - p.E_NA)
     i_k = p.G_K * np.pow(n, 4) * (v - p.E_K)
+    return i_na + i_k
 
-    dv = (-i_leak - i_na - i_k + u_t) / p.C
-    dvar_gate[0] = alpha_m(v_rel) * (1.0 - m) - beta_m(v_rel) * m
-    dvar_gate[1] = alpha_h(v_rel) * (1.0 - h) - beta_h(v_rel) * h
-    dvar_gate[2] = alpha_n(v_rel) * (1.0 - n) - beta_n(v_rel) * n
+
+@njit
+def calc_i_leak(v, p):
+    return p.G_LEAK * (v - p.E_LEAK)
+
+
+@njit
+def update_dvar_gate(v, gates, dvar_gate):
+    dvar_gate[0] = dmdt(v, gates[0])
+    dvar_gate[1] = dhdt(v, gates[1])
+    dvar_gate[2] = dndt(v, gates[2])
+
+
+@njit
+def calc_hh_channel(p, u_t, v, curr_gate, dvar_gate):
+    dv = (-calc_i_leak(v, p) - calc_ion_currents(v, curr_gate, p) + u_t) / p.C
+    update_dvar_gate(v - p.E_REST, curr_gate, dvar_gate)  # vは反転電位
     return dv
 
 
 @njit
 def calc_passive_channel(p, u_t, v):
-    return (-p.G_LEAK * (v - p.E_LEAK) + u_t) / p.C
+    return (-calc_i_leak(v, p) + u_t) / p.C
 
 
 HH_RATE_COST_MAP: dict[str, OpCost] = {
