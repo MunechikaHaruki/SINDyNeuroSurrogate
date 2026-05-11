@@ -17,7 +17,7 @@ def _dummy_theta(v, latent, i_int):
 _dummy_xi = np.zeros((2, 1), dtype=np.float64)
 
 DUMMY_SINDY_ARGS = (_dummy_xi, _dummy_theta)
-DUMMY_SURR_COMP = Compartment(gate_inits=[0], gate_names="latent1")
+DUMMY_SURR_COMP = Compartment(gate_inits=[0], gate_names=["latent1"])
 
 
 def get_gate_numpy(train_xr, target_comp_id):
