@@ -16,6 +16,7 @@ from neurosurrogate.builder.build_current import build_current_pipeline
 from neurosurrogate.builder.build_feature_library import build_featurelib_and_basecost
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_compartments import COMPARTMENT_TEMPLATES
+from neurosurrogate.model.model_neuron import MCMODELS
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
 
@@ -57,10 +58,10 @@ def cli_flow(cfg_sindy):
             net=train_dataset_cfg["net"],
         )
         mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
-        train_comp_id = train_dataset_cfg["net"]["name_to_idx_dict"][
-            str(cfg_sindy["train_comp_identifier"])
-        ]
-        surrogate_result = surrogate.fit(train_ds, train_comp_id)
+        name_to_idx = MCMODELS[cfg_sindy["datasets"]["model_name"]].name_to_idx
+        surrogate_result = surrogate.fit(
+            train_ds, name_to_idx(cfg_sindy["train_comp_identifier"])
+        )
         log_surrogate_summary(
             SINDyAnalyzer(
                 surrogate_result,

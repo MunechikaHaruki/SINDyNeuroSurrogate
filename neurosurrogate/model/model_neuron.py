@@ -1,5 +1,6 @@
 from collections import Counter
 from dataclasses import dataclass
+from functools import cached_property
 
 
 @dataclass
@@ -15,22 +16,27 @@ class Edge:
     weight: float
 
 
-@dataclass
+@dataclass(frozen=False)
 class NeuronGraph:
     nodes: list[Node]
     edges: list[Edge]
     stim: str  # node name
 
+    @cached_property
+    def _name_to_idx(self) -> dict:
+        return {n.name: i for i, n in enumerate(self.nodes)}
+
+    def name_to_idx(self, name: str) -> int:
+        return self._name_to_idx[name]
+
     def to_model_dict(self) -> dict:
-        """calc_engine が期待する辞書形式に変換"""
-        name_to_idx = {n.name: i for i, n in enumerate(self.nodes)}
         return {
-            "name_to_idx_dict": name_to_idx,
             "nodes": [n.type for n in self.nodes],
             "edges": [
-                (name_to_idx[e.src], name_to_idx[e.dst], e.weight) for e in self.edges
+                (self.name_to_idx(e.src), self.name_to_idx(e.dst), e.weight)
+                for e in self.edges
             ],
-            "stim_node": name_to_idx[self.stim],
+            "stim_node": self.name_to_idx(self.stim),
         }
 
 
