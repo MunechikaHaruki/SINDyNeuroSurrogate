@@ -1,4 +1,3 @@
-import importlib
 import inspect
 import logging
 import os
@@ -9,7 +8,7 @@ import joblib
 import mlflow
 import numpy as np
 
-from neurosurrogate.builder.build_neuron import build_model
+from neurosurrogate.model.model_neuron import MCMODELS
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
 
@@ -33,8 +32,6 @@ def build_dataset(
     pipeline=None,
 ) -> dict:
     """yamlとの境界"""
-    neuron_module = importlib.import_module("neurosurrogate.builder.build_neuron")
-    neuron_spec = getattr(neuron_module, model_name)
     return {
         "data_type": model_name,
         "dt": dt,
@@ -44,7 +41,7 @@ def build_dataset(
             "pipeline": pipeline,
             "silence_steps": int(silence_duration / dt),
         },
-        "net": build_model(neuron_spec),
+        "net": MCMODELS[model_name],
     }
 
 
