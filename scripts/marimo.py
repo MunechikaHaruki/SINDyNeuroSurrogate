@@ -33,33 +33,18 @@ def _(analysis, load_btn, mo, plt_btn):
     return (run_selector,)
 
 
+@app.cell
+def _(mo, run_ids):
+    dropdown = mo.ui.dropdown(options=run_ids,value=run_ids[0])
+    mo.hstack([mo.md("select experiment"), dropdown])
+    return (dropdown,)
+
+
 @app.cell(hide_code=True)
 def _(analysis, run_selector):
     run_ids = run_selector.value["run_id"].tolist()
     analysis.get_model_info_ui(run_ids)
     return (run_ids,)
-
-
-@app.cell
-def _(mo, run_ids):
-    dropdown = mo.ui.dropdown(options=run_ids)
-    mo.hstack([mo.md("select experiment"), dropdown])
-    return (dropdown,)
-
-
-@app.cell
-def _(analysis, dropdown, param_ui):
-    surrogate_model = analysis.load_surrogate_model(dropdown.value)
-    print(surrogate_model.surr_comp.gate_names)
-    print(type(surrogate_model.surr_comp))
-    print(surrogate_model.sindy_args[0].shape)  # xi_matrixのshape
-
-    print(surrogate_model.surr_comp.vars)
-    print(surrogate_model.surr_comp.gate)
-    print(surrogate_model.surr_comp.init)
-    print(analysis.CurrentList)
-    print(param_ui.value)
-    return
 
 
 @app.cell(hide_code=True)
@@ -79,8 +64,13 @@ def _(analysis, current_dropdown, dropdown, mo, param_ui):
 
 
 @app.cell
-def _(result):
-    result["metrics"]
+def _(mo, result):
+    metrics=result["metrics"]
+
+    mo.hstack([
+        mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
+        for k, v in metrics.items()
+    ])
     return
 
 

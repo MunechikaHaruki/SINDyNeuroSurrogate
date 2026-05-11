@@ -42,7 +42,7 @@ def init_cell():
     return ui, load_btn, plt_btn, current_dropdown
 
 
-def _get_runs_df():
+def get_mlflow_runselector():
     experiment = mlflow.get_experiment_by_name(TARGET_EXP)
     if experiment is None:
         raise ValueError(
@@ -61,17 +61,13 @@ def _get_runs_df():
         ["tags.mlflow.runName", "run_id", "start_time"]
         + [c for c in cols if c != "run_id"]
     ]
-    return runs_df
 
-
-def get_mlflow_runselector():
-    runs_df = _get_runs_df()
-    run_selector = mo.ui.table(
+    return mo.ui.table(
         runs_df[["tags.mlflow.runName", "run_id"]],
         label="比較・解析したいRunを複数選択",
         selection="multi",
+        initial_selection=[0],
     )
-    return run_selector
 
 
 def setup_matplotlib(matplotlib_style: MplStyle):

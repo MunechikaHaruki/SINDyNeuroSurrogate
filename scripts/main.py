@@ -4,12 +4,10 @@ import os
 import hydra
 import mlflow
 import pysindy as ps
-from hydra.core.hydra_config import HydraConfig
 from io_handler import (
     build_dataset,
     log_surrogate_model,
     log_surrogate_summary,
-    setup_mlflow,
 )
 from omegaconf import DictConfig, OmegaConf
 
@@ -47,7 +45,7 @@ def build_surrogate(cfg_sindy):
     ), base_cost
 
 
-def cli_flow(is_multirun, cfg_sindy):
+def cli_flow(cfg_sindy):
     surrogate, base_cost = build_surrogate(cfg_sindy)
     with mlflow.start_run(run_name=f"train:{cfg_sindy['name']}"):
         # train
@@ -71,17 +69,13 @@ def cli_flow(is_multirun, cfg_sindy):
             )
         )
         log_surrogate_model(surrogate)
-    if is_multirun:
-        pass
 
 
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
     cfg = OmegaConf.to_container(cfg, resolve=True)
-    is_multirun = HydraConfig.get().mode.name == "MULTIRUN"
-    setup_mlflow(is_multirun)
-    cli_flow(is_multirun, cfg["sindy"])
+    cli_flow(cfg["sindy"])
 
 
 if __name__ == "__main__":

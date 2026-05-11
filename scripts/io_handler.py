@@ -21,6 +21,7 @@ CURRENT_DIR = Path(__file__).parent
 PROJECT_ROOT = CURRENT_DIR.parent  # 階層に応じて調整
 mlflow.set_tracking_uri(f"file://{PROJECT_ROOT}/mlruns")
 mlflow.enable_system_metrics_logging()
+mlflow.set_experiment(TARGET_EXP)
 os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
 
 
@@ -43,13 +44,6 @@ def build_dataset(
         },
         "net": MCMODELS[model_name].to_model_dict(),
     }
-
-
-def setup_mlflow(is_multirun):
-    if is_multirun:
-        mlflow.set_experiment("test_dynamic_datasets")
-    else:
-        mlflow.set_experiment("test_static_params")
 
 
 def log_surrogate_summary(summary: SINDyAnalyzer):
