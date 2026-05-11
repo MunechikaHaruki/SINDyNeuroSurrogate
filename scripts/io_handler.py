@@ -26,11 +26,11 @@ os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
 
 
 def build_dataset(
-    dt=0.01,
-    silence_duration=80,
-    duration=800,
-    model_name="hh",
-    pipeline=None,
+    dt: float,
+    silence_duration: float,
+    duration: float,
+    model_name: str,
+    pipeline: dict,
 ) -> dict:
     """yamlとの境界"""
     return {

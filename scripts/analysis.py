@@ -16,6 +16,7 @@ from neurosurrogate.builder.build_current import (
     build_current_setting,
 )
 from neurosurrogate.calc_engine import unified_simulator
+from neurosurrogate.model.model_neuron import MCMODELS
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.profiler.profiler_view import draw_engine, spec_diff, view_model
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
@@ -23,6 +24,7 @@ from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
 CurrentList: list = ["train"] + list(FUNC_MAP.keys())
 
 MplStyle = Literal["paper", "presentation"]
+MCNameList = list(MCMODELS.keys())
 
 
 def init_cell():
@@ -33,13 +35,55 @@ def init_cell():
     plt_btn = mo.ui.radio(options=plt_options, value=plt_options[0])
 
     current_dropdown = mo.ui.dropdown(CurrentList, value="steady")
+
+    base_dataset_ui = mo.ui.dictionary(
+        {
+            "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
+            "silence_duration": mo.ui.number(
+                value=80, step=1, label="silence_duration"
+            ),
+            "duration": mo.ui.number(value=800, step=100, label="duration"),
+            "model_name": mo.ui.dropdown(
+                options=list(MCMODELS.keys()), label="model_name", value="hh"
+            ),
+        }
+    )
+
     ui = mo.md(f"""
     ### MLflow データ解析
     - Reload: {load_btn}
     - matplotlib rendering setting: {plt_btn}
-    - testCurrent Type: {current_dropdown}
+    - baseDatasetUI: {base_dataset_ui}
     """)
-    return ui, load_btn, plt_btn, current_dropdown
+    return ui, load_btn, plt_btn, current_dropdown, base_dataset_ui
+
+
+def _make_ui_element(name: str, annotation: type, default):
+    if annotation is int:
+        return mo.ui.number(value=int(default), step=1, label=name)
+    elif annotation is float:
+        return mo.ui.number(value=float(default), step=0.1, label=name)
+    elif annotation is bool:
+        return mo.ui.checkbox(value=bool(default), label=name)
+    elif annotation is list:
+        return mo.ui.array([mo.ui.number(value=0.0, step=0.1)], label=name)
+
+    else:
+        raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
+
+
+def get_param_ui(current_type: str) -> mo.ui.dictionary:
+    sig = inspect.signature(FUNC_MAP[current_type])
+    return mo.ui.dictionary(
+        {
+            name: _make_ui_element(
+                name,
+                param.annotation,
+                param.default if param.default is not inspect.Parameter.empty else 0,
+            )
+            for name, param in sig.parameters.items()
+        }
+    )
 
 
 def get_mlflow_runselector():
@@ -128,40 +172,14 @@ def get_model_info_ui(run_ids):
     )
 
 
-def _make_ui_element(name: str, annotation: type, default):
-    if annotation is int:
-        return mo.ui.number(value=int(default), step=1, label=name)
-    elif annotation is float:
-        return mo.ui.number(value=float(default), step=0.1, label=name)
-    elif annotation is bool:
-        return mo.ui.checkbox(value=bool(default), label=name)
-    elif annotation is list:
-        return mo.ui.array([mo.ui.number(value=0.0, step=0.1)], label=name)
-
-    else:
-        raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
-
-
-def get_param_ui(current_type: str) -> mo.ui.dictionary:
-    sig = inspect.signature(FUNC_MAP[current_type])
-    return mo.ui.dictionary(
-        {
-            name: _make_ui_element(
-                name,
-                param.annotation,
-                param.default if param.default is not inspect.Parameter.empty else 0,
-            )
-            for name, param in sig.parameters.items()
-        }
-    )
-
-
-def eval_dataset(run_id: str, current_type, current_params):
+def eval_dataset(
+    run_id: str, current_type, current_params: dict, base_dataset_params: dict
+):
     if current_type == "train":
         dataset_cfg = get_run_info(run_id)["dataset"]
     else:
         pipeline = build_current_setting(current_type, current_params)
-        dataset_cfg = build_dataset(pipeline=pipeline)
+        dataset_cfg = build_dataset(**base_dataset_params, pipeline=pipeline)
 
     surrogate_model = load_surrogate_model(run_id)
     u = build_current_pipeline(dataset_cfg["current"])

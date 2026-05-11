@@ -8,9 +8,9 @@ app = marimo.App(width="medium")
 def _():
     import analysis
     import marimo as mo
-    ui,load_btn,plt_btn,current_dropdown=analysis.init_cell()
+    ui,load_btn,plt_btn,current_dropdown,base_dataset_ui=analysis.init_cell()
     ui
-    return analysis, current_dropdown, load_btn, mo, plt_btn
+    return analysis, base_dataset_ui, current_dropdown, load_btn, mo, plt_btn
 
 
 @app.cell
@@ -49,12 +49,23 @@ def _(analysis, run_selector):
 
 
 @app.cell
-def _(analysis, current_dropdown, current_param_ui, mo, runid_dropdown):
+def _(
+    analysis,
+    base_dataset_ui,
+    current_dropdown,
+    current_param_ui,
+    mo,
+    runid_dropdown,
+):
     mo.stop(
         runid_dropdown.value is None or current_dropdown.value is None,
         "実験を選択してください",
     )
-    result=analysis.eval_dataset(runid_dropdown.value,current_dropdown.value,current_param_ui.value)
+    result=analysis.eval_dataset(
+    run_id=runid_dropdown.value,
+    current_type=current_dropdown.value,
+    current_params=current_param_ui.value,
+    base_dataset_params=base_dataset_ui.value)
 
     analysis.view_dataset(result)
     return
