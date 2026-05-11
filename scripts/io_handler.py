@@ -41,7 +41,7 @@ def build_dataset(
             "pipeline": pipeline,
             "silence_steps": int(silence_duration / dt),
         },
-        "net": MCMODELS[model_name],
+        "net": MCMODELS[model_name].to_model_dict(),
     }
 
 

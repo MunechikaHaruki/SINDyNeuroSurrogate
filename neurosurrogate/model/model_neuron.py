@@ -1,115 +1,92 @@
-def build_model(neuron_spec: dict):
+from collections import Counter
+from dataclasses import dataclass
 
-    nodes_dict = neuron_spec["nodes"]
-    name_to_idx = {n: i for i, n in enumerate(nodes_dict.keys())}
 
-    return {
-        "name_to_idx_dict": name_to_idx,
-        "nodes": list(nodes_dict.values()),
-        "edges": [
-            (name_to_idx[u], name_to_idx[v], g) for u, v, g in neuron_spec["edges"]
+@dataclass
+class Node:
+    name: str
+    type: str  # "hh" | "passive"
+
+
+@dataclass
+class Edge:
+    src: str
+    dst: str
+    weight: float
+
+
+@dataclass
+class NeuronGraph:
+    nodes: list[Node]
+    edges: list[Edge]
+    stim: str  # node name
+
+    def to_model_dict(self) -> dict:
+        """calc_engine が期待する辞書形式に変換"""
+        name_to_idx = {n.name: i for i, n in enumerate(self.nodes)}
+        return {
+            "name_to_idx_dict": name_to_idx,
+            "nodes": [n.type for n in self.nodes],
+            "edges": [
+                (name_to_idx[e.src], name_to_idx[e.dst], e.weight) for e in self.edges
+            ],
+            "stim_node": name_to_idx[self.stim],
+        }
+
+
+def chain(
+    node_types: list[str],
+    weights: list[float],
+    stim: int = 0,
+) -> NeuronGraph:
+    """
+    ノード名は型の頭文字 + 0始まり連番で自動生成
+    例: ["passive", "hh", "passive"] → ["p0", "h0", "p1"]
+    """
+    assert len(weights) == len(node_types) - 1, (
+        f"weights の長さは len(node_types) - 1 = {len(node_types) - 1} である必要があります"
+    )
+    counters: Counter = Counter()
+    nodes = []
+    for t in node_types:
+        prefix = t[0]  # "hh" → "h", "passive" → "p"
+        nodes.append(Node(f"{prefix}{counters[prefix]}", t))
+        counters[prefix] += 1
+
+    edges = [Edge(nodes[i].name, nodes[i + 1].name, w) for i, w in enumerate(weights)]
+    return NeuronGraph(nodes=nodes, edges=edges, stim=nodes[stim].name)
+
+
+MCMODELS: dict[str, NeuronGraph] = {
+    "hh": NeuronGraph(
+        nodes=[Node("soma", "hh")],
+        edges=[],
+        stim="soma",
+    ),
+    "php": chain(["passive", "hh", "passive"], [1.0, 0.7]),
+    "hhp": chain(["hh", "hh", "passive"], [1.0, 0.7]),
+    "pph": chain(["passive", "hh", "hh"], [1.0, 0.7]),
+    "phhpp": chain(["passive", "hh", "hh", "passive", "passive"], [1.0, 0.7, 0.7, 0.5]),
+    "pphhp": chain(["passive", "passive", "hh", "hh", "passive"], [1.0, 0.7, 0.7, 0.5]),
+    "phhhp": chain(["passive", "hh", "hh", "hh", "passive"], [1.0, 0.7, 0.7, 0.5]),
+    "hh7": NeuronGraph(
+        nodes=[
+            Node("p1", "passive"),
+            Node("h1", "hh"),
+            Node("h2", "hh"),
+            Node("h3", "hh"),
+            Node("h4", "hh"),
+            Node("p2", "passive"),
+            Node("p3", "passive"),
         ],
-        "stim_node": name_to_idx[neuron_spec["stim"]],
-    }
-
-
-MCMODELS = {
-    "hh": build_model({"nodes": {"soma": "hh"}, "edges": [], "stim": "soma"}),
-    "php": build_model(
-        {
-            "nodes": {"p1": "passive", "h1": "hh", "p2": "passive"},
-            "edges": [("p1", "h1", 1.0), ("h1", "p2", 0.7)],
-            "stim": "p1",
-        }
-    ),
-    "hhp": build_model(
-        {
-            "nodes": {"h1": "hh", "h2": "hh", "p1": "passive"},
-            "edges": [("h1", "h2", 1.0), ("h2", "p1", 0.7)],
-            "stim": "h1",
-        }
-    ),
-    "pph": build_model(
-        {
-            "nodes": {"p1": "passive", "h1": "hh", "h2": "hh"},
-            "edges": [("p1", "h1", 1.0), ("h1", "h2", 0.7)],
-            "stim": "p1",
-        }
-    ),
-    "phhpp": build_model(
-        {
-            "nodes": {
-                "p1": "passive",
-                "h1": "hh",
-                "h2": "hh",
-                "p2": "passive",
-                "p3": "passive",
-            },
-            "edges": [
-                ("p1", "h1", 1.0),
-                ("h1", "h2", 0.7),
-                ("h2", "p2", 0.7),
-                ("p2", "p3", 0.5),
-            ],
-            "stim": "p1",
-        }
-    ),
-    "pphhp": build_model(
-        {
-            "nodes": {
-                "p1": "passive",
-                "p2": "passive",
-                "h1": "hh",
-                "h2": "hh",
-                "p3": "passive",
-            },
-            "edges": [
-                ("p1", "p2", 1.0),
-                ("p2", "h1", 0.7),
-                ("h1", "h2", 0.7),
-                ("h2", "p3", 0.5),
-            ],
-            "stim": "p1",
-        }
-    ),
-    "phhhp": build_model(
-        {
-            "nodes": {
-                "p1": "passive",
-                "h1": "hh",
-                "h2": "hh",
-                "h3": "hh",
-                "p2": "passive",
-            },
-            "edges": [
-                ("p1", "h1", 1.0),
-                ("h1", "h2", 0.7),
-                ("h2", "h3", 0.7),
-                ("h3", "p2", 0.5),
-            ],
-            "stim": "p1",
-        }
-    ),
-    "hh7": build_model(
-        {
-            "nodes": {
-                "p1": "passive",
-                "h1": "hh",
-                "h2": "hh",
-                "h3": "hh",
-                "h4": "hh",
-                "p2": "passive",
-                "p3": "passive",
-            },
-            "edges": [
-                ("p1", "h1", 1.0),
-                ("h1", "h2", 0.7),
-                ("h2", "h3", 0.7),
-                ("h2", "h4", 0.5),
-                ("h3", "p2", 0.5),
-                ("h4", "p3", 0.6),
-            ],
-            "stim": "p1",
-        }
+        edges=[
+            Edge("p1", "h1", 1.0),
+            Edge("h1", "h2", 0.7),
+            Edge("h2", "h3", 0.7),
+            Edge("h2", "h4", 0.5),
+            Edge("h3", "p2", 0.5),
+            Edge("h4", "p3", 0.6),
+        ],
+        stim="p1",
     ),
 }

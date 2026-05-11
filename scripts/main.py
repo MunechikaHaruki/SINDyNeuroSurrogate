@@ -60,7 +60,7 @@ def cli_flow(is_multirun, cfg_sindy):
         )
         mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
         train_comp_id = train_dataset_cfg["net"]["name_to_idx_dict"][
-            cfg_sindy["train_comp_identifier"]
+            str(cfg_sindy["train_comp_identifier"])
         ]
         surrogate_result = surrogate.fit(train_ds, train_comp_id)
         log_surrogate_summary(
