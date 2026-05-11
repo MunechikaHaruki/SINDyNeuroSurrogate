@@ -131,6 +131,7 @@ def unified_simulator(dt, u, net, surrogate_model: SINDyNeuroSurrogate = None):
             gate_offsets=indice["gate_offsets"],
         ),
     )
+    print(f"surr_target_id:{indice['ids']['surr']}")
     dataset = set_coords(raw, u, indice["coords"], dt)
     set_i_internal(dataset, C_matrix, net["stim_node"], u)
     return dataset

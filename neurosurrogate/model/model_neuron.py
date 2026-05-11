@@ -26,6 +26,10 @@ class NeuronGraph:
     def _name_to_idx(self) -> dict:
         return {n.name: i for i, n in enumerate(self.nodes)}
 
+    @property
+    def names(self) -> list[str]:
+        return [n.name for n in self.nodes]
+
     def name_to_idx(self, name: str) -> int:
         return self._name_to_idx[name]
 

@@ -72,18 +72,25 @@ def _make_ui_element(name: str, annotation: type, default):
         raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
 
 
-def get_param_ui(current_type: str) -> mo.ui.dictionary:
-    sig = inspect.signature(FUNC_MAP[current_type])
-    return mo.ui.dictionary(
+def get_param_ui(current_type: str, model_name: str) -> mo.ui.dictionary:
+    current_sig = inspect.signature(FUNC_MAP[current_type])
+    current_ui = mo.ui.dictionary(
         {
             name: _make_ui_element(
                 name,
                 param.annotation,
                 param.default if param.default is not inspect.Parameter.empty else 0,
             )
-            for name, param in sig.parameters.items()
+            for name, param in current_sig.parameters.items()
         }
     )
+    surrogate_target_ui = mo.ui.multiselect(options=MCMODELS[model_name].names)
+    ui = mo.md(f"""
+    ### パラメタ設定
+    - currentui: {current_ui}
+    - surrogate target: {surrogate_target_ui}
+    # """)
+    return ui, current_ui, surrogate_target_ui
 
 
 def get_mlflow_runselector():
@@ -173,28 +180,39 @@ def get_model_info_ui(run_ids):
 
 
 def eval_dataset(
-    run_id: str, current_type, current_params: dict, base_dataset_params: dict
+    run_id: str,
+    current_type,
+    current_params: dict,
+    base_dataset_params: dict,
+    surrogate_list: list[str],
+    eval_comp: str,
 ):
     if current_type == "train":
         dataset_cfg = get_run_info(run_id)["dataset"]
+        model_name = dataset_cfg["model_name"]
     else:
         pipeline = build_current_setting(current_type, current_params)
         dataset_cfg = build_dataset(**base_dataset_params, pipeline=pipeline)
+        model_name = base_dataset_params["model_name"]
 
+    name_to_idx = MCMODELS[model_name].name_to_idx
     surrogate_model = load_surrogate_model(run_id)
     u = build_current_pipeline(dataset_cfg["current"])
     original_ds = unified_simulator(dt=dataset_cfg["dt"], u=u, net=dataset_cfg["net"])
     surr_net = copy.deepcopy(dataset_cfg["net"])
 
-    target_comp_id = 0
+    for i in surrogate_list:
+        surr_net["nodes"][name_to_idx(i)] = "surr"
 
-    surr_net["nodes"][target_comp_id] = "surr"
     surr_ds = unified_simulator(
         dt=dataset_cfg["dt"],
         u=u,
         net=surr_net,
         surrogate_model=surrogate_model,
     )
+
+    target_comp_id = name_to_idx(eval_comp)
+
     preprocessed_xr = transform_gate(
         surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
     )

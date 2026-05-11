@@ -14,10 +14,10 @@ def _():
 
 
 @app.cell
-def _(analysis, current_dropdown):
-    current_param_ui=analysis.get_param_ui(current_dropdown.value)
-    current_param_ui
-    return (current_param_ui,)
+def _(analysis, base_dataset_ui, current_dropdown):
+    param_ui,current_ui,surrogate_ui=analysis.get_param_ui(current_dropdown.value,base_dataset_ui.value["model_name"])
+    param_ui
+    return current_ui, surrogate_ui
 
 
 @app.cell(hide_code=True)
@@ -49,13 +49,22 @@ def _(analysis, run_selector):
 
 
 @app.cell
+def _(mo, surrogate_ui):
+    eval_comp_dropdown=mo.ui.dropdown(options=surrogate_ui.value,value=surrogate_ui.value[0])
+    eval_comp_dropdown
+    return (eval_comp_dropdown,)
+
+
+@app.cell
 def _(
     analysis,
     base_dataset_ui,
     current_dropdown,
-    current_param_ui,
+    current_ui,
+    eval_comp_dropdown,
     mo,
     runid_dropdown,
+    surrogate_ui,
 ):
     mo.stop(
         runid_dropdown.value is None or current_dropdown.value is None,
@@ -64,8 +73,11 @@ def _(
     result=analysis.eval_dataset(
     run_id=runid_dropdown.value,
     current_type=current_dropdown.value,
-    current_params=current_param_ui.value,
-    base_dataset_params=base_dataset_ui.value)
+    current_params=current_ui.value,
+    base_dataset_params=base_dataset_ui.value,
+    surrogate_list=surrogate_ui.value,
+        eval_comp=eval_comp_dropdown.value
+    )
 
     analysis.view_dataset(result)
     return
