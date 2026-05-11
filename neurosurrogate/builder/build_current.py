@@ -129,9 +129,11 @@ def build_current_pipeline(current_cfg):
     silence_steps = current_cfg["silence_steps"]
     dset_i_ext = np.zeros(iteration)
 
+    if iteration - silence_steps <= silence_steps:  # active_end <=active_start
+        raise ValueError(
+            f"silence_steps={silence_steps} が大きすぎます（iteration={iteration}）"
+        )
+    active = dset_i_ext[silence_steps : iteration - silence_steps]
     func = hydra.utils.instantiate(current_cfg["pipeline"])
-    func(dset_i_ext)
-
-    dset_i_ext[:silence_steps] = 0
-    dset_i_ext[-silence_steps:] = 0
+    func(active)
     return dset_i_ext
