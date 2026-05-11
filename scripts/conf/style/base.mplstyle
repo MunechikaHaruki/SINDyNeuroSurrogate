@@ -9,3 +9,5 @@ patch.linewidth: 0.5
 # --- Legend ---
 legend.loc: upper right
 legend.numpoints: 1
+
+axes.grid: False

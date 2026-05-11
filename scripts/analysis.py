@@ -35,7 +35,7 @@ def init_cell():
     current_dropdown = mo.ui.dropdown(CurrentList, value="steady")
     ui = mo.md(f"""
     ### MLflow データ解析
-    - Reload MLflow: {load_btn}
+    - Reload: {load_btn}
     - matplotlib rendering setting: {plt_btn}
     - testCurrent Type: {current_dropdown}
     """)
@@ -156,14 +156,12 @@ def get_param_ui(current_type: str) -> mo.ui.dictionary:
     )
 
 
-def resolve_config(run_id, current_type, params: dict):
+def eval_dataset(run_id: str, current_type, current_params):
     if current_type == "train":
-        return get_run_info(run_id)["dataset"]
-    pipeline = build_current_setting(current_type, params)
-    return build_dataset(pipeline=pipeline)
-
-
-def eval_dataset(run_id: str, dataset_cfg: dict):
+        dataset_cfg = get_run_info(run_id)["dataset"]
+    else:
+        pipeline = build_current_setting(current_type, current_params)
+        dataset_cfg = build_dataset(pipeline=pipeline)
 
     surrogate_model = load_surrogate_model(run_id)
     u = build_current_pipeline(dataset_cfg["current"])
@@ -195,6 +193,15 @@ def eval_dataset(run_id: str, dataset_cfg: dict):
     }
 
 
-# draw_engine(spec_simple(result["datasets"]["preprocessed"]))
 def view_dataset(result):
-    return draw_engine(spec_diff(**result["datasets"]))
+    metrics = result["metrics"]
+    cards = mo.hstack(
+        [
+            mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
+            for k, v in metrics.items()
+        ],
+        wrap=True,
+    )
+    return mo.vstack(
+        [cards, mo.mpl.interactive(draw_engine(spec_diff(**result["datasets"])))]
+    )
