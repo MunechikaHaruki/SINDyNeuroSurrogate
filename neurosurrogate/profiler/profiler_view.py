@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
-import plotly.graph_objects as go
 import seaborn as sns
 import xarray as xr
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
-from plotly.subplots import make_subplots
 
 # ── データ構造 ────────────────────────────────────────────────
 
@@ -46,21 +43,12 @@ class PanelSpec:
 
 
 # ── レンダラ ──────────────────────────────────────────────────
-
-
 def draw_engine(
     spec: list[PanelSpec],
-    engine: Literal["matplotlib", "plotly"] = "matplotlib",
     figsize_width: int = 10,
-) -> Figure | go.Figure:
+) -> Figure:
     panels = [*spec[:-1], spec[-1].with_xlabel("Time [ms]")] if spec else spec
 
-    if engine == "plotly":
-        return _draw_plotly(panels, figsize_width)
-    return _draw_matplotlib(panels, figsize_width)
-
-
-def _draw_matplotlib(panels: list[PanelSpec], figsize_width: int) -> Figure:
     n_rows = len(panels)
     fig = Figure(figsize=(figsize_width, 2 * n_rows))
     axs = fig.subplots(nrows=n_rows, ncols=1, sharex=True)
@@ -79,45 +67,6 @@ def _draw_matplotlib(panels: list[PanelSpec], figsize_width: int) -> Figure:
 
     fig.tight_layout()
     return fig
-
-
-def _draw_plotly(panels: list[PanelSpec], figsize_width: int) -> go.Figure:
-    n_rows = len(panels)
-    fig = make_subplots(
-        rows=n_rows,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.04,
-        subplot_titles=[p.ylabel for p in panels],
-    )
-
-    for row, p in enumerate(panels, start=1):
-        for tr in p.traces:
-            x, y = tr.xy()
-            fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=y,
-                    name=tr.label,
-                    line=dict(color=tr.color, dash=_style_to_dash(tr.style)),
-                    showlegend=tr.label is not None,
-                    legendgroup=str(row),
-                ),
-                row=row,
-                col=1,
-            )
-
-    fig.update_xaxes(title_text="Time [ms]", row=n_rows, col=1)
-    fig.update_layout(
-        width=figsize_width * 96,
-        height=220 * n_rows,
-        margin=dict(l=60, r=20, t=40, b=40),
-    )
-    return fig
-
-
-def _style_to_dash(style: str) -> str:
-    return {"-": "solid", "--": "dash", ":": "dot", "-.": "dashdot"}.get(style, "solid")
 
 
 # ── Spec ビルダ ───────────────────────────────────────────────
