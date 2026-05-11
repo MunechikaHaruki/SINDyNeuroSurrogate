@@ -1,6 +1,8 @@
 import copy
 import inspect
 import os
+import typing
+from typing import Literal
 
 import marimo as mo
 import matplotlib.pyplot as plt
@@ -20,15 +22,27 @@ from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
 
 CurrentList: list = ["train"] + list(FUNC_MAP.keys())
 
-
-def setup_matplotlib(matplotlib_style):
-    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-    STYLE_DIR = os.path.join(CURRENT_DIR, "./conf/style")
-    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
-    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
+MplStyle = Literal["paper", "presentation"]
 
 
-def get_runs_df():
+def init_cell():
+    load_btn = mo.ui.button(
+        label="ここをクリック！", value=False, on_click=lambda x: True
+    )
+    plt_options = list(typing.get_args(MplStyle))
+    plt_btn = mo.ui.radio(options=plt_options, value=plt_options[0])
+
+    current_dropdown = mo.ui.dropdown(CurrentList, value="steady")
+    ui = mo.md(f"""
+    ### MLflow データ解析
+    - Reload MLflow: {load_btn}
+    - matplotlib rendering setting: {plt_btn}
+    - testCurrent Type: {current_dropdown}
+    """)
+    return ui, load_btn, plt_btn, current_dropdown
+
+
+def _get_runs_df():
     experiment = mlflow.get_experiment_by_name(TARGET_EXP)
     if experiment is None:
         raise ValueError(
@@ -50,30 +64,44 @@ def get_runs_df():
     return runs_df
 
 
+def get_mlflow_runselector():
+    runs_df = _get_runs_df()
+    run_selector = mo.ui.table(
+        runs_df[["tags.mlflow.runName", "run_id"]],
+        label="比較・解析したいRunを複数選択",
+        selection="multi",
+    )
+    return run_selector
+
+
+def setup_matplotlib(matplotlib_style: MplStyle):
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    STYLE_DIR = os.path.join(CURRENT_DIR, "./conf/style")
+    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
+    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
+
+
+def get_run_info(run_id: str) -> dict:
+    client = mlflow.MlflowClient()
+
+    def load_yaml(run_id: str, filename: str) -> dict:
+        return yaml.safe_load(mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}"))
+
+    def load_text(run_id: str, filename: str) -> str:
+        return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
+
+    view_cfg = load_yaml(run_id, "view.json")
+
+    return {
+        "sindy_coef": view_model(**view_cfg),
+        "dataset": load_yaml(run_id, "dataset.yaml"),  # 同じファイルなら参照共有でOK
+        "runName": client.get_run(run_id).data.tags["mlflow.runName"],
+        "run_id": run_id,
+        "equations": load_text(run_id, "equations.txt"),
+    }
+
+
 def get_model_infos(run_ids):
-
-    def get_run_info(run_id: str) -> dict:
-        client = mlflow.MlflowClient()
-
-        def load_yaml(run_id: str, filename: str) -> dict:
-            return yaml.safe_load(
-                mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
-            )
-
-        def load_text(run_id: str, filename: str) -> str:
-            return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
-
-        view_cfg = load_yaml(run_id, "view.json")
-
-        return {
-            "sindy_coef": view_model(**view_cfg),
-            "dataset": load_yaml(
-                run_id, "dataset.yaml"
-            ),  # 同じファイルなら参照共有でOK
-            "runName": client.get_run(run_id).data.tags["mlflow.runName"],
-            "run_id": run_id,
-            "equations": load_text(run_id, "equations.txt"),
-        }
 
     model_infos = {}
     for run_id in run_ids:
@@ -84,6 +112,24 @@ def get_model_infos(run_ids):
         model_infos[run_id]["dataset"] = run_info["dataset"]
         model_infos[run_id]["sindy_coef"] = run_info["sindy_coef"]
     return model_infos
+
+
+def get_model_info_ui(run_ids):
+    model_infos = get_model_infos(run_ids)
+    return mo.vstack(
+        [
+            mo.vstack(
+                [
+                    mo.md(
+                        f"run_id:{run_id[:8]}.. &nbsp;&nbsp;　{model_infos[run_id]['runName']}"
+                    ),
+                    mo.md(f"{model_infos[run_id]['equations'][:40]}"),
+                    mo.mpl.interactive(model_infos[run_id]["sindy_coef"]),
+                ]
+            )
+            for run_id in run_ids
+        ]
+    )
 
 
 def _make_ui_element(name: str, annotation: type, default):
@@ -114,9 +160,9 @@ def get_param_ui(current_type: str) -> mo.ui.dictionary:
     )
 
 
-def resolve_config(model_infos, run_id, current_type, params: dict):
+def resolve_config(run_id, current_type, params: dict):
     if current_type == "train":
-        return model_infos[run_id]["dataset"]
+        return get_run_info(run_id)["dataset"]
     pipeline = build_current_setting(current_type, params)
     return build_dataset(pipeline=pipeline)
 
