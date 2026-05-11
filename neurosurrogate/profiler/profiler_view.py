@@ -1,5 +1,10 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Literal
+
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
@@ -9,102 +14,100 @@ from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 from plotly.subplots import make_subplots
 
+# ── データ構造 ────────────────────────────────────────────────
 
-def draw_engine(spec, engine="matplotlib", figsize_width=10):
-    """
-    datasets: {"ds_name": xr.Dataset} の辞書
-    spec: パネル(サブプロット)ごとの描画仕様のリスト
-    """
-    # --- 1. Spec に基づくデータ抽出 ---
-    panels = []
-    for panel_spec in spec:
-        traces = []
-        for tr in panel_spec["traces"]:
-            data = tr["data"]  # xarray
-            traces.append(
-                {
-                    "x": data.time.values,
-                    "y": data.values.squeeze(),
-                    "label": tr.get("label"),
-                    "color": tr.get("color"),
-                    "style": tr.get("style", "-"),
-                }
-            )
-        panels.append({"ylabel": panel_spec.get("ylabel", ""), "traces": traces})
 
-    # 最後のパネルにX軸ラベルを設定
-    if panels:
-        panels[-1]["xlabel"] = "Time [ms]"
+@dataclass
+class TraceSpec:
+    data: xr.DataArray
+    label: str | None = None
+    color: str | None = None
+    style: str = "-"
 
-    # --- 2. レンダリング ---
+    def xy(self) -> tuple[np.ndarray, np.ndarray]:
+        return self.data.time.values, self.data.values.squeeze()
+
+
+@dataclass
+class PanelSpec:
+    ylabel: str
+    traces: list[TraceSpec] | TraceSpec = field(default_factory=list)
+    xlabel: str | None = None
+
+    def __post_init__(self):
+        if isinstance(self.traces, TraceSpec):
+            self.traces = [self.traces]
+
+    def has_legend(self) -> bool:
+        return any(tr.label for tr in self.traces)
+
+    def with_xlabel(self, label: str) -> PanelSpec:
+        return PanelSpec(ylabel=self.ylabel, traces=self.traces, xlabel=label)
+
+
+# ── レンダラ ──────────────────────────────────────────────────
+
+
+def draw_engine(
+    spec: list[PanelSpec],
+    engine: Literal["matplotlib", "plotly"] = "matplotlib",
+    figsize_width: int = 10,
+) -> Figure | go.Figure:
+    panels = [*spec[:-1], spec[-1].with_xlabel("Time [ms]")] if spec else spec
+
     if engine == "plotly":
         return _draw_plotly(panels, figsize_width)
-    else:
-        return _draw_matplotlib(panels, figsize_width)
+    return _draw_matplotlib(panels, figsize_width)
 
 
-def _draw_matplotlib(panels, figsize_width):
+def _draw_matplotlib(panels: list[PanelSpec], figsize_width: int) -> Figure:
     n_rows = len(panels)
     fig = Figure(figsize=(figsize_width, 2 * n_rows))
     axs = fig.subplots(nrows=n_rows, ncols=1, sharex=True)
     if n_rows == 1:
         axs = [axs]
 
-    for ax, panel in zip(axs, panels):
-        has_legend = False
-        for tr in panel["traces"]:
-            ax.plot(
-                tr["x"],
-                tr["y"],
-                label=tr["label"],
-                color=tr["color"],
-                linestyle=tr["style"],
-            )
-            if tr["label"]:
-                has_legend = True
-
-        ax.set_ylabel(panel["ylabel"])
-        if has_legend:
+    for ax, p in zip(axs, panels):
+        for tr in p.traces:
+            x, y = tr.xy()
+            ax.plot(x, y, label=tr.label, color=tr.color, linestyle=tr.style)
+        ax.set_ylabel(p.ylabel)
+        if p.has_legend():
             ax.legend()
-        if panel.get("xlabel"):
-            ax.set_xlabel(panel["xlabel"])
+        if p.xlabel:
+            ax.set_xlabel(p.xlabel)
 
     fig.tight_layout()
     return fig
 
 
-def _draw_plotly(panels, figsize_width):
-
+def _draw_plotly(panels: list[PanelSpec], figsize_width: int) -> go.Figure:
     n_rows = len(panels)
     fig = make_subplots(
         rows=n_rows,
         cols=1,
         shared_xaxes=True,
         vertical_spacing=0.04,
-        subplot_titles=[p["ylabel"] for p in panels],
+        subplot_titles=[p.ylabel for p in panels],
     )
 
-    for row, panel in enumerate(panels, start=1):
-        for tr in panel["traces"]:
+    for row, p in enumerate(panels, start=1):
+        for tr in p.traces:
+            x, y = tr.xy()
             fig.add_trace(
                 go.Scatter(
-                    x=tr["x"],
-                    y=tr["y"],
-                    name=tr["label"],
-                    line=dict(
-                        color=tr["color"],
-                        dash=_style_to_dash(tr["style"]),
-                    ),
-                    showlegend=tr["label"] is not None,
+                    x=x,
+                    y=y,
+                    name=tr.label,
+                    line=dict(color=tr.color, dash=_style_to_dash(tr.style)),
+                    showlegend=tr.label is not None,
                     legendgroup=str(row),
                 ),
                 row=row,
                 col=1,
             )
 
-    # 最後のパネルだけX軸ラベルを表示
     fig.update_xaxes(title_text="Time [ms]", row=n_rows, col=1)
-
     fig.update_layout(
         width=figsize_width * 96,
         height=220 * n_rows,
@@ -113,119 +116,94 @@ def _draw_plotly(panels, figsize_width):
     return fig
 
 
-def _style_to_dash(style):
-    # matplotlib linestyle → plotly dash
-    return {
-        "-": "solid",
-        "--": "dash",
-        ":": "dot",
-        "-.": "dashdot",
-    }.get(style, "solid")
+def _style_to_dash(style: str) -> str:
+    return {"-": "solid", "--": "dash", ":": "dot", "-.": "dashdot"}.get(style, "solid")
 
 
-def trace(data: xr.DataArray, *, label=None, color=None, style=None):
-    t = {"data": data}
-    for k, v in [("label", label), ("color", color), ("style", style)]:
-        if v is not None:
-            t[k] = v
-    return t
+# ── Spec ビルダ ───────────────────────────────────────────────
 
 
-def panel(ylabel, traces):
-    # 単一 trace を渡された場合も list 化
-    if isinstance(traces, dict):
-        traces = [traces]
-    return {"ylabel": ylabel, "traces": list(traces)}
-
-
-def spec_simple(ds):
+def spec_simple(ds: xr.Dataset) -> list[PanelSpec]:
     comp_ids = np.unique(ds.coords["comp_id"].values)
-    spec = []
-    spec.append(panel("I_ext", trace(ds["I_ext"])))
+    multi = len(comp_ids) > 1
+    spec: list[PanelSpec] = [
+        PanelSpec("I_ext", TraceSpec(ds["I_ext"])),
+    ]
+
     if "I_internal" in ds:
         spec.append(
-            panel(
+            PanelSpec(
                 "I_internal",
                 [
-                    trace(ds["I_internal"].sel(node_id=i), label=f"Comp {i}")
+                    TraceSpec(ds["I_internal"].sel(node_id=i), label=f"Comp {i}")
                     for i in comp_ids
                 ],
             )
         )
 
-    # 3. V(t)
     spec.append(
-        panel(
+        PanelSpec(
             "V(t) [mV]",
             [
-                trace(
+                TraceSpec(
                     ds["vars"].sel(gate=False, comp_id=i),
-                    label=f"V (Comp {i})" if len(comp_ids) > 1 else None,
+                    label=f"V (Comp {i})" if multi else None,
                 )
                 for i in comp_ids
             ],
         )
     )
 
-    # 4. Gates / Latent
-    try:
-        g_data = ds["vars"].sel(gate=True)
-        traces = []
-        for i in comp_ids:
-            vars_in_comp = np.unique(g_data.sel(comp_id=i).coords["variable"].values)
-            for v_name in vars_in_comp:
-                traces.append(
-                    trace(
-                        g_data.sel(comp_id=i, variable=v_name),
-                        label=f"{v_name} (Comp {i})",
-                    )
-                )
-        if traces:
-            spec.append(panel("Gates / Latent", traces))
-    except KeyError:
-        pass
+    gate_traces = [
+        TraceSpec(
+            ds["vars"].sel(gate=True, comp_id=i, variable=v),
+            label=f"{v} (Comp {i})",
+        )
+        for i in comp_ids
+        for v in np.unique(
+            ds["vars"].sel(gate=True, comp_id=i).coords["variable"].values
+        )
+    ]
+    if gate_traces:
+        spec.append(PanelSpec("Gates / Latent", gate_traces))
 
     return spec
 
 
-def spec_diff(original, preprocessed, surrogate, surr_id):
-    spec = []
-
-    # 1. I_ext
-    spec.append(panel("I_ext(t)", trace(original["I_ext"], color="gold")))
-
-    # 2. V の比較
+def spec_diff(
+    original: xr.Dataset,
+    preprocessed: xr.Dataset,
+    surrogate: xr.Dataset,
+    surr_id: int,
+) -> list[PanelSpec]:
     v_sel = {"comp_id": surr_id, "variable": "V"}
-    spec.append(
-        panel(
+    latent_vars = [v for v in preprocessed.coords["variable"].values if v != "V"]
+    gate_data = original["vars"].sel(comp_id=surr_id, gate=True)
+
+    return [
+        PanelSpec("I_ext(t)", TraceSpec(original["I_ext"], color="gold")),
+        PanelSpec(
             "V [mV]",
             [
-                trace(original["vars"].sel(**v_sel), label="orig V", color="blue"),
-                trace(
+                TraceSpec(original["vars"].sel(**v_sel), label="orig V", color="blue"),
+                TraceSpec(
                     surrogate["vars"].sel(**v_sel),
                     label="surr V",
                     color="red",
                     style="--",
                 ),
             ],
-        )
-    )
-
-    # 3. Latent 変数の比較
-    prep_vars = preprocessed.coords["variable"].values.tolist()
-    latent_vars = [v for v in prep_vars if v != "V"]
-
-    for latent in latent_vars:
-        spec.append(
-            panel(
+        ),
+        *[
+            PanelSpec(
                 latent,
                 [
-                    trace(
+                    TraceSpec(
                         preprocessed["vars"].sel(variable=latent),
                         label=f"target {latent}",
                         color="blue",
                     ),
-                    trace(
+                    TraceSpec(
                         surrogate["vars"].sel(comp_id=surr_id, variable=latent),
                         label=f"surr {latent}",
                         color="red",
@@ -233,19 +211,16 @@ def spec_diff(original, preprocessed, surrogate, surr_id):
                     ),
                 ],
             )
-        )
-
-    # 4. Original の Gate 変数
-    gate_data = original["vars"].sel(comp_id=surr_id, gate=True)
-    gate_names = gate_data.coords["variable"].values.tolist()
-    spec.append(
-        panel(
+            for latent in latent_vars
+        ],
+        PanelSpec(
             "orig gates",
-            [trace(gate_data.sel(variable=name), label=name) for name in gate_names],
-        )
-    )
-
-    return spec
+            [
+                TraceSpec(gate_data.sel(variable=name), label=name)
+                for name in gate_data.coords["variable"].values
+            ],
+        ),
+    ]
 
 
 def view_model(xi_matrix, feature_names=None, target_names=None, figsize=(15, 3)):
