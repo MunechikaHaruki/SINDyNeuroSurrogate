@@ -8,14 +8,14 @@ app = marimo.App(width="medium")
 def _():
     import analysis
     import marimo as mo
-    base_button=analysis.get_base_btn()
+    base_button=analysis.BaseButton.get_base_btn()
     base_button.render()
     return analysis, base_button, mo
 
 
 @app.cell
 def _(analysis, base_button):
-    param_button=analysis.get_detailed_btn(base_button)
+    param_button=analysis.ParamUI.get_detailed_btn(base_button)
     param_button.render()
     return (param_button,)
 

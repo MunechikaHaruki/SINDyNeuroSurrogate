@@ -61,6 +61,7 @@ class BaseButton:
     def run_ids(self):
         return self.run_selector.value["run_id"].tolist()
 
+    @staticmethod
     def get_mlflow_runselector():
         experiment = mlflow.get_experiment_by_name(TARGET_EXP)
         if experiment is None:
@@ -90,26 +91,26 @@ class BaseButton:
             initial_selection=[0],
         )
 
-
-def get_base_btn() -> BaseButton:
-    plt_options = list(typing.get_args(MplStyle))
-    return BaseButton(
-        plt_btn=mo.ui.radio(options=plt_options, value=plt_options[0]),
-        current_dropdown=mo.ui.dropdown(CurrentList, value="steady"),
-        base_dataset_ui=mo.ui.dictionary(
-            {
-                "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
-                "silence_duration": mo.ui.number(
-                    value=80, step=1, label="silence_duration"
-                ),
-                "duration": mo.ui.number(value=800, step=100, label="duration"),
-                "model_name": mo.ui.dropdown(
-                    options=list(MCMODELS.keys()), label="model_name", value="hh"
-                ),
-            }
-        ),
-        run_selector=BaseButton.get_mlflow_runselector(),
-    )
+    @staticmethod
+    def get_base_btn():
+        plt_options = list(typing.get_args(MplStyle))
+        return BaseButton(
+            plt_btn=mo.ui.radio(options=plt_options, value=plt_options[0]),
+            current_dropdown=mo.ui.dropdown(CurrentList, value="steady"),
+            base_dataset_ui=mo.ui.dictionary(
+                {
+                    "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
+                    "silence_duration": mo.ui.number(
+                        value=80, step=1, label="silence_duration"
+                    ),
+                    "duration": mo.ui.number(value=800, step=100, label="duration"),
+                    "model_name": mo.ui.dropdown(
+                        options=list(MCMODELS.keys()), label="model_name", value="hh"
+                    ),
+                }
+            ),
+            run_selector=BaseButton.get_mlflow_runselector(),
+        )
 
 
 @dataclass
@@ -145,29 +146,31 @@ class ParamUI:
     def run_id(self):
         return self.runid_dropdown.value
 
+    @staticmethod
+    def get_detailed_btn(base_btn: BaseButton):
 
-def get_detailed_btn(base_btn: BaseButton) -> ParamUI:
-
-    current_sig = inspect.signature(FUNC_MAP[base_btn.current_dropdown.value])
-    current_ui = mo.ui.dictionary(
-        {
-            name: ParamUI._make_ui_element(
-                name,
-                param.annotation,
-                param.default if param.default is not inspect.Parameter.empty else 0,
-            )
-            for name, param in current_sig.parameters.items()
-        }
-    )
-    surrogate_target_ui = mo.ui.multiselect(
-        options=get_comp_names(base_btn), value=[get_comp_names(base_btn)[0]]
-    )
-    run_ids = base_btn.run_selector.value["run_id"].tolist()
-    return ParamUI(
-        current_ui=current_ui,
-        surrogate_target_ui=surrogate_target_ui,
-        runid_dropdown=mo.ui.dropdown(options=run_ids, value=run_ids[0]),
-    )
+        current_sig = inspect.signature(FUNC_MAP[base_btn.current_dropdown.value])
+        current_ui = mo.ui.dictionary(
+            {
+                name: ParamUI._make_ui_element(
+                    name,
+                    param.annotation,
+                    param.default
+                    if param.default is not inspect.Parameter.empty
+                    else 0,
+                )
+                for name, param in current_sig.parameters.items()
+            }
+        )
+        surrogate_target_ui = mo.ui.multiselect(
+            options=get_comp_names(base_btn), value=[get_comp_names(base_btn)[0]]
+        )
+        run_ids = base_btn.run_selector.value["run_id"].tolist()
+        return ParamUI(
+            current_ui=current_ui,
+            surrogate_target_ui=surrogate_target_ui,
+            runid_dropdown=mo.ui.dropdown(options=run_ids, value=run_ids[0]),
+        )
 
 
 def get_run_info(run_id: str) -> dict:
@@ -190,7 +193,7 @@ def get_run_info(run_id: str) -> dict:
     }
 
 
-def get_model_infos(run_ids):
+def get_model_info_ui(run_ids):
 
     model_infos = {}
     for run_id in run_ids:
@@ -200,11 +203,6 @@ def get_model_infos(run_ids):
         model_infos[run_id]["equations"] = run_info["equations"]
         model_infos[run_id]["dataset"] = run_info["dataset"]
         model_infos[run_id]["sindy_coef"] = run_info["sindy_coef"]
-    return model_infos
-
-
-def get_model_info_ui(run_ids):
-    model_infos = get_model_infos(run_ids)
     return mo.vstack(
         [
             mo.vstack(
