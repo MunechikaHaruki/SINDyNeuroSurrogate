@@ -20,21 +20,9 @@ def _(analysis, base_button):
     return (param_button,)
 
 
-@app.cell(hide_code=True)
-def _(analysis, base_button, mo):
-    # ボタンが押されたときだけデータを読み込む
-    with mo.status.spinner(title="MLflowからデータを読み込み中..."):
-
-        base_button.setup_mpl()
-        run_selector=analysis.get_mlflow_runselector()
-
-    run_selector
-    return (run_selector,)
-
-
 @app.cell
-def _(mo, run_selector):
-    run_ids = run_selector.value["run_id"].tolist()
+def _(base_button, mo):
+    run_ids = base_button.run_selector.value["run_id"].tolist()
     runid_dropdown = mo.ui.dropdown(options=run_ids,value=run_ids[0])
     mo.md(f"select experiment{runid_dropdown}")
     return run_ids, runid_dropdown

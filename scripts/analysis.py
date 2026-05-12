@@ -37,17 +37,17 @@ get_comp_names = lambda base_btn: (
 
 @dataclass
 class BaseButton:
-    load_btn: mo.ui.button
     plt_btn: mo.ui.button
     current_dropdown: mo.ui.dropdown
     base_dataset_ui: mo.ui.dictionary
+    run_selector: mo.ui.table
 
     def render(self):
         return mo.md(f"""
         ### MLflow データ解析
-        - Reload: {self.load_btn}
         - matplotlib rendering setting: {self.plt_btn}
         - baseDatasetUI: {self.base_dataset_ui}
+        {self.run_selector}
         """)
 
     def setup_mpl(self):
@@ -56,6 +56,56 @@ class BaseButton:
         STYLE_DIR = os.path.join(CURRENT_DIR, "./conf/style")
         plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
         plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
+
+    def get_mlflow_runselector():
+        experiment = mlflow.get_experiment_by_name(TARGET_EXP)
+        if experiment is None:
+            raise ValueError(
+                f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
+            )
+        all_runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
+        if all_runs_df.empty:
+            raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
+        runs_df = all_runs_df.copy()
+        runs_df = runs_df.sort_values("start_time", ascending=False)
+        runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
+        cols = [
+            c
+            for c in runs_df.columns
+            if "metrics" in c or "params" in c or c == "run_id"
+        ]
+        runs_df = runs_df[
+            ["tags.mlflow.runName", "run_id", "start_time"]
+            + [c for c in cols if c != "run_id"]
+        ]
+
+        return mo.ui.table(
+            runs_df[["tags.mlflow.runName", "run_id"]],
+            label="比較・解析したいRunを複数選択",
+            selection="multi",
+            initial_selection=[0],
+        )
+
+
+def get_base_btn() -> BaseButton:
+    plt_options = list(typing.get_args(MplStyle))
+    return BaseButton(
+        plt_btn=mo.ui.radio(options=plt_options, value=plt_options[0]),
+        current_dropdown=mo.ui.dropdown(CurrentList, value="steady"),
+        base_dataset_ui=mo.ui.dictionary(
+            {
+                "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
+                "silence_duration": mo.ui.number(
+                    value=80, step=1, label="silence_duration"
+                ),
+                "duration": mo.ui.number(value=800, step=100, label="duration"),
+                "model_name": mo.ui.dropdown(
+                    options=list(MCMODELS.keys()), label="model_name", value="hh"
+                ),
+            }
+        ),
+        run_selector=BaseButton.get_mlflow_runselector(),
+    )
 
 
 @dataclass
@@ -71,49 +121,27 @@ class ParamUI:
         - surrogate target: {self.surrogate_target_ui}
         # """)
 
+    @staticmethod
+    def _make_ui_element(name: str, annotation: type, default):
+        if annotation is int:
+            return mo.ui.number(value=int(default), step=1, label=name)
+        elif annotation is float:
+            return mo.ui.number(value=float(default), step=0.1, label=name)
+        elif annotation is bool:
+            return mo.ui.checkbox(value=bool(default), label=name)
+        elif annotation is list:
+            return mo.ui.array([mo.ui.number(value=0.0, step=0.1)], label=name)
 
-def get_base_btn() -> BaseButton:
-    plt_options = list(typing.get_args(MplStyle))
-    return BaseButton(
-        load_btn=mo.ui.button(
-            label="ここをクリック！", value=False, on_click=lambda x: True
-        ),
-        plt_btn=mo.ui.radio(options=plt_options, value=plt_options[0]),
-        current_dropdown=mo.ui.dropdown(CurrentList, value="steady"),
-        base_dataset_ui=mo.ui.dictionary(
-            {
-                "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
-                "silence_duration": mo.ui.number(
-                    value=80, step=1, label="silence_duration"
-                ),
-                "duration": mo.ui.number(value=800, step=100, label="duration"),
-                "model_name": mo.ui.dropdown(
-                    options=list(MCMODELS.keys()), label="model_name", value="hh"
-                ),
-            }
-        ),
-    )
-
-
-def _make_ui_element(name: str, annotation: type, default):
-    if annotation is int:
-        return mo.ui.number(value=int(default), step=1, label=name)
-    elif annotation is float:
-        return mo.ui.number(value=float(default), step=0.1, label=name)
-    elif annotation is bool:
-        return mo.ui.checkbox(value=bool(default), label=name)
-    elif annotation is list:
-        return mo.ui.array([mo.ui.number(value=0.0, step=0.1)], label=name)
-
-    else:
-        raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
+        else:
+            raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
 
 
 def get_detailed_btn(base_btn: BaseButton) -> ParamUI:
+
     current_sig = inspect.signature(FUNC_MAP[base_btn.current_dropdown.value])
     current_ui = mo.ui.dictionary(
         {
-            name: _make_ui_element(
+            name: ParamUI._make_ui_element(
                 name,
                 param.annotation,
                 param.default if param.default is not inspect.Parameter.empty else 0,
@@ -127,34 +155,6 @@ def get_detailed_btn(base_btn: BaseButton) -> ParamUI:
     return ParamUI(
         current_ui=current_ui,
         surrogate_target_ui=surrogate_target_ui,
-    )
-
-
-def get_mlflow_runselector():
-    experiment = mlflow.get_experiment_by_name(TARGET_EXP)
-    if experiment is None:
-        raise ValueError(
-            f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
-        )
-    all_runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
-    if all_runs_df.empty:
-        raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
-    runs_df = all_runs_df.copy()
-    runs_df = runs_df.sort_values("start_time", ascending=False)
-    runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
-    cols = [
-        c for c in runs_df.columns if "metrics" in c or "params" in c or c == "run_id"
-    ]
-    runs_df = runs_df[
-        ["tags.mlflow.runName", "run_id", "start_time"]
-        + [c for c in cols if c != "run_id"]
-    ]
-
-    return mo.ui.table(
-        runs_df[["tags.mlflow.runName", "run_id"]],
-        label="比較・解析したいRunを複数選択",
-        selection="multi",
-        initial_selection=[0],
     )
 
 
