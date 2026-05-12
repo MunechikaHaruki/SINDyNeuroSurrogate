@@ -8,24 +8,24 @@ app = marimo.App(width="medium")
 def _():
     import analysis
     import marimo as mo
-    base_button=analysis.BaseButton.get_base_btn()
+
+    base_button = analysis.BaseUI.get_base_btn()
     base_button.render()
-    return analysis, base_button, mo
+    return analysis, base_button
 
 
 @app.cell
 def _(analysis, base_button):
-    param_button=analysis.ParamUI.get_detailed_btn(base_button)
+    param_button = analysis.ParamUI.get_detailed_btn(base_button)
     param_button.render()
     return (param_button,)
 
 
 @app.cell
-def _(analysis, mo, param_button):
-    eval_comp_dropdown=mo.ui.dropdown(options=param_button.surrogate_target_ui.value,value=param_button.surrogate_target_ui.value[0])
-    draw_func_dropdown=mo.ui.dropdown(options=analysis.DRAW_LIST,value=analysis.DRAW_LIST[0])
-    mo.md(f"{eval_comp_dropdown},{draw_func_dropdown}")
-    return draw_func_dropdown, eval_comp_dropdown
+def _(analysis, param_button):
+    eval_ui=analysis.EvalUI.get_eval_ui(param_button)
+    eval_ui.render()
+    return (eval_ui,)
 
 
 @app.cell
@@ -35,22 +35,15 @@ def _(analysis, base_button):
 
 
 @app.cell
-def _(param_button):
-    print(param_button.runid_dropdown.value)
-    return
-
-
-@app.cell
 def _(analysis, base_button, param_button):
 
-    result=analysis.eval_dataset(base_btn=base_button,param_ui=param_button)
+    result = analysis.eval_dataset(base_btn=base_button, param_ui=param_button)
     return (result,)
 
 
 @app.cell
-def _(analysis, draw_func_dropdown, eval_comp_dropdown, result):
-
-    analysis.view_dataset(result,eval_str=eval_comp_dropdown.value,draw_func_str=draw_func_dropdown.value)
+def _(eval_ui, result):
+    eval_ui.view_result(result)
     return
 
 

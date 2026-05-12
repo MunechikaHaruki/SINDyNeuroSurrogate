@@ -36,7 +36,7 @@ get_comp_names = lambda base_btn: (
 
 
 @dataclass
-class BaseButton:
+class BaseUI:
     plt_btn: mo.ui.button
     current_dropdown: mo.ui.dropdown
     base_dataset_ui: mo.ui.dictionary
@@ -94,7 +94,7 @@ class BaseButton:
     @staticmethod
     def get_base_btn():
         plt_options = list(typing.get_args(MplStyle))
-        return BaseButton(
+        return BaseUI(
             plt_btn=mo.ui.radio(options=plt_options, value=plt_options[0]),
             current_dropdown=mo.ui.dropdown(CurrentList, value="steady"),
             base_dataset_ui=mo.ui.dictionary(
@@ -109,7 +109,7 @@ class BaseButton:
                     ),
                 }
             ),
-            run_selector=BaseButton.get_mlflow_runselector(),
+            run_selector=BaseUI.get_mlflow_runselector(),
         )
 
 
@@ -147,7 +147,7 @@ class ParamUI:
         return self.runid_dropdown.value
 
     @staticmethod
-    def get_detailed_btn(base_btn: BaseButton):
+    def get_detailed_btn(base_btn: BaseUI):
 
         current_sig = inspect.signature(FUNC_MAP[base_btn.current_dropdown.value])
         current_ui = mo.ui.dictionary(
@@ -219,7 +219,7 @@ def get_model_info_ui(run_ids):
     )
 
 
-def eval_dataset(base_btn: BaseButton, param_ui: ParamUI):
+def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
 
     current_type = base_btn.current_dropdown.value
     if current_type == "train":
@@ -263,29 +263,47 @@ def eval_dataset(base_btn: BaseButton, param_ui: ParamUI):
     }
 
 
-def view_dataset(result, eval_str, draw_func_str):
-    target_comp_id = result["name_to_idx"](eval_str)
-    metrics = result["metrics"](target_comp_id)
-    pre = result["get_preprocessed"](target_comp_id)
-    print(pre.coords)
-    print("vieowe")
-    cards = mo.hstack(
-        [
-            mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
-            for k, v in metrics.items()
-        ],
-        wrap=True,
-    )
-    return mo.vstack(
-        [
-            cards,
-            mo.mpl.interactive(
-                DRAW_MAP[draw_func_str](
-                    result["datasets"]["orig"],
-                    result["datasets"]["surr"],
-                    pre,
-                    target_comp_id,
-                )
+@dataclass
+class EvalUI:
+    eval_comp: mo.ui.dropdown
+    draw_func: mo.ui.dropdown
+
+    def render(self):
+        return mo.md(f"評価対象のComp:{self.eval_comp},描画関数:{self.draw_func}")
+
+    @staticmethod
+    def get_eval_ui(param_ui: ParamUI):
+        return EvalUI(
+            eval_comp=mo.ui.dropdown(
+                options=param_ui.surrogate_target_ui.value,
+                value=param_ui.surrogate_target_ui.value[0],
             ),
-        ]
-    )
+            draw_func=mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
+        )
+
+    def view_result(self, result):
+        target_comp_id = result["name_to_idx"](self.eval_comp.value)
+        metrics = result["metrics"](target_comp_id)
+        pre = result["get_preprocessed"](target_comp_id)
+        print(pre.coords)
+        print("vieowe")
+        cards = mo.hstack(
+            [
+                mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
+                for k, v in metrics.items()
+            ],
+            wrap=True,
+        )
+        return mo.vstack(
+            [
+                cards,
+                mo.mpl.interactive(
+                    DRAW_MAP[self.draw_func.value](
+                        result["datasets"]["orig"],
+                        result["datasets"]["surr"],
+                        pre,
+                        target_comp_id,
+                    )
+                ),
+            ]
+        )
