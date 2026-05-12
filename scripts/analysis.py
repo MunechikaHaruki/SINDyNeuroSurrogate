@@ -2,6 +2,7 @@ import copy
 import inspect
 import os
 import typing
+from dataclasses import dataclass
 from typing import Literal
 
 import marimo as mo
@@ -27,35 +28,66 @@ MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
 
 
-def init_cell():
-    load_btn = mo.ui.button(
-        label="ここをクリック！", value=False, on_click=lambda x: True
-    )
+@dataclass
+class BaseButton:
+    load_btn: mo.ui.button
+    plt_btn: mo.ui.button
+    current_dropdown: mo.ui.dropdown
+    base_dataset_ui: mo.ui.dictionary
+
+    def render(self):
+        return mo.md(f"""
+        ### MLflow データ解析
+        - Reload: {self.load_btn}
+        - matplotlib rendering setting: {self.plt_btn}
+        - baseDatasetUI: {self.base_dataset_ui}
+        """)
+
+    def setup_mpl(self):
+        matplotlib_style = self.plt_btn.value
+        CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+        STYLE_DIR = os.path.join(CURRENT_DIR, "./conf/style")
+        plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
+        plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
+
+
+@dataclass
+class ParamUI:
+    current_ui: mo.ui.dictionary
+    surrogate_target_ui: mo.ui.multiselect
+    eval_comp_dropdown: mo.ui.dropdown
+
+    def render(self):
+
+        return mo.md(f"""
+        ### パラメタ設定
+        - currentui: {self.current_ui}
+        - surrogate target: {self.surrogate_target_ui}
+        - eval_comp: {self.eval_comp_dropdown}
+        # """)
+
+
+def get_base_btn() -> BaseButton:
     plt_options = list(typing.get_args(MplStyle))
-    plt_btn = mo.ui.radio(options=plt_options, value=plt_options[0])
-
-    current_dropdown = mo.ui.dropdown(CurrentList, value="steady")
-
-    base_dataset_ui = mo.ui.dictionary(
-        {
-            "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
-            "silence_duration": mo.ui.number(
-                value=80, step=1, label="silence_duration"
-            ),
-            "duration": mo.ui.number(value=800, step=100, label="duration"),
-            "model_name": mo.ui.dropdown(
-                options=list(MCMODELS.keys()), label="model_name", value="hh"
-            ),
-        }
+    return BaseButton(
+        load_btn=mo.ui.button(
+            label="ここをクリック！", value=False, on_click=lambda x: True
+        ),
+        plt_btn=mo.ui.radio(options=plt_options, value=plt_options[0]),
+        current_dropdown=mo.ui.dropdown(CurrentList, value="steady"),
+        base_dataset_ui=mo.ui.dictionary(
+            {
+                "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
+                "silence_duration": mo.ui.number(
+                    value=80, step=1, label="silence_duration"
+                ),
+                "duration": mo.ui.number(value=800, step=100, label="duration"),
+                "model_name": mo.ui.dropdown(
+                    options=list(MCMODELS.keys()), label="model_name", value="hh"
+                ),
+            }
+        ),
     )
-
-    ui = mo.md(f"""
-    ### MLflow データ解析
-    - Reload: {load_btn}
-    - matplotlib rendering setting: {plt_btn}
-    - baseDatasetUI: {base_dataset_ui}
-    """)
-    return ui, load_btn, plt_btn, current_dropdown, base_dataset_ui
 
 
 def _make_ui_element(name: str, annotation: type, default):
@@ -72,8 +104,8 @@ def _make_ui_element(name: str, annotation: type, default):
         raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
 
 
-def get_param_ui(current_type: str, model_name: str) -> mo.ui.dictionary:
-    current_sig = inspect.signature(FUNC_MAP[current_type])
+def get_detailed_btn(base_btn: BaseButton) -> ParamUI:
+    current_sig = inspect.signature(FUNC_MAP[base_btn.current_dropdown.value])
     current_ui = mo.ui.dictionary(
         {
             name: _make_ui_element(
@@ -84,13 +116,16 @@ def get_param_ui(current_type: str, model_name: str) -> mo.ui.dictionary:
             for name, param in current_sig.parameters.items()
         }
     )
-    surrogate_target_ui = mo.ui.multiselect(options=MCMODELS[model_name].names)
-    ui = mo.md(f"""
-    ### パラメタ設定
-    - currentui: {current_ui}
-    - surrogate target: {surrogate_target_ui}
-    # """)
-    return ui, current_ui, surrogate_target_ui
+    surrogate_target_ui = mo.ui.multiselect(
+        options=MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
+    )
+    return ParamUI(
+        current_ui=current_ui,
+        surrogate_target_ui=surrogate_target_ui,
+        eval_comp_dropdown=mo.ui.dropdown(
+            options=MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
+        ),
+    )
 
 
 def get_mlflow_runselector():
@@ -119,13 +154,6 @@ def get_mlflow_runselector():
         selection="multi",
         initial_selection=[0],
     )
-
-
-def setup_matplotlib(matplotlib_style: MplStyle):
-    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-    STYLE_DIR = os.path.join(CURRENT_DIR, "./conf/style")
-    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
-    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
 
 def get_run_info(run_id: str) -> dict:

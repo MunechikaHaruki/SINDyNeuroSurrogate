@@ -8,24 +8,24 @@ app = marimo.App(width="medium")
 def _():
     import analysis
     import marimo as mo
-    ui,load_btn,plt_btn,current_dropdown,base_dataset_ui=analysis.init_cell()
-    ui
-    return analysis, base_dataset_ui, current_dropdown, load_btn, mo, plt_btn
+    base_button=analysis.get_base_btn()
+    base_button.render()
+    return analysis, base_button, mo
 
 
 @app.cell
-def _(analysis, base_dataset_ui, current_dropdown):
-    param_ui,current_ui,surrogate_ui=analysis.get_param_ui(current_dropdown.value,base_dataset_ui.value["model_name"])
-    param_ui
-    return current_ui, surrogate_ui
+def _(analysis, base_button):
+    param_button=analysis.get_detailed_btn(base_button)
+    param_button.render()
+    return
 
 
 @app.cell(hide_code=True)
-def _(analysis, load_btn, mo, plt_btn):
+def _(analysis, base_button, mo):
     # ボタンが押されたときだけデータを読み込む
     with mo.status.spinner(title="MLflowからデータを読み込み中..."):
-        if load_btn.value:
-            analysis.setup_matplotlib(plt_btn.value)
+        if base_button.load_btn.value:
+            base_button.setup_mpl()
             run_selector=analysis.get_mlflow_runselector()
         else:
             run_selector=mo.md("push Reload button")
@@ -34,25 +34,17 @@ def _(analysis, load_btn, mo, plt_btn):
 
 
 @app.cell
-def _(mo, run_ids):
-    mo.stop(run_ids is None,"Choose Run")
+def _(mo, run_selector):
+    run_ids = run_selector.value["run_id"].tolist()
     runid_dropdown = mo.ui.dropdown(options=run_ids,value=run_ids[0])
-    mo.hstack([mo.md("select experiment"), runid_dropdown])
-    return (runid_dropdown,)
+    mo.md(f"select experiment{runid_dropdown}")
+    return run_ids, runid_dropdown
 
 
 @app.cell(hide_code=True)
-def _(analysis, run_selector):
-    run_ids = run_selector.value["run_id"].tolist()
+def _(analysis, run_ids):
     analysis.get_model_info_ui(run_ids)
-    return (run_ids,)
-
-
-@app.cell
-def _(mo, surrogate_ui):
-    eval_comp_dropdown=mo.ui.dropdown(options=surrogate_ui.value,value=surrogate_ui.value[0])
-    eval_comp_dropdown
-    return (eval_comp_dropdown,)
+    return
 
 
 @app.cell
