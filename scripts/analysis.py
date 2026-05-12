@@ -57,6 +57,10 @@ class BaseButton:
         plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
         plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
+    @property
+    def run_ids(self):
+        return self.run_selector.value["run_id"].tolist()
+
     def get_mlflow_runselector():
         experiment = mlflow.get_experiment_by_name(TARGET_EXP)
         if experiment is None:
@@ -112,6 +116,7 @@ def get_base_btn() -> BaseButton:
 class ParamUI:
     current_ui: mo.ui.dictionary
     surrogate_target_ui: mo.ui.multiselect
+    runid_dropdown: mo.ui.dropdown
 
     def render(self):
 
@@ -119,6 +124,7 @@ class ParamUI:
         ### パラメタ設定
         - currentui: {self.current_ui}
         - surrogate target: {self.surrogate_target_ui}
+        - runid_dropdown: {self.runid_dropdown}
         # """)
 
     @staticmethod
@@ -134,6 +140,10 @@ class ParamUI:
 
         else:
             raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
+
+    @property
+    def run_id(self):
+        return self.runid_dropdown.value
 
 
 def get_detailed_btn(base_btn: BaseButton) -> ParamUI:
@@ -152,9 +162,11 @@ def get_detailed_btn(base_btn: BaseButton) -> ParamUI:
     surrogate_target_ui = mo.ui.multiselect(
         options=get_comp_names(base_btn), value=[get_comp_names(base_btn)[0]]
     )
+    run_ids = base_btn.run_selector.value["run_id"].tolist()
     return ParamUI(
         current_ui=current_ui,
         surrogate_target_ui=surrogate_target_ui,
+        runid_dropdown=mo.ui.dropdown(options=run_ids, value=run_ids[0]),
     )
 
 
@@ -209,11 +221,11 @@ def get_model_info_ui(run_ids):
     )
 
 
-def eval_dataset(run_id: str, base_btn: BaseButton, param_ui: ParamUI):
+def eval_dataset(base_btn: BaseButton, param_ui: ParamUI):
 
     current_type = base_btn.current_dropdown.value
     if current_type == "train":
-        dataset_cfg = get_run_info(run_id)["dataset"]
+        dataset_cfg = get_run_info(param_ui.run_id)["dataset"]
         model_name = dataset_cfg["model_name"]
     else:
         pipeline = build_current_setting(current_type, param_ui.current_ui.value)
@@ -221,7 +233,7 @@ def eval_dataset(run_id: str, base_btn: BaseButton, param_ui: ParamUI):
         model_name = base_btn.base_dataset_ui.value["model_name"]
 
     name_to_idx = MCMODELS[model_name].name_to_idx
-    surrogate_model = load_surrogate_model(run_id)
+    surrogate_model = load_surrogate_model(param_ui.run_id)
     u = build_current_pipeline(dataset_cfg["current"])
     original_ds = unified_simulator(dt=dataset_cfg["dt"], u=u, net=dataset_cfg["net"])
     surr_net = copy.deepcopy(dataset_cfg["net"])

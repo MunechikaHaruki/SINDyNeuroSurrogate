@@ -4,7 +4,7 @@ __generated_with = "0.21.1"
 app = marimo.App(width="medium")
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _():
     import analysis
     import marimo as mo
@@ -21,14 +21,6 @@ def _(analysis, base_button):
 
 
 @app.cell
-def _(base_button, mo):
-    run_ids = base_button.run_selector.value["run_id"].tolist()
-    runid_dropdown = mo.ui.dropdown(options=run_ids,value=run_ids[0])
-    mo.md(f"select experiment{runid_dropdown}")
-    return run_ids, runid_dropdown
-
-
-@app.cell
 def _(analysis, mo, param_button):
     eval_comp_dropdown=mo.ui.dropdown(options=param_button.surrogate_target_ui.value,value=param_button.surrogate_target_ui.value[0])
     draw_func_dropdown=mo.ui.dropdown(options=analysis.DRAW_LIST,value=analysis.DRAW_LIST[0])
@@ -36,19 +28,22 @@ def _(analysis, mo, param_button):
     return draw_func_dropdown, eval_comp_dropdown
 
 
-@app.cell(hide_code=True)
-def _(analysis, run_ids):
-    analysis.get_model_info_ui(run_ids)
+@app.cell
+def _(analysis, base_button):
+    analysis.get_model_info_ui(base_button.run_ids)
     return
 
 
 @app.cell
-def _(analysis, base_button, mo, param_button, runid_dropdown):
-    mo.stop(
-        runid_dropdown.value is None,
-        "実験を選択してください",
-    )
-    result=analysis.eval_dataset(run_id=runid_dropdown.value,base_btn=base_button,param_ui=param_button)
+def _(param_button):
+    print(param_button.runid_dropdown.value)
+    return
+
+
+@app.cell
+def _(analysis, base_button, param_button):
+
+    result=analysis.eval_dataset(base_btn=base_button,param_ui=param_button)
     return (result,)
 
 
