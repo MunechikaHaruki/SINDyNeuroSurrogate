@@ -207,21 +207,16 @@ def get_model_info_ui(run_ids):
     )
 
 
-def eval_dataset(
-    run_id: str,
-    current_type,
-    current_params: dict,
-    base_dataset_params: dict,
-    surrogate_list: list[str],
-    eval_comp: str,
-):
+def eval_dataset(run_id: str, base_btn: BaseButton, param_ui: ParamUI):
+
+    current_type = base_btn.current_dropdown.value
     if current_type == "train":
         dataset_cfg = get_run_info(run_id)["dataset"]
         model_name = dataset_cfg["model_name"]
     else:
-        pipeline = build_current_setting(current_type, current_params)
-        dataset_cfg = build_dataset(**base_dataset_params, pipeline=pipeline)
-        model_name = base_dataset_params["model_name"]
+        pipeline = build_current_setting(current_type, param_ui.current_ui.value)
+        dataset_cfg = build_dataset(**base_btn.base_dataset_ui.value, pipeline=pipeline)
+        model_name = base_btn.base_dataset_ui.value["model_name"]
 
     name_to_idx = MCMODELS[model_name].name_to_idx
     surrogate_model = load_surrogate_model(run_id)
@@ -229,7 +224,7 @@ def eval_dataset(
     original_ds = unified_simulator(dt=dataset_cfg["dt"], u=u, net=dataset_cfg["net"])
     surr_net = copy.deepcopy(dataset_cfg["net"])
 
-    for i in surrogate_list:
+    for i in param_ui.surrogate_target_ui.value:
         surr_net["nodes"][name_to_idx(i)] = "surr"
 
     surr_ds = unified_simulator(
@@ -239,7 +234,7 @@ def eval_dataset(
         surrogate_model=surrogate_model,
     )
 
-    target_comp_id = name_to_idx(eval_comp)
+    target_comp_id = name_to_idx(param_ui.eval_comp_dropdown.value)
 
     preprocessed_xr = transform_gate(
         surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id

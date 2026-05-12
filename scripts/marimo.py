@@ -17,7 +17,7 @@ def _():
 def _(analysis, base_button):
     param_button=analysis.get_detailed_btn(base_button)
     param_button.render()
-    return
+    return (param_button,)
 
 
 @app.cell(hide_code=True)
@@ -48,28 +48,12 @@ def _(analysis, run_ids):
 
 
 @app.cell
-def _(
-    analysis,
-    base_dataset_ui,
-    current_dropdown,
-    current_ui,
-    eval_comp_dropdown,
-    mo,
-    runid_dropdown,
-    surrogate_ui,
-):
+def _(analysis, base_button, mo, param_button, runid_dropdown):
     mo.stop(
-        runid_dropdown.value is None or current_dropdown.value is None,
+        runid_dropdown.value is None,
         "実験を選択してください",
     )
-    result=analysis.eval_dataset(
-    run_id=runid_dropdown.value,
-    current_type=current_dropdown.value,
-    current_params=current_ui.value,
-    base_dataset_params=base_dataset_ui.value,
-    surrogate_list=surrogate_ui.value,
-        eval_comp=eval_comp_dropdown.value
-    )
+    result=analysis.eval_dataset(run_id=runid_dropdown.value,base_btn=base_button,param_ui=param_button)
 
     analysis.view_dataset(result)
     return
