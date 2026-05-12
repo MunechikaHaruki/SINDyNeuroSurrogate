@@ -7,7 +7,6 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import analysis
-    import marimo as mo
 
     base_button = analysis.BaseUI.get_base_btn()
     base_button.render()

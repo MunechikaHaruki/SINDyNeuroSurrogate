@@ -19,10 +19,6 @@ clean-log:
 	rm -rf ./hydra-outputs
 	rm -rf ./mlruns
 
-clean:
-	rm -rf ~/.prefect
-
-
 #Format source code with ruff
 format:
 	{{VIRTUAL_ENV}} ruff check --fix
@@ -56,15 +52,10 @@ radon:
 # PROJECT RULES                                                                 #
 #################################################################################
 
-# activate prefect server
-prefect:
-	{{VIRTUAL_ENV}} prefect server start
-
 # activate logging server
 mlflow:
     @lsof -t -i:{{MLFLOW_PORT}} | xargs kill -9 || true
     {{VIRTUAL_ENV}} python -m mlflow ui --port {{MLFLOW_PORT}} --backend-store-uri ./mlruns
 
-# activate
 marimo:
-	{{VIRTUAL_ENV}} marimo edit equations.py
+	{{VIRTUAL_ENV}} marimo edit scripts/marimo.py
