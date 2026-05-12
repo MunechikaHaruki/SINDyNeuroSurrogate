@@ -24,8 +24,10 @@ def _(analysis, base_button):
 def _(analysis, base_button, mo):
     # ボタンが押されたときだけデータを読み込む
     with mo.status.spinner(title="MLflowからデータを読み込み中..."):
+
         base_button.setup_mpl()
         run_selector=analysis.get_mlflow_runselector()
+
     run_selector
     return (run_selector,)
 
@@ -39,10 +41,11 @@ def _(mo, run_selector):
 
 
 @app.cell
-def _(mo, param_button):
+def _(analysis, mo, param_button):
     eval_comp_dropdown=mo.ui.dropdown(options=param_button.surrogate_target_ui.value,value=param_button.surrogate_target_ui.value[0])
-    eval_comp_dropdown
-    return (eval_comp_dropdown,)
+    draw_func_dropdown=mo.ui.dropdown(options=analysis.DRAW_LIST,value=analysis.DRAW_LIST[0])
+    mo.md(f"{eval_comp_dropdown},{draw_func_dropdown}")
+    return draw_func_dropdown, eval_comp_dropdown
 
 
 @app.cell(hide_code=True)
@@ -58,13 +61,13 @@ def _(analysis, base_button, mo, param_button, runid_dropdown):
         "実験を選択してください",
     )
     result=analysis.eval_dataset(run_id=runid_dropdown.value,base_btn=base_button,param_ui=param_button)
-
     return (result,)
 
 
 @app.cell
-def _(analysis, eval_comp_dropdown, result):
-    analysis.view_dataset(result,eval_comp_dropdown.value)
+def _(analysis, draw_func_dropdown, eval_comp_dropdown, result):
+
+    analysis.view_dataset(result,eval_str=eval_comp_dropdown.value,draw_func_str=draw_func_dropdown.value)
     return
 
 

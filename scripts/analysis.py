@@ -20,13 +20,15 @@ from neurosurrogate.builder.build_current import (
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_neuron import MCMODELS
 from neurosurrogate.model.model_neurosindy import transform_gate
-from neurosurrogate.profiler.profiler_view import draw_engine, spec_diff, view_model
+from neurosurrogate.profiler.draw_registry import DRAW_MAP
+from neurosurrogate.profiler.profiler_view import view_model
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
 
 CurrentList: list = ["train"] + list(FUNC_MAP.keys())
-
+DRAW_LIST: list = list(DRAW_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
+
 
 get_comp_names = lambda base_btn: (
     MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
@@ -245,15 +247,18 @@ def eval_dataset(run_id: str, base_btn: BaseButton, param_ui: ParamUI):
         "get_preprocessed": get_preprocessed,
         "name_to_idx": name_to_idx,
         "datasets": {
-            "original": original_ds,
-            "surrogate": surr_ds,
+            "orig": original_ds,
+            "surr": surr_ds,
         },
     }
 
 
-def view_dataset(result, eval_str):
+def view_dataset(result, eval_str, draw_func_str):
     target_comp_id = result["name_to_idx"](eval_str)
     metrics = result["metrics"](target_comp_id)
+    pre = result["get_preprocessed"](target_comp_id)
+    print(pre.coords)
+    print("vieowe")
     cards = mo.hstack(
         [
             mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
@@ -265,12 +270,11 @@ def view_dataset(result, eval_str):
         [
             cards,
             mo.mpl.interactive(
-                draw_engine(
-                    spec_diff(
-                        **result["datasets"],
-                        surr_id=target_comp_id,
-                        preprocessed=result["get_preprocessed"](target_comp_id),
-                    )
+                DRAW_MAP[draw_func_str](
+                    result["datasets"]["orig"],
+                    result["datasets"]["surr"],
+                    pre,
+                    target_comp_id,
                 )
             ),
         ]
