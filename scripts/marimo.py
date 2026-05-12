@@ -16,6 +16,7 @@ def _():
 
 @app.cell
 def _(analysis, base_button):
+    base_button.setup_mpl()
     param_button = analysis.ParamUI.get_detailed_btn(base_button)
     param_button.render()
     return (param_button,)
@@ -29,8 +30,8 @@ def _(analysis, param_button):
 
 
 @app.cell
-def _(analysis, base_button):
-    analysis.get_model_info_ui(base_button.run_ids)
+def _(base_button):
+    base_button.get_model_info_ui()
     return
 
 

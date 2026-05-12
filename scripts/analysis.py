@@ -35,6 +35,26 @@ get_comp_names = lambda base_btn: (
 )
 
 
+def get_run_info(run_id: str) -> dict:
+    client = mlflow.MlflowClient()
+
+    def load_yaml(run_id: str, filename: str) -> dict:
+        return yaml.safe_load(mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}"))
+
+    def load_text(run_id: str, filename: str) -> str:
+        return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
+
+    view_cfg = load_yaml(run_id, "view.json")
+
+    return {
+        "sindy_coef": view_model(**view_cfg),
+        "dataset": load_yaml(run_id, "dataset.yaml"),  # 同じファイルなら参照共有でOK
+        "runName": client.get_run(run_id).data.tags["mlflow.runName"],
+        "run_id": run_id,
+        "equations": load_text(run_id, "equations.txt"),
+    }
+
+
 @dataclass
 class BaseUI:
     plt_btn: mo.ui.button
@@ -112,6 +132,31 @@ class BaseUI:
             run_selector=BaseUI.get_mlflow_runselector(),
         )
 
+    def get_model_info_ui(self):
+        run_ids = self.run_ids
+        model_infos = {}
+        for run_id in run_ids:
+            run_info = get_run_info(run_id)
+            model_infos[run_id] = {}
+            model_infos[run_id]["runName"] = run_info["runName"]
+            model_infos[run_id]["equations"] = run_info["equations"]
+            model_infos[run_id]["dataset"] = run_info["dataset"]
+            model_infos[run_id]["sindy_coef"] = run_info["sindy_coef"]
+        return mo.vstack(
+            [
+                mo.vstack(
+                    [
+                        mo.md(
+                            f"run_id:{run_id[:8]}.. &nbsp;&nbsp;　{model_infos[run_id]['runName']}"
+                        ),
+                        mo.md(f"{model_infos[run_id]['equations'][:40]}"),
+                        mo.mpl.interactive(model_infos[run_id]["sindy_coef"]),
+                    ]
+                )
+                for run_id in run_ids
+            ]
+        )
+
 
 @dataclass
 class ParamUI:
@@ -171,52 +216,6 @@ class ParamUI:
             surrogate_target_ui=surrogate_target_ui,
             runid_dropdown=mo.ui.dropdown(options=run_ids, value=run_ids[0]),
         )
-
-
-def get_run_info(run_id: str) -> dict:
-    client = mlflow.MlflowClient()
-
-    def load_yaml(run_id: str, filename: str) -> dict:
-        return yaml.safe_load(mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}"))
-
-    def load_text(run_id: str, filename: str) -> str:
-        return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
-
-    view_cfg = load_yaml(run_id, "view.json")
-
-    return {
-        "sindy_coef": view_model(**view_cfg),
-        "dataset": load_yaml(run_id, "dataset.yaml"),  # 同じファイルなら参照共有でOK
-        "runName": client.get_run(run_id).data.tags["mlflow.runName"],
-        "run_id": run_id,
-        "equations": load_text(run_id, "equations.txt"),
-    }
-
-
-def get_model_info_ui(run_ids):
-
-    model_infos = {}
-    for run_id in run_ids:
-        run_info = get_run_info(run_id)
-        model_infos[run_id] = {}
-        model_infos[run_id]["runName"] = run_info["runName"]
-        model_infos[run_id]["equations"] = run_info["equations"]
-        model_infos[run_id]["dataset"] = run_info["dataset"]
-        model_infos[run_id]["sindy_coef"] = run_info["sindy_coef"]
-    return mo.vstack(
-        [
-            mo.vstack(
-                [
-                    mo.md(
-                        f"run_id:{run_id[:8]}.. &nbsp;&nbsp;　{model_infos[run_id]['runName']}"
-                    ),
-                    mo.md(f"{model_infos[run_id]['equations'][:40]}"),
-                    mo.mpl.interactive(model_infos[run_id]["sindy_coef"]),
-                ]
-            )
-            for run_id in run_ids
-        ]
-    )
 
 
 def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
