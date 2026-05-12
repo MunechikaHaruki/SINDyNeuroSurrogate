@@ -90,9 +90,9 @@ def _to_efel_trace(voltage: np.ndarray, dt: float) -> dict:
     }
 
 
-def calc_dynamic_metrics(orig_ds, surr_ds, comp_id, dt):
-    orig_v = orig_ds["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
-    surr_v = surr_ds["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
+def calc_dynamic_metrics(original, surrogate, comp_id, dt):
+    orig_v = original["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
+    surr_v = surrogate["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
 
     orig_feat, surr_feat = efel.get_feature_values(
         [_to_efel_trace(orig_v, dt), _to_efel_trace(surr_v, dt)],

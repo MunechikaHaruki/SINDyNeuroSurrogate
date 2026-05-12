@@ -3,6 +3,7 @@ import inspect
 import os
 import typing
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal
 
 import marimo as mo
@@ -26,6 +27,10 @@ CurrentList: list = ["train"] + list(FUNC_MAP.keys())
 
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
+
+get_comp_names = lambda base_btn: (
+    MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
+)
 
 
 @dataclass
@@ -55,7 +60,6 @@ class BaseButton:
 class ParamUI:
     current_ui: mo.ui.dictionary
     surrogate_target_ui: mo.ui.multiselect
-    eval_comp_dropdown: mo.ui.dropdown
 
     def render(self):
 
@@ -63,7 +67,6 @@ class ParamUI:
         ### パラメタ設定
         - currentui: {self.current_ui}
         - surrogate target: {self.surrogate_target_ui}
-        - eval_comp: {self.eval_comp_dropdown}
         # """)
 
 
@@ -117,14 +120,11 @@ def get_detailed_btn(base_btn: BaseButton) -> ParamUI:
         }
     )
     surrogate_target_ui = mo.ui.multiselect(
-        options=MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
+        options=get_comp_names(base_btn), value=[get_comp_names(base_btn)[0]]
     )
     return ParamUI(
         current_ui=current_ui,
         surrogate_target_ui=surrogate_target_ui,
-        eval_comp_dropdown=mo.ui.dropdown(
-            options=MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
-        ),
     )
 
 
@@ -234,26 +234,26 @@ def eval_dataset(run_id: str, base_btn: BaseButton, param_ui: ParamUI):
         surrogate_model=surrogate_model,
     )
 
-    target_comp_id = name_to_idx(param_ui.eval_comp_dropdown.value)
-
-    preprocessed_xr = transform_gate(
-        surrogate_model.preprocessor, original_ds, target_comp_id=target_comp_id
+    get_preprocessed = partial(
+        transform_gate, surrogate_model.preprocessor, original_ds
+    )
+    get_metrics = partial(
+        calc_dynamic_metrics, original_ds, surr_ds, dt=dataset_cfg["dt"]
     )
     return {
+        "metrics": get_metrics,
+        "get_preprocessed": get_preprocessed,
+        "name_to_idx": name_to_idx,
         "datasets": {
             "original": original_ds,
-            "preprocessed": preprocessed_xr,
             "surrogate": surr_ds,
-            "surr_id": target_comp_id,
         },
-        "metrics": calc_dynamic_metrics(
-            original_ds, surr_ds, target_comp_id, dataset_cfg["dt"]
-        ),
     }
 
 
-def view_dataset(result):
-    metrics = result["metrics"]
+def view_dataset(result, eval_str):
+    target_comp_id = result["name_to_idx"](eval_str)
+    metrics = result["metrics"](target_comp_id)
     cards = mo.hstack(
         [
             mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
@@ -262,5 +262,16 @@ def view_dataset(result):
         wrap=True,
     )
     return mo.vstack(
-        [cards, mo.mpl.interactive(draw_engine(spec_diff(**result["datasets"])))]
+        [
+            cards,
+            mo.mpl.interactive(
+                draw_engine(
+                    spec_diff(
+                        **result["datasets"],
+                        surr_id=target_comp_id,
+                        preprocessed=result["get_preprocessed"](target_comp_id),
+                    )
+                )
+            ),
+        ]
     )
