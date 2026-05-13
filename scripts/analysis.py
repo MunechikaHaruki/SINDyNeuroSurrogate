@@ -11,9 +11,14 @@ import mlflow
 import yaml
 from io_handler import TARGET_EXP, load_surrogate_model
 
-from neurosurrogate.builder.build_current import FUNC_MAP, CurrentConfig
+from neurosurrogate.builder.build_current import FUNC_MAP
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_dataset import DatasetConfig, NeuronGraph, Node
+from neurosurrogate.model.model_dataset import (
+    CurrentConfig,
+    DatasetConfig,
+    NeuronGraph,
+    Node,
+)
 from neurosurrogate.model.model_neuron import MCMODELS
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.profiler.draw_registry import DRAW_MAP
@@ -61,6 +66,7 @@ class BaseUI:
     def render(self):
         return mo.md(f"""
         ### MLflow データ解析
+        - CurrentType: {self.current_dropdown}
         - matplotlib rendering setting: {self.plt_btn}
         - baseDatasetUI: {self.base_dataset_ui}
         {self.run_selector}
@@ -189,6 +195,18 @@ class ParamUI:
 
     @staticmethod
     def get_detailed_btn(base_btn: BaseUI):
+        surrogate_target_ui = mo.ui.multiselect(
+            options=get_comp_names(base_btn), value=[get_comp_names(base_btn)[0]]
+        )
+        run_ids = base_btn.run_selector.value["run_id"].tolist()
+        runid_dropdown = mo.ui.dropdown(options=run_ids, value=run_ids[0])
+
+        if base_btn.current_dropdown.value == "train":
+            return ParamUI(
+                current_ui=None,
+                surrogate_target_ui=surrogate_target_ui,
+                runid_dropdown=runid_dropdown,
+            )
 
         current_sig = inspect.signature(FUNC_MAP[base_btn.current_dropdown.value])
         current_ui = mo.ui.dictionary(
@@ -203,14 +221,10 @@ class ParamUI:
                 for name, param in current_sig.parameters.items()
             }
         )
-        surrogate_target_ui = mo.ui.multiselect(
-            options=get_comp_names(base_btn), value=[get_comp_names(base_btn)[0]]
-        )
-        run_ids = base_btn.run_selector.value["run_id"].tolist()
         return ParamUI(
             current_ui=current_ui,
             surrogate_target_ui=surrogate_target_ui,
-            runid_dropdown=mo.ui.dropdown(options=run_ids, value=run_ids[0]),
+            runid_dropdown=runid_dropdown,
         )
 
 
@@ -218,7 +232,7 @@ def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
     current_type = base_btn.current_dropdown.value
     if current_type == "train":
         dataset_cfg = DatasetConfig.from_dict(get_run_info(param_ui.run_id)["dataset"])
-        model_name = dataset_cfg["model_name"]
+        model_name = dataset_cfg.model_name
     else:
         pipeline = CurrentConfig.build_pipeline(current_type, param_ui.current_ui.value)
         dataset_cfg = DatasetConfig.build_dataset(

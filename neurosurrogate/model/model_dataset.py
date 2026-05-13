@@ -1,9 +1,53 @@
 from dataclasses import dataclass
 from functools import cached_property
 
+import hydra
 import numpy as np
 
-from neurosurrogate.builder.build_current import CurrentConfig
+from ..builder.build_current import FUNC_MAP
+
+
+@dataclass
+class CurrentConfig:
+    iteration: int
+    silence_steps: int
+    pipeline: dict
+
+    def build(self):
+        dset_i_ext = np.zeros(self.iteration)
+
+        if (
+            self.iteration - self.silence_steps <= self.silence_steps
+        ):  # active_end <=active_start
+            raise ValueError(
+                f"silence_steps={self.silence_steps} が大きすぎます（iteration={self.iteration}）"
+            )
+        active = dset_i_ext[self.silence_steps : self.iteration - self.silence_steps]
+        func = hydra.utils.instantiate(self.pipeline)
+        func(active)
+        return dset_i_ext
+
+    @staticmethod
+    def build_pipeline(current_type: str, kw: dict) -> dict:
+        return {
+            "_target_": f"neurosurrogate.builder.build_current.{FUNC_MAP[current_type].__name__}",
+            **kw,
+        }
+
+    def to_dict(self) -> dict:
+        return {
+            "iteration": self.iteration,
+            "silence_steps": self.silence_steps,
+            "pipeline": self.pipeline,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "CurrentConfig":
+        return cls(
+            iteration=d["iteration"],
+            silence_steps=d["silence_steps"],
+            pipeline=d["pipeline"],
+        )
 
 
 @dataclass
