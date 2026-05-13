@@ -49,7 +49,7 @@ def draw_engine(
     panels = [*spec[:-1], spec[-1].with_xlabel("Time [ms]")] if spec else spec
 
     n_rows = len(panels)
-    fig = Figure()
+    fig = plt.figure()
     axs = fig.subplots(nrows=n_rows, ncols=1, sharex=True)
     if n_rows == 1:
         axs = [axs]
