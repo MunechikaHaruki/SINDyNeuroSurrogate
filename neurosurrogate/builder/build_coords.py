@@ -5,8 +5,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..model.model_dataset import NeuronGraph
-from ..model.registry_compartments import COMPARTMENT_TEMPLATES, Compartment
+from ..model.registry_compartments import Compartment
 
 
 @dataclass
@@ -32,14 +31,7 @@ class StateAccumulator:
         return np.array(self.init, dtype=np.float64)
 
 
-def build_indices(net: NeuronGraph, surr_comp: Compartment):
-    nodes = net.types
-
-    if surr_comp is None:
-        compartments = COMPARTMENT_TEMPLATES
-    else:
-        compartments = COMPARTMENT_TEMPLATES | {"surr": surr_comp}
-
+def build_indices(nodes: list[str], compartments: list[Compartment]):
     N = len(nodes)
     gate_offsets = np.full(N, -1, dtype=np.int32)
     ids_list = {k: [] for k in compartments.keys()}

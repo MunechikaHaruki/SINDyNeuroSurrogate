@@ -12,6 +12,7 @@ from .model.model_neurosindy import (
     SINDyNeuroSurrogate,
 )
 from .model.registry_compartments import (
+    COMPARTMENT_TEMPLATES,
     HH_Params_numba,
     calc_hh_channel,
     calc_passive_channel,
@@ -102,7 +103,13 @@ def unified_simulator(
     else:
         sindy_args, surr_comp = surrogate_model.sindy_args, surrogate_model.surr_comp
     params = HH_Params_numba()
-    indice = build_indices(net, surr_comp)
+
+    if surr_comp is None:
+        compartments = COMPARTMENT_TEMPLATES
+    else:
+        compartments = COMPARTMENT_TEMPLATES | {"surr": surr_comp}
+
+    indice = build_indices(net.types, compartments)
     IndiceArgs = namedtuple("IndiceArgs", list(indice["ids"].keys()))
     raw = generic_euler_solver(
         indice["init"],
