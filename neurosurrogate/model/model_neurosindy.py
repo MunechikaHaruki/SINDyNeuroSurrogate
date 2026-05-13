@@ -4,7 +4,7 @@ import numpy as np
 from numba import njit
 
 from ..profiler.profiler_model import SINDyResult
-from .model_compartments import Compartment
+from .registry_compartments import Compartment
 
 logger = logging.getLogger(__name__)
 

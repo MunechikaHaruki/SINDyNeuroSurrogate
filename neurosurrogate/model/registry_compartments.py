@@ -3,6 +3,7 @@ from numba import float64, njit
 from numba.experimental import jitclass
 
 from ..profiler.profiler_model import OpCost
+from .model_dataset import Compartment
 
 
 @njit
@@ -159,37 +160,6 @@ class HH_Params_numba:
 
 
 V_REL = (-65) - (-65)  # V_INIT - E_REST
-
-
-class Compartment:
-    def __init__(
-        self,
-        gate_inits: list[float],
-        gate_names: list[str],
-        v_init: float = -65,
-        OpCost: OpCost = None,
-    ):
-
-        self.v_init = v_init
-        self.gate_inits = gate_inits
-        self.gate_names = gate_names
-        self._opcost = OpCost
-
-    @property
-    def vars(self):
-        return ["V"] + self.gate_names
-
-    @property
-    def gate(self):
-        return [False] + [True] * len(self.gate_names)
-
-    @property
-    def init(self):
-        return [self.v_init] + self.gate_inits
-
-    @property
-    def OpCost(self):
-        return self._opcost
 
 
 COMPARTMENT_TEMPLATES = {

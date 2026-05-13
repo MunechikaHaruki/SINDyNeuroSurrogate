@@ -5,7 +5,39 @@ from functools import cached_property
 import hydra
 import numpy as np
 
-from ..builder.build_current import FUNC_MAP
+from ..builder.registry_current import FUNC_MAP
+from ..profiler.profiler_model import OpCost
+
+
+class Compartment:
+    def __init__(
+        self,
+        gate_inits: list[float],
+        gate_names: list[str],
+        v_init: float = -65,
+        OpCost: OpCost = None,
+    ):
+
+        self.v_init = v_init
+        self.gate_inits = gate_inits
+        self.gate_names = gate_names
+        self._opcost = OpCost
+
+    @property
+    def vars(self):
+        return ["V"] + self.gate_names
+
+    @property
+    def gate(self):
+        return [False] + [True] * len(self.gate_names)
+
+    @property
+    def init(self):
+        return [self.v_init] + self.gate_inits
+
+    @property
+    def OpCost(self):
+        return self._opcost
 
 
 @dataclass
@@ -31,7 +63,7 @@ class CurrentConfig:
     @staticmethod
     def build_pipeline(current_type: str, kw: dict) -> dict:
         return {
-            "_target_": f"neurosurrogate.builder.build_current.{FUNC_MAP[current_type].__name__}",
+            "_target_": f"neurosurrogate.builder.registry_current.{FUNC_MAP[current_type].__name__}",
             **kw,
         }
 
@@ -188,7 +220,7 @@ class DatasetConfig:
         pipeline: dict,
     ) -> "DatasetConfig":
         """yamlとの境界"""
-        from .model_neuron import MCMODELS
+        from .registry_neuron import MCMODELS
 
         return DatasetConfig(
             model_name=model_name,

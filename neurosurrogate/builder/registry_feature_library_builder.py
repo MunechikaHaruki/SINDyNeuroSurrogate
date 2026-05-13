@@ -4,7 +4,7 @@ from typing import Callable
 import numpy as np
 import pysindy as ps
 
-from neurosurrogate.model.model_compartments import (
+from neurosurrogate.model.registry_compartments import (
     HH_RATE_COST_MAP,
     alpha_h,
     alpha_m,

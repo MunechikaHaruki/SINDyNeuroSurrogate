@@ -5,16 +5,16 @@ import numpy as np
 from numba import njit
 
 from .builder.build_coords import build_indices, set_coords, set_i_internal
-from .model.model_compartments import (
-    HH_Params_numba,
-    calc_hh_channel,
-    calc_passive_channel,
-)
 from .model.model_dataset import NeuronGraph
 from .model.model_neurosindy import (
     DUMMY_SINDY_ARGS,
     DUMMY_SURR_COMP,
     SINDyNeuroSurrogate,
+)
+from .model.registry_compartments import (
+    HH_Params_numba,
+    calc_hh_channel,
+    calc_passive_channel,
 )
 
 logger = logging.getLogger(__name__)

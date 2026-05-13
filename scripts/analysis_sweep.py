@@ -9,15 +9,15 @@ import yaml
 from analysis import BaseUI
 from io_handler import load_surrogate_model
 
-from neurosurrogate.builder.build_current import (
+from neurosurrogate.builder.registry_current import (
     FUNC_MAP,
 )
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import NeuronGraph, Node
-from neurosurrogate.model.model_neuron import MCMODELS
-from neurosurrogate.profiler.draw_registry import DRAW_MAP
+from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_view import view_model
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
+from neurosurrogate.profiler.registry_view import DRAW_MAP
 
 CurrentList: list = ["train"] + list(FUNC_MAP.keys())
 DRAW_LIST: list = list(DRAW_MAP.keys())
@@ -78,7 +78,7 @@ def get_run_info(run_id: str) -> dict:
 
 
 def _make_steady_u(amp: float, iteration: int, silence_steps: int) -> np.ndarray:
-    from neurosurrogate.builder.build_current import generate_steady
+    from neurosurrogate.builder.registry_current import generate_steady
 
     u = np.zeros(iteration)
     generate_steady(amp)(u[silence_steps : iteration - silence_steps])
