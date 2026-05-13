@@ -8,8 +8,7 @@ from typing import Literal
 import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
-import yaml
-from io_handler import TARGET_EXP, load_surrogate_model
+from io_handler import TARGET_EXP, RunInfo, load_surrogate_model
 
 from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.calc_engine import unified_simulator
@@ -21,7 +20,6 @@ from neurosurrogate.model.model_dataset import (
 )
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_view import view_model
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
@@ -33,26 +31,6 @@ MCNameList = list(MCMODELS.keys())
 
 def get_comp_names(base_btn):
     return MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
-
-
-def get_run_info(run_id: str) -> dict:
-    client = mlflow.MlflowClient()
-
-    def load_yaml(run_id: str, filename: str) -> dict:
-        return yaml.safe_load(mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}"))
-
-    def load_text(run_id: str, filename: str) -> str:
-        return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
-
-    view_cfg = load_yaml(run_id, "view.json")
-
-    return {
-        "sindy_coef": view_model(**view_cfg),
-        "dataset": load_yaml(run_id, "dataset.yaml"),  # 同じファイルなら参照共有でOK
-        "runName": client.get_run(run_id).data.tags["mlflow.runName"],
-        "run_id": run_id,
-        "equations": load_text(run_id, "equations.txt"),
-    }
 
 
 @dataclass
@@ -134,27 +112,19 @@ class BaseUI:
         )
 
     def get_model_info_ui(self):
-        run_ids = self.run_ids
-        model_infos = {}
-        for run_id in run_ids:
-            run_info = get_run_info(run_id)
-            model_infos[run_id] = {}
-            model_infos[run_id]["runName"] = run_info["runName"]
-            model_infos[run_id]["equations"] = run_info["equations"]
-            model_infos[run_id]["dataset"] = run_info["dataset"]
-            model_infos[run_id]["sindy_coef"] = run_info["sindy_coef"]
+        run_infos = [RunInfo.get_run_info(rid) for rid in self.run_ids]
         return mo.vstack(
             [
                 mo.vstack(
                     [
                         mo.md(
-                            f"run_id:{run_id[:8]}.. &nbsp;&nbsp;　{model_infos[run_id]['runName']}"
+                            f"run_id:{info.run_id[:8]}.. &nbsp;&nbsp;　{info.run_name}"
                         ),
-                        mo.md(f"{model_infos[run_id]['equations'][:40]}"),
-                        mo.mpl.interactive(model_infos[run_id]["sindy_coef"]),
+                        mo.md(f"{info.equations[:40]}"),
+                        mo.mpl.interactive(info.sindy_coef),
                     ]
                 )
-                for run_id in run_ids
+                for info in run_infos
             ]
         )
 
@@ -230,7 +200,7 @@ class ParamUI:
 def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
     current_type = base_btn.current_dropdown.value
     if current_type == "train":
-        dataset_cfg = DatasetConfig.from_dict(get_run_info(param_ui.run_id)["dataset"])
+        dataset_cfg = RunInfo.get_run_info(param_ui.run_id).dataset
         model_name = dataset_cfg.model_name
     else:
         pipeline = CurrentConfig.build_pipeline(current_type, param_ui.current_ui.value)

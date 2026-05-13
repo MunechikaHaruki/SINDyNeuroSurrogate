@@ -2,14 +2,21 @@ import inspect
 import logging
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import joblib
 import mlflow
 import numpy as np
+import yaml
+from matplotlib.figure import Figure
 
+from neurosurrogate.model.model_dataset import (
+    DatasetConfig,
+)
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
+from neurosurrogate.profiler.profiler_view import view_model
 
 TARGET_EXP = "test_static_params"
 
@@ -22,6 +29,35 @@ mlflow.set_tracking_uri(f"file://{PROJECT_ROOT}/mlruns")
 mlflow.enable_system_metrics_logging()
 mlflow.set_experiment(TARGET_EXP)
 os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
+
+
+@dataclass(frozen=True)
+class RunInfo:
+    run_id: str
+    run_name: str
+    sindy_coef: Figure
+    dataset: DatasetConfig
+    equations: str
+
+    @staticmethod
+    def get_run_info(run_id: str) -> "RunInfo":
+        client = mlflow.MlflowClient()
+
+        def load_yaml(filename: str) -> dict:
+            return yaml.safe_load(
+                mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
+            )
+
+        def load_text(filename: str) -> str:
+            return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
+
+        return RunInfo(
+            run_id=run_id,
+            run_name=client.get_run(run_id).data.tags["mlflow.runName"],
+            sindy_coef=view_model(**load_yaml("view.json")),
+            dataset=DatasetConfig.from_dict(load_yaml("dataset.yaml")),
+            equations=load_text("equations.txt"),
+        )
 
 
 def log_surrogate_summary(summary: SINDyAnalyzer):
