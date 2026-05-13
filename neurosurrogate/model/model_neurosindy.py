@@ -1,7 +1,7 @@
 import logging
 
+import jax.numpy as jnp
 import numpy as np
-from numba import njit
 
 from ..profiler.profiler_model import SINDyResult
 from .registry_compartments import Compartment
@@ -9,9 +9,8 @@ from .registry_compartments import Compartment
 logger = logging.getLogger(__name__)
 
 
-@njit
 def _dummy_theta(v, latent, i_int):
-    return np.zeros(1, dtype=np.float64)
+    return jnp.zeros(1, dtype=jnp.float64)
 
 
 _dummy_xi = np.zeros((2, 1), dtype=np.float64)
@@ -105,25 +104,21 @@ class SINDyNeuroSurrogate:
     @staticmethod
     def _compile_source(source, module):
         local_vars = {}
-        exec(source, vars(module), local_vars)
+        exec(source, {**vars(module), "jnp": jnp}, local_vars)
         return local_vars["dynamic_compute_theta"]
 
     @staticmethod
     def _build_source(feature_names: list, input_features: list):
         num_features = len(feature_names)
-        # 各要素を res[i] = ... の形に変換
-        assignments = []
-        for i, name in enumerate(feature_names):
-            # '1' という文字列が来た場合は、Numbaの型推論を助けるために '1.0' に置換
+        expressions = []
+        for name in feature_names:
+            # '1' という文字列は明示的に浮動小数点にする
             safe_name = "1.0" if name == "1" else name
             # SINDyの出力する '^'（べき乗）を Python の '**' に置換
             safe_name = safe_name.replace("^", "**")
-            assignments.append(f"    res[{i}] = {safe_name}")
-        array_content = "\n".join(assignments)
-        # 3. テンプレートを組み立て
-        return f"""@njit
-def dynamic_compute_theta({",".join(input_features)}):
-    res = np.empty({num_features}, dtype=np.float64)
-{array_content}
-    return res
+            expressions.append(safe_name)
+        expr_list = ", ".join(expressions)
+        return f"""def dynamic_compute_theta({",".join(input_features)}):
+    import jax.numpy as jnp
+    return jnp.array([{expr_list}], dtype=jnp.float64)
         """

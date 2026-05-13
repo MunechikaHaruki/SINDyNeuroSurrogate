@@ -1,5 +1,3 @@
-import numpy as np
-
 from neurosurrogate.builder.builder_feature_libraries import LibraryEntry
 from neurosurrogate.model.registry_compartments import (
     HH_RATE_COST_MAP,
@@ -9,7 +7,6 @@ from neurosurrogate.model.registry_compartments import (
     beta_h,
     beta_m,
     beta_n,
-    njit,  # noqa: F401
 )
 from neurosurrogate.profiler.profiler_model import OpCost
 
@@ -90,24 +87,24 @@ def make_volt_lib():
     """V^a * g0^b * (...) 系の多項式項 (legacy)。"""
     entries = [
         LibraryEntry(
-            func=lambda u, v, w: np.power(u, 3) * v * w,
-            name_func=lambda u, v, w: f"np.power({u}, 3) * {v} * {w}",
+            func=lambda u, v, w: u**3 * v * w,
+            name_func=lambda u, v, w: f"{u}**3 * {v} * {w}",
             # u^3 = mul 2, *v = mul 1, *w = mul 1
             cost=OpCost(mul=4),
         ),
         LibraryEntry(
-            func=lambda u, v, w: np.power(u, 3) * v,
-            name_func=lambda u, v, w: f"np.power({u}, 3) * {v}",
+            func=lambda u, v, w: u**3 * v,
+            name_func=lambda u, v, w: f"{u}**3 * {v}",
             cost=OpCost(mul=3),
         ),
         LibraryEntry(
-            func=lambda u, v, w: np.power(u, 4) * v,
-            name_func=lambda u, v, w: f"np.power({u}, 4) * {v}",
+            func=lambda u, v, w: u**4 * v,
+            name_func=lambda u, v, w: f"{u}**4 * {v}",
             cost=OpCost(mul=4),
         ),
         LibraryEntry(
-            func=lambda u, v, w: np.power(u, 4),
-            name_func=lambda u, v, w: f"np.power({u}, 4)",
+            func=lambda u, v, w: u**4,
+            name_func=lambda u, v, w: f"{u}**4",
             cost=OpCost(mul=3),
         ),
     ]
@@ -121,16 +118,16 @@ def make_gate_poly_volt_lib(max_power: int):
         # g^p
         entries.append(
             LibraryEntry(
-                func=(lambda pp: lambda V, g: np.power(g, pp))(p),
-                name_func=(lambda pp: lambda V, g: f"np.power({g}, {pp})")(p),
+                func=(lambda pp: lambda V, g: g**pp)(p),
+                name_func=(lambda pp: lambda V, g: f"{g}**{pp}")(p),
                 cost=OpCost(mul=max(0, p - 1)),
             )
         )
         # g^p * V
         entries.append(
             LibraryEntry(
-                func=(lambda pp: lambda V, g: np.power(g, pp) * V)(p),
-                name_func=(lambda pp: lambda V, g: f"np.power({g}, {pp}) * {V}")(p),
+                func=(lambda pp: lambda V, g: g**pp * V)(p),
+                name_func=(lambda pp: lambda V, g: f"{g}**{pp} * {V}")(p),
                 cost=OpCost(mul=max(0, p - 1) + 1),
             )
         )

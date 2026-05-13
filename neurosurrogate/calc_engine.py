@@ -1,8 +1,9 @@
 import logging
 from collections import namedtuple
 
+import jax
+import jax.numpy as jnp
 import numpy as np
-from numba import njit
 
 from .builder.build_coords import build_indices, set_coords, set_i_internal
 from .model.model_dataset import NeuronGraph
@@ -11,34 +12,12 @@ from .model.model_neurosindy import (
     SINDyNeuroSurrogate,
 )
 from .model.registry_compartments import (
-    HH_Params_numba,
+    HHParams,
     calc_hh_channel,
     calc_passive_channel,
 )
 
 logger = logging.getLogger(__name__)
-
-
-@njit
-def generic_euler_solver(init, u, dt, model_args):
-    n_steps = len(u)
-    n_vars = len(init)
-    x_history = np.zeros((n_steps, n_vars))
-
-    curr_x = init.copy()
-    x_history[0] = curr_x
-    dvar = np.zeros(n_vars)
-
-    for t in range(n_steps - 1):
-        # 微分計算関数の呼び出し。model_argsはタプル。
-        calc_universal_deriv(curr_x, u[t], model_args, dvar)
-
-        # 状態更新
-        for i in range(n_vars):
-            curr_x[i] += dvar[i] * dt
-        x_history[t + 1] = curr_x
-
-    return x_history
 
 
 ModelArgs = namedtuple(
@@ -55,8 +34,7 @@ ModelArgs = namedtuple(
 )
 
 
-@njit
-def calc_universal_deriv(curr_x, u_t, model_args, dvar):
+def calc_universal_deriv(curr_x, u_t, model_args):
     """物理モデル用の汎用微分計算エンジン"""
     indice_args = model_args.indice_args
     N = model_args.C_matrix.shape[0]
@@ -64,40 +42,62 @@ def calc_universal_deriv(curr_x, u_t, model_args, dvar):
     # 1. 電位ベクトルの抽出と網内電流の計算 (グラフラプラシアン)
     v_vec = curr_x[:N]
     I_internal = v_vec @ model_args.C_matrix
-    I_internal[model_args.stim_idx] += u_t
+    I_internal = I_internal.at[model_args.stim_idx].add(u_t)
 
-    # 2. Passive コンパートメントの計算 (if分岐なしのSoA処理)
+    dvar = jnp.zeros_like(curr_x)
+
+    # 2. Passive コンパートメントの計算
     for i in indice_args.passive:
-        dvar[i] = calc_passive_channel(model_args.params, I_internal[i], v_vec[i])
+        i = int(i)
+        dvar = dvar.at[i].set(calc_passive_channel(model_args.params, I_internal[i], v_vec[i]))
 
-    # 3. Hodgkin-Huxley コンパートメントの計算 (if分岐なしのSoA処理)
+    # 3. Hodgkin-Huxley コンパートメントの計算
     for i in indice_args.hh:
-        g_idx = model_args.gate_offsets[i]
-        # HHは m, h, n の3つのゲート変数を持つ前提
-        dvar[i] = calc_hh_channel(
+        i = int(i)
+        g_idx = int(model_args.gate_offsets[i])
+        dv, dgate = calc_hh_channel(
             model_args.params,
             I_internal[i],
             v_vec[i],
             curr_x[g_idx : g_idx + 3],
-            dvar[g_idx : g_idx + 3],
         )
-    # SINDy代理モデルの計算
+        dvar = dvar.at[i].set(dv)
+        dvar = dvar.at[g_idx : g_idx + 3].set(dgate)
+
+    # 4. SINDy代理モデルの計算
     for i in indice_args.surr:
-        g_idx = model_args.gate_offsets[i]
+        i = int(i)
+        g_idx = int(model_args.gate_offsets[i])
         latent = curr_x[g_idx]  # サロゲートは1つの潜在変数 (latent) を持つ前提
 
-        # 動的にコンパイルされた Theta 関数の呼び出し
         theta = model_args.compute_theta(v_vec[i], latent, I_internal[i])
 
-        dvar[i] = model_args.xi_matrix[0] @ theta
-        dvar[g_idx] = model_args.xi_matrix[1] @ theta
+        dvar = dvar.at[i].set(model_args.xi_matrix[0] @ theta)
+        dvar = dvar.at[g_idx].set(model_args.xi_matrix[1] @ theta)
+
+    return dvar
+
+
+def generic_euler_solver(init, u, dt, model_args):
+    u_jax = jnp.array(u)
+    init_jax = jnp.array(init)
+
+    def step(curr_x, u_t):
+        dvar = calc_universal_deriv(curr_x, u_t, model_args)
+        new_x = curr_x + dvar * dt
+        return new_x, curr_x
+
+    # lax.scan でタイムループを実行: outputs[t] = curr_x before step t
+    final_x, x_history_prefix = jax.lax.scan(step, init_jax, u_jax[:-1])
+    x_history = jnp.concatenate([x_history_prefix, final_x[None]], axis=0)
+    return np.array(x_history)
 
 
 def unified_simulator(
     dt, u, net: NeuronGraph, surrogate_model: SINDyNeuroSurrogate = None
 ):
     sindy_args = surrogate_model.sindy_args if surrogate_model else DUMMY_SINDY_ARGS
-    params = HH_Params_numba()
+    params = HHParams()
 
     indice = build_indices(net)
     IndiceArgs = namedtuple("IndiceArgs", list(indice["ids"].keys()))
