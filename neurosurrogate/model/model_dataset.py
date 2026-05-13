@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -126,6 +127,31 @@ class NeuronGraph:
         C_matrix = G_matrix - D_matrix  # 流入を正とするグラフラプラシアンの符号反転
 
         return C_matrix
+
+    @staticmethod
+    def chain(
+        node_types: list[str],
+        weights: list[float],
+        stim: int = 0,
+    ) -> "NeuronGraph":
+        """
+        ノード名は型の頭文字 + 0始まり連番で自動生成
+        例: ["passive", "hh", "passive"] → ["p0", "h0", "p1"]
+        """
+        assert len(weights) == len(node_types) - 1, (
+            f"weights の長さは len(node_types) - 1 = {len(node_types) - 1} である必要があります"
+        )
+        counters: Counter = Counter()
+        nodes = []
+        for t in node_types:
+            prefix = t[0]  # "hh" → "h", "passive" → "p"
+            nodes.append(Node(f"{prefix}{counters[prefix]}", t))
+            counters[prefix] += 1
+
+        edges = [
+            Edge(nodes[i].name, nodes[i + 1].name, w) for i, w in enumerate(weights)
+        ]
+        return NeuronGraph(nodes=nodes, edges=edges, stim=nodes[stim].name)
 
 
 @dataclass
