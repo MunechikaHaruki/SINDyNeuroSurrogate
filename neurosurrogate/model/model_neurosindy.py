@@ -83,6 +83,8 @@ class SINDyNeuroSurrogate:
             target_names=preprocessed_xr.variable.values.tolist(),
             equations="\n".join(self.sindy.equations(precision=3)),
             source=self.source,
+            feature_names_in=self.sindy.feature_names,
+            feature_names=self.sindy.get_feature_names(),
         )
 
     @property

@@ -11,9 +11,7 @@ from io_handler import (
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.builder import registry_feature_libraries
-from neurosurrogate.builder.builder_feature_libraries import (
-    build_featurelib_and_basecost,
-)
+from neurosurrogate.builder.builder_feature_libraries import FeatureLibrary
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
@@ -31,24 +29,24 @@ logger = logging.getLogger(__name__)
 
 
 def build_surrogate(cfg_sindy):
-    library, base_cost = build_featurelib_and_basecost(cfg_sindy["library_specs"])
+    feature_lib = FeatureLibrary.build(cfg_sindy["library_specs"])
 
     # preprocessorの初期化
     preprocessor = hydra.utils.instantiate(cfg_sindy["preprocessor"])
     # pySINDyの初期化
     initialized_sindy = ps.SINDy(
-        feature_library=library,
+        feature_library=feature_lib.library,
         optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
     )
 
     # surrogate_modelの初期化
     return SINDyNeuroSurrogate(
         preprocessor, initialized_sindy, registry_feature_libraries
-    ), base_cost
+    ), feature_lib
 
 
 def cli_flow(cfg_sindy):
-    surrogate, base_cost = build_surrogate(cfg_sindy)
+    surrogate, feature_lib = build_surrogate(cfg_sindy)
     with mlflow.start_run(run_name=f"train:{cfg_sindy['name']}"):
         # train
         train_dataset_cfg = DatasetConfig.build_dataset(**cfg_sindy["datasets"])
@@ -66,7 +64,7 @@ def cli_flow(cfg_sindy):
         log_surrogate_summary(
             SINDyAnalyzer(
                 surrogate_result,
-                base_cost,
+                feature_lib.to_base_cost(surrogate_result.feature_names_in),
                 original_cost=COMPARTMENT_TEMPLATES["hh"].OpCost,
             )
         )

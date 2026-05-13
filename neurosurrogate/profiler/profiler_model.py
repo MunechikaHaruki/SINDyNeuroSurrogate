@@ -55,6 +55,8 @@ class SINDyResult:
     target_names: list
     equations: str
     source: str
+    feature_names_in: list[str]
+    feature_names: list[str]
 
 
 @dataclass(frozen=True)
@@ -65,18 +67,8 @@ class SINDyAnalyzer:
 
     @property
     def _active_features(self):
-        # 係数が非ゼロのインデックスを取得
-        # 各変数（v, m, h等）の微分方程式において、一つでも非ゼロ係数を持つ項のマスク
         active_mask = np.any(self.result.coef != 0, axis=0)
-        # すべての特徴量名を取得し、アクティブなものだけに絞り込む
-        _active_features = [
-            f for i, f in enumerate(self.feature_cost_map.keys()) if active_mask[i]
-        ]
-        return _active_features
-
-    @property
-    def _active_features_map(self):
-        return {k: self.feature_cost_map[k] for k in self._active_features}
+        return [f for i, f in enumerate(self.result.feature_names) if active_mask[i]]
 
     @property
     def surr_opcost(self):
@@ -85,10 +77,7 @@ class SINDyAnalyzer:
 
         for feature in self._active_features:
             if feature not in self.feature_cost_map:
-                raise ValueError(
-                    f"未知の基底関数 '{feature}' が見つかりました。"
-                    "注入された cost_map にこの基底関数の定義を追加してください。"
-                )
+                raise ValueError(f"Found Unknown base func: '{feature}'")
             surr_op = surr_op + self.feature_cost_map[feature]
         return surr_op
 
@@ -122,9 +111,6 @@ class SINDyAnalyzer:
             "features.json": json.dumps(
                 {k: v.to_dict() for k, v in self.feature_cost_map.items()}
             ),
-            "features_active.json": json.dumps(
-                {k: v.to_dict() for k, v in self._active_features_map.items()}
-            ),
             "misc/source.txt": self.result.source,
         }
 
@@ -132,7 +118,7 @@ class SINDyAnalyzer:
     def view(self):
         return {
             "xi_matrix": self.result.coef.tolist(),
-            "feature_names": self.feature_cost_map.keys(),
+            "feature_names": self.result.feature_names,
             "target_names": self.result.target_names,
         }
 
