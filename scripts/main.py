@@ -10,8 +10,8 @@ from io_handler import (
 )
 from omegaconf import DictConfig, OmegaConf
 
-from neurosurrogate.builder import registry_feature_library_builder
-from neurosurrogate.builder.registry_feature_library_builder import (
+from neurosurrogate.builder import registry_feature_libraries
+from neurosurrogate.builder.builder_feature_libraries import (
     build_featurelib_and_basecost,
 )
 from neurosurrogate.calc_engine import unified_simulator
@@ -43,7 +43,7 @@ def build_surrogate(cfg_sindy):
 
     # surrogate_modelの初期化
     return SINDyNeuroSurrogate(
-        preprocessor, initialized_sindy, registry_feature_library_builder
+        preprocessor, initialized_sindy, registry_feature_libraries
     ), base_cost
 
 
