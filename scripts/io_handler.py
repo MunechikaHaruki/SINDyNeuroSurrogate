@@ -2,15 +2,12 @@ import inspect
 import logging
 import os
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 
 import joblib
 import mlflow
 import numpy as np
 
-from neurosurrogate.builder.build_current import CurrentConfig
-from neurosurrogate.model.model_neuron import MCMODELS, NeuronGraph
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
 
@@ -25,52 +22,6 @@ mlflow.set_tracking_uri(f"file://{PROJECT_ROOT}/mlruns")
 mlflow.enable_system_metrics_logging()
 mlflow.set_experiment(TARGET_EXP)
 os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
-
-
-@dataclass
-class DatasetConfig:
-    model_name: str
-    dt: float
-    current: CurrentConfig
-    net: NeuronGraph
-
-    def to_dict(self) -> dict:
-        return {
-            "model_name": self.model_name,
-            "dt": self.dt,
-            "current": self.current.to_dict(),
-            "net": self.net.to_dict(),
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "DatasetConfig":
-        return cls(
-            model_name=d["model_name"],
-            dt=d["dt"],
-            current=CurrentConfig.from_dict(d["current"]),
-            net=NeuronGraph.from_dict(d["net"]),
-        )
-
-    @classmethod
-    def build_dataset(
-        cls,
-        dt: float,
-        silence_duration: float,
-        duration: float,
-        model_name: str,
-        pipeline: dict,
-    ) -> "DatasetConfig":
-        """yamlとの境界"""
-        return DatasetConfig(
-            model_name=model_name,
-            dt=dt,
-            current=CurrentConfig(
-                iteration=int(duration / dt),
-                silence_steps=int(silence_duration / dt),
-                pipeline=pipeline,
-            ),
-            net=MCMODELS[model_name],
-        )
 
 
 def log_surrogate_summary(summary: SINDyAnalyzer):

@@ -5,7 +5,6 @@ import hydra
 import mlflow
 import pysindy as ps
 from io_handler import (
-    DatasetConfig,
     log_surrogate_model,
     log_surrogate_summary,
 )
@@ -15,6 +14,7 @@ from neurosurrogate.builder import build_feature_library
 from neurosurrogate.builder.build_feature_library import build_featurelib_and_basecost
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_compartments import COMPARTMENT_TEMPLATES
+from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.model_neuron import MCMODELS
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
