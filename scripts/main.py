@@ -12,7 +12,7 @@ from io_handler import (
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.builder import build_feature_library
-from neurosurrogate.builder.build_current import build_current_pipeline
+from neurosurrogate.builder.build_current import CurrentConfig
 from neurosurrogate.builder.build_feature_library import build_featurelib_and_basecost
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_compartments import COMPARTMENT_TEMPLATES
@@ -54,7 +54,7 @@ def cli_flow(cfg_sindy):
 
         train_ds = unified_simulator(
             dt=train_dataset_cfg["dt"],
-            u=build_current_pipeline(train_dataset_cfg["current"]),
+            u=CurrentConfig.from_dict(train_dataset_cfg["current"]).build(),
             net=NeuronGraph.from_dict(train_dataset_cfg["net"]),
         )
         mlflow.log_dict(train_dataset_cfg, "dataset.yaml")

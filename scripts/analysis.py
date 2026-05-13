@@ -11,11 +11,7 @@ import mlflow
 import yaml
 from io_handler import TARGET_EXP, build_dataset, load_surrogate_model
 
-from neurosurrogate.builder.build_current import (
-    FUNC_MAP,
-    build_current_pipeline,
-    build_current_setting,
-)
+from neurosurrogate.builder.build_current import FUNC_MAP, CurrentConfig
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_neuron import MCMODELS, NeuronGraph, Node
 from neurosurrogate.model.model_neurosindy import transform_gate
@@ -224,7 +220,7 @@ def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
         dataset_cfg = get_run_info(param_ui.run_id)["dataset"]
         model_name = dataset_cfg["model_name"]
     else:
-        pipeline = build_current_setting(current_type, param_ui.current_ui.value)
+        pipeline = CurrentConfig.build_pipeline(current_type, param_ui.current_ui.value)
         dataset_cfg = build_dataset(**base_btn.base_dataset_ui.value, pipeline=pipeline)
         model_name = base_btn.base_dataset_ui.value["model_name"]
 
@@ -232,7 +228,7 @@ def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
 
     name_to_idx = MCMODELS[model_name].name_to_idx
     surrogate_model = load_surrogate_model(param_ui.run_id)
-    u = build_current_pipeline(dataset_cfg["current"])
+    u = CurrentConfig.from_dict(dataset_cfg["current"]).build()
     original_ds = unified_simulator(dt=dataset_cfg["dt"], u=u, net=original_graph)
 
     surr_nodes = [
