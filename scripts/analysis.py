@@ -9,7 +9,7 @@ import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
 import yaml
-from io_handler import TARGET_EXP, build_dataset, load_surrogate_model
+from io_handler import TARGET_EXP, DatasetConfig, load_surrogate_model
 
 from neurosurrogate.builder.build_current import FUNC_MAP, CurrentConfig
 from neurosurrogate.calc_engine import unified_simulator
@@ -214,22 +214,23 @@ class ParamUI:
 
 
 def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
-
     current_type = base_btn.current_dropdown.value
     if current_type == "train":
-        dataset_cfg = get_run_info(param_ui.run_id)["dataset"]
+        dataset_cfg = DatasetConfig.from_dict(get_run_info(param_ui.run_id)["dataset"])
         model_name = dataset_cfg["model_name"]
     else:
         pipeline = CurrentConfig.build_pipeline(current_type, param_ui.current_ui.value)
-        dataset_cfg = build_dataset(**base_btn.base_dataset_ui.value, pipeline=pipeline)
+        dataset_cfg = DatasetConfig.build_dataset(
+            **base_btn.base_dataset_ui.value, pipeline=pipeline
+        )
         model_name = base_btn.base_dataset_ui.value["model_name"]
 
-    original_graph = NeuronGraph.from_dict(dataset_cfg["net"])
+    original_graph = dataset_cfg.net
 
     name_to_idx = MCMODELS[model_name].name_to_idx
     surrogate_model = load_surrogate_model(param_ui.run_id)
-    u = CurrentConfig.from_dict(dataset_cfg["current"]).build()
-    original_ds = unified_simulator(dt=dataset_cfg["dt"], u=u, net=original_graph)
+    u = dataset_cfg.current.build()
+    original_ds = unified_simulator(dt=dataset_cfg.dt, u=u, net=original_graph)
 
     surr_nodes = [
         Node(n.name, "surr") if n.name in param_ui.surrogate_target_ui.value else n
@@ -240,7 +241,7 @@ def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
     )
 
     surr_ds = unified_simulator(
-        dt=dataset_cfg["dt"],
+        dt=dataset_cfg.dt,
         u=u,
         net=surr_graph,
         surrogate_model=surrogate_model,
@@ -249,9 +250,7 @@ def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
     get_preprocessed = partial(
         transform_gate, surrogate_model.preprocessor, original_ds
     )
-    get_metrics = partial(
-        calc_dynamic_metrics, original_ds, surr_ds, dt=dataset_cfg["dt"]
-    )
+    get_metrics = partial(calc_dynamic_metrics, original_ds, surr_ds, dt=dataset_cfg.dt)
     return {
         "metrics": get_metrics,
         "get_preprocessed": get_preprocessed,
