@@ -46,34 +46,35 @@ def calc_universal_deriv(curr_x, u_t, model_args):
 
     dvar = jnp.zeros_like(curr_x)
 
-    # 2. Passive コンパートメントの計算
-    for i in indice_args.passive:
-        i = int(i)
-        dvar = dvar.at[i].set(calc_passive_channel(model_args.params, I_internal[i], v_vec[i]))
-
-    # 3. Hodgkin-Huxley コンパートメントの計算
-    for i in indice_args.hh:
-        i = int(i)
-        g_idx = int(model_args.gate_offsets[i])
-        dv, dgate = calc_hh_channel(
-            model_args.params,
-            I_internal[i],
-            v_vec[i],
-            curr_x[g_idx : g_idx + 3],
+    # 2. Passive: vmap で一括処理
+    p_idx = indice_args.passive
+    dvar = dvar.at[p_idx].set(
+        jax.vmap(lambda i_t, v: calc_passive_channel(model_args.params, i_t, v))(
+            I_internal[p_idx], v_vec[p_idx]
         )
-        dvar = dvar.at[i].set(dv)
-        dvar = dvar.at[g_idx : g_idx + 3].set(dgate)
+    )
 
-    # 4. SINDy代理モデルの計算
-    for i in indice_args.surr:
-        i = int(i)
-        g_idx = int(model_args.gate_offsets[i])
-        latent = curr_x[g_idx]  # サロゲートは1つの潜在変数 (latent) を持つ前提
+    # 3. HH: ゲートインデックス行列 (N_hh, 3) を静的に計算して vmap
+    hh_idx = indice_args.hh
+    gate_idx = model_args.gate_offsets[hh_idx][:, None] + np.arange(3)  # (N_hh, 3)
+    dv_hh, dgate_hh = jax.vmap(
+        lambda i_t, v, g: calc_hh_channel(model_args.params, i_t, v, g)
+    )(I_internal[hh_idx], v_vec[hh_idx], curr_x[gate_idx])
+    dvar = dvar.at[hh_idx].set(dv_hh)
+    dvar = dvar.at[gate_idx.ravel()].set(dgate_hh.ravel())
 
-        theta = model_args.compute_theta(v_vec[i], latent, I_internal[i])
+    # 4. SINDy: 潜在変数を一括抽出して vmap
+    surr_idx = indice_args.surr
+    g_off_s = model_args.gate_offsets[surr_idx]
+    latents = curr_x[g_off_s]
 
-        dvar = dvar.at[i].set(model_args.xi_matrix[0] @ theta)
-        dvar = dvar.at[g_idx].set(model_args.xi_matrix[1] @ theta)
+    def surr_one(i_t, v, lat):
+        theta = model_args.compute_theta(v, lat, i_t)
+        return model_args.xi_matrix[0] @ theta, model_args.xi_matrix[1] @ theta
+
+    dv_s, dlat_s = jax.vmap(surr_one)(I_internal[surr_idx], v_vec[surr_idx], latents)
+    dvar = dvar.at[surr_idx].set(dv_s)
+    dvar = dvar.at[g_off_s].set(dlat_s)
 
     return dvar
 
