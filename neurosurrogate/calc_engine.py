@@ -1,5 +1,6 @@
 import logging
-from collections import namedtuple
+from dataclasses import dataclass
+from typing import Callable
 
 import jax
 import jax.numpy as jnp
@@ -20,18 +21,22 @@ from .model.registry_compartments import (
 logger = logging.getLogger(__name__)
 
 
-ModelArgs = namedtuple(
-    "ModelArgs",
-    [
-        "C_matrix",
-        "params",
-        "stim_idx",
-        "indice_args",
-        "xi_matrix",
-        "compute_theta",
-        "gate_offsets",
-    ],
-)
+@dataclass(frozen=True)
+class IndiceArgs:
+    hh: np.ndarray       # shape (N_hh,)  dtype=int32
+    passive: np.ndarray  # shape (N_p,)   dtype=int32
+    surr: np.ndarray     # shape (N_s,)   dtype=int32
+
+
+@dataclass(frozen=True)
+class ModelArgs:
+    C_matrix: np.ndarray      # shape (N, N)       グラフラプラシアン
+    params: HHParams
+    stim_idx: int
+    indice_args: IndiceArgs
+    xi_matrix: np.ndarray     # shape (2, n_terms)  SINDy係数行列
+    compute_theta: Callable   # (v, latent, i_t) -> jnp.ndarray
+    gate_offsets: np.ndarray  # shape (N,)          dtype=int32
 
 
 def calc_universal_deriv(curr_x, u_t, model_args):
@@ -101,7 +106,6 @@ def unified_simulator(
     params = HHParams()
 
     indice = build_indices(net)
-    IndiceArgs = namedtuple("IndiceArgs", list(indice["ids"].keys()))
     raw = generic_euler_solver(
         indice["init"],
         u,
