@@ -17,7 +17,7 @@ clean-cache:
 clean-log:
 	rm -rf ./hydra-multiruns
 	rm -rf ./hydra-outputs
-	rm -rf ./mlruns
+	rm -rf ./mlruns ./mlflow.db
 
 #Format source code with ruff
 format:
@@ -55,7 +55,7 @@ radon:
 # activate logging server
 mlflow:
     @lsof -t -i:{{MLFLOW_PORT}} | xargs kill -9 || true
-    {{VIRTUAL_ENV}} python -m mlflow ui --port {{MLFLOW_PORT}} --backend-store-uri ./mlruns
+    {{VIRTUAL_ENV}} python -m mlflow ui --port {{MLFLOW_PORT}} --backend-store-uri sqlite:///./mlflow.db
 
 marimo:
 	{{VIRTUAL_ENV}} marimo edit scripts/marimo.py

@@ -9,6 +9,7 @@ neurosurrogate.egg-info/
 **/__marimo__/**
 # logged artifacts
 **/mlruns/**
+mlflow.db
 **/hydra-multiruns/**
 **/hydra-outputs/**/
 
