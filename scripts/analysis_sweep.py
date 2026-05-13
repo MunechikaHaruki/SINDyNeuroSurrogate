@@ -13,7 +13,8 @@ from neurosurrogate.builder.build_current import (
     FUNC_MAP,
 )
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_neuron import MCMODELS, NeuronGraph, Node
+from neurosurrogate.model.model_dataset import NeuronGraph, Node
+from neurosurrogate.model.model_neuron import MCMODELS
 from neurosurrogate.profiler.draw_registry import DRAW_MAP
 from neurosurrogate.profiler.profiler_view import view_model
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics

@@ -6,7 +6,7 @@ import pandas as pd
 import xarray as xr
 
 from ..model.model_compartments import COMPARTMENT_TEMPLATES, Compartment
-from ..model.model_neuron import NeuronGraph
+from ..model.model_dataset import NeuronGraph
 
 
 @dataclass

@@ -10,7 +10,7 @@ from .model.model_compartments import (
     calc_hh_channel,
     calc_passive_channel,
 )
-from .model.model_neuron import NeuronGraph
+from .model.model_dataset import NeuronGraph
 from .model.model_neurosindy import (
     DUMMY_SINDY_ARGS,
     DUMMY_SURR_COMP,

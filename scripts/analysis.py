@@ -13,8 +13,8 @@ from io_handler import TARGET_EXP, load_surrogate_model
 
 from neurosurrogate.builder.build_current import FUNC_MAP, CurrentConfig
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_dataset import DatasetConfig
-from neurosurrogate.model.model_neuron import MCMODELS, NeuronGraph, Node
+from neurosurrogate.model.model_dataset import DatasetConfig, NeuronGraph, Node
+from neurosurrogate.model.model_neuron import MCMODELS
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.profiler.draw_registry import DRAW_MAP
 from neurosurrogate.profiler.profiler_view import view_model
