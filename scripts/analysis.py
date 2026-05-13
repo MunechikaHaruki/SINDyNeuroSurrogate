@@ -31,9 +31,8 @@ MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
 
 
-get_comp_names = lambda base_btn: (
-    MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
-)
+def get_comp_names(base_btn):
+    return MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
 
 
 def get_run_info(run_id: str) -> dict:

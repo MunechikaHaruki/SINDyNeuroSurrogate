@@ -1,5 +1,6 @@
 import numpy as np
 
+from neurosurrogate.builder.builder_feature_libraries import LibraryEntry
 from neurosurrogate.model.registry_compartments import (
     HH_RATE_COST_MAP,
     alpha_h,
@@ -11,8 +12,6 @@ from neurosurrogate.model.registry_compartments import (
     njit,  # noqa: F401
 )
 from neurosurrogate.profiler.profiler_model import OpCost
-
-from .builder_feature_libraries import LibraryEntry
 
 FUNC_REGISTRY = {
     "alpha_m": alpha_m,

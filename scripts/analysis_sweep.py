@@ -5,8 +5,7 @@ import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
-import yaml
-from analysis import BaseUI
+from analysis import BaseUI, get_comp_names
 from io_handler import load_surrogate_model
 
 from neurosurrogate.builder.registry_current import (
@@ -15,7 +14,6 @@ from neurosurrogate.builder.registry_current import (
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import NeuronGraph, Node
 from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_view import view_model
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
@@ -34,9 +32,6 @@ _SWEEP_METRICS = [
     "median_amp_error",
 ]
 
-get_comp_names = lambda base_btn: (
-    MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
-)
 
 CurrentList: list = ["train"] + list(FUNC_MAP.keys())
 DRAW_LIST: list = list(DRAW_MAP.keys())
@@ -52,29 +47,6 @@ _SWEEP_METRICS = [
     "spike_count_diff",
     "median_amp_error",
 ]
-
-
-def get_run_info(run_id: str) -> dict:
-    client = mlflow.MlflowClient()
-
-    def load_yaml(run_id: str, filename: str) -> dict:
-        return yaml.safe_load(mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}"))
-
-    def load_text(run_id: str, filename: str) -> str:
-        return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
-
-    view_cfg = load_yaml(run_id, "view.json")
-
-    return {
-        "sindy_coef": view_model(**view_cfg),
-        "dataset": load_yaml(run_id, "dataset.yaml"),
-        "runName": client.get_run(run_id).data.tags["mlflow.runName"],
-        "run_id": run_id,
-        "equations": load_text(run_id, "equations.txt"),
-    }
-
-
-# ── sweep ─────────────────────────────────────────────────────────────────────
 
 
 def _make_steady_u(amp: float, iteration: int, silence_steps: int) -> np.ndarray:
@@ -113,10 +85,8 @@ def sweep_amplitude_metrics(
     -------
     dict with keys: "amplitudes", "original", <run_id>, ...
     """
-    name_to_idx = MCMODELS[model_name].name_to_idx
-    comp_id = name_to_idx(target_comp_name)
     net: NeuronGraph = MCMODELS[model_name]
-
+    comp_id = net.name_to_idx(target_comp_name)
     surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
 
     iteration = int(duration / dt)
