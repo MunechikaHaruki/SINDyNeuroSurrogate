@@ -11,10 +11,8 @@ import numpy as np
 import yaml
 from matplotlib.figure import Figure
 
-from neurosurrogate.model.model_dataset import (
-    DatasetConfig,
-)
-from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
+from neurosurrogate.model.model_dataset import DatasetConfig
+from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate, make_surr_comp
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
 from neurosurrogate.profiler.profiler_view import view_model
 
@@ -86,9 +84,12 @@ class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
         exec(source, vars(target_module), local_vars)
         compute_theta = local_vars["dynamic_compute_theta"]
         xi_matrix = np.load(context.artifacts["xi_path"])
-        self.surr_comp = joblib.load(context.artifacts["surr_comp_path"])
+        self._gate_inits = np.load(context.artifacts["gate_inits_path"]).tolist()
         self.sindy_args = (xi_matrix, compute_theta)
         self.preprocessor = joblib.load(context.artifacts["preprocessor_path"])
+
+    def make_surr_comp(self, name: str):
+        return make_surr_comp(name, self._gate_inits)
 
     def predict(self, context, model_input):
         pass  # unified_simulatorに直接渡すので不要
@@ -99,7 +100,7 @@ def log_surrogate_model(surrogate: SINDyNeuroSurrogate):
         tmpdir = Path(tmpdir)
 
         np.save(tmpdir / "xi.npy", surrogate.sindy.coefficients())
-        joblib.dump(surrogate.surr_comp, tmpdir / "surr_comp.joblib")
+        np.save(tmpdir / "gate_inits.npy", np.array(surrogate._gate_inits))
         (tmpdir / "source.py").write_text(surrogate.source)
         joblib.dump(surrogate.preprocessor, tmpdir / "preprocessor.joblib")
 
@@ -108,7 +109,7 @@ def log_surrogate_model(surrogate: SINDyNeuroSurrogate):
             python_model=SINDySurrogateMLflowModel(),
             artifacts={
                 "xi_path": str(tmpdir / "xi.npy"),
-                "surr_comp_path": str(tmpdir / "surr_comp.joblib"),
+                "gate_inits_path": str(tmpdir / "gate_inits.npy"),
                 "source_path": str(tmpdir / "source.py"),
                 "target_module_path": inspect.getfile(surrogate.target_module),
                 "preprocessor_path": str(tmpdir / "preprocessor.joblib"),

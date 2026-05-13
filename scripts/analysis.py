@@ -16,7 +16,6 @@ from neurosurrogate.model.model_dataset import (
     CurrentConfig,
     DatasetConfig,
     NeuronGraph,
-    Node,
 )
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.model.registry_neuron import MCMODELS
@@ -217,7 +216,9 @@ def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
     original_ds = unified_simulator(dt=dataset_cfg.dt, u=u, net=original_graph)
 
     surr_nodes = [
-        Node(n.name, "surr") if n.name in param_ui.surrogate_target_ui.value else n
+        surrogate_model.make_surr_comp(n.name)
+        if n.name in param_ui.surrogate_target_ui.value
+        else n
         for n in original_graph.nodes
     ]
     surr_graph = NeuronGraph(

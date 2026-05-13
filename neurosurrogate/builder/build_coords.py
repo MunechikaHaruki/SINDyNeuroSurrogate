@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..model.registry_compartments import Compartment
+from ..model.model_dataset import NeuronGraph
 
 
 @dataclass
@@ -31,24 +31,24 @@ class StateAccumulator:
         return np.array(self.init, dtype=np.float64)
 
 
-def build_indices(nodes: list[str], compartments: list[Compartment]):
+def build_indices(net: NeuronGraph):
+    nodes = net.nodes
     N = len(nodes)
     gate_offsets = np.full(N, -1, dtype=np.int32)
-    ids_list = {k: [] for k in compartments.keys()}
+    ids_list = {"hh": [], "passive": [], "surr": []}
     acc = StateAccumulator()
 
     # [Pass 1] 電位変数の収集
-    for i, node_type in enumerate(nodes):
-        comp: Compartment = compartments[node_type]
+    for i, comp in enumerate(nodes):
+        key = comp.type_name
         acc.add(i, [comp.vars[0]], [comp.gate[0]], [comp.init[0]])
-        ids_list[node_type].append(i)
+        ids_list[key].append(i)
 
     # [Pass 2] ゲート変数の収集
     current_offset = N
-    for i, node_type in enumerate(nodes):
-        comp: Compartment = compartments[node_type]
+    for i, comp in enumerate(nodes):
         gate_vars = comp.vars[1:]
-        if len(gate_vars) > 0:
+        if gate_vars:
             gate_offsets[i] = current_offset
             acc.add(i, comp.vars[1:], comp.gate[1:], comp.init[1:])
             current_offset += len(gate_vars)

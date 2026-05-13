@@ -17,7 +17,15 @@ def _dummy_theta(v, latent, i_int):
 _dummy_xi = np.zeros((2, 1), dtype=np.float64)
 
 DUMMY_SINDY_ARGS = (_dummy_xi, _dummy_theta)
-DUMMY_SURR_COMP = Compartment(gate_inits=[0], gate_names=["latent1"])
+
+
+def make_surr_comp(name: str, gate_inits: list) -> Compartment:
+    return Compartment(
+        type_name="surr",
+        gate_inits=gate_inits,
+        gate_names=[f"latent{i + 1}" for i in range(len(gate_inits))],
+        name=name,
+    )
 
 
 def get_gate_numpy(train_xr, target_comp_id):
@@ -87,12 +95,8 @@ class SINDyNeuroSurrogate:
             feature_names=self.sindy.get_feature_names(),
         )
 
-    @property
-    def surr_comp(self):
-        return Compartment(
-            gate_inits=self._gate_inits,
-            gate_names=[f"latent{i + 1}" for i in range(len(self._gate_inits))],
-        )
+    def make_surr_comp(self, name: str) -> Compartment:
+        return make_surr_comp(name, self._gate_inits)
 
     @property
     def sindy_args(self):

@@ -12,16 +12,38 @@ from ..profiler.profiler_model import OpCost
 class Compartment:
     def __init__(
         self,
+        type_name: str,
         gate_inits: list[float],
         gate_names: list[str],
+        name: str = "",
         v_init: float = -65,
         OpCost: OpCost = None,
     ):
-
+        self.name = name
+        self.type_name = type_name
         self.v_init = v_init
         self.gate_inits = gate_inits
         self.gate_names = gate_names
         self._opcost = OpCost
+
+    def with_name(self, name: str) -> "Compartment":
+        return Compartment(
+            type_name=self.type_name,
+            gate_inits=self.gate_inits,
+            gate_names=self.gate_names,
+            name=name,
+            v_init=self.v_init,
+            OpCost=self._opcost,
+        )
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "type": self.type_name}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Compartment":
+        from .registry_compartments import COMPARTMENT_TEMPLATES
+
+        return COMPARTMENT_TEMPLATES[d["type"]].with_name(d["name"])
 
     @property
     def vars(self):
@@ -84,12 +106,6 @@ class CurrentConfig:
 
 
 @dataclass
-class Node:
-    name: str
-    type: str  # "hh" | "passive"
-
-
-@dataclass
 class Edge:
     src: str
     dst: str
@@ -98,21 +114,17 @@ class Edge:
 
 @dataclass(frozen=False)
 class NeuronGraph:
-    nodes: list[Node]
+    nodes: list[Compartment]
     edges: list[Edge]
     stim: str  # node name
 
     @cached_property
     def _name_to_idx(self) -> dict:
-        return {n.name: i for i, n in enumerate(self.nodes)}
+        return {c.name: i for i, c in enumerate(self.nodes)}
 
     @property
     def names(self) -> list[str]:
-        return [n.name for n in self.nodes]
-
-    @property
-    def types(self) -> list[str]:
-        return [n.type for n in self.nodes]
+        return [c.name for c in self.nodes]
 
     def name_to_idx(self, name: str) -> int:
         return self._name_to_idx[name]
@@ -130,7 +142,7 @@ class NeuronGraph:
 
     def to_dict(self) -> dict:
         return {
-            "nodes": [{"name": n.name, "type": n.type} for n in self.nodes],
+            "nodes": [c.to_dict() for c in self.nodes],
             "edges": [
                 {"src": e.src, "dst": e.dst, "weight": e.weight} for e in self.edges
             ],
@@ -139,11 +151,11 @@ class NeuronGraph:
 
     @classmethod
     def from_dict(cls, d: dict) -> "NeuronGraph":
-        nodes = [Node(name=n["name"], type=n["type"]) for n in d["nodes"]]
-        edges = [
-            Edge(src=e["src"], dst=e["dst"], weight=e["weight"]) for e in d["edges"]
-        ]
-        return cls(nodes=nodes, edges=edges, stim=d["stim"])
+        return cls(
+            nodes=[Compartment.from_dict(n) for n in d["nodes"]],
+            edges=[Edge(**e) for e in d["edges"]],
+            stim=d["stim"],
+        )
 
     @property
     def graph_laplacian(self):
@@ -170,6 +182,8 @@ class NeuronGraph:
         ノード名は型の頭文字 + 0始まり連番で自動生成
         例: ["passive", "hh", "passive"] → ["p0", "h0", "p1"]
         """
+        from .registry_compartments import COMPARTMENT_TEMPLATES
+
         assert len(weights) == len(node_types) - 1, (
             f"weights の長さは len(node_types) - 1 = {len(node_types) - 1} である必要があります"
         )
@@ -177,7 +191,8 @@ class NeuronGraph:
         nodes = []
         for t in node_types:
             prefix = t[0]  # "hh" → "h", "passive" → "p"
-            nodes.append(Node(f"{prefix}{counters[prefix]}", t))
+            name = f"{prefix}{counters[prefix]}"
+            nodes.append(COMPARTMENT_TEMPLATES[t].with_name(name))
             counters[prefix] += 1
 
         edges = [

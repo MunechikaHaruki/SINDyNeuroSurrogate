@@ -164,6 +164,7 @@ V_REL = (-65) - (-65)  # V_INIT - E_REST
 
 COMPARTMENT_TEMPLATES = {
     "hh": Compartment(
+        type_name="hh",
         gate_inits=[m_inf(V_REL), h_inf(V_REL), n_inf(V_REL)],
         gate_names=["M", "H", "N"],
         OpCost=(
@@ -176,6 +177,7 @@ COMPARTMENT_TEMPLATES = {
         ),
     ),
     "passive": Compartment(
+        type_name="passive",
         gate_inits=[], gate_names=[], OpCost=OpCost(div=1, pm=2, mul=1)
     ),
 }

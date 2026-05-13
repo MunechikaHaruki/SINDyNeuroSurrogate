@@ -8,11 +8,9 @@ from .builder.build_coords import build_indices, set_coords, set_i_internal
 from .model.model_dataset import NeuronGraph
 from .model.model_neurosindy import (
     DUMMY_SINDY_ARGS,
-    DUMMY_SURR_COMP,
     SINDyNeuroSurrogate,
 )
 from .model.registry_compartments import (
-    COMPARTMENT_TEMPLATES,
     HH_Params_numba,
     calc_hh_channel,
     calc_passive_channel,
@@ -98,18 +96,10 @@ def calc_universal_deriv(curr_x, u_t, model_args, dvar):
 def unified_simulator(
     dt, u, net: NeuronGraph, surrogate_model: SINDyNeuroSurrogate = None
 ):
-    if surrogate_model is None:
-        sindy_args, surr_comp = DUMMY_SINDY_ARGS, DUMMY_SURR_COMP
-    else:
-        sindy_args, surr_comp = surrogate_model.sindy_args, surrogate_model.surr_comp
+    sindy_args = surrogate_model.sindy_args if surrogate_model else DUMMY_SINDY_ARGS
     params = HH_Params_numba()
 
-    if surr_comp is None:
-        compartments = COMPARTMENT_TEMPLATES
-    else:
-        compartments = COMPARTMENT_TEMPLATES | {"surr": surr_comp}
-
-    indice = build_indices(net.types, compartments)
+    indice = build_indices(net)
     IndiceArgs = namedtuple("IndiceArgs", list(indice["ids"].keys()))
     raw = generic_euler_solver(
         indice["init"],
@@ -125,7 +115,7 @@ def unified_simulator(
             gate_offsets=indice["gate_offsets"],
         ),
     )
-    print(f"surr_target_id:{indice['ids']['surr']}")
+    logger.debug(f"surr_target_id:{indice['ids']['surr']}")
     dataset = set_coords(raw, u, indice["coords"], dt)
     set_i_internal(dataset, net.graph_laplacian, net.stim_node_idx, u)
     return dataset

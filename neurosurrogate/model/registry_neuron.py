@@ -1,8 +1,12 @@
-from .model_dataset import Edge, NeuronGraph, Node
+from .model_dataset import Edge, NeuronGraph
+from .registry_compartments import COMPARTMENT_TEMPLATES
+
+_hh = COMPARTMENT_TEMPLATES["hh"]
+_passive = COMPARTMENT_TEMPLATES["passive"]
 
 MCMODELS: dict[str, NeuronGraph] = {
     "hh": NeuronGraph(
-        nodes=[Node("soma", "hh")],
+        nodes=[_hh.with_name("soma")],
         edges=[],
         stim="soma",
     ),
@@ -20,13 +24,13 @@ MCMODELS: dict[str, NeuronGraph] = {
     ),
     "hh7": NeuronGraph(
         nodes=[
-            Node("p1", "passive"),
-            Node("h1", "hh"),
-            Node("h2", "hh"),
-            Node("h3", "hh"),
-            Node("h4", "hh"),
-            Node("p2", "passive"),
-            Node("p3", "passive"),
+            _passive.with_name("p1"),
+            _hh.with_name("h1"),
+            _hh.with_name("h2"),
+            _hh.with_name("h3"),
+            _hh.with_name("h4"),
+            _passive.with_name("p2"),
+            _passive.with_name("p3"),
         ],
         edges=[
             Edge("p1", "h1", 1.0),

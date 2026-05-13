@@ -12,7 +12,7 @@ from neurosurrogate.builder.registry_current import (
     FUNC_MAP,
 )
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_dataset import NeuronGraph, Node
+from neurosurrogate.model.model_dataset import NeuronGraph
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
 from neurosurrogate.profiler.registry_view import DRAW_MAP
@@ -60,7 +60,8 @@ def _make_steady_u(amp: float, iteration: int, silence_steps: int) -> np.ndarray
 def _run_surr_sim(orig_ds, net, comp_id, u, dt, surrogate):
     """1コンパートメントをsurrに差し替えてシミュレーション。"""
     surr_nodes = [
-        Node(n.name, "surr") if i == comp_id else n for i, n in enumerate(net.nodes)
+        surrogate.make_surr_comp(n.name) if i == comp_id else n
+        for i, n in enumerate(net.nodes)
     ]
     surr_graph = NeuronGraph(nodes=surr_nodes, edges=net.edges, stim=net.stim)
 
