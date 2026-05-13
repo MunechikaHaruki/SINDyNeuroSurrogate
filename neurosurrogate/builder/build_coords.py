@@ -6,6 +6,7 @@ import pandas as pd
 import xarray as xr
 
 from ..model.model_compartments import COMPARTMENT_TEMPLATES, Compartment
+from ..model.model_neuron import NeuronGraph
 
 
 @dataclass
@@ -31,7 +32,8 @@ class StateAccumulator:
         return np.array(self.init, dtype=np.float64)
 
 
-def build_indices(nodes: list, surr_comp: Compartment):
+def build_indices(net: NeuronGraph, surr_comp: Compartment):
+    nodes = net.types
 
     if surr_comp is None:
         compartments = COMPARTMENT_TEMPLATES

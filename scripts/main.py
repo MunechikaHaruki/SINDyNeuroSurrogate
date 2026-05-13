@@ -16,7 +16,7 @@ from neurosurrogate.builder.build_current import build_current_pipeline
 from neurosurrogate.builder.build_feature_library import build_featurelib_and_basecost
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_compartments import COMPARTMENT_TEMPLATES
-from neurosurrogate.model.model_neuron import MCMODELS
+from neurosurrogate.model.model_neuron import MCMODELS, NeuronGraph
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
 
@@ -55,7 +55,7 @@ def cli_flow(cfg_sindy):
         train_ds = unified_simulator(
             dt=train_dataset_cfg["dt"],
             u=build_current_pipeline(train_dataset_cfg["current"]),
-            net=train_dataset_cfg["net"],
+            net=NeuronGraph.from_dict(train_dataset_cfg["net"]),
         )
         mlflow.log_dict(train_dataset_cfg, "dataset.yaml")
         name_to_idx = MCMODELS[cfg_sindy["datasets"]["model_name"]].name_to_idx

@@ -10,6 +10,7 @@ from .model.model_compartments import (
     calc_hh_channel,
     calc_passive_channel,
 )
+from .model.model_neuron import NeuronGraph
 from .model.model_neurosindy import (
     DUMMY_SINDY_ARGS,
     DUMMY_SURR_COMP,
@@ -93,29 +94,15 @@ def calc_universal_deriv(curr_x, u_t, model_args, dvar):
         dvar[g_idx] = model_args.xi_matrix[1] @ theta
 
 
-def calc_graph_laplacian(connections, N):
-    G_matrix = np.zeros((N, N), dtype=np.float64)
-    if N == 1 or connections is None:
-        pass
-    else:
-        for i, j, g in connections:
-            G_matrix[i, j] = G_matrix[j, i] = g
-    D_matrix = np.diag(np.sum(G_matrix, axis=1))
-    C_matrix = G_matrix - D_matrix  # 流入を正とするグラフラプラシアンの符号反転
-
-    return C_matrix
-
-
-def unified_simulator(dt, u, net, surrogate_model: SINDyNeuroSurrogate = None):
+def unified_simulator(
+    dt, u, net: NeuronGraph, surrogate_model: SINDyNeuroSurrogate = None
+):
     if surrogate_model is None:
         sindy_args, surr_comp = DUMMY_SINDY_ARGS, DUMMY_SURR_COMP
     else:
         sindy_args, surr_comp = surrogate_model.sindy_args, surrogate_model.surr_comp
-
     params = HH_Params_numba()
-    N = len(net["nodes"])
-    C_matrix = calc_graph_laplacian(net["edges"], N)
-    indice = build_indices(net["nodes"], surr_comp)
+    indice = build_indices(net, surr_comp)
     IndiceArgs = namedtuple("IndiceArgs", list(indice["ids"].keys()))
     raw = generic_euler_solver(
         indice["init"],
@@ -123,8 +110,8 @@ def unified_simulator(dt, u, net, surrogate_model: SINDyNeuroSurrogate = None):
         dt,
         ModelArgs(
             params=params,
-            C_matrix=C_matrix,
-            stim_idx=net["stim_node"],
+            C_matrix=net.graph_laplacian,
+            stim_idx=net.stim_node_idx,
             indice_args=IndiceArgs(**indice["ids"]),
             xi_matrix=sindy_args[0],
             compute_theta=sindy_args[1],
@@ -133,5 +120,5 @@ def unified_simulator(dt, u, net, surrogate_model: SINDyNeuroSurrogate = None):
     )
     print(f"surr_target_id:{indice['ids']['surr']}")
     dataset = set_coords(raw, u, indice["coords"], dt)
-    set_i_internal(dataset, C_matrix, net["stim_node"], u)
+    set_i_internal(dataset, net.graph_laplacian, net.stim_node_idx, u)
     return dataset

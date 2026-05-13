@@ -13,7 +13,7 @@ from neurosurrogate.builder.build_current import (
     FUNC_MAP,
 )
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_neuron import MCMODELS
+from neurosurrogate.model.model_neuron import MCMODELS, NeuronGraph, Node
 from neurosurrogate.profiler.draw_registry import DRAW_MAP
 from neurosurrogate.profiler.profiler_view import view_model
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
@@ -86,11 +86,12 @@ def _make_steady_u(amp: float, iteration: int, silence_steps: int) -> np.ndarray
 
 def _run_surr_sim(orig_ds, net, comp_id, u, dt, surrogate):
     """1コンパートメントをsurrに差し替えてシミュレーション。"""
-    surr_net = {
-        **net,
-        "nodes": ["surr" if i == comp_id else t for i, t in enumerate(net["nodes"])],
-    }
-    return unified_simulator(dt=dt, u=u, net=surr_net, surrogate_model=surrogate)
+    surr_nodes = [
+        Node(n.name, "surr") if i == comp_id else n for i, n in enumerate(net.nodes)
+    ]
+    surr_graph = NeuronGraph(nodes=surr_nodes, edges=net.edges, stim=net.stim)
+
+    return unified_simulator(dt=dt, u=u, net=surr_graph, surrogate_model=surrogate)
 
 
 def sweep_amplitude_metrics(
@@ -113,7 +114,7 @@ def sweep_amplitude_metrics(
     """
     name_to_idx = MCMODELS[model_name].name_to_idx
     comp_id = name_to_idx(target_comp_name)
-    net = MCMODELS[model_name].to_model_dict()
+    net: NeuronGraph = MCMODELS[model_name]
 
     surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
 

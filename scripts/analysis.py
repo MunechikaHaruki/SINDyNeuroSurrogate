@@ -1,4 +1,3 @@
-import copy
 import inspect
 import os
 import typing
@@ -18,7 +17,7 @@ from neurosurrogate.builder.build_current import (
     build_current_setting,
 )
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_neuron import MCMODELS
+from neurosurrogate.model.model_neuron import MCMODELS, NeuronGraph, Node
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.profiler.draw_registry import DRAW_MAP
 from neurosurrogate.profiler.profiler_view import view_model
@@ -229,19 +228,25 @@ def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
         dataset_cfg = build_dataset(**base_btn.base_dataset_ui.value, pipeline=pipeline)
         model_name = base_btn.base_dataset_ui.value["model_name"]
 
+    original_graph = NeuronGraph.from_dict(dataset_cfg["net"])
+
     name_to_idx = MCMODELS[model_name].name_to_idx
     surrogate_model = load_surrogate_model(param_ui.run_id)
     u = build_current_pipeline(dataset_cfg["current"])
-    original_ds = unified_simulator(dt=dataset_cfg["dt"], u=u, net=dataset_cfg["net"])
-    surr_net = copy.deepcopy(dataset_cfg["net"])
+    original_ds = unified_simulator(dt=dataset_cfg["dt"], u=u, net=original_graph)
 
-    for i in param_ui.surrogate_target_ui.value:
-        surr_net["nodes"][name_to_idx(i)] = "surr"
+    surr_nodes = [
+        Node(n.name, "surr") if n.name in param_ui.surrogate_target_ui.value else n
+        for n in original_graph.nodes
+    ]
+    surr_graph = NeuronGraph(
+        nodes=surr_nodes, edges=original_graph.edges, stim=original_graph.stim
+    )
 
     surr_ds = unified_simulator(
         dt=dataset_cfg["dt"],
         u=u,
-        net=surr_net,
+        net=surr_graph,
         surrogate_model=surrogate_model,
     )
 
