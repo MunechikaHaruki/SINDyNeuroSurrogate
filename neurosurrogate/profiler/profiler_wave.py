@@ -1,3 +1,5 @@
+import warnings
+
 import efel
 import numpy as np
 
@@ -144,10 +146,15 @@ def calc_dynamic_metrics(original, surrogate, comp_id, dt):
     orig_v = original["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
     surr_v = surrogate["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
 
-    orig_feat, surr_feat = efel.get_feature_values(
-        [_to_efel_trace(orig_v, dt), _to_efel_trace(surr_v, dt)],
-        _EFEL_FEATURES,
-    )
+    with warnings.catch_warnings():
+        # スパイクなし（サロゲート発火失敗・閾値未到達）のトレースでは eFEL がスパイク依存
+        # フィーチャを計算できず RuntimeWarning を出すが、戻り値は None になるだけで
+        # 下流の _median_or_nan / _safe_float が nan に変換するため動作上は問題ない。
+        warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"efel\.*")
+        orig_feat, surr_feat = efel.get_feature_values(
+            [_to_efel_trace(orig_v, dt), _to_efel_trace(surr_v, dt)],
+            _EFEL_FEATURES,
+        )
 
     # numpy 配列に対して or を使うと曖昧なため is None で判定
     _peaks = orig_feat.get("peak_indices")
