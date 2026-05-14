@@ -109,7 +109,6 @@ class SINDyNeuroSurrogate:
 
     @staticmethod
     def _build_source(feature_names: list, input_features: list):
-        num_features = len(feature_names)
         expressions = []
         for name in feature_names:
             # '1' という文字列は明示的に浮動小数点にする

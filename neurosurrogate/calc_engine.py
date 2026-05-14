@@ -23,19 +23,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class IndiceArgs:
-    hh: np.ndarray       # shape (N_hh,)  dtype=int32
+    hh: np.ndarray  # shape (N_hh,)  dtype=int32
     passive: np.ndarray  # shape (N_p,)   dtype=int32
-    surr: np.ndarray     # shape (N_s,)   dtype=int32
+    surr: np.ndarray  # shape (N_s,)   dtype=int32
 
 
 @dataclass(frozen=True)
 class ModelArgs:
-    C_matrix: np.ndarray      # shape (N, N)       グラフラプラシアン
+    C_matrix: np.ndarray  # shape (N, N)       グラフラプラシアン
     params: HHParams
     stim_idx: int
     indice_args: IndiceArgs
-    xi_matrix: np.ndarray     # shape (2, n_terms)  SINDy係数行列
-    compute_theta: Callable   # (v, latent, i_t) -> jnp.ndarray
+    xi_matrix: np.ndarray  # shape (2, n_terms)  SINDy係数行列
+    compute_theta: Callable  # (v, latent, i_t) -> jnp.ndarray
     gate_offsets: np.ndarray  # shape (N,)          dtype=int32
 
 

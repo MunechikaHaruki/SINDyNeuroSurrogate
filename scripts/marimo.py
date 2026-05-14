@@ -9,6 +9,7 @@ def _():
     import analysis
     import analysis_sweep
     import marimo as mo
+
     base_button = analysis.BaseUI.get_base_btn()
     base_button.render()
     return analysis, analysis_sweep, base_button, mo
@@ -24,7 +25,7 @@ def _(analysis, base_button):
 
 @app.cell
 def _(analysis, param_button):
-    eval_ui=analysis.EvalUI.get_eval_ui(param_button)
+    eval_ui = analysis.EvalUI.get_eval_ui(param_button)
     eval_ui.render()
     return (eval_ui,)
 
@@ -58,7 +59,7 @@ def _(analysis_sweep, base_button):
 
 @app.cell
 def _(base_button, mo, sweep_ui):
-    fig=sweep_ui.run_and_plot(base_button,base_button.run_ids)
+    fig = sweep_ui.run_and_plot(base_button, base_button.run_ids)
     mo.mpl.interactive(fig)
     return
 

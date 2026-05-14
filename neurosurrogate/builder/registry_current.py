@@ -55,7 +55,12 @@ def generate_step(values: list, step_duration: int):
     return apply
 
 
-def generate_sinusoidal(amplitude: float = 7.5, frequency: float = 10.0, baseline: float = 7.5, dt: float = 0.01):
+def generate_sinusoidal(
+    amplitude: float = 7.5,
+    frequency: float = 10.0,
+    baseline: float = 7.5,
+    dt: float = 0.01,
+):
     """サイン波電流を生成する。baseline ± amplitude で振動。amplitude/baseline [μA/cm²]、frequency [Hz]、dt [ms/step]"""
 
     def apply(dset_i_ext: np.ndarray) -> None:
