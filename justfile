@@ -33,7 +33,6 @@ lint:
 	{{VIRTUAL_ENV}} ruff format --check
 	{{VIRTUAL_ENV}} ruff check
 	{{VIRTUAL_ENV}} mypy .
-	{{VIRTUAL_ENV}} pylint neurosurrogate scripts
 
 #Count lines of code
 cloc:
@@ -59,3 +58,7 @@ mlflow:
 
 marimo:
 	{{VIRTUAL_ENV}} marimo edit scripts/marimo.py
+
+# Claude Code連携用（MCP + watchモード）
+marimo-mcp:
+	{{VIRTUAL_ENV}} marimo edit --watch --mcp --no-token --port 2718 scripts/marimo.py

@@ -1,7 +1,6 @@
 from typing import NamedTuple
 
 import jax.numpy as jnp
-import numpy as np
 
 from ..profiler.profiler_model import OpCost
 from .model_dataset import Compartment
@@ -140,6 +139,8 @@ COMPARTMENT_TEMPLATES = {
     ),
     "passive": Compartment(
         type_name="passive",
-        gate_inits=[], gate_names=[], OpCost=OpCost(div=1, pm=2, mul=1)
+        gate_inits=[],
+        gate_names=[],
+        OpCost=OpCost(div=1, pm=2, mul=1),
     ),
 }
