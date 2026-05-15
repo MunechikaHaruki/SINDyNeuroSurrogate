@@ -1,35 +1,21 @@
 import inspect
 import os
 import typing
-from dataclasses import dataclass
-from functools import partial
 from typing import Literal
 
 import marimo as mo
 import matplotlib.pyplot as plt
-import mlflow
-from io_handler import TARGET_EXP, RunInfo, load_surrogate_model
+from io_handler import RunInfo
 
+from analysis_core import get_comp_names, get_runs_df
 from neurosurrogate.builder.registry_current import FUNC_MAP
-from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_dataset import (
-    CurrentConfig,
-    DatasetConfig,
-    NeuronGraph,
-)
-from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
 CurrentList: list = ["train"] + list(FUNC_MAP.keys())
 DRAW_LIST: list = list(DRAW_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
-
-
-def get_comp_names(base_btn):
-    return MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
 
 
 def setup_mpl(matplotlib_style: str):
@@ -39,43 +25,32 @@ def setup_mpl(matplotlib_style: str):
     plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
 
 
-def get_runs_df():
-    experiment = mlflow.get_experiment_by_name(TARGET_EXP)
-    if experiment is None:
-        raise ValueError(
-            f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
-        )
-    all_runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
-    if all_runs_df.empty:
-        raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
-    runs_df = all_runs_df.copy()
-    runs_df = runs_df.sort_values("start_time", ascending=False)
-    runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
-    cols = [
-        c for c in runs_df.columns if "metrics" in c or "params" in c or c == "run_id"
-    ]
-    runs_df = runs_df[
-        ["tags.mlflow.runName", "run_id", "start_time"]
-        + [c for c in cols if c != "run_id"]
-    ]
-    return runs_df
+def _make_ui_element(name: str, annotation: type, default):
+    if annotation is int:
+        return mo.ui.number(value=int(default), step=1, label=name)
+    elif annotation is float:
+        return mo.ui.number(value=float(default), step=0.1, label=name)
+    elif annotation is bool:
+        return mo.ui.checkbox(value=bool(default), label=name)
+    elif annotation is list:
+        return mo.ui.array([mo.ui.number(value=0.0, step=0.1)], label=name)
+    else:
+        raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
 
 
-@dataclass
-class BaseUI:
-    plt_btn: mo.ui.button
-    current_dropdown: mo.ui.dropdown
-    base_dataset_ui: mo.ui.dictionary
-    run_selector: mo.ui.table
+# ---------------------------------------------------------------------------
+# Base UI
+# ---------------------------------------------------------------------------
 
-    @staticmethod
-    def get_base_btn():
-        runs_df = get_runs_df()
-        plt_options = list(typing.get_args(MplStyle))
-        return BaseUI(
-            plt_btn=mo.ui.radio(options=plt_options, value=plt_options[0]),
-            current_dropdown=mo.ui.dropdown(CurrentList, value="steady"),
-            base_dataset_ui=mo.ui.dictionary(
+
+def make_base_ui() -> mo.ui.dictionary:
+    runs_df = get_runs_df()
+    plt_options = list(typing.get_args(MplStyle))
+    return mo.ui.dictionary(
+        {
+            "plt_style": mo.ui.radio(options=plt_options, value=plt_options[0]),
+            "current_type": mo.ui.dropdown(CurrentList, value="steady"),
+            "base_dataset": mo.ui.dictionary(
                 {
                     "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
                     "silence_duration": mo.ui.number(
@@ -83,100 +58,69 @@ class BaseUI:
                     ),
                     "duration": mo.ui.number(value=800, step=100, label="duration"),
                     "model_name": mo.ui.dropdown(
-                        options=list(MCMODELS.keys()), label="model_name", value="hh"
+                        options=list(MCMODELS.keys()),
+                        label="model_name",
+                        value="hh",
                     ),
                 }
             ),
-            run_selector=mo.ui.table(
+            "run_selector": mo.ui.table(
                 runs_df[["tags.mlflow.runName", "run_id"]],
                 label="比較・解析したいRunを複数選択",
                 selection="multi",
                 initial_selection=[0],
             ),
-        )
-
-    def get_model_info_ui(self):
-        self.run_ids = self.run_selector.value["run_id"].tolist()
-        run_infos = [RunInfo.get_run_info(rid) for rid in self.run_ids]
-        return mo.vstack(
-            [
-                mo.vstack(
-                    [
-                        mo.md(
-                            f"run_id:{info.run_id[:8]}.. &nbsp;&nbsp;　{info.run_name}"
-                        ),
-                        mo.md(f"{info.equations[:40]}"),
-                        mo.mpl.interactive(info.sindy_coef),
-                    ]
-                )
-                for info in run_infos
-            ]
-        )
+        }
+    )
 
 
-def render(self: BaseUI):
+def render_base(base_ui: mo.ui.dictionary) -> mo.Html:
     return mo.md(f"""
     ### MLflow データ解析
-    - CurrentType: {self.current_dropdown}
-    - matplotlib rendering setting: {self.plt_btn}
-    - baseDatasetUI: {self.base_dataset_ui}
-    {self.run_selector}
+    - CurrentType: {base_ui["current_type"]}
+    - matplotlib rendering setting: {base_ui["plt_style"]}
+    - baseDatasetUI: {base_ui["base_dataset"]}
+    {base_ui["run_selector"]}
     """)
 
 
-@dataclass
-class ParamUI:
-    current_ui: mo.ui.dictionary
-    surrogate_target_ui: mo.ui.multiselect
-    runid_dropdown: mo.ui.dropdown
-
-    def render(self):
-
-        return mo.md(f"""
-        ### パラメタ設定
-        - currentui: {self.current_ui}
-        - surrogate target: {self.surrogate_target_ui}
-        - runid_dropdown: {self.runid_dropdown}
-        # """)
-
-    @staticmethod
-    def _make_ui_element(name: str, annotation: type, default):
-        if annotation is int:
-            return mo.ui.number(value=int(default), step=1, label=name)
-        elif annotation is float:
-            return mo.ui.number(value=float(default), step=0.1, label=name)
-        elif annotation is bool:
-            return mo.ui.checkbox(value=bool(default), label=name)
-        elif annotation is list:
-            return mo.ui.array([mo.ui.number(value=0.0, step=0.1)], label=name)
-
-        else:
-            raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
-
-    @property
-    def run_id(self):
-        return self.runid_dropdown.value
-
-    @staticmethod
-    def get_detailed_btn(base_btn: BaseUI):
-        setup_mpl(base_btn.plt_btn.value)
-        surrogate_target_ui = mo.ui.multiselect(
-            options=get_comp_names(base_btn), value=[get_comp_names(base_btn)[0]]
-        )
-        run_ids = base_btn.run_selector.value["run_id"].tolist()
-        runid_dropdown = mo.ui.dropdown(options=run_ids, value=run_ids[0])
-
-        if base_btn.current_dropdown.value == "train":
-            return ParamUI(
-                current_ui=None,
-                surrogate_target_ui=surrogate_target_ui,
-                runid_dropdown=runid_dropdown,
+def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
+    run_ids = base_ui["run_selector"].value["run_id"].tolist()
+    run_infos = [RunInfo.get_run_info(rid) for rid in run_ids]
+    return mo.vstack(
+        [
+            mo.vstack(
+                [
+                    mo.md(
+                        f"run_id:{info.run_id[:8]}.. &nbsp;&nbsp;　{info.run_name}"
+                    ),
+                    mo.md(f"{info.equations[:40]}"),
+                    mo.mpl.interactive(info.sindy_coef),
+                ]
             )
+            for info in run_infos
+        ]
+    )
 
-        current_sig = inspect.signature(FUNC_MAP[base_btn.current_dropdown.value])
-        current_ui = mo.ui.dictionary(
+
+# ---------------------------------------------------------------------------
+# Param UI
+# ---------------------------------------------------------------------------
+
+
+def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    model_name = base_ui["base_dataset"].value["model_name"]
+    comp_names = get_comp_names(model_name)
+    run_ids = base_ui["run_selector"].value["run_id"].tolist()
+    current_type = base_ui["current_type"].value
+
+    if current_type == "train":
+        current_params_ui: mo.ui.dictionary = mo.ui.dictionary({})
+    else:
+        current_sig = inspect.signature(FUNC_MAP[current_type])
+        current_params_ui = mo.ui.dictionary(
             {
-                name: ParamUI._make_ui_element(
+                name: _make_ui_element(
                     name,
                     param.annotation,
                     param.default
@@ -186,105 +130,71 @@ class ParamUI:
                 for name, param in current_sig.parameters.items()
             }
         )
-        return ParamUI(
-            current_ui=current_ui,
-            surrogate_target_ui=surrogate_target_ui,
-            runid_dropdown=runid_dropdown,
-        )
 
-
-def eval_dataset(base_btn: BaseUI, param_ui: ParamUI):
-    current_type = base_btn.current_dropdown.value
-    if current_type == "train":
-        dataset_cfg = RunInfo.get_run_info(param_ui.run_id).dataset
-        model_name = dataset_cfg.model_name
-    else:
-        pipeline = CurrentConfig.build_pipeline(current_type, param_ui.current_ui.value)
-        dataset_cfg = DatasetConfig.build_dataset(
-            **base_btn.base_dataset_ui.value, pipeline=pipeline
-        )
-        model_name = base_btn.base_dataset_ui.value["model_name"]
-
-    original_graph = dataset_cfg.net
-
-    name_to_idx = MCMODELS[model_name].name_to_idx
-    surrogate_model = load_surrogate_model(param_ui.run_id)
-    u = dataset_cfg.current.build()
-    original_ds = unified_simulator(dt=dataset_cfg.dt, u=u, net=original_graph)
-
-    surr_nodes = [
-        surrogate_model.make_surr_comp(n.name)
-        if n.name in param_ui.surrogate_target_ui.value
-        else n
-        for n in original_graph.nodes
-    ]
-    surr_graph = NeuronGraph(
-        nodes=surr_nodes, edges=original_graph.edges, stim=original_graph.stim
-    )
-
-    surr_ds = unified_simulator(
-        dt=dataset_cfg.dt,
-        u=u,
-        net=surr_graph,
-        surrogate_model=surrogate_model,
-    )
-
-    get_preprocessed = partial(
-        transform_gate, surrogate_model.preprocessor, original_ds
-    )
-    get_metrics = partial(calc_dynamic_metrics, original_ds, surr_ds, dt=dataset_cfg.dt)
-    return {
-        "metrics": get_metrics,
-        "get_preprocessed": get_preprocessed,
-        "name_to_idx": name_to_idx,
-        "datasets": {
-            "orig": original_ds,
-            "surr": surr_ds,
-        },
-    }
-
-
-@dataclass
-class EvalUI:
-    eval_comp: mo.ui.dropdown
-    draw_func: mo.ui.dropdown
-
-    def render(self):
-        return mo.md(f"評価対象のComp:{self.eval_comp},描画関数:{self.draw_func}")
-
-    @staticmethod
-    def get_eval_ui(param_ui: ParamUI):
-        return EvalUI(
-            eval_comp=mo.ui.dropdown(
-                options=param_ui.surrogate_target_ui.value,
-                value=param_ui.surrogate_target_ui.value[0],
+    return mo.ui.dictionary(
+        {
+            "current_params": current_params_ui,
+            "surrogate_targets": mo.ui.multiselect(
+                options=comp_names, value=[comp_names[0]]
             ),
-            draw_func=mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
-        )
+            "run_id": mo.ui.dropdown(options=run_ids, value=run_ids[0]),
+        }
+    )
 
-    def view_result(self, result):
-        target_comp_id = result["name_to_idx"](self.eval_comp.value)
-        metrics = result["metrics"](target_comp_id)
-        pre = result["get_preprocessed"](target_comp_id)
-        print(pre.coords)
-        print("vieowe")
-        cards = mo.hstack(
-            [
-                mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
-                for k, v in metrics.items()
-            ],
-            wrap=True,
-        )
-        return mo.vstack(
-            [
-                cards,
-                mo.mpl.interactive(
-                    DRAW_MAP[self.draw_func.value](
-                        result["datasets"]["orig"],
-                        result["datasets"]["surr"],
-                        pre,
-                        target_comp_id,
-                    )
-                ),
-            ]
-        )
+
+def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.md(f"""
+    ### パラメタ設定
+    - currentui: {param_ui["current_params"]}
+    - surrogate target: {param_ui["surrogate_targets"]}
+    - run id: {param_ui["run_id"]}
+    """)
+
+
+# ---------------------------------------------------------------------------
+# Eval UI
+# ---------------------------------------------------------------------------
+
+
+def make_eval_ui(param_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    comp_options = param_ui["surrogate_targets"].value
+    return mo.ui.dictionary(
+        {
+            "eval_comp": mo.ui.dropdown(options=comp_options, value=comp_options[0]),
+            "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
+        }
+    )
+
+
+def render_eval(eval_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.md(
+        f"評価対象のComp:{eval_ui['eval_comp']},描画関数:{eval_ui['draw_func']}"
+    )
+
+
+def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
+    target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
+    metrics = result["metrics"](target_comp_id)
+    pre = result["get_preprocessed"](target_comp_id)
+    print(pre.coords)
+    print("vieowe")
+    cards = mo.hstack(
+        [
+            mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
+            for k, v in metrics.items()
+        ],
+        wrap=True,
+    )
+    return mo.vstack(
+        [
+            cards,
+            mo.mpl.interactive(
+                DRAW_MAP[eval_ui["draw_func"].value](
+                    result["datasets"]["orig"],
+                    result["datasets"]["surr"],
+                    pre,
+                    target_comp_id,
+                )
+            ),
+        ]
+    )

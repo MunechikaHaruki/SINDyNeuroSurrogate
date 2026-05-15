@@ -1,26 +1,14 @@
-from dataclasses import dataclass
-from typing import Literal
-
 import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
-from analysis import BaseUI, get_comp_names
+from analysis_core import get_comp_names
 from io_handler import load_surrogate_model
 
-from neurosurrogate.builder.registry_current import (
-    FUNC_MAP,
-)
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import NeuronGraph
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
-from neurosurrogate.profiler.registry_view import DRAW_MAP
-
-CurrentList: list = ["train"] + list(FUNC_MAP.keys())
-DRAW_LIST: list = list(DRAW_MAP.keys())
-MplStyle = Literal["paper", "presentation"]
-MCNameList = list(MCMODELS.keys())
 
 _SWEEP_METRICS = [
     "spike_count",
@@ -33,20 +21,9 @@ _SWEEP_METRICS = [
 ]
 
 
-CurrentList: list = ["train"] + list(FUNC_MAP.keys())
-DRAW_LIST: list = list(DRAW_MAP.keys())
-MplStyle = Literal["paper", "presentation"]
-MCNameList = list(MCMODELS.keys())
-
-_SWEEP_METRICS = [
-    "spike_count",
-    "rmse",
-    "mae",
-    "latency_error",
-    "periodicity_gap",
-    "spike_count_diff",
-    "median_amp_error",
-]
+# ---------------------------------------------------------------------------
+# Domain logic
+# ---------------------------------------------------------------------------
 
 
 def _make_steady_u(amp: float, iteration: int, silence_steps: int) -> np.ndarray:
@@ -58,13 +35,11 @@ def _make_steady_u(amp: float, iteration: int, silence_steps: int) -> np.ndarray
 
 
 def _run_surr_sim(orig_ds, net, comp_id, u, dt, surrogate):
-    """1コンパートメントをsurrに差し替えてシミュレーション。"""
     surr_nodes = [
         surrogate.make_surr_comp(n.name) if i == comp_id else n
         for i, n in enumerate(net.nodes)
     ]
     surr_graph = NeuronGraph(nodes=surr_nodes, edges=net.edges, stim=net.stim)
-
     return unified_simulator(dt=dt, u=u, net=surr_graph, surrogate_model=surrogate)
 
 
@@ -78,14 +53,6 @@ def sweep_amplitude_metrics(
     target_comp_name: str,
     metric_key: str = "spike_count",
 ) -> dict:
-    """
-    定常電流の振幅をスイープし、各 run_id のサロゲートとオリジナルの
-    metric を収集する。
-
-    Returns
-    -------
-    dict with keys: "amplitudes", "original", <run_id>, ...
-    """
     net: NeuronGraph = MCMODELS[model_name]
     comp_id = net.name_to_idx(target_comp_name)
     surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
@@ -93,7 +60,6 @@ def sweep_amplitude_metrics(
     iteration = int(duration / dt)
     silence_steps = int(silence_duration / dt)
 
-    # orig/surr どちらの列を取るか
     orig_key = "orig_spike_count" if metric_key == "spike_count" else metric_key
     surr_key = "surr_spike_count" if metric_key == "spike_count" else metric_key
 
@@ -105,7 +71,6 @@ def sweep_amplitude_metrics(
         u = _make_steady_u(amp, iteration, silence_steps)
         orig_ds = unified_simulator(dt=dt, u=u, net=net)
 
-        # オリジナルのメトリクスは最初のサロゲートとの比較から取得（orig_ 列は共通）
         first_surr_ds = _run_surr_sim(
             orig_ds, net, comp_id, u, dt, surrogates[run_ids[0]]
         )
@@ -127,7 +92,6 @@ def plot_sweep(
     comp_name: str,
     run_labels: dict[str, str] | None = None,
 ) -> plt.Figure:
-    """sweep_amplitude_metrics の結果を figure に描画して返す。"""
     amps = data["amplitudes"]
     run_labels = run_labels or {}
 
@@ -154,66 +118,69 @@ def plot_sweep(
     return fig
 
 
-@dataclass
-class SweepUI:
-    amp_start: mo.ui.number
-    amp_stop: mo.ui.number
-    amp_steps: mo.ui.number
-    metric_dropdown: mo.ui.dropdown
-    comp_dropdown: mo.ui.dropdown
+# ---------------------------------------------------------------------------
+# Sweep UI
+# ---------------------------------------------------------------------------
 
-    def render(self) -> mo.Html:
-        return mo.md(f"""
-        ### 振幅スイープ設定
-        | | |
-        |---|---|
-        | amp start | {self.amp_start} |
-        | amp stop  | {self.amp_stop}  |
-        | steps     | {self.amp_steps} |
-        | metric    | {self.metric_dropdown} |
-        | comp      | {self.comp_dropdown} |
-        """)
 
-    @property
-    def amplitudes(self) -> list[float]:
-        return list(
-            np.linspace(
-                self.amp_start.value, self.amp_stop.value, int(self.amp_steps.value)
-            )
-        )
-
-    @staticmethod
-    def build(base_btn: BaseUI):
-        comp_names = get_comp_names(base_btn)
-        return SweepUI(
-            amp_start=mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
-            amp_stop=mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
-            amp_steps=mo.ui.number(value=10, step=1, label="steps"),
-            metric_dropdown=mo.ui.dropdown(options=_SWEEP_METRICS, value="spike_count"),
-            comp_dropdown=mo.ui.dropdown(options=comp_names, value=comp_names[0]),
-        )
-
-    def run_and_plot(self, base_btn: "BaseUI", run_ids: list[str]) -> plt.Figure:
-        ds = base_btn.base_dataset_ui.value
-        client = mlflow.MlflowClient()
-        run_labels = {
-            rid: client.get_run(rid).data.tags.get("mlflow.runName", rid[:6])
-            for rid in run_ids
+def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    comp_names = get_comp_names(base_ui["base_dataset"].value["model_name"])
+    return mo.ui.dictionary(
+        {
+            "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
+            "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
+            "amp_steps": mo.ui.number(value=10, step=1, label="steps"),
+            "metric": mo.ui.dropdown(options=_SWEEP_METRICS, value="spike_count"),
+            "comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
         }
-        data = sweep_amplitude_metrics(
-            run_ids=run_ids,
-            amplitudes=self.amplitudes,
-            model_name=ds["model_name"],
-            dt=ds["dt"],
-            silence_duration=ds["silence_duration"],
-            duration=ds["duration"],
-            target_comp_name=self.comp_dropdown.value,
-            metric_key=self.metric_dropdown.value,
+    )
+
+
+def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.md(f"""
+    ### 振幅スイープ設定
+    | | |
+    |---|---|
+    | amp start | {sweep_ui["amp_start"]} |
+    | amp stop  | {sweep_ui["amp_stop"]}  |
+    | steps     | {sweep_ui["amp_steps"]} |
+    | metric    | {sweep_ui["metric"]} |
+    | comp      | {sweep_ui["comp"]} |
+    """)
+
+
+def run_and_plot(
+    sweep_ui: mo.ui.dictionary,
+    base_ui: mo.ui.dictionary,
+    run_ids: list[str],
+) -> plt.Figure:
+    ds = base_ui["base_dataset"].value
+    client = mlflow.MlflowClient()
+    run_labels = {
+        rid: client.get_run(rid).data.tags.get("mlflow.runName", rid[:6])
+        for rid in run_ids
+    }
+    amplitudes = list(
+        np.linspace(
+            sweep_ui["amp_start"].value,
+            sweep_ui["amp_stop"].value,
+            int(sweep_ui["amp_steps"].value),
         )
-        return plot_sweep(
-            data,
-            run_ids,
-            self.metric_dropdown.value,
-            self.comp_dropdown.value,
-            run_labels,
-        )
+    )
+    data = sweep_amplitude_metrics(
+        run_ids=run_ids,
+        amplitudes=amplitudes,
+        model_name=ds["model_name"],
+        dt=ds["dt"],
+        silence_duration=ds["silence_duration"],
+        duration=ds["duration"],
+        target_comp_name=sweep_ui["comp"].value,
+        metric_key=sweep_ui["metric"].value,
+    )
+    return plot_sweep(
+        data,
+        run_ids,
+        sweep_ui["metric"].value,
+        sweep_ui["comp"].value,
+        run_labels,
+    )
