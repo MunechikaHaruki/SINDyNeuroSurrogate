@@ -57,8 +57,8 @@ mlflow:
     {{VIRTUAL_ENV}} python -m mlflow ui --port {{MLFLOW_PORT}} --backend-store-uri sqlite:///./mlflow.db
 
 marimo:
-	{{VIRTUAL_ENV}} marimo edit --watch scripts/marimo.py
+	{{VIRTUAL_ENV}} marimo edit --watch --no-token --port 2700 scripts/marimo.py
 
 # Claude Code連携用（MCP + watchモード）
 marimo-mcp:
-	{{VIRTUAL_ENV}} marimo edit --watch --mcp --no-token --port 2718 scripts/marimo.py
+	{{VIRTUAL_ENV}} marimo edit --watch --mcp --no-token --port 2701 scripts/marimo.py
