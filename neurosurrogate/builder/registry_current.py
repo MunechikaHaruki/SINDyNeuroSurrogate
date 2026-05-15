@@ -55,7 +55,7 @@ def generate_step(values: list, step_duration: int):
     return apply
 
 
-def generate_sinusoidal(
+def generate_sinousoidal(
     amplitude: float = 7.5,
     frequency: float = 10.0,
     baseline: float = 7.5,
@@ -125,7 +125,7 @@ FUNC_MAP = {
     "random": generate_rand_pulse,
     "ramp": generate_ramp,
     "step": generate_step,
-    "sinousoidal": generate_sinusoidal,
+    "sinousoidal": generate_sinousoidal,
     "chirp": generate_chirp,
     "discretized": generate_discretized,
     "noise": add_white_noise,

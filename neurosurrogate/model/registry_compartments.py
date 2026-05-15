@@ -60,16 +60,16 @@ def n_inf(v):
 # dgdt
 
 
-def dmdt(v, m):
-    return alpha_m(v) * (1.0 - m) - beta_m(v) * m
+def _gate_ode(alpha, beta):
+    def dxdt(v, x):
+        return alpha(v) * (1.0 - x) - beta(v) * x
+
+    return dxdt
 
 
-def dhdt(v, h):
-    return alpha_h(v) * (1.0 - h) - beta_h(v) * h
-
-
-def dndt(v, n):
-    return alpha_n(v) * (1.0 - n) - beta_n(v) * n
+dmdt = _gate_ode(alpha_m, beta_m)
+dhdt = _gate_ode(alpha_h, beta_h)
+dndt = _gate_ode(alpha_n, beta_n)
 
 
 def calc_ion_currents(v, curr_gate, p):
