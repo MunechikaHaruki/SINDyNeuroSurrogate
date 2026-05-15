@@ -1,4 +1,5 @@
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -171,6 +172,14 @@ class NeuronGraph:
         C_matrix = G_matrix - D_matrix  # 流入を正とするグラフラプラシアンの符号反転
 
         return C_matrix
+
+    def with_surrogates(
+        self,
+        targets: set[str],
+        make_surr: Callable[[str], "Compartment"],
+    ) -> "NeuronGraph":
+        nodes = [make_surr(n.name) if n.name in targets else n for n in self.nodes]
+        return NeuronGraph(nodes=nodes, edges=self.edges, stim=self.stim)
 
     @staticmethod
     def chain(

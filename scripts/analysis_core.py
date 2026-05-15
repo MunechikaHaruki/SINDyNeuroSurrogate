@@ -2,10 +2,10 @@ from dataclasses import dataclass, field
 from functools import partial
 
 import mlflow
-
 from io_handler import TARGET_EXP, RunInfo, load_surrogate_model
+
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_dataset import CurrentConfig, DatasetConfig, NeuronGraph
+from neurosurrogate.model.model_dataset import CurrentConfig, DatasetConfig
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
@@ -64,14 +64,9 @@ def build_eval_result(params: EvalInput) -> dict:
     u = dataset_cfg.current.build()
     original_ds = unified_simulator(dt=dataset_cfg.dt, u=u, net=original_graph)
 
-    surr_nodes = [
-        surrogate_model.make_surr_comp(n.name)
-        if n.name in params.surrogate_targets
-        else n
-        for n in original_graph.nodes
-    ]
-    surr_graph = NeuronGraph(
-        nodes=surr_nodes, edges=original_graph.edges, stim=original_graph.stim
+    surr_graph = original_graph.with_surrogates(
+        targets=set(params.surrogate_targets),
+        make_surr=surrogate_model.make_surr_comp,
     )
     surr_ds = unified_simulator(
         dt=dataset_cfg.dt,
