@@ -1,4 +1,3 @@
-from dataclasses import dataclass, field
 from functools import partial
 from typing import cast
 
@@ -41,39 +40,33 @@ def get_comp_names(model_name: str) -> list[str]:
     return MCMODELS[model_name].names
 
 
-@dataclass
-class EvalInput:
-    current_type: str
-    run_id: str
-    surrogate_targets: list[str]
-    current_params: dict | None = field(default=None)
-    base_dataset_params: dict | None = field(default=None)
-
-
-def build_eval_result(params: EvalInput) -> dict:
-    current_type = params.current_type
+def build_dataset_cfg(
+    current_type: str,
+    run_id: str,
+    current_params: dict | None,
+    base_dataset_params: dict,
+) -> DatasetConfig:
     if current_type == "train":
-        dataset_cfg = RunInfo.get_run_info(params.run_id).dataset
-        model_name = dataset_cfg.model_name
-    else:
-        assert (
-            params.current_params is not None and params.base_dataset_params is not None
-        )
-        pipeline = CurrentConfig.build_pipeline(current_type, params.current_params)
-        dataset_cfg = DatasetConfig.build_dataset(
-            **params.base_dataset_params, pipeline=pipeline
-        )
-        model_name = params.base_dataset_params["model_name"]
+        return RunInfo.get_run_info(run_id).dataset
+    assert current_params is not None
+    pipeline = CurrentConfig.build_pipeline(current_type, current_params)
+    return DatasetConfig.build_dataset(**base_dataset_params, pipeline=pipeline)
 
+
+def build_eval_result(
+    dataset_cfg: DatasetConfig,
+    run_id: str,
+    surrogate_targets: list[str],
+) -> dict:
     original_graph = dataset_cfg.net
-    name_to_idx = MCMODELS[model_name].name_to_idx
-    surrogate_model = load_surrogate_model(params.run_id)
+    name_to_idx = MCMODELS[dataset_cfg.model_name].name_to_idx
+    surrogate_model = load_surrogate_model(run_id)
     u = dataset_cfg.current.build()
     original_ds = unified_simulator(dt=dataset_cfg.dt, u=u, net=original_graph)
 
     surr_nodes = [
         surrogate_model.make_surr_comp(n.name)
-        if n.name in params.surrogate_targets
+        if n.name in surrogate_targets
         else n
         for n in original_graph.nodes
     ]

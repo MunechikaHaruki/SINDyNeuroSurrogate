@@ -6,10 +6,11 @@ from typing import Literal, cast
 import marimo as mo
 import matplotlib.pyplot as plt
 import pandas as pd
-from analysis_core import get_comp_names, get_runs_df
+from analysis_core import build_dataset_cfg, get_comp_names, get_runs_df
 from io_handler import RunInfo
 
 from neurosurrogate.builder.registry_current import FUNC_MAP
+from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
@@ -153,6 +154,22 @@ def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
 # ---------------------------------------------------------------------------
 # Eval UI
 # ---------------------------------------------------------------------------
+
+
+def to_eval_params(
+    base_button: mo.ui.dictionary,
+    param_button: mo.ui.dictionary,
+) -> tuple[DatasetConfig, str, list[str]]:
+    current_type = str(base_button["current_type"].value)
+    run_id = str(param_button["run_id"].value)
+    current_params_val = param_button["current_params"].value
+    current_params = current_params_val if current_params_val else None
+    base_dataset_params = cast(dict, base_button["base_dataset"].value)
+    surrogate_targets = cast(list[str], param_button["surrogate_targets"].value)
+    dataset_cfg = build_dataset_cfg(
+        current_type, run_id, current_params, base_dataset_params
+    )
+    return dataset_cfg, run_id, surrogate_targets
 
 
 def make_eval_ui(param_ui: mo.ui.dictionary) -> mo.ui.dictionary:

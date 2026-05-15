@@ -53,17 +53,11 @@ def _(base_button, mo):
 
 
 @app.cell
-def _(analysis_core, base_button, param_button):
-    current_params_val = param_button["current_params"].value
-    result = analysis_core.build_eval_result(
-        analysis_core.EvalInput(
-            current_type=base_button["current_type"].value,
-            run_id=param_button["run_id"].value,
-            current_params=current_params_val if current_params_val else None,
-            base_dataset_params=base_button["base_dataset"].value,
-            surrogate_targets=param_button["surrogate_targets"].value,
-        )
+def _(analysis, analysis_core, base_button, param_button):
+    dataset_cfg, run_id, surrogate_targets = analysis.to_eval_params(
+        base_button, param_button
     )
+    result = analysis_core.build_eval_result(dataset_cfg, run_id, surrogate_targets)
     return (result,)
 
 
