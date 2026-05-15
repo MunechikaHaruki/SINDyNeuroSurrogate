@@ -38,6 +38,19 @@ def _(analysis, base_button):
 
 
 @app.cell
+def _(base_button, mo):
+    from neurosurrogate.model.registry_neuron import MCMODELS
+    from neurosurrogate.profiler.profiler_view import view_neuron_graph
+
+    _model_name = base_button["base_dataset"].value["model_name"]
+    mo.vstack([
+        mo.md(f"### NeuronGraph: `{_model_name}`"),
+        mo.mpl.interactive(view_neuron_graph(MCMODELS[_model_name])),
+    ])
+
+
+
+@app.cell
 def _(analysis_core, base_button, param_button):
     current_params_val = param_button["current_params"].value
     result = analysis_core.build_eval_result(

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import seaborn as sns
 import xarray as xr
@@ -69,6 +71,62 @@ def draw_engine(
 
 
 # ── Spec ビルダ ───────────────────────────────────────────────
+
+
+_NODE_COLORS = {
+    "hh": "#4C9BE8",
+    "passive": "#A8D5A2",
+}
+_STIM_BORDER = "#E85C4C"
+
+
+def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
+    """NeuronGraph をnetworkxで可視化する。ノード色はコンパートメント種別、赤枠はstimノード。"""
+    G = nx.DiGraph()
+    for c in net.nodes:
+        G.add_node(c.name, type=c.type_name)
+    for e in net.edges:
+        G.add_edge(e.src, e.dst, weight=e.weight)
+        G.add_edge(e.dst, e.src, weight=e.weight)
+
+    pos = nx.spring_layout(G, seed=42)
+
+    node_colors = [_NODE_COLORS.get(G.nodes[n]["type"], "#CCCCCC") for n in G.nodes]
+    edge_labels = {(e.src, e.dst): f"{e.weight:.2g}" for e in net.edges}
+    node_edge_colors = [_STIM_BORDER if n == net.stim else "white" for n in G.nodes]
+    node_linewidths = [3.0 if n == net.stim else 1.0 for n in G.nodes]
+
+    fig = Figure(figsize=figsize)
+    ax = fig.subplots()
+
+    nx.draw_networkx_nodes(
+        G, pos, ax=ax,
+        node_color=node_colors,
+        edgecolors=node_edge_colors,
+        linewidths=node_linewidths,
+        node_size=1200,
+    )
+    nx.draw_networkx_labels(G, pos, ax=ax, font_size=10, font_weight="bold")
+    nx.draw_networkx_edges(
+        G, pos, ax=ax,
+        edgelist=[(e.src, e.dst) for e in net.edges],
+        arrows=False,
+        width=2.0,
+        edge_color="#666666",
+    )
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax, font_size=8)
+
+    legend_handles = [
+        mpatches.Patch(color=c, label=t) for t, c in _NODE_COLORS.items()
+    ]
+    legend_handles.append(
+        mpatches.Patch(facecolor="white", edgecolor=_STIM_BORDER, linewidth=2, label="stim")
+    )
+    ax.legend(handles=legend_handles, loc="best", frameon=True)
+    ax.set_title("NeuronGraph")
+    ax.axis("off")
+    fig.tight_layout()
+    return fig
 
 
 def view_model(xi_matrix, feature_names=None, target_names=None, figsize=(15, 3)):
