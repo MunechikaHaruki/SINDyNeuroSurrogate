@@ -39,6 +39,7 @@ dev = [
     "pydantic-ai-slim>=1.70.0",
     "google-genai>=1.68.0",
     "pynvml>=13.0.1",
+    "pyright>=1.1.0",
 ]
 
 [tool.mypy]

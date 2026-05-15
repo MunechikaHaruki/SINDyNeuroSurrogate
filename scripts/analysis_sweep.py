@@ -1,9 +1,12 @@
+from typing import Any, cast
+
 import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 from analysis_core import get_comp_names
 from io_handler import load_surrogate_model
+from matplotlib.figure import Figure
 
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import NeuronGraph
@@ -91,7 +94,7 @@ def plot_sweep(
     metric_key: str,
     comp_name: str,
     run_labels: dict[str, str] | None = None,
-) -> plt.Figure:
+) -> Figure:
     amps = data["amplitudes"]
     run_labels = run_labels or {}
 
@@ -124,7 +127,7 @@ def plot_sweep(
 
 
 def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_names = get_comp_names(base_ui["base_dataset"].value["model_name"])
+    comp_names = get_comp_names(str(cast(dict, base_ui["base_dataset"].value)["model_name"]))
     return mo.ui.dictionary(
         {
             "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
@@ -153,8 +156,8 @@ def run_and_plot(
     sweep_ui: mo.ui.dictionary,
     base_ui: mo.ui.dictionary,
     run_ids: list[str],
-) -> plt.Figure:
-    ds = base_ui["base_dataset"].value
+) -> Figure:
+    ds = cast(dict[str, Any], base_ui["base_dataset"].value)
     client = mlflow.MlflowClient()
     run_labels = {
         rid: client.get_run(rid).data.tags.get("mlflow.runName", rid[:6])
@@ -162,25 +165,25 @@ def run_and_plot(
     }
     amplitudes = list(
         np.linspace(
-            sweep_ui["amp_start"].value,
-            sweep_ui["amp_stop"].value,
-            int(sweep_ui["amp_steps"].value),
+            float(cast(Any, sweep_ui["amp_start"]).value),
+            float(cast(Any, sweep_ui["amp_stop"]).value),
+            int(cast(Any, sweep_ui["amp_steps"]).value),
         )
     )
     data = sweep_amplitude_metrics(
         run_ids=run_ids,
         amplitudes=amplitudes,
-        model_name=ds["model_name"],
-        dt=ds["dt"],
-        silence_duration=ds["silence_duration"],
-        duration=ds["duration"],
-        target_comp_name=sweep_ui["comp"].value,
-        metric_key=sweep_ui["metric"].value,
+        model_name=str(ds["model_name"]),
+        dt=float(ds["dt"]),
+        silence_duration=float(ds["silence_duration"]),
+        duration=float(ds["duration"]),
+        target_comp_name=str(sweep_ui["comp"].value),
+        metric_key=str(sweep_ui["metric"].value),
     )
     return plot_sweep(
         data,
         run_ids,
-        sweep_ui["metric"].value,
-        sweep_ui["comp"].value,
+        str(sweep_ui["metric"].value),
+        str(sweep_ui["comp"].value),
         run_labels,
     )

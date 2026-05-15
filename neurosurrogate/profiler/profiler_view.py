@@ -30,12 +30,8 @@ class TraceSpec:
 @dataclass
 class PanelSpec:
     ylabel: str
-    traces: list[TraceSpec] | TraceSpec = field(default_factory=list)
+    traces: list[TraceSpec] = field(default_factory=list)
     xlabel: str | None = None
-
-    def __post_init__(self):
-        if isinstance(self.traces, TraceSpec):
-            self.traces = [self.traces]
 
     def has_legend(self) -> bool:
         return any(tr.label for tr in self.traces)

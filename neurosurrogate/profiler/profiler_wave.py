@@ -151,7 +151,7 @@ def calc_dynamic_metrics(original, surrogate, comp_id, dt):
         # フィーチャを計算できず RuntimeWarning を出すが、戻り値は None になるだけで
         # 下流の _median_or_nan / _safe_float が nan に変換するため動作上は問題ない。
         warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"efel\.*")
-        orig_feat, surr_feat = efel.get_feature_values(
+        orig_feat, surr_feat = efel.get_feature_values(  # type: ignore[reportCallIssue]
             [_to_efel_trace(orig_v, dt), _to_efel_trace(surr_v, dt)],
             _EFEL_FEATURES,
         )

@@ -74,8 +74,9 @@ def cli_flow(cfg_sindy):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
-    cfg = OmegaConf.to_container(cfg, resolve=True)
-    cli_flow(cfg["sindy"])
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    assert isinstance(cfg_dict, dict)
+    cli_flow(cfg_dict["sindy"])
 
 
 if __name__ == "__main__":

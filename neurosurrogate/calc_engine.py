@@ -100,7 +100,7 @@ def generic_euler_solver(init, u, dt, model_args):
 
 
 def unified_simulator(
-    dt, u, net: NeuronGraph, surrogate_model: SINDyNeuroSurrogate = None
+    dt, u, net: NeuronGraph, surrogate_model: SINDyNeuroSurrogate | None = None
 ):
     sindy_args = surrogate_model.sindy_args if surrogate_model else DUMMY_SINDY_ARGS
     params = HHParams()

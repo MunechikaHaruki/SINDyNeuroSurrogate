@@ -63,7 +63,7 @@ class SINDyResult:
 class SINDyAnalyzer:
     result: SINDyResult
     feature_cost_map: dict[str, OpCost]
-    original_cost: OpCost = None
+    original_cost: OpCost | None = None
 
     @property
     def _active_features(self):
@@ -83,6 +83,7 @@ class SINDyAnalyzer:
 
     @property
     def _stat_calc_cost(self):
+        assert self.original_cost is not None
         surr_d = self.surr_opcost.to_dict()
         orig_d = self.original_cost.to_dict()
         return {

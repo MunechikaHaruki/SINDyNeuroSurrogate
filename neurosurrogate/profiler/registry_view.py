@@ -13,7 +13,7 @@ def spec_simple(ds: xr.Dataset) -> list[PanelSpec]:
     comp_ids = np.unique(ds.coords["comp_id"].values)
     multi = len(comp_ids) > 1
     spec: list[PanelSpec] = [
-        PanelSpec("I_ext", TraceSpec(ds["I_ext"])),
+        PanelSpec("I_ext", [TraceSpec(ds["I_ext"])]),
     ]
 
     if "I_internal" in ds:
@@ -67,7 +67,7 @@ def spec_diff(
     gate_data = original["vars"].sel(comp_id=surr_id, gate=True)
 
     return [
-        PanelSpec("I_ext(t)", TraceSpec(original["I_ext"], color="gold")),
+        PanelSpec("I_ext(t)", [TraceSpec(original["I_ext"], color="gold")]),
         PanelSpec(
             "V [mV]",
             [

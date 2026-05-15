@@ -7,9 +7,12 @@ from pathlib import Path
 
 import joblib
 import mlflow
+import mlflow.artifacts
+import mlflow.pyfunc
 import numpy as np
 import yaml
 from matplotlib.figure import Figure
+from mlflow.pyfunc.model import PythonModel
 
 from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate, make_surr_comp
@@ -70,13 +73,14 @@ def log_surrogate_summary(summary: SINDyAnalyzer):
         mlflow.log_text(content, artifact_file=filename)
 
 
-class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
+class SINDySurrogateMLflowModel(PythonModel):
     def load_context(self, context):
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
             "target_module", context.artifacts["target_module_path"]
         )
+        assert spec is not None and spec.loader is not None
         target_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(target_module)
         source = open(context.artifacts["source_path"]).read()
@@ -91,7 +95,7 @@ class SINDySurrogateMLflowModel(mlflow.pyfunc.PythonModel):
     def make_surr_comp(self, name: str):
         return make_surr_comp(name, self._gate_inits)
 
-    def predict(self, context, model_input):
+    def predict(self, context, model_input, params=None):
         pass  # unified_simulatorに直接渡すので不要
 
 

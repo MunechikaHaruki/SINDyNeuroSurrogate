@@ -17,7 +17,7 @@ class Compartment:
         gate_names: list[str],
         name: str = "",
         v_init: float = -65,
-        OpCost: OpCost = None,
+        OpCost: "OpCost | None" = None,
     ):
         self.name = name
         self.type_name = type_name

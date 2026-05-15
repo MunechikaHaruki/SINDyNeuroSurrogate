@@ -112,7 +112,7 @@ class AutoEncoderPreprocessor:
         return self
 
     def transform(self, X: np.ndarray) -> np.ndarray:
-        if self._params is None:
+        if self._params is None or self._mean is None or self._std is None:
             raise RuntimeError("fit()を先に呼んでください。")
         X_norm = jnp.array((np.asarray(X, dtype=np.float32) - self._mean) / self._std)
 
@@ -125,7 +125,7 @@ class AutoEncoderPreprocessor:
         return self.fit(X).transform(X)
 
     def inverse_transform(self, Z: np.ndarray) -> np.ndarray:
-        if self._params is None:
+        if self._params is None or self._mean is None or self._std is None:
             raise RuntimeError("fit()を先に呼んでください。")
         x_hat = decoder(self._params["dec"], jnp.array(np.asarray(Z, dtype=np.float32)))
         return np.array(x_hat) * self._std + self._mean

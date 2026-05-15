@@ -1,7 +1,7 @@
 import inspect
 import os
 import typing
-from typing import Literal
+from typing import Literal, cast
 
 import marimo as mo
 import matplotlib.pyplot as plt
@@ -86,7 +86,7 @@ def render_base(base_ui: mo.ui.dictionary) -> mo.Html:
 
 
 def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
-    run_ids = base_ui["run_selector"].value["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
     run_infos = [RunInfo.get_run_info(rid) for rid in run_ids]
     return mo.vstack(
         [
@@ -108,10 +108,10 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
 
 
 def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    model_name = base_ui["base_dataset"].value["model_name"]
+    model_name = str(cast(dict, base_ui["base_dataset"].value)["model_name"])
     comp_names = get_comp_names(model_name)
-    run_ids = base_ui["run_selector"].value["run_id"].tolist()
-    current_type = base_ui["current_type"].value
+    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
+    current_type = str(base_ui["current_type"].value)
 
     if current_type == "train":
         current_params_ui: mo.ui.dictionary = mo.ui.dictionary({})
@@ -156,7 +156,7 @@ def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
 
 
 def make_eval_ui(param_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_options = param_ui["surrogate_targets"].value
+    comp_options = cast(list[str], param_ui["surrogate_targets"].value)
     return mo.ui.dictionary(
         {
             "eval_comp": mo.ui.dropdown(options=comp_options, value=comp_options[0]),
