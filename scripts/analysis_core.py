@@ -2,8 +2,8 @@ from dataclasses import dataclass, field
 from functools import partial
 
 import mlflow
-
 from io_handler import TARGET_EXP, RunInfo, load_surrogate_model
+
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import CurrentConfig, DatasetConfig, NeuronGraph
 from neurosurrogate.model.model_neurosindy import transform_gate
