@@ -78,6 +78,12 @@ _NODE_COLORS = {
     "passive": "#A8D5A2",
 }
 _STIM_BORDER = "#E85C4C"
+_NODE_SIZE = 2000
+_NODE_LABEL_FONTSIZE = 10
+_EDGE_WIDTH = 2.0
+_EDGE_COLOR = "#666666"
+_EDGE_LABEL_FONTSIZE = 8
+_STIM_LINEWIDTH = 3.0
 
 
 def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
@@ -94,7 +100,7 @@ def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
     node_colors = [_NODE_COLORS.get(G.nodes[n]["type"], "#CCCCCC") for n in G.nodes]
     edge_labels = {(e.src, e.dst): f"{e.weight:.2g}" for e in net.edges}
     node_edge_colors = [_STIM_BORDER if n == net.stim else "white" for n in G.nodes]
-    node_linewidths = [3.0 if n == net.stim else 1.0 for n in G.nodes]
+    node_linewidths = [_STIM_LINEWIDTH if n == net.stim else 1.0 for n in G.nodes]
 
     fig = Figure(figsize=figsize)
     ax = fig.subplots()
@@ -104,17 +110,17 @@ def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
         node_color=node_colors,
         edgecolors=node_edge_colors,
         linewidths=node_linewidths,
-        node_size=1200,
+        node_size=_NODE_SIZE,
     )
-    nx.draw_networkx_labels(G, pos, ax=ax, font_size=10, font_weight="bold")
+    nx.draw_networkx_labels(G, pos, ax=ax, font_size=_NODE_LABEL_FONTSIZE, font_weight="bold")
     nx.draw_networkx_edges(
         G, pos, ax=ax,
         edgelist=[(e.src, e.dst) for e in net.edges],
         arrows=False,
-        width=2.0,
-        edge_color="#666666",
+        width=_EDGE_WIDTH,
+        edge_color=_EDGE_COLOR,
     )
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax, font_size=8)
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax, font_size=_EDGE_LABEL_FONTSIZE)
 
     legend_handles = [
         mpatches.Patch(color=c, label=t) for t, c in _NODE_COLORS.items()
