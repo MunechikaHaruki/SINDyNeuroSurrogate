@@ -5,9 +5,10 @@ from typing import Literal
 
 import marimo as mo
 import matplotlib.pyplot as plt
+import pandas as pd
+from analysis_core import get_comp_names, get_runs_df
 from io_handler import RunInfo
 
-from analysis_core import get_comp_names, get_runs_df
 from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.registry_view import DRAW_MAP
@@ -65,7 +66,7 @@ def make_base_ui() -> mo.ui.dictionary:
                 }
             ),
             "run_selector": mo.ui.table(
-                runs_df[["tags.mlflow.runName", "run_id"]],
+                pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
                 label="比較・解析したいRunを複数選択",
                 selection="multi",
                 initial_selection=[0],
@@ -91,9 +92,7 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
         [
             mo.vstack(
                 [
-                    mo.md(
-                        f"run_id:{info.run_id[:8]}.. &nbsp;&nbsp;　{info.run_name}"
-                    ),
+                    mo.md(f"run_id:{info.run_id[:8]}.. &nbsp;&nbsp;　{info.run_name}"),
                     mo.md(f"{info.equations[:40]}"),
                     mo.mpl.interactive(info.sindy_coef),
                 ]
