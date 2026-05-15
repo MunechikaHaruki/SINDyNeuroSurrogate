@@ -30,18 +30,13 @@ logger = logging.getLogger(__name__)
 
 def build_surrogate(cfg_sindy):
     feature_lib = FeatureLibrary.build(cfg_sindy["library_specs"])
-
-    # preprocessorの初期化
-    preprocessor = hydra.utils.instantiate(cfg_sindy["preprocessor"])
-    # pySINDyの初期化
-    initialized_sindy = ps.SINDy(
-        feature_library=feature_lib.library,
-        optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
-    )
-
-    # surrogate_modelの初期化
     return SINDyNeuroSurrogate(
-        preprocessor, initialized_sindy, registry_feature_libraries
+        hydra.utils.instantiate(cfg_sindy["preprocessor"]),
+        ps.SINDy(
+            feature_library=feature_lib.library,
+            optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
+        ),
+        registry_feature_libraries,
     ), feature_lib
 
 
@@ -51,15 +46,16 @@ def cli_flow(cfg_sindy):
         # train
         train_dataset_cfg = DatasetConfig.build_dataset(**cfg_sindy["datasets"])
 
-        train_ds = unified_simulator(
-            dt=train_dataset_cfg.dt,
-            u=train_dataset_cfg.current.build(),
-            net=train_dataset_cfg.net,
-        )
         mlflow.log_dict(train_dataset_cfg.to_dict(), "dataset.yaml")
-        name_to_idx = MCMODELS[cfg_sindy["datasets"]["model_name"]].name_to_idx
         surrogate_result = surrogate.fit(
-            train_ds, name_to_idx(cfg_sindy["train_comp_identifier"])
+            unified_simulator(
+                dt=train_dataset_cfg.dt,
+                u=train_dataset_cfg.current.build(),
+                net=train_dataset_cfg.net,
+            ),
+            MCMODELS[cfg_sindy["datasets"]["model_name"]].name_to_idx(
+                cfg_sindy["train_comp_identifier"]
+            ),
         )
         log_surrogate_summary(
             SINDyAnalyzer(

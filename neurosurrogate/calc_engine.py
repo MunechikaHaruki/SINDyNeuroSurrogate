@@ -71,13 +71,14 @@ def calc_universal_deriv(curr_x, u_t, model_args):
     # 4. SINDy: 潜在変数を一括抽出して vmap
     surr_idx = indice_args.surr
     g_off_s = model_args.gate_offsets[surr_idx]
-    latents = curr_x[g_off_s]
 
     def surr_one(i_t, v, lat):
         theta = model_args.compute_theta(v, lat, i_t)
         return model_args.xi_matrix[0] @ theta, model_args.xi_matrix[1] @ theta
 
-    dv_s, dlat_s = jax.vmap(surr_one)(I_internal[surr_idx], v_vec[surr_idx], latents)
+    dv_s, dlat_s = jax.vmap(surr_one)(
+        I_internal[surr_idx], v_vec[surr_idx], curr_x[g_off_s]
+    )
     dvar = dvar.at[surr_idx].set(dv_s)
     dvar = dvar.at[g_off_s].set(dlat_s)
 
@@ -85,42 +86,38 @@ def calc_universal_deriv(curr_x, u_t, model_args):
 
 
 def generic_euler_solver(init, u, dt, model_args):
-    u_jax = jnp.array(u)
-    init_jax = jnp.array(init)
-
     def step(curr_x, u_t):
-        dvar = calc_universal_deriv(curr_x, u_t, model_args)
-        new_x = curr_x + dvar * dt
-        return new_x, curr_x
+        return curr_x + calc_universal_deriv(curr_x, u_t, model_args) * dt, curr_x
 
     # lax.scan でタイムループを実行: outputs[t] = curr_x before step t
-    final_x, x_history_prefix = jax.lax.scan(step, init_jax, u_jax[:-1])
-    x_history = jnp.concatenate([x_history_prefix, final_x[None]], axis=0)
-    return np.array(x_history)
+    final_x, x_history_prefix = jax.lax.scan(step, jnp.array(init), jnp.array(u)[:-1])
+    return np.array(jnp.concatenate([x_history_prefix, final_x[None]], axis=0))
 
 
 def unified_simulator(
     dt, u, net: NeuronGraph, surrogate_model: SINDyNeuroSurrogate | None = None
 ):
     sindy_args = surrogate_model.sindy_args if surrogate_model else DUMMY_SINDY_ARGS
-    params = HHParams()
-
     indice = build_indices(net)
-    raw = generic_euler_solver(
-        indice["init"],
-        u,
-        dt,
-        ModelArgs(
-            params=params,
-            C_matrix=net.graph_laplacian,
-            stim_idx=net.stim_node_idx,
-            indice_args=IndiceArgs(**indice["ids"]),
-            xi_matrix=sindy_args[0],
-            compute_theta=sindy_args[1],
-            gate_offsets=indice["gate_offsets"],
-        ),
-    )
     logger.debug(f"surr_target_id:{indice['ids']['surr']}")
-    dataset = set_coords(raw, u, indice["coords"], dt)
+    dataset = set_coords(
+        generic_euler_solver(
+            indice["init"],
+            u,
+            dt,
+            ModelArgs(
+                params=HHParams(),
+                C_matrix=net.graph_laplacian,
+                stim_idx=net.stim_node_idx,
+                indice_args=IndiceArgs(**indice["ids"]),
+                xi_matrix=sindy_args[0],
+                compute_theta=sindy_args[1],
+                gate_offsets=indice["gate_offsets"],
+            ),
+        ),
+        u,
+        indice["coords"],
+        dt,
+    )
     set_i_internal(dataset, net.graph_laplacian, net.stim_node_idx, u)
     return dataset

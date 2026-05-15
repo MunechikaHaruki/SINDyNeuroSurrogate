@@ -40,9 +40,8 @@ def build_indices(net: NeuronGraph):
 
     # [Pass 1] 電位変数の収集
     for i, comp in enumerate(nodes):
-        key = comp.type_name
         acc.add(i, [comp.vars[0]], [comp.gate[0]], [comp.init[0]])
-        ids_list[key].append(i)
+        ids_list[comp.type_name].append(i)
 
     # [Pass 2] ゲート変数の収集
     current_offset = N
@@ -66,20 +65,18 @@ def build_indices(net: NeuronGraph):
 
 
 def set_coords(raw, u, coords, dt):
-    mindex_coords = xr.Coordinates.from_pandas_multiindex(coords, "features")
-
-    # 2. Dataset 作成時に一括で定義する
-    dataset = xr.Dataset(
+    return xr.Dataset(
         {
             "vars": (("time", "features"), raw),
             "I_ext": (("time"), u),
         },
         coords={
             "time": np.arange(len(u)) * dt,
-            **mindex_coords,  # ここで一気にマルチインデックス化
+            **xr.Coordinates.from_pandas_multiindex(
+                coords, "features"
+            ),  # ここで一気にマルチインデックス化
         },
     )
-    return dataset
 
 
 def set_i_internal(dataset, C_matrix, stim_idx, u):

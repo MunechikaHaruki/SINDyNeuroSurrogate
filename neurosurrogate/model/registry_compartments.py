@@ -7,12 +7,12 @@ from .model_dataset import Compartment
 
 
 def lin_exp_form(x):
-    condition = jnp.abs(x) < 1e-8
-    approx = 1.0 / (1.0 + x / 2.0 + x**2 / 6.0 + x**3 / 24.0)
     denom = jnp.exp(x) - 1.0
-    safe_denom = jnp.where(denom == 0, 1.0, denom)
-    raw = x / safe_denom
-    return jnp.where(condition, approx, raw)
+    return jnp.where(
+        jnp.abs(x) < 1e-8,
+        1.0 / (1.0 + x / 2.0 + x**2 / 6.0 + x**3 / 24.0),
+        x / jnp.where(denom == 0, 1.0, denom),
+    )
 
 
 # rate functions
@@ -73,9 +73,7 @@ def dndt(v, n):
 
 
 def calc_ion_currents(v, curr_gate, p):
-    m = curr_gate[0]
-    h = curr_gate[1]
-    n = curr_gate[2]
+    m, h, n = curr_gate[0], curr_gate[1], curr_gate[2]
     i_na = p.G_NA * m**3 * h * (v - p.E_NA)
     i_k = p.G_K * n**4 * (v - p.E_K)
     return i_na + i_k
@@ -90,9 +88,10 @@ def update_dvar_gate(v, gates):
 
 
 def calc_hh_channel(p, u_t, v, curr_gate):
-    dv = (-calc_i_leak(v, p) - calc_ion_currents(v, curr_gate, p) + u_t) / p.C
-    dgate = update_dvar_gate(v - p.E_REST, curr_gate)
-    return dv, dgate
+    return (
+        (-calc_i_leak(v, p) - calc_ion_currents(v, curr_gate, p) + u_t) / p.C,
+        update_dvar_gate(v - p.E_REST, curr_gate),
+    )
 
 
 def calc_passive_channel(p, u_t, v):

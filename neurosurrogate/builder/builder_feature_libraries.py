@@ -24,17 +24,18 @@ class FeatureLibrary:
     def to_base_cost(self, input_names: list[str]) -> dict[str, OpCost]:
         base_cost = {}
         for entries, inputs_list in self._entries_with_inputs:
-            names = [input_names[i] for i in inputs_list]
-            new_data = dict(entry.to_cost_entry(names) for entry in entries)
-
+            new_data = dict(
+                entry.to_cost_entry([input_names[i] for i in inputs_list])
+                for entry in entries
+            )
             duplicates = base_cost.keys() & new_data.keys()
             if duplicates:
-                detail = "\n".join(
-                    f"  - Key: {k}\n    Existing Value: {base_cost[k]}\n    New Value: {new_data[k]}"
-                    for k in duplicates
-                )
                 raise KeyError(
-                    f"辞書の結合中にキーの重複が発生しました。上書きを防止します:\n{detail}"
+                    "辞書の結合中にキーの重複が発生しました。上書きを防止します:\n"
+                    + "\n".join(
+                        f"  - Key: {k}\n    Existing Value: {base_cost[k]}\n    New Value: {new_data[k]}"  # noqa: E501
+                        for k in duplicates
+                    )
                 )
 
             base_cost |= new_data

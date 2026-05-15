@@ -168,10 +168,9 @@ class NeuronGraph:
         else:
             for i, j, g in connections:
                 G_matrix[i, j] = G_matrix[j, i] = g
-        D_matrix = np.diag(np.sum(G_matrix, axis=1))
-        C_matrix = G_matrix - D_matrix  # 流入を正とするグラフラプラシアンの符号反転
-
-        return C_matrix
+        return G_matrix - np.diag(
+            np.sum(G_matrix, axis=1)
+        )  # 流入を正とするグラフラプラシアンの符号反転
 
     def with_surrogates(
         self,
@@ -200,14 +199,18 @@ class NeuronGraph:
         nodes = []
         for t in node_types:
             prefix = t[0]  # "hh" → "h", "passive" → "p"
-            name = f"{prefix}{counters[prefix]}"
-            nodes.append(COMPARTMENT_TEMPLATES[t].with_name(name))
+            nodes.append(
+                COMPARTMENT_TEMPLATES[t].with_name(f"{prefix}{counters[prefix]}")
+            )
             counters[prefix] += 1
 
-        edges = [
-            Edge(nodes[i].name, nodes[i + 1].name, w) for i, w in enumerate(weights)
-        ]
-        return NeuronGraph(nodes=nodes, edges=edges, stim=nodes[stim].name)
+        return NeuronGraph(
+            nodes=nodes,
+            edges=[
+                Edge(nodes[i].name, nodes[i + 1].name, w) for i, w in enumerate(weights)
+            ],
+            stim=nodes[stim].name,
+        )
 
 
 @dataclass

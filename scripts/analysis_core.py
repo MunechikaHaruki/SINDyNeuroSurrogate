@@ -26,12 +26,9 @@ def get_runs_df():
     runs_df = all_runs_df.copy()
     runs_df = runs_df.sort_values("start_time", ascending=False)
     runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
-    cols = [
-        c for c in runs_df.columns if "metrics" in c or "params" in c or c == "run_id"
-    ]
     runs_df = runs_df[
         ["tags.mlflow.runName", "run_id", "start_time"]
-        + [c for c in cols if c != "run_id"]
+        + [c for c in runs_df.columns if "metrics" in c or "params" in c]
     ]
     return runs_df
 
@@ -49,8 +46,10 @@ def build_dataset_cfg(
     if current_type == "train":
         return RunInfo.get_run_info(run_id).dataset
     assert current_params is not None
-    pipeline = CurrentConfig.build_pipeline(current_type, current_params)
-    return DatasetConfig.build_dataset(**base_dataset_params, pipeline=pipeline)
+    return DatasetConfig.build_dataset(
+        **base_dataset_params,
+        pipeline=CurrentConfig.build_pipeline(current_type, current_params),
+    )
 
 
 def build_eval_result(
@@ -59,19 +58,17 @@ def build_eval_result(
     surrogate_targets: list[str],
 ) -> dict:
     original_graph = dataset_cfg.net
-    name_to_idx = MCMODELS[dataset_cfg.model_name].name_to_idx
     surrogate_model = load_surrogate_model(run_id)
     u = dataset_cfg.current.build()
     original_ds = unified_simulator(dt=dataset_cfg.dt, u=u, net=original_graph)
 
-    surr_graph = original_graph.with_surrogates(
-        targets=set(surrogate_targets),
-        make_surr=surrogate_model.make_surr_comp,
-    )
     surr_ds = unified_simulator(
         dt=dataset_cfg.dt,
         u=u,
-        net=surr_graph,
+        net=original_graph.with_surrogates(
+            targets=set(surrogate_targets),
+            make_surr=surrogate_model.make_surr_comp,
+        ),
         surrogate_model=surrogate_model,
     )
 
@@ -82,7 +79,7 @@ def build_eval_result(
     return {
         "metrics": get_metrics,
         "get_preprocessed": get_preprocessed,
-        "name_to_idx": name_to_idx,
+        "name_to_idx": MCMODELS[dataset_cfg.model_name].name_to_idx,
         "datasets": {
             "orig": original_ds,
             "surr": surr_ds,

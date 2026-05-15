@@ -83,13 +83,14 @@ class SINDySurrogateMLflowModel(PythonModel):
         assert spec is not None and spec.loader is not None
         target_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(target_module)
-        source = open(context.artifacts["source_path"]).read()
         local_vars = {}
-        exec(source, vars(target_module), local_vars)
-        compute_theta = local_vars["dynamic_compute_theta"]
-        xi_matrix = np.load(context.artifacts["xi_path"])
+        with open(context.artifacts["source_path"]) as f:
+            exec(f.read(), vars(target_module), local_vars)
         self._gate_inits = np.load(context.artifacts["gate_inits_path"]).tolist()
-        self.sindy_args = (xi_matrix, compute_theta)
+        self.sindy_args = (
+            np.load(context.artifacts["xi_path"]),
+            local_vars["dynamic_compute_theta"],
+        )
         self.preprocessor = joblib.load(context.artifacts["preprocessor_path"])
 
     def make_surr_comp(self, name: str):
@@ -128,10 +129,8 @@ def load_surrogate_model(run_id: str):
 
     try:
         # pyfuncとしてロード（内部で load_context が実行される）
-        pyfunc_model = mlflow.pyfunc.load_model(model_uri)
         # PythonModelの実体（SINDySurrogateMLflowModelのインスタンス）を取り出す
-        surrogate = pyfunc_model._model_impl.python_model
-        return surrogate
+        return mlflow.pyfunc.load_model(model_uri)._model_impl.python_model
 
     except Exception as e:
         logger.error(f"Failed to load surrogate from MLflow: {e}")
