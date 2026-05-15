@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.21.1"
+__generated_with = "0.23.6"
 app = marimo.App(width="medium")
 
 
@@ -43,11 +43,13 @@ def _(base_button, mo):
     from neurosurrogate.profiler.profiler_view import view_neuron_graph
 
     _model_name = base_button["base_dataset"].value["model_name"]
-    mo.vstack([
-        mo.md(f"### NeuronGraph: `{_model_name}`"),
-        mo.mpl.interactive(view_neuron_graph(MCMODELS[_model_name])),
-    ])
-
+    mo.vstack(
+        [
+            mo.md(f"### NeuronGraph: `{_model_name}`"),
+            mo.mpl.interactive(view_neuron_graph(MCMODELS[_model_name])),
+        ]
+    )
+    return
 
 
 @app.cell

@@ -127,7 +127,9 @@ def plot_sweep(
 
 
 def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_names = get_comp_names(str(cast(dict, base_ui["base_dataset"].value)["model_name"]))
+    comp_names = get_comp_names(
+        str(cast(dict, base_ui["base_dataset"].value)["model_name"])
+    )
     return mo.ui.dictionary(
         {
             "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),

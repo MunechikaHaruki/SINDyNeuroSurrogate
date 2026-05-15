@@ -19,7 +19,9 @@ def get_runs_df():
         raise ValueError(
             f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
         )
-    all_runs_df = cast(pd.DataFrame, mlflow.search_runs(experiment_ids=[experiment.experiment_id]))
+    all_runs_df = cast(
+        pd.DataFrame, mlflow.search_runs(experiment_ids=[experiment.experiment_id])
+    )
     if all_runs_df.empty:
         raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
     runs_df = all_runs_df.copy()
@@ -54,7 +56,9 @@ def build_eval_result(params: EvalInput) -> dict:
         dataset_cfg = RunInfo.get_run_info(params.run_id).dataset
         model_name = dataset_cfg.model_name
     else:
-        assert params.current_params is not None and params.base_dataset_params is not None
+        assert (
+            params.current_params is not None and params.base_dataset_params is not None
+        )
         pipeline = CurrentConfig.build_pipeline(current_type, params.current_params)
         dataset_cfg = DatasetConfig.build_dataset(
             **params.base_dataset_params, pipeline=pipeline
@@ -83,7 +87,9 @@ def build_eval_result(params: EvalInput) -> dict:
         surrogate_model=surrogate_model,
     )
 
-    get_preprocessed = partial(transform_gate, surrogate_model.preprocessor, original_ds)
+    get_preprocessed = partial(
+        transform_gate, surrogate_model.preprocessor, original_ds
+    )
     get_metrics = partial(calc_dynamic_metrics, original_ds, surr_ds, dt=dataset_cfg.dt)
     return {
         "metrics": get_metrics,

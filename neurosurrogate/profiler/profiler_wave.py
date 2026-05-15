@@ -52,34 +52,54 @@ def _calc_spike_metrics(orig_feat: dict, surr_feat: dict) -> dict:
     )
 
     return {
-        "orig_spike_count": len(orig_peaks),          # 元モデルのスパイク総数
-        "surr_spike_count": len(surr_peaks),           # サロゲートのスパイク総数
-        "spike_count_diff": abs(len(orig_peaks) - len(surr_peaks)),  # スパイク数の絶対差
-        "latency_error": latency_error,                # 第1スパイクまでのレイテンシ差 [ms]
-        **_isi_stats(orig_isi, "orig"),                # 元モデルの ISI 平均・標準偏差
-        **_isi_stats(surr_isi, "surr"),                # サロゲートの ISI 平均・標準偏差
-        "periodicity_gap": periodicity_gap,            # 平均 ISI の差（発火周期のずれ）[ms]
+        "orig_spike_count": len(orig_peaks),  # 元モデルのスパイク総数
+        "surr_spike_count": len(surr_peaks),  # サロゲートのスパイク総数
+        "spike_count_diff": abs(
+            len(orig_peaks) - len(surr_peaks)
+        ),  # スパイク数の絶対差
+        "latency_error": latency_error,  # 第1スパイクまでのレイテンシ差 [ms]
+        **_isi_stats(orig_isi, "orig"),  # 元モデルの ISI 平均・標準偏差
+        **_isi_stats(surr_isi, "surr"),  # サロゲートの ISI 平均・標準偏差
+        "periodicity_gap": periodicity_gap,  # 平均 ISI の差（発火周期のずれ）[ms]
         # ピーク・閾値
-        "median_amp_error": _median_diff("peak_voltage"),       # ピーク電圧の中央値差 [mV]
-        "median_amplitude_error": _median_diff("AP_amplitude"),  # 閾値〜ピーク振幅の中央値差 [mV]
-        "median_threshold_error": _median_diff("AP_begin_voltage"),  # 発火閾値電圧の中央値差 [mV]
+        "median_amp_error": _median_diff("peak_voltage"),  # ピーク電圧の中央値差 [mV]
+        "median_amplitude_error": _median_diff(
+            "AP_amplitude"
+        ),  # 閾値〜ピーク振幅の中央値差 [mV]
+        "median_threshold_error": _median_diff(
+            "AP_begin_voltage"
+        ),  # 発火閾値電圧の中央値差 [mV]
         # dV/dt（活動電位の鋭さ）
-        "median_max_dvdt_error": _median_diff("AP_rise_rate"),  # 最大上昇速度の中央値差 [mV/ms]
-        "median_min_dvdt_error": _median_diff("AP_fall_rate"),  # 最大下降速度の中央値差 [mV/ms]
+        "median_max_dvdt_error": _median_diff(
+            "AP_rise_rate"
+        ),  # 最大上昇速度の中央値差 [mV/ms]
+        "median_min_dvdt_error": _median_diff(
+            "AP_fall_rate"
+        ),  # 最大下降速度の中央値差 [mV/ms]
         # スパイク内タイミング
-        "median_half_width_error": _median_diff("AP_duration_half_width"),  # 半値幅の中央値差 [ms]
-        "median_rise_time_error": _median_diff("AP_rise_time"),   # 上昇時間（閾値→ピーク）の中央値差 [ms]
-        "median_fall_time_error": _median_diff("AP_fall_time"),   # 下降時間（ピーク→閾値）の中央値差 [ms]
+        "median_half_width_error": _median_diff(
+            "AP_duration_half_width"
+        ),  # 半値幅の中央値差 [ms]
+        "median_rise_time_error": _median_diff(
+            "AP_rise_time"
+        ),  # 上昇時間（閾値→ピーク）の中央値差 [ms]
+        "median_fall_time_error": _median_diff(
+            "AP_fall_time"
+        ),  # 下降時間（ピーク→閾値）の中央値差 [ms]
         # 後過分極（AHP）
-        "median_ahp_depth_error": _median_diff("AHP_depth"),         # AHP 深さの中央値差 [mV]
-        "median_ahp_time_error": _median_diff("AHP_time_from_peak"),  # ピーク〜AHP 最深部までの時間差 [ms]
+        "median_ahp_depth_error": _median_diff("AHP_depth"),  # AHP 深さの中央値差 [mV]
+        "median_ahp_time_error": _median_diff(
+            "AHP_time_from_peak"
+        ),  # ピーク〜AHP 最深部までの時間差 [ms]
     }
 
 
 def _calc_waveform_metrics(orig_v, surr_v):
     return {
-        "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),  # 全時系列の二乗平均誤差 [mV]
-        "mae": float(np.mean(np.abs(orig_v - surr_v))),           # 全時系列の平均絶対誤差 [mV]
+        "rmse": float(
+            np.sqrt(np.mean((orig_v - surr_v) ** 2))
+        ),  # 全時系列の二乗平均誤差 [mV]
+        "mae": float(np.mean(np.abs(orig_v - surr_v))),  # 全時系列の平均絶対誤差 [mV]
     }
 
 
