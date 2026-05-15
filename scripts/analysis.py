@@ -32,6 +32,35 @@ def get_comp_names(base_btn):
     return MCMODELS[base_btn.base_dataset_ui.value["model_name"]].names
 
 
+def setup_mpl(matplotlib_style: str):
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    STYLE_DIR = os.path.join(CURRENT_DIR, "./conf/style")
+    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
+    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
+
+
+def get_runs_df():
+    experiment = mlflow.get_experiment_by_name(TARGET_EXP)
+    if experiment is None:
+        raise ValueError(
+            f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
+        )
+    all_runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
+    if all_runs_df.empty:
+        raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
+    runs_df = all_runs_df.copy()
+    runs_df = runs_df.sort_values("start_time", ascending=False)
+    runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
+    cols = [
+        c for c in runs_df.columns if "metrics" in c or "params" in c or c == "run_id"
+    ]
+    runs_df = runs_df[
+        ["tags.mlflow.runName", "run_id", "start_time"]
+        + [c for c in cols if c != "run_id"]
+    ]
+    return runs_df
+
+
 @dataclass
 class BaseUI:
     plt_btn: mo.ui.button
@@ -39,58 +68,9 @@ class BaseUI:
     base_dataset_ui: mo.ui.dictionary
     run_selector: mo.ui.table
 
-    def render(self):
-        return mo.md(f"""
-        ### MLflow データ解析
-        - CurrentType: {self.current_dropdown}
-        - matplotlib rendering setting: {self.plt_btn}
-        - baseDatasetUI: {self.base_dataset_ui}
-        {self.run_selector}
-        """)
-
-    def setup_mpl(self):
-        matplotlib_style = self.plt_btn.value
-        CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-        STYLE_DIR = os.path.join(CURRENT_DIR, "./conf/style")
-        plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
-        plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
-
-    @property
-    def run_ids(self):
-        return self.run_selector.value["run_id"].tolist()
-
-    @staticmethod
-    def get_mlflow_runselector():
-        experiment = mlflow.get_experiment_by_name(TARGET_EXP)
-        if experiment is None:
-            raise ValueError(
-                f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
-            )
-        all_runs_df = mlflow.search_runs(experiment_ids=[experiment.experiment_id])
-        if all_runs_df.empty:
-            raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
-        runs_df = all_runs_df.copy()
-        runs_df = runs_df.sort_values("start_time", ascending=False)
-        runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
-        cols = [
-            c
-            for c in runs_df.columns
-            if "metrics" in c or "params" in c or c == "run_id"
-        ]
-        runs_df = runs_df[
-            ["tags.mlflow.runName", "run_id", "start_time"]
-            + [c for c in cols if c != "run_id"]
-        ]
-
-        return mo.ui.table(
-            runs_df[["tags.mlflow.runName", "run_id"]],
-            label="比較・解析したいRunを複数選択",
-            selection="multi",
-            initial_selection=[0],
-        )
-
     @staticmethod
     def get_base_btn():
+        runs_df = get_runs_df()
         plt_options = list(typing.get_args(MplStyle))
         return BaseUI(
             plt_btn=mo.ui.radio(options=plt_options, value=plt_options[0]),
@@ -107,10 +87,16 @@ class BaseUI:
                     ),
                 }
             ),
-            run_selector=BaseUI.get_mlflow_runselector(),
+            run_selector=mo.ui.table(
+                runs_df[["tags.mlflow.runName", "run_id"]],
+                label="比較・解析したいRunを複数選択",
+                selection="multi",
+                initial_selection=[0],
+            ),
         )
 
     def get_model_info_ui(self):
+        self.run_ids = self.run_selector.value["run_id"].tolist()
         run_infos = [RunInfo.get_run_info(rid) for rid in self.run_ids]
         return mo.vstack(
             [
@@ -126,6 +112,16 @@ class BaseUI:
                 for info in run_infos
             ]
         )
+
+
+def render(self: BaseUI):
+    return mo.md(f"""
+    ### MLflow データ解析
+    - CurrentType: {self.current_dropdown}
+    - matplotlib rendering setting: {self.plt_btn}
+    - baseDatasetUI: {self.base_dataset_ui}
+    {self.run_selector}
+    """)
 
 
 @dataclass
@@ -163,6 +159,7 @@ class ParamUI:
 
     @staticmethod
     def get_detailed_btn(base_btn: BaseUI):
+        setup_mpl(base_btn.plt_btn.value)
         surrogate_target_ui = mo.ui.multiselect(
             options=get_comp_names(base_btn), value=[get_comp_names(base_btn)[0]]
         )

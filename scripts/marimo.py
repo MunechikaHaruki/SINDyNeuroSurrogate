@@ -11,13 +11,12 @@ def _():
     import marimo as mo
 
     base_button = analysis.BaseUI.get_base_btn()
-    base_button.render()
+    analysis.render(base_button)
     return analysis, analysis_sweep, base_button, mo
 
 
 @app.cell
 def _(analysis, base_button):
-    base_button.setup_mpl()
     param_button = analysis.ParamUI.get_detailed_btn(base_button)
     param_button.render()
     return (param_button,)
