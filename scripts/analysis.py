@@ -12,7 +12,11 @@ from io_handler import RunInfo, setup_mlflow
 from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_wave import DynamicMetrics, SpikeMetrics, WaveformMetrics
+from neurosurrogate.profiler.profiler_wave import (
+    DynamicMetrics,
+    SpikeMetrics,
+    WaveformMetrics,
+)
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
 CurrentList: list = ["train"] + list(FUNC_MAP.keys())
