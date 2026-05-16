@@ -102,7 +102,7 @@ class DynamicMetrics:
 
         orig_v, surr_v = self.voltages
         orig_peaks, surr_peaks = self.peaks
-        half_win = 50
+        half_win = int(2.0 / self.dt)
         orig_tmpl = _mean_template(orig_v, orig_peaks, half_win)
         surr_tmpl = _mean_template(surr_v, surr_peaks, half_win)
         return orig_tmpl, surr_tmpl
@@ -131,7 +131,12 @@ class SpikeMetrics:
             [
                 {"feature": feat, "orig": o, "surr": s, "orig-surr": o - s}
                 for feat in _MEDIAN_FEATURES
-                for o, s in [(_or_nan(np.median, orig_feat.get(feat)), _or_nan(np.median, surr_feat.get(feat)))]
+                for o, s in [
+                    (
+                        _or_nan(np.median, orig_feat.get(feat)),
+                        _or_nan(np.median, surr_feat.get(feat)),
+                    )
+                ]
             ]
         ).set_index("feature")
 
@@ -143,21 +148,22 @@ class WaveformMetrics:
     _dm: DynamicMetrics = field(repr=False)
 
     @cached_property
-    def _waveform_error(self) -> pd.DataFrame:
+    def _waveform_error(self) -> dict:
         orig_v, surr_v = self._dm.voltages
-        nan = float("nan")
-        return pd.DataFrame([
-            {"metric": "rmse", "orig": nan, "surr": nan, "orig-surr": float(np.sqrt(np.mean((orig_v - surr_v) ** 2)))},
-            {"metric": "mae",  "orig": nan, "surr": nan, "orig-surr": float(np.mean(np.abs(orig_v - surr_v)))},
-        ]).set_index("metric")
+        return {
+            "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),
+            "mae": float(np.mean(np.abs(orig_v - surr_v))),
+        }
 
     @cached_property
     def _spike_counts(self) -> pd.DataFrame:
         orig_peaks, surr_peaks = self._dm.peaks
         o, s = float(len(orig_peaks)), float(len(surr_peaks))
-        return pd.DataFrame([
-            {"metric": "spike_count", "orig": o, "surr": s, "orig-surr": o - s},
-        ]).set_index("metric")
+        return pd.DataFrame(
+            [
+                {"metric": "spike_count", "orig": o, "surr": s, "orig-surr": o - s},
+            ]
+        ).set_index("metric")
 
     @cached_property
     def _timing(self) -> pd.DataFrame:
@@ -167,9 +173,16 @@ class WaveformMetrics:
         nan = float("nan")
         o = float(orig_tfs[0]) if orig_tfs is not None else nan
         s = float(surr_tfs[0]) if surr_tfs is not None else nan
-        return pd.DataFrame([
-            {"metric": "latency", "orig": o, "surr": s, "orig-surr": o - s if not np.isnan(o + s) else nan},
-        ]).set_index("metric")
+        return pd.DataFrame(
+            [
+                {
+                    "metric": "latency",
+                    "orig": o,
+                    "surr": s,
+                    "orig-surr": o - s if not np.isnan(o + s) else nan,
+                },
+            ]
+        ).set_index("metric")
 
     @cached_property
     def _isi_stats(self) -> pd.DataFrame:
@@ -178,27 +191,40 @@ class WaveformMetrics:
         surr_isi = surr_feat.get("ISI_values")
         nan = float("nan")
         o_mean, s_mean = _or_nan(np.mean, orig_isi), _or_nan(np.mean, surr_isi)
-        o_std,  s_std  = _or_nan(np.std,  orig_isi), _or_nan(np.std,  surr_isi)
-        return pd.DataFrame([
-            {"metric": "mean_isi", "orig": o_mean, "surr": s_mean, "orig-surr": o_mean - s_mean if not np.isnan(o_mean + s_mean) else nan},
-            {"metric": "std_isi",  "orig": o_std,  "surr": s_std,  "orig-surr": o_std  - s_std  if not np.isnan(o_std  + s_std)  else nan},
-        ]).set_index("metric")
+        o_std, s_std = _or_nan(np.std, orig_isi), _or_nan(np.std, surr_isi)
+        return pd.DataFrame(
+            [
+                {
+                    "metric": "mean_isi",
+                    "orig": o_mean,
+                    "surr": s_mean,
+                    "orig-surr": o_mean - s_mean
+                    if not np.isnan(o_mean + s_mean)
+                    else nan,
+                },
+                {
+                    "metric": "std_isi",
+                    "orig": o_std,
+                    "surr": s_std,
+                    "orig-surr": o_std - s_std if not np.isnan(o_std + s_std) else nan,
+                },
+            ]
+        ).set_index("metric")
 
     def to_df(self) -> pd.DataFrame:
-        return pd.concat([self._waveform_error, self._spike_counts, self._timing, self._isi_stats])
+        return pd.concat([self._spike_counts, self._timing, self._isi_stats])
 
     def compute(self) -> dict:
         df = self.to_df()
         return {
-            "rmse":             float(df.loc["rmse", "orig-surr"]),
-            "mae":              float(df.loc["mae", "orig-surr"]),
+            **self._waveform_error,
             "orig_spike_count": int(df.loc["spike_count", "orig"]),
             "surr_spike_count": int(df.loc["spike_count", "surr"]),
             "spike_count_diff": abs(int(df.loc["spike_count", "orig-surr"])),
-            "latency_error":    abs(float(df.loc["latency", "orig-surr"])),
-            "periodicity_gap":  abs(float(df.loc["mean_isi", "orig-surr"])),
-            "orig_mean_isi":    float(df.loc["mean_isi", "orig"]),
-            "orig_std_isi":     float(df.loc["std_isi",  "orig"]),
-            "surr_mean_isi":    float(df.loc["mean_isi", "surr"]),
-            "surr_std_isi":     float(df.loc["std_isi",  "surr"]),
+            "latency_error": abs(float(df.loc["latency", "orig-surr"])),
+            "periodicity_gap": abs(float(df.loc["mean_isi", "orig-surr"])),
+            "orig_mean_isi": float(df.loc["mean_isi", "orig"]),
+            "orig_std_isi": float(df.loc["std_isi", "orig"]),
+            "surr_mean_isi": float(df.loc["mean_isi", "surr"]),
+            "surr_std_isi": float(df.loc["std_isi", "surr"]),
         }
