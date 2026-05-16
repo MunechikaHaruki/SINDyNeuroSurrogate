@@ -208,6 +208,8 @@ def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
         [
             mo.md("#### 波形・発火パターン指標（orig / surr / orig-surr）"),
             wm.to_df(),
+            mo.md("#### 波形誤差スカラー"),
+            _stat_cards(wm.compute()),
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
             _stat_cards(sm.compute()),
             mo.md("#### AP・ISI 指標（orig / surr / orig-surr）"),

@@ -223,8 +223,4 @@ class WaveformMetrics:
             "spike_count_diff": abs(int(df.loc["spike_count", "orig-surr"])),
             "latency_error": abs(float(df.loc["latency", "orig-surr"])),
             "periodicity_gap": abs(float(df.loc["mean_isi", "orig-surr"])),
-            "orig_mean_isi": float(df.loc["mean_isi", "orig"]),
-            "orig_std_isi": float(df.loc["std_isi", "orig"]),
-            "surr_mean_isi": float(df.loc["mean_isi", "surr"]),
-            "surr_std_isi": float(df.loc["std_isi", "surr"]),
         }
