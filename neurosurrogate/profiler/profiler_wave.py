@@ -1,5 +1,6 @@
 import warnings
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any
 
 import efel
@@ -26,10 +27,6 @@ _EFEL_FEATURES = [
 ]
 
 
-def _to_list(val) -> list:
-    return [] if val is None else list(val)
-
-
 def _or_nan(fn, arr) -> float:
     if arr is None or len(arr) == 0:
         return float("nan")
@@ -43,12 +40,21 @@ class DynamicMetrics:
     comp_id: int
     dt: float
 
+    @cached_property
     def _voltages(self) -> tuple[np.ndarray, np.ndarray]:
         orig_v = self.original["vars"].sel(gate=False, comp_id=self.comp_id).to_numpy().squeeze()
         surr_v = self.surrogate["vars"].sel(gate=False, comp_id=self.comp_id).to_numpy().squeeze()
         return orig_v, surr_v
 
-    def _efel_features(self, orig_v: np.ndarray, surr_v: np.ndarray) -> tuple[dict, dict]:
+    @cached_property
+    def _peaks(self) -> tuple[list, list]:
+        orig_feat, surr_feat = self._efel
+        return list(orig_feat.get("peak_indices") or []), list(surr_feat.get("peak_indices") or [])
+
+    @cached_property
+    def _efel(self) -> tuple[dict, dict]:
+        orig_v, surr_v = self._voltages
+
         def _to_trace(v: np.ndarray) -> dict:
             time = np.arange(len(v), dtype=float) * self.dt
             # stim_start を 1 サンプル後ろにずらして AHP baseline 計算に必要な区間を確保
@@ -72,10 +78,9 @@ class DynamicMetrics:
                 f"{prefix}_std_isi": _or_nan(np.std, isi),
             }
 
-        orig_v, surr_v = self._voltages()
-        orig_feat, surr_feat = self._efel_features(orig_v, surr_v)
-        orig_peaks = _to_list(orig_feat.get("peak_indices"))
-        surr_peaks = _to_list(surr_feat.get("peak_indices"))
+        orig_v, surr_v = self._voltages
+        orig_feat, surr_feat = self._efel
+        orig_peaks, surr_peaks = self._peaks
 
         orig_isi = orig_feat.get("ISI_values")
         surr_isi = surr_feat.get("ISI_values")
@@ -109,10 +114,17 @@ class DynamicMetrics:
         def _median_or_nan(arr) -> float:
             return _or_nan(np.median, arr)
 
-        def _spike_shape_corr(orig_v, surr_v, orig_peaks, surr_peaks, half_win: int = 50) -> dict:
+        def _spike_shape_corr(
+            orig_v, surr_v, orig_peaks, surr_peaks, half_win: int = 50
+        ) -> dict:
             """平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
+
             def _mean_template(v, peaks):
-                snippets = [v[p - half_win: p + half_win + 1] for p in peaks if p - half_win >= 0 and p + half_win + 1 <= len(v)]
+                snippets = [
+                    v[p - half_win : p + half_win + 1]
+                    for p in peaks
+                    if p - half_win >= 0 and p + half_win + 1 <= len(v)
+                ]
                 return np.mean(snippets, axis=0) if snippets else None
 
             orig_tmpl = _mean_template(orig_v, orig_peaks)
@@ -121,13 +133,14 @@ class DynamicMetrics:
                 return {"spike_shape_corr": float("nan")}
             return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
 
-        orig_v, surr_v = self._voltages()
-        orig_feat, surr_feat = self._efel_features(orig_v, surr_v)
-        orig_peaks = _to_list(orig_feat.get("peak_indices"))
-        surr_peaks = _to_list(surr_feat.get("peak_indices"))
+        orig_v, surr_v = self._voltages
+        orig_feat, surr_feat = self._efel
+        orig_peaks, surr_peaks = self._peaks
 
         def _md(key: str) -> float:
-            return abs(_median_or_nan(orig_feat.get(key)) - _median_or_nan(surr_feat.get(key)))
+            return abs(
+                _median_or_nan(orig_feat.get(key)) - _median_or_nan(surr_feat.get(key))
+            )
 
         return {
             **{f"median_{feat}_error": _md(feat) for feat in _MEDIAN_ERROR_FEATURES},
