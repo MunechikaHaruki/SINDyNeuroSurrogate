@@ -144,18 +144,7 @@ def plot_sweep(
 # ---------------------------------------------------------------------------
 
 
-def make_sweep_ui(
-    param_button: mo.ui.dictionary,
-    eval_ui: mo.ui.dictionary,
-) -> mo.ui.dictionary:
-    comp_options = cast(list[str], param_button["surrogate_targets"].value)
-    comp_value = str(eval_ui["eval_comp"].value)
-    if comp_value not in comp_options:
-        comp_value = comp_options[0]
-
-    current_params = cast(dict, param_button["current_params"].value)
-    param_keys = list(current_params.keys())
-
+def make_sweep_ui(param_keys: list[str]) -> mo.ui.dictionary:
     sweep_param_ui = (
         mo.ui.dropdown(options=param_keys, value=param_keys[0])
         if param_keys
@@ -169,34 +158,22 @@ def make_sweep_ui(
             "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
             "amp_steps": mo.ui.number(value=10, step=1, label="steps"),
             "metric": mo.ui.dropdown(options=_SWEEP_METRICS, value="spike_count"),
-            "comp": mo.ui.dropdown(options=comp_options, value=comp_value),
         }
     )
 
-
-def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.md(f"""
-    ### 振幅スイープ設定
-    | | |
-    |---|---|
-    | sweep param | {sweep_ui["sweep_param"]} |
-    | amp start | {sweep_ui["amp_start"]} |
-    | amp stop  | {sweep_ui["amp_stop"]}  |
-    | steps     | {sweep_ui["amp_steps"]} |
-    | metric    | {sweep_ui["metric"]} |
-    | comp      | {sweep_ui["comp"]} |
-    """)
 
 
 def run_and_plot(
     sweep_ui: mo.ui.dictionary,
     base_button: mo.ui.dictionary,
     param_button: mo.ui.dictionary,
+    eval_ui: mo.ui.dictionary,
     run_ids: list[str],
 ) -> Figure:
     ds = cast(dict[str, Any], base_button["base_dataset"].value)
     current_type = str(base_button["current_type"].value)
     base_current_params = cast(dict, param_button["current_params"].value)
+    comp_name = str(eval_ui["eval_comp"].value)
 
     client = mlflow.MlflowClient()
     run_labels = {
@@ -217,7 +194,7 @@ def run_and_plot(
         dt=float(ds["dt"]),
         silence_duration=float(ds["silence_duration"]),
         duration=float(ds["duration"]),
-        target_comp_name=str(sweep_ui["comp"].value),
+        target_comp_name=comp_name,
         current_type=current_type,
         base_current_params=base_current_params,
         sweep_param=str(sweep_ui["sweep_param"].value),
@@ -227,6 +204,6 @@ def run_and_plot(
         data,
         run_ids,
         str(sweep_ui["metric"].value),
-        str(sweep_ui["comp"].value),
+        comp_name,
         run_labels,
     )
