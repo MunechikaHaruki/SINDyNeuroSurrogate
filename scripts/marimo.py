@@ -63,7 +63,14 @@ def _(analysis, analysis_core, base_button, param_button):
 
 @app.cell
 def _(analysis, eval_ui, result):
-    analysis.view_result(eval_ui, result)
+    spike_ui = analysis.make_spike_ui(result, eval_ui)
+    analysis.render_spike(spike_ui)
+    return (spike_ui,)
+
+
+@app.cell
+def _(analysis, eval_ui, result, spike_ui):
+    analysis.view_result(eval_ui, result, spike_ui)
     return
 
 

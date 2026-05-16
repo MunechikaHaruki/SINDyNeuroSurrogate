@@ -1,7 +1,7 @@
 import warnings
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any
+from typing import Any, Literal
 
 import efel
 import numpy as np
@@ -132,19 +132,38 @@ class SpikeMetrics:
             return {"spike_shape_corr": float("nan")}
         return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
 
+    @cached_property
+    def n_spikes(self) -> tuple[int, int]:
+        """(n_orig, n_surr): 各信号のスパイク数。"""
+        orig_peaks, surr_peaks = self._dm.peaks
+        return len(orig_peaks), len(surr_peaks)
+
     def compute(self) -> dict:
         return self._spike_shape_corr
 
-    def to_df(self) -> pd.DataFrame:
+    def to_df(self, spike: int | Literal["median"] = "median") -> pd.DataFrame:
         orig_feat, surr_feat = self._dm.efel
+
+        def _pick(arr, idx: int | Literal["median"]) -> float:
+            if arr is None or len(arr) == 0:
+                return float("nan")
+            if idx == "median":
+                return float(np.median(arr))
+            return float(arr[idx]) if idx < len(arr) else float("nan")
+
         return pd.DataFrame(
             [
-                {"feature": feat, "orig": o, "surr": s, "orig-surr": o - s}
+                {
+                    "feature": feat,
+                    "orig": o,
+                    "surr": s,
+                    "orig-surr": (o - s) if not (np.isnan(o) or np.isnan(s)) else float("nan"),
+                }
                 for feat in _MEDIAN_FEATURES
                 for o, s in [
                     (
-                        _or_nan(np.median, orig_feat.get(feat)),
-                        _or_nan(np.median, surr_feat.get(feat)),
+                        _pick(orig_feat.get(feat), spike),
+                        _pick(surr_feat.get(feat), spike),
                     )
                 ]
             ]
