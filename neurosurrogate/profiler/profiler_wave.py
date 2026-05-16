@@ -108,12 +108,8 @@ class SpikeMetrics:
 
 @dataclass
 class WaveformMetrics:
-    """波形・発火パターン指標を計算し、SpikeMetrics へのアクセスも提供する。"""
+    """波形・発火パターン指標（RMSE/MAE・スパイク数・タイミング・ISI）を計算する。"""
     _dm: DynamicMetrics = field(repr=False)
-
-    @cached_property
-    def spike(self) -> SpikeMetrics:
-        return SpikeMetrics(self._dm)
 
     @cached_property
     def _waveform_error(self) -> dict:
@@ -164,8 +160,5 @@ class WaveformMetrics:
             "surr_std_isi": _or_nan(np.std, surr_isi),
         }
 
-    def waveform_metrics(self) -> dict:
+    def compute(self) -> dict:
         return {**self._waveform_error, **self._spike_counts, **self._timing, **self._isi_stats}
-
-    def spike_shape_metrics(self) -> dict:
-        return self.spike.compute()
