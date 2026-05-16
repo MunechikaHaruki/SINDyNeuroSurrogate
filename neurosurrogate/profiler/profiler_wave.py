@@ -201,14 +201,24 @@ class WaveformMetrics:
 
     def to_df(self) -> pd.DataFrame:
         d = self.compute()
+        orig_feat, surr_feat = self._dm.efel
+        orig_tfs = orig_feat.get("time_to_first_spike")
+        surr_tfs = surr_feat.get("time_to_first_spike")
         nan = float("nan")
-        rows = {
-            "rmse":        (nan,                   nan,                   d["rmse"]),
-            "mae":         (nan,                   nan,                   d["mae"]),
-            "spike_count": (d["orig_spike_count"], d["surr_spike_count"], d["spike_count_diff"]),
-            "latency":     (nan,                   nan,                   d["latency_error"]),
-            "periodicity": (nan,                   nan,                   d["periodicity_gap"]),
-            "mean_isi":    (d["orig_mean_isi"],    d["surr_mean_isi"],    nan),
-            "std_isi":     (d["orig_std_isi"],     d["surr_std_isi"],     nan),
-        }
-        return pd.DataFrame.from_dict(rows, orient="index", columns=["orig", "surr", "error"])
+        o_lat = float(orig_tfs[0]) if orig_tfs is not None else nan
+        s_lat = float(surr_tfs[0]) if surr_tfs is not None else nan
+
+        def _row(metric, orig, surr):
+            error = abs(orig - surr) if not np.isnan(orig + surr) else nan
+            return {"metric": metric, "orig": orig, "surr": surr, "error": error}
+
+        return pd.DataFrame(
+            [
+                {"metric": "rmse", "orig": nan, "surr": nan, "error": d["rmse"]},
+                {"metric": "mae",  "orig": nan, "surr": nan, "error": d["mae"]},
+                _row("spike_count", d["orig_spike_count"], d["surr_spike_count"]),
+                _row("latency",     o_lat,                 s_lat),
+                _row("mean_isi",    d["orig_mean_isi"],    d["surr_mean_isi"]),
+                _row("std_isi",     d["orig_std_isi"],     d["surr_std_isi"]),
+            ]
+        ).set_index("metric")
