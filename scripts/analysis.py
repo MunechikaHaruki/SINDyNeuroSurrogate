@@ -207,11 +207,11 @@ def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
     return mo.vstack(
         [
             mo.md("#### 波形・発火パターン指標（orig / surr / error）"),
-            wm.waveform_df,
+            wm.to_df(),
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
             _stat_cards(sm.compute()),
-            mo.md("#### AP 形状指標（orig / surr / error）"),
-            sm.median_ap_df,
+            mo.md("#### AP・ISI 指標（orig / surr / error）"),
+            sm.to_df(),
             mo.mpl.interactive(
                 DRAW_MAP[eval_ui["draw_func"].value](
                     result["original_ds"],

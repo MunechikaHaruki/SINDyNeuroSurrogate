@@ -7,7 +7,7 @@ import efel
 import numpy as np
 import pandas as pd
 
-_MEDIAN_ERROR_FEATURES: list[str] = [
+_MEDIAN_FEATURES: list[str] = [
     "peak_voltage",
     "AP_amplitude",
     "AP_begin_voltage",
@@ -24,7 +24,7 @@ _EFEL_FEATURES = [
     "peak_indices",
     "ISI_values",
     "time_to_first_spike",
-    *_MEDIAN_ERROR_FEATURES,
+    *_MEDIAN_FEATURES,
 ]
 
 
@@ -115,17 +115,6 @@ class SpikeMetrics:
     _dm: DynamicMetrics = field(repr=False)
 
     @cached_property
-    def median_ap_df(self) -> pd.DataFrame:
-        orig_feat, surr_feat = self._dm.efel
-        return pd.DataFrame(
-            [
-                {"feature": feat, "orig": o, "surr": s, "error": abs(o - s)}
-                for feat in _MEDIAN_ERROR_FEATURES
-                for o, s in [(_or_nan(np.median, orig_feat.get(feat)), _or_nan(np.median, surr_feat.get(feat)))]
-            ]
-        ).set_index("feature")
-
-    @cached_property
     def _spike_shape_corr(self) -> dict:
         """平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
         orig_tmpl, surr_tmpl = self._dm.mean_template
@@ -135,6 +124,16 @@ class SpikeMetrics:
 
     def compute(self) -> dict:
         return self._spike_shape_corr
+
+    def to_df(self) -> pd.DataFrame:
+        orig_feat, surr_feat = self._dm.efel
+        return pd.DataFrame(
+            [
+                {"feature": feat, "orig": o, "surr": s, "error": abs(o - s)}
+                for feat in _MEDIAN_FEATURES
+                for o, s in [(_or_nan(np.median, orig_feat.get(feat)), _or_nan(np.median, surr_feat.get(feat)))]
+            ]
+        ).set_index("feature")
 
 
 @dataclass
@@ -200,17 +199,16 @@ class WaveformMetrics:
             **self._isi_stats,
         }
 
-    @cached_property
-    def waveform_df(self) -> pd.DataFrame:
+    def to_df(self) -> pd.DataFrame:
         d = self.compute()
         nan = float("nan")
         rows = {
-            "rmse":        (nan,                    nan,                    d["rmse"]),
-            "mae":         (nan,                    nan,                    d["mae"]),
-            "spike_count": (d["orig_spike_count"],  d["surr_spike_count"],  d["spike_count_diff"]),
-            "latency":     (nan,                    nan,                    d["latency_error"]),
-            "periodicity": (nan,                    nan,                    d["periodicity_gap"]),
-            "mean_isi":    (d["orig_mean_isi"],      d["surr_mean_isi"],     nan),
-            "std_isi":     (d["orig_std_isi"],       d["surr_std_isi"],      nan),
+            "rmse":        (nan,                   nan,                   d["rmse"]),
+            "mae":         (nan,                   nan,                   d["mae"]),
+            "spike_count": (d["orig_spike_count"], d["surr_spike_count"], d["spike_count_diff"]),
+            "latency":     (nan,                   nan,                   d["latency_error"]),
+            "periodicity": (nan,                   nan,                   d["periodicity_gap"]),
+            "mean_isi":    (d["orig_mean_isi"],    d["surr_mean_isi"],    nan),
+            "std_isi":     (d["orig_std_isi"],     d["surr_std_isi"],     nan),
         }
         return pd.DataFrame.from_dict(rows, orient="index", columns=["orig", "surr", "error"])
