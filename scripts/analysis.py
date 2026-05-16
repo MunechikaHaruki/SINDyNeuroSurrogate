@@ -12,7 +12,7 @@ from io_handler import RunInfo, setup_mlflow
 from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_wave import WaveformMetrics
+from neurosurrogate.profiler.profiler_wave import DynamicMetrics, WaveformMetrics
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
 CurrentList: list = ["train"] + list(FUNC_MAP.keys())
@@ -193,7 +193,7 @@ def render_eval(eval_ui: mo.ui.dictionary) -> mo.Html:
 
 def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
     target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
-    metrics = WaveformMetrics(result["original_ds"], result["surr_ds"], target_comp_id, result["dt"])
+    metrics = WaveformMetrics(DynamicMetrics(result["original_ds"], result["surr_ds"], target_comp_id, result["dt"]))
     pre = result["get_preprocessed"](target_comp_id)
 
     def _stat_cards(d: dict) -> mo.Html:

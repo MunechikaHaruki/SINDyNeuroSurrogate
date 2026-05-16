@@ -109,14 +109,7 @@ class SpikeMetrics:
 @dataclass
 class WaveformMetrics:
     """波形・発火パターン指標を計算し、SpikeMetrics へのアクセスも提供する。"""
-    original: Any = field(repr=False)
-    surrogate: Any = field(repr=False)
-    comp_id: int
-    dt: float
-
-    @cached_property
-    def _dm(self) -> DynamicMetrics:
-        return DynamicMetrics(self.original, self.surrogate, self.comp_id, self.dt)
+    _dm: DynamicMetrics = field(repr=False)
 
     @cached_property
     def spike(self) -> SpikeMetrics:
