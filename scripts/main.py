@@ -7,6 +7,7 @@ import pysindy as ps
 from io_handler import (
     log_surrogate_model,
     log_surrogate_summary,
+    setup_mlflow,
 )
 from omegaconf import DictConfig, OmegaConf
 
@@ -26,6 +27,7 @@ os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 
 logger = logging.getLogger(__name__)
+setup_mlflow()
 
 
 def build_surrogate(cfg_sindy):

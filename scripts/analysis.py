@@ -7,7 +7,7 @@ import marimo as mo
 import matplotlib.pyplot as plt
 import pandas as pd
 from analysis_core import build_dataset_cfg, get_comp_names, get_runs_df
-from io_handler import RunInfo
+from io_handler import RunInfo, setup_mlflow
 
 from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.model.model_dataset import DatasetConfig
@@ -18,6 +18,8 @@ CurrentList: list = ["train"] + list(FUNC_MAP.keys())
 DRAW_LIST: list = list(DRAW_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
+
+setup_mlflow()
 
 
 def setup_mpl(matplotlib_style: str):

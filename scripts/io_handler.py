@@ -24,12 +24,13 @@ TARGET_EXP = "test_static_params"
 
 logger = logging.getLogger(__name__)
 
-CURRENT_DIR = Path(__file__).parent
-PROJECT_ROOT = CURRENT_DIR.parent  # 階層に応じて調整
-mlflow.set_tracking_uri(f"sqlite:///{PROJECT_ROOT}/mlflow.db")
-mlflow.enable_system_metrics_logging()
-mlflow.set_experiment(TARGET_EXP)
-os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
+
+def setup_mlflow() -> None:
+    PROJECT_ROOT = Path(__file__).parent.parent  # 階層に応じて調整
+    mlflow.set_tracking_uri(f"sqlite:///{PROJECT_ROOT}/mlflow.db")
+    mlflow.enable_system_metrics_logging()
+    mlflow.set_experiment(TARGET_EXP)
+    os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
 
 
 @dataclass(frozen=True)
