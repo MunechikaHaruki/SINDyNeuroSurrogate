@@ -8,18 +8,28 @@ import numpy as np
 import pandas as pd
 
 _MEDIAN_FEATURES: list[str] = [
-    "peak_voltage",
-    "AP_amplitude",
-    "AP_begin_voltage",
-    "AP_rise_rate",
-    "AP_fall_rate",
-    "AP_duration_half_width",
-    "AP_rise_time",
-    "AP_fall_time",
-    "AHP_depth",
-    "AHP_time_from_peak",
+    # --- 電位の絶対値・相対値 [mV] ---
+    "peak_voltage",  # 各 AP のピーク時の電位（V[peak_indices]）
+    "AP_amplitude",  # AP 振幅: peak_voltage - V[AP_begin_indices]（spike onset からの相対高）
+    "AP_begin_voltage",  # spike start 時点の電位。spike start は dV/dt > 10 V/s が
+    # 5 点以上続く最初の時点として定義される（実質的な閾値電位）
+    # --- 電位変化速度 [V/s]（= mV/ms）---
+    "AP_rise_rate",  # 立ち上がり相の平均変化速度:
+    # (V[peak] - V[AP_begin]) / (T[peak] - T[AP_begin])
+    "AP_fall_rate",  # 下降相の平均変化速度:
+    # (V[AP_end] - V[peak]) / (T[AP_end] - T[peak])（負値）
+    # --- 時間幅 [ms] ---
+    "AP_duration_half_width",  # 半値全幅: 立ち上がり相と下降相で
+    # (V[peak] - V[AP_begin]) / 2 に達する点の時間差
+    "AP_rise_time",  # spike start からピークまでの所要時間: T[peak] - T[AP_begin]
+    # （デフォルトでは振幅の 0%→100% 窓; rise_start_perc / rise_end_perc で変更可）
+    "AP_fall_time",  # ピークから AP_end_indices までの所要時間: T[AP_end] - T[peak]
+    # --- AHP（後過分極）---
+    "AHP_depth",  # 1 番目の AHP の電位を voltage_base からの相対値で表現 [mV]:
+    # min_AHP_values - voltage_base（通常は負値）
+    "AHP_time_from_peak",  # AP ピークから最初の AHP minimum までの時間 [ms]:
+    # T[min_AHP_indices] - T[peak_indices]
 ]
-
 _EFEL_FEATURES = [
     "peak_indices",
     "ISI_values",
