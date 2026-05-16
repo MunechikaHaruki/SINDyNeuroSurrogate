@@ -75,16 +75,16 @@ def _(analysis, eval_ui, result, spike_ui):
 
 
 @app.cell
-def _(analysis_sweep, base_button):
-    sweep_ui = analysis_sweep.make_sweep_ui(base_button)
+def _(analysis_sweep, eval_ui, param_button):
+    sweep_ui = analysis_sweep.make_sweep_ui(param_button, eval_ui)
     analysis_sweep.render_sweep(sweep_ui)
     return (sweep_ui,)
 
 
 @app.cell
-def _(analysis_sweep, base_button, mo, sweep_ui):
+def _(analysis_sweep, base_button, mo, param_button, sweep_ui):
     run_ids = base_button["run_selector"].value["run_id"].tolist()
-    fig = analysis_sweep.run_and_plot(sweep_ui, base_button, run_ids)
+    fig = analysis_sweep.run_and_plot(sweep_ui, base_button, param_button, run_ids)
     mo.mpl.interactive(fig)
     return
 

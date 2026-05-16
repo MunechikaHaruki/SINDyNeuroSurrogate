@@ -4,12 +4,10 @@ import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
-from analysis_core import get_comp_names
 from io_handler import load_surrogate_model
 from matplotlib.figure import Figure
 
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_dataset import NeuronGraph
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_wave import (
     DynamicMetrics,
@@ -33,21 +31,33 @@ _SWEEP_METRICS = [
 # ---------------------------------------------------------------------------
 
 
-def _make_steady_u(amp: float, iteration: int, silence_steps: int) -> np.ndarray:
-    from neurosurrogate.builder.registry_current import generate_steady
+def _make_current_u(
+    current_type: str,
+    base_params: dict,
+    sweep_param: str,
+    amp: float,
+    iteration: int,
+    silence_steps: int,
+) -> np.ndarray:
+    from neurosurrogate.builder.registry_current import FUNC_MAP
 
+    params = {**base_params, sweep_param: amp}
     u = np.zeros(iteration)
-    generate_steady(amp)(u[silence_steps : iteration - silence_steps])
+    FUNC_MAP[current_type](**params)(u[silence_steps : iteration - silence_steps])
     return u
 
 
-def _run_surr_sim(orig_ds, net, comp_id, u, dt, surrogate):
-    surr_nodes = [
-        surrogate.make_surr_comp(n.name) if i == comp_id else n
-        for i, n in enumerate(net.nodes)
-    ]
-    surr_graph = NeuronGraph(nodes=surr_nodes, edges=net.edges, stim=net.stim)
+def _run_surr_sim(net, comp_id: int, u, dt: float, surrogate):
+    surr_graph = net.with_surrogates(
+        targets={net.nodes[comp_id].name},
+        make_surr=surrogate.make_surr_comp,
+    )
     return unified_simulator(dt=dt, u=u, net=surr_graph, surrogate_model=surrogate)
+
+
+def _all_metrics(orig, surr, comp_id: int, dt: float) -> dict:
+    dm = DynamicMetrics(orig, surr, comp_id, dt)
+    return {**WaveformMetrics(dm).compute(), **SpikeMetrics(dm).compute()}
 
 
 def sweep_amplitude_metrics(
@@ -58,9 +68,12 @@ def sweep_amplitude_metrics(
     silence_duration: float,
     duration: float,
     target_comp_name: str,
+    current_type: str,
+    base_current_params: dict,
+    sweep_param: str,
     metric_key: str = "spike_count",
 ) -> dict:
-    net: NeuronGraph = MCMODELS[model_name]
+    net = MCMODELS[model_name]
     comp_id = net.name_to_idx(target_comp_name)
     surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
 
@@ -75,24 +88,20 @@ def sweep_amplitude_metrics(
         results[rid] = []
 
     for amp in amplitudes:
-        u = _make_steady_u(amp, iteration, silence_steps)
+        u = _make_current_u(current_type, base_current_params, sweep_param, amp, iteration, silence_steps)
         orig_ds = unified_simulator(dt=dt, u=u, net=net)
 
-        first_surr_ds = _run_surr_sim(
-            orig_ds, net, comp_id, u, dt, surrogates[run_ids[0]]
-        )
-
-        def _all_metrics(orig, surr):
-            dm = DynamicMetrics(orig, surr, comp_id, dt)
-            return {**WaveformMetrics(dm).compute(), **SpikeMetrics(dm).compute()}
-
-        first_m = _all_metrics(orig_ds, first_surr_ds)
-        results["original"].append(float(first_m.get(orig_key, float("nan"))))
-
+        first_m: dict | None = None
         for rid in run_ids:
-            surr_ds = _run_surr_sim(orig_ds, net, comp_id, u, dt, surrogates[rid])
-            m = _all_metrics(orig_ds, surr_ds)
+            surr_ds = _run_surr_sim(net, comp_id, u, dt, surrogates[rid])
+            m = _all_metrics(orig_ds, surr_ds, comp_id, dt)
+            if first_m is None:
+                first_m = m
             results[rid].append(float(m.get(surr_key, float("nan"))))
+
+        results["original"].append(
+            float(first_m.get(orig_key, float("nan"))) if first_m else float("nan")
+        )
 
     return results
 
@@ -135,17 +144,32 @@ def plot_sweep(
 # ---------------------------------------------------------------------------
 
 
-def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_names = get_comp_names(
-        str(cast(dict, base_ui["base_dataset"].value)["model_name"])
+def make_sweep_ui(
+    param_button: mo.ui.dictionary,
+    eval_ui: mo.ui.dictionary,
+) -> mo.ui.dictionary:
+    comp_options = cast(list[str], param_button["surrogate_targets"].value)
+    comp_value = str(eval_ui["eval_comp"].value)
+    if comp_value not in comp_options:
+        comp_value = comp_options[0]
+
+    current_params = cast(dict, param_button["current_params"].value)
+    param_keys = list(current_params.keys())
+
+    sweep_param_ui = (
+        mo.ui.dropdown(options=param_keys, value=param_keys[0])
+        if param_keys
+        else mo.ui.dropdown(options=["(none)"], value="(none)")
     )
+
     return mo.ui.dictionary(
         {
+            "sweep_param": sweep_param_ui,
             "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
             "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
             "amp_steps": mo.ui.number(value=10, step=1, label="steps"),
             "metric": mo.ui.dropdown(options=_SWEEP_METRICS, value="spike_count"),
-            "comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
+            "comp": mo.ui.dropdown(options=comp_options, value=comp_value),
         }
     )
 
@@ -155,6 +179,7 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
     ### 振幅スイープ設定
     | | |
     |---|---|
+    | sweep param | {sweep_ui["sweep_param"]} |
     | amp start | {sweep_ui["amp_start"]} |
     | amp stop  | {sweep_ui["amp_stop"]}  |
     | steps     | {sweep_ui["amp_steps"]} |
@@ -165,10 +190,14 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
 
 def run_and_plot(
     sweep_ui: mo.ui.dictionary,
-    base_ui: mo.ui.dictionary,
+    base_button: mo.ui.dictionary,
+    param_button: mo.ui.dictionary,
     run_ids: list[str],
 ) -> Figure:
-    ds = cast(dict[str, Any], base_ui["base_dataset"].value)
+    ds = cast(dict[str, Any], base_button["base_dataset"].value)
+    current_type = str(base_button["current_type"].value)
+    base_current_params = cast(dict, param_button["current_params"].value)
+
     client = mlflow.MlflowClient()
     run_labels = {
         rid: client.get_run(rid).data.tags.get("mlflow.runName", rid[:6])
@@ -189,6 +218,9 @@ def run_and_plot(
         silence_duration=float(ds["silence_duration"]),
         duration=float(ds["duration"]),
         target_comp_name=str(sweep_ui["comp"].value),
+        current_type=current_type,
+        base_current_params=base_current_params,
+        sweep_param=str(sweep_ui["sweep_param"].value),
         metric_key=str(sweep_ui["metric"].value),
     )
     return plot_sweep(
