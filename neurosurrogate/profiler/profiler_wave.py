@@ -5,6 +5,7 @@ from typing import Any
 
 import efel
 import numpy as np
+import pandas as pd
 
 _MEDIAN_ERROR_FEATURES: list[str] = [
     "peak_voltage",
@@ -114,23 +115,15 @@ class SpikeMetrics:
     _dm: DynamicMetrics = field(repr=False)
 
     @cached_property
-    def _median_ap_stats(self) -> dict:
+    def median_ap_df(self) -> pd.DataFrame:
         orig_feat, surr_feat = self._dm.efel
-        return {
-            k: v
-            for feat in _MEDIAN_ERROR_FEATURES
-            for o, s in [
-                (
-                    _or_nan(np.median, orig_feat.get(feat)),
-                    _or_nan(np.median, surr_feat.get(feat)),
-                )
+        return pd.DataFrame(
+            [
+                {"feature": feat, "orig": o, "surr": s, "error": abs(o - s)}
+                for feat in _MEDIAN_ERROR_FEATURES
+                for o, s in [(_or_nan(np.median, orig_feat.get(feat)), _or_nan(np.median, surr_feat.get(feat)))]
             ]
-            for k, v in {
-                f"orig_median_{feat}": o,
-                f"surr_median_{feat}": s,
-                f"median_{feat}_error": abs(o - s),
-            }.items()
-        }
+        ).set_index("feature")
 
     @cached_property
     def _spike_shape_corr(self) -> dict:
@@ -141,7 +134,7 @@ class SpikeMetrics:
         return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
 
     def compute(self) -> dict:
-        return {**self._median_ap_stats, **self._spike_shape_corr}
+        return self._spike_shape_corr
 
 
 @dataclass

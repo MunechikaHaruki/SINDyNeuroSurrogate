@@ -202,12 +202,15 @@ def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
             wrap=True,
         )
 
+    sm = SpikeMetrics(dm)
     return mo.vstack(
         [
             mo.md("#### 波形・発火パターン指標"),
             _stat_cards(WaveformMetrics(dm).compute()),
-            mo.md("#### スパイク形状指標"),
-            _stat_cards(SpikeMetrics(dm).compute()),
+            mo.md("#### スパイク波形相関（spike_shape_corr）"),
+            _stat_cards(sm.compute()),
+            mo.md("#### AP 形状指標（orig / surr / error）"),
+            sm.median_ap_df,
             mo.mpl.interactive(
                 DRAW_MAP[eval_ui["draw_func"].value](
                     result["original_ds"],
