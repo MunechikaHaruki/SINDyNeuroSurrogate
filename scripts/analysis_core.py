@@ -9,7 +9,7 @@ from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import CurrentConfig, DatasetConfig
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_wave import DynamicMetrics
+from neurosurrogate.profiler.profiler_wave import WaveformMetrics
 
 
 def get_runs_df():
