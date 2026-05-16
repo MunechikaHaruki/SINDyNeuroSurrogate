@@ -69,48 +69,58 @@ class DynamicMetrics:
             )
         return orig_feat, surr_feat
 
-    def waveform_error(self) -> dict:
-        """連続波形の誤差指標（スパイクの存在を前提としない）。"""
+    @cached_property
+    def _waveform_error(self) -> dict:
         orig_v, surr_v = self._voltages
         return {
             "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),
             "mae": float(np.mean(np.abs(orig_v - surr_v))),
         }
 
-    def firing_metrics(self) -> dict:
-        """スパイク列の発火パターン統計（spike_count、latency、ISI、periodicity）。"""
-
-        def _isi_stats(isi, prefix: str) -> dict:
-            return {
-                f"{prefix}_mean_isi": _or_nan(np.mean, isi),
-                f"{prefix}_std_isi": _or_nan(np.std, isi),
-            }
-
-        orig_feat, surr_feat = self._efel
+    @cached_property
+    def _spike_counts(self) -> dict:
         orig_peaks, surr_peaks = self._peaks
-        orig_isi = orig_feat.get("ISI_values")
-        surr_isi = surr_feat.get("ISI_values")
-        orig_tfs = orig_feat.get("time_to_first_spike")
-        surr_tfs = surr_feat.get("time_to_first_spike")
-        latency_error = (
-            float(abs(orig_tfs[0] - surr_tfs[0]))
-            if orig_tfs is not None and surr_tfs is not None
-            else float("nan")
-        )
-        periodicity_gap = (
-            float(abs(np.mean(orig_isi) - np.mean(surr_isi)))
-            if orig_isi is not None and surr_isi is not None
-            else float("nan")
-        )
         return {
             "orig_spike_count": len(orig_peaks),
             "surr_spike_count": len(surr_peaks),
             "spike_count_diff": abs(len(orig_peaks) - len(surr_peaks)),
-            "latency_error": latency_error,
-            **_isi_stats(orig_isi, "orig"),
-            **_isi_stats(surr_isi, "surr"),
-            "periodicity_gap": periodicity_gap,
         }
+
+    @cached_property
+    def _isi_stats(self) -> dict:
+        orig_feat, surr_feat = self._efel
+        orig_isi = orig_feat.get("ISI_values")
+        surr_isi = surr_feat.get("ISI_values")
+        return {
+            "orig_mean_isi": _or_nan(np.mean, orig_isi),
+            "orig_std_isi": _or_nan(np.std, orig_isi),
+            "surr_mean_isi": _or_nan(np.mean, surr_isi),
+            "surr_std_isi": _or_nan(np.std, surr_isi),
+        }
+
+    @cached_property
+    def _timing(self) -> dict:
+        orig_feat, surr_feat = self._efel
+        orig_isi = orig_feat.get("ISI_values")
+        surr_isi = surr_feat.get("ISI_values")
+        orig_tfs = orig_feat.get("time_to_first_spike")
+        surr_tfs = surr_feat.get("time_to_first_spike")
+        return {
+            "latency_error": (
+                float(abs(orig_tfs[0] - surr_tfs[0]))
+                if orig_tfs is not None and surr_tfs is not None
+                else float("nan")
+            ),
+            "periodicity_gap": (
+                float(abs(np.mean(orig_isi) - np.mean(surr_isi)))
+                if orig_isi is not None and surr_isi is not None
+                else float("nan")
+            ),
+        }
+
+    def waveform_metrics(self) -> dict:
+        """波形・発火パターン指標（rmse/mae + spike_count/latency/ISI/periodicity）。"""
+        return {**self._waveform_error, **self._spike_counts, **self._timing, **self._isi_stats}
 
     def spike_shape_metrics(self) -> dict:
         """スパイク形状指標（median AP誤差、spike_shape_corr）を返す。"""
