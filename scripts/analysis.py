@@ -206,11 +206,11 @@ def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
     wm = WaveformMetrics(dm)
     return mo.vstack(
         [
-            mo.md("#### 波形・発火パターン指標（orig / surr / error）"),
+            mo.md("#### 波形・発火パターン指標（orig / surr / orig-surr）"),
             wm.to_df(),
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
             _stat_cards(sm.compute()),
-            mo.md("#### AP・ISI 指標（orig / surr / error）"),
+            mo.md("#### AP・ISI 指標（orig / surr / orig-surr）"),
             sm.to_df(),
             mo.mpl.interactive(
                 DRAW_MAP[eval_ui["draw_func"].value](
