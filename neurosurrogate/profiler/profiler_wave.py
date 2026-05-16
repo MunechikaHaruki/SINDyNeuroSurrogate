@@ -33,9 +33,19 @@ def _or_nan(fn, arr) -> float:
     return float(fn(arr))
 
 
+def _mean_template(v, peaks, half_win):
+    snippets = [
+        v[p - half_win : p + half_win + 1]
+        for p in peaks
+        if p - half_win >= 0 and p + half_win + 1 <= len(v)
+    ]
+    return np.mean(snippets, axis=0) if snippets else None
+
+
 @dataclass
 class DynamicMetrics:
     """電圧・eFEL特徴量を計算するデータ層。WaveformMetrics/SpikeMetrics に共有される。"""
+
     original: Any = field(repr=False)
     surrogate: Any = field(repr=False)
     comp_id: int
@@ -43,8 +53,18 @@ class DynamicMetrics:
 
     @cached_property
     def voltages(self) -> tuple[np.ndarray, np.ndarray]:
-        orig_v = self.original["vars"].sel(gate=False, comp_id=self.comp_id).to_numpy().squeeze()
-        surr_v = self.surrogate["vars"].sel(gate=False, comp_id=self.comp_id).to_numpy().squeeze()
+        orig_v = (
+            self.original["vars"]
+            .sel(gate=False, comp_id=self.comp_id)
+            .to_numpy()
+            .squeeze()
+        )
+        surr_v = (
+            self.surrogate["vars"]
+            .sel(gate=False, comp_id=self.comp_id)
+            .to_numpy()
+            .squeeze()
+        )
         return orig_v, surr_v
 
     @cached_property
@@ -54,11 +74,18 @@ class DynamicMetrics:
         def _to_trace(v: np.ndarray) -> dict:
             time = np.arange(len(v), dtype=float) * self.dt
             # stim_start を 1 サンプル後ろにずらして AHP baseline 計算に必要な区間を確保
-            return {"T": time, "V": v.astype(float), "stim_start": [time[min(1, len(time) - 1)]], "stim_end": [time[-1]]}
+            return {
+                "T": time,
+                "V": v.astype(float),
+                "stim_start": [time[min(1, len(time) - 1)]],
+                "stim_end": [time[-1]],
+            }
 
         with warnings.catch_warnings():
             # スパイクなし時に eFEL が RuntimeWarning を出すが、nan に変換するため問題ない
-            warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"efel\.*")
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning, module=r"efel\.*"
+            )
             orig_feat, surr_feat = efel.get_feature_values(  # type: ignore[reportCallIssue]
                 [_to_trace(orig_v), _to_trace(surr_v)],
                 _EFEL_FEATURES,
@@ -68,22 +95,26 @@ class DynamicMetrics:
     @cached_property
     def peaks(self) -> tuple[list, list]:
         orig_feat, surr_feat = self.efel
-        return list(orig_feat.get("peak_indices") or []), list(surr_feat.get("peak_indices") or [])
+        return list(orig_feat.get("peak_indices") or []), list(
+            surr_feat.get("peak_indices") or []
+        )
 
 
 @dataclass
 class SpikeMetrics:
     """スパイク形状指標（median AP誤差、spike_shape_corr）を計算する。"""
+
     _dm: DynamicMetrics = field(repr=False)
 
     @cached_property
-    def _median_ap_errors(self) -> dict:
+    def _median_ap_stats(self) -> dict:
         orig_feat, surr_feat = self._dm.efel
-
-        def _md(key: str) -> float:
-            return abs(_or_nan(np.median, orig_feat.get(key)) - _or_nan(np.median, surr_feat.get(key)))
-
-        return {f"median_{feat}_error": _md(feat) for feat in _MEDIAN_ERROR_FEATURES}
+        return {
+            k: v
+            for feat in _MEDIAN_ERROR_FEATURES
+            for o, s in [(_or_nan(np.median, orig_feat.get(feat)), _or_nan(np.median, surr_feat.get(feat)))]
+            for k, v in {f"orig_median_{feat}": o, f"surr_median_{feat}": s, f"median_{feat}_error": abs(o - s)}.items()
+        }
 
     @cached_property
     def _spike_shape_corr(self) -> dict:
@@ -91,24 +122,20 @@ class SpikeMetrics:
         orig_v, surr_v = self._dm.voltages
         orig_peaks, surr_peaks = self._dm.peaks
         half_win = 50
-
-        def _mean_template(v, peaks):
-            snippets = [v[p - half_win: p + half_win + 1] for p in peaks if p - half_win >= 0 and p + half_win + 1 <= len(v)]
-            return np.mean(snippets, axis=0) if snippets else None
-
-        orig_tmpl = _mean_template(orig_v, orig_peaks)
-        surr_tmpl = _mean_template(surr_v, surr_peaks)
+        orig_tmpl = _mean_template(orig_v, orig_peaks, half_win)
+        surr_tmpl = _mean_template(surr_v, surr_peaks, half_win)
         if orig_tmpl is None or surr_tmpl is None:
             return {"spike_shape_corr": float("nan")}
         return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
 
     def compute(self) -> dict:
-        return {**self._median_ap_errors, **self._spike_shape_corr}
+        return {**self._median_ap_stats, **self._spike_shape_corr}
 
 
 @dataclass
 class WaveformMetrics:
     """波形・発火パターン指標（RMSE/MAE・スパイク数・タイミング・ISI）を計算する。"""
+
     _dm: DynamicMetrics = field(repr=False)
 
     @cached_property
@@ -161,4 +188,9 @@ class WaveformMetrics:
         }
 
     def compute(self) -> dict:
-        return {**self._waveform_error, **self._spike_counts, **self._timing, **self._isi_stats}
+        return {
+            **self._waveform_error,
+            **self._spike_counts,
+            **self._timing,
+            **self._isi_stats,
+        }
