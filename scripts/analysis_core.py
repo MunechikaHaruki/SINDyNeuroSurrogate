@@ -9,7 +9,7 @@ from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import CurrentConfig, DatasetConfig
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
+from neurosurrogate.profiler.profiler_wave import calc_spike_shape_metrics, calc_waveform_metrics
 
 
 def get_runs_df():
@@ -75,9 +75,9 @@ def build_eval_result(
     get_preprocessed = partial(
         transform_gate, surrogate_model.preprocessor, original_ds
     )
-    get_metrics = partial(calc_dynamic_metrics, original_ds, surr_ds, dt=dataset_cfg.dt)
     return {
-        "metrics": get_metrics,
+        "waveform_metrics": partial(calc_waveform_metrics, original_ds, surr_ds, dt=dataset_cfg.dt),
+        "spike_shape_metrics": partial(calc_spike_shape_metrics, original_ds, surr_ds, dt=dataset_cfg.dt),
         "get_preprocessed": get_preprocessed,
         "name_to_idx": MCMODELS[dataset_cfg.model_name].name_to_idx,
         "datasets": {

@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import NeuronGraph
 from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_wave import calc_dynamic_metrics
+from neurosurrogate.profiler.profiler_wave import calc_spike_shape_metrics, calc_waveform_metrics
 
 _SWEEP_METRICS = [
     "spike_count",
@@ -77,12 +77,18 @@ def sweep_amplitude_metrics(
         first_surr_ds = _run_surr_sim(
             orig_ds, net, comp_id, u, dt, surrogates[run_ids[0]]
         )
-        first_m = calc_dynamic_metrics(orig_ds, first_surr_ds, comp_id=comp_id, dt=dt)
+        def _all_metrics(orig, surr):
+            return {
+                **calc_waveform_metrics(orig, surr, comp_id, dt),
+                **calc_spike_shape_metrics(orig, surr, comp_id, dt),
+            }
+
+        first_m = _all_metrics(orig_ds, first_surr_ds)
         results["original"].append(float(first_m.get(orig_key, float("nan"))))
 
         for rid in run_ids:
             surr_ds = _run_surr_sim(orig_ds, net, comp_id, u, dt, surrogates[rid])
-            m = calc_dynamic_metrics(orig_ds, surr_ds, comp_id=comp_id, dt=dt)
+            m = _all_metrics(orig_ds, surr_ds)
             results[rid].append(float(m.get(surr_key, float("nan"))))
 
     return results

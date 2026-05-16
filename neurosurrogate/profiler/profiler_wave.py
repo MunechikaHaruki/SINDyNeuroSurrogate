@@ -34,30 +34,49 @@ def _or_nan(fn, arr) -> float:
     return float(fn(arr))
 
 
-def _median_or_nan(arr) -> float:
-    return _or_nan(np.median, arr)
+def _extract_voltages(original, surrogate, comp_id) -> tuple[np.ndarray, np.ndarray]:
+    orig_v = original["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
+    surr_v = surrogate["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
+    return orig_v, surr_v
 
 
-def _isi_stats(isi, prefix: str) -> dict:
-    return {
-        f"{prefix}_mean_isi": _or_nan(np.mean, isi),
-        f"{prefix}_std_isi": _or_nan(np.std, isi),
-    }
+def _extract_efel_features(
+    orig_v: np.ndarray, surr_v: np.ndarray, dt: float
+) -> tuple[dict, dict]:
+    def _to_efel_trace(voltage: np.ndarray) -> dict:
+        time = np.arange(len(voltage), dtype=float) * dt
+        # stim_start を 1 サンプル後ろにずらして AHP baseline 計算に必要な区間を確保
+        stim_start = time[min(1, len(time) - 1)]
+        return {"T": time, "V": voltage.astype(float), "stim_start": [stim_start], "stim_end": [time[-1]]}
 
-
-def _calc_spike_metrics(
-    orig_feat: dict, surr_feat: dict, orig_peaks: list, surr_peaks: list
-) -> dict:
-    def _md(key: str) -> float:
-        return abs(
-            _median_or_nan(orig_feat.get(key)) - _median_or_nan(surr_feat.get(key))
+    with warnings.catch_warnings():
+        # スパイクなし時に eFEL が RuntimeWarning を出すが、nan に変換するため問題ない
+        warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"efel\.*")
+        orig_feat, surr_feat = efel.get_feature_values(  # type: ignore[reportCallIssue]
+            [_to_efel_trace(orig_v), _to_efel_trace(surr_v)],
+            _EFEL_FEATURES,
         )
+    return orig_feat, surr_feat
+
+
+def calc_waveform_metrics(original, surrogate, comp_id, dt) -> dict:
+    """波形全体指標（rmse/mae + 発火パターン）を返す。"""
+
+    def _isi_stats(isi, prefix: str) -> dict:
+        return {
+            f"{prefix}_mean_isi": _or_nan(np.mean, isi),
+            f"{prefix}_std_isi": _or_nan(np.std, isi),
+        }
+
+    orig_v, surr_v = _extract_voltages(original, surrogate, comp_id)
+    orig_feat, surr_feat = _extract_efel_features(orig_v, surr_v, dt)
+    orig_peaks = _to_list(orig_feat.get("peak_indices"))
+    surr_peaks = _to_list(surr_feat.get("peak_indices"))
 
     orig_isi = orig_feat.get("ISI_values")
     surr_isi = surr_feat.get("ISI_values")
     orig_tfs = orig_feat.get("time_to_first_spike")
     surr_tfs = surr_feat.get("time_to_first_spike")
-
     latency_error = (
         float(abs(orig_tfs[0] - surr_tfs[0]))
         if orig_tfs is not None and surr_tfs is not None
@@ -68,8 +87,9 @@ def _calc_spike_metrics(
         if orig_isi is not None and surr_isi is not None
         else float("nan")
     )
-
     return {
+        "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),
+        "mae": float(np.mean(np.abs(orig_v - surr_v))),
         "orig_spike_count": len(orig_peaks),
         "surr_spike_count": len(surr_peaks),
         "spike_count_diff": abs(len(orig_peaks) - len(surr_peaks)),
@@ -77,86 +97,38 @@ def _calc_spike_metrics(
         **_isi_stats(orig_isi, "orig"),
         **_isi_stats(surr_isi, "surr"),
         "periodicity_gap": periodicity_gap,
-        **{f"median_{feat}_error": _md(feat) for feat in _MEDIAN_ERROR_FEATURES},
     }
 
 
-def _calc_spike_shape_corr(
-    orig_v: np.ndarray,
-    surr_v: np.ndarray,
-    orig_peaks: list[int],
-    surr_peaks: list[int],
-    half_win: int = 50,
-) -> dict:
-    """元モデルとサロゲートの平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
+def calc_spike_shape_metrics(original, surrogate, comp_id, dt) -> dict:
+    """スパイク形状指標（median AP誤差、spike_shape_corr）を返す。"""
 
-    def _mean_template(v, peaks):
-        snippets = []
-        for p in peaks:
-            lo, hi = p - half_win, p + half_win + 1
-            if lo >= 0 and hi <= len(v):
-                snippets.append(v[lo:hi])
-        if not snippets:
-            return None
-        return np.mean(snippets, axis=0)
+    def _median_or_nan(arr) -> float:
+        return _or_nan(np.median, arr)
 
-    orig_tmpl = _mean_template(orig_v, orig_peaks)
-    surr_tmpl = _mean_template(surr_v, surr_peaks)
+    def _spike_shape_corr(orig_v, surr_v, orig_peaks, surr_peaks, half_win: int = 50) -> dict:
+        """平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
+        def _mean_template(v, peaks):
+            snippets = [v[p - half_win: p + half_win + 1] for p in peaks if p - half_win >= 0 and p + half_win + 1 <= len(v)]
+            return np.mean(snippets, axis=0) if snippets else None
 
-    if orig_tmpl is None or surr_tmpl is None:
-        return {"spike_shape_corr": float("nan")}
+        orig_tmpl = _mean_template(orig_v, orig_peaks)
+        surr_tmpl = _mean_template(surr_v, surr_peaks)
+        if orig_tmpl is None or surr_tmpl is None:
+            return {"spike_shape_corr": float("nan")}
+        return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
 
-    return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
+    def _compute(orig_feat, surr_feat, orig_v, surr_v, orig_peaks, surr_peaks) -> dict:
+        def _md(key: str) -> float:
+            return abs(_median_or_nan(orig_feat.get(key)) - _median_or_nan(surr_feat.get(key)))
 
+        return {
+            **{f"median_{feat}_error": _md(feat) for feat in _MEDIAN_ERROR_FEATURES},
+            **_spike_shape_corr(orig_v, surr_v, orig_peaks, surr_peaks),
+        }
 
-def _to_efel_trace(voltage: np.ndarray, dt: float) -> dict:
-    time = np.arange(len(voltage), dtype=float) * dt
-    # stim_start を 1 サンプル後ろにずらして AHP baseline 計算に必要な区間を確保
-    stim_start = time[min(1, len(time) - 1)]
-    return {
-        "T": time,
-        "V": voltage.astype(float),
-        "stim_start": [stim_start],
-        "stim_end": [time[-1]],
-    }
-
-
-def _extract_efel_features(
-    orig_v: np.ndarray, surr_v: np.ndarray, dt: float
-) -> tuple[dict, dict]:
-    with warnings.catch_warnings():
-        # スパイクなし時に eFEL が RuntimeWarning を出すが、_median_or_nan が nan に変換するため問題ない
-        warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"efel\.*")
-        orig_feat, surr_feat = efel.get_feature_values(  # type: ignore[reportCallIssue]
-            [_to_efel_trace(orig_v, dt), _to_efel_trace(surr_v, dt)],
-            _EFEL_FEATURES,
-        )
-    return orig_feat, surr_feat
-
-
-def _calc_efel_metrics(
-    orig_feat: dict, surr_feat: dict, orig_v: np.ndarray, surr_v: np.ndarray
-) -> dict:
+    orig_v, surr_v = _extract_voltages(original, surrogate, comp_id)
+    orig_feat, surr_feat = _extract_efel_features(orig_v, surr_v, dt)
     orig_peaks = _to_list(orig_feat.get("peak_indices"))
     surr_peaks = _to_list(surr_feat.get("peak_indices"))
-    return {
-        **_calc_spike_metrics(orig_feat, surr_feat, orig_peaks, surr_peaks),
-        **_calc_spike_shape_corr(orig_v, surr_v, orig_peaks, surr_peaks),
-    }
-
-
-def _calc_waveform_metrics(orig_v: np.ndarray, surr_v: np.ndarray) -> dict:
-    return {
-        "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),
-        "mae": float(np.mean(np.abs(orig_v - surr_v))),
-    }
-
-
-def calc_dynamic_metrics(original, surrogate, comp_id, dt):
-    orig_v = original["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
-    surr_v = surrogate["vars"].sel(gate=False, comp_id=comp_id).to_numpy().squeeze()
-    orig_feat, surr_feat = _extract_efel_features(orig_v, surr_v, dt)
-    return {
-        **_calc_waveform_metrics(orig_v, surr_v),
-        **_calc_efel_metrics(orig_feat, surr_feat, orig_v, surr_v),
-    }
+    return _compute(orig_feat, surr_feat, orig_v, surr_v, orig_peaks, surr_peaks)

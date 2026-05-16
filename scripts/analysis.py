@@ -192,20 +192,25 @@ def render_eval(eval_ui: mo.ui.dictionary) -> mo.Html:
 
 def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
     target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
-    metrics = result["metrics"](target_comp_id)
+    waveform_metrics = result["waveform_metrics"](target_comp_id)
+    spike_shape_metrics = result["spike_shape_metrics"](target_comp_id)
     pre = result["get_preprocessed"](target_comp_id)
-    print(pre.coords)
-    print("vieowe")
-    cards = mo.hstack(
-        [
-            mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
-            for k, v in metrics.items()
-        ],
-        wrap=True,
-    )
+
+    def _stat_cards(metrics: dict) -> mo.Html:
+        return mo.hstack(
+            [
+                mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
+                for k, v in metrics.items()
+            ],
+            wrap=True,
+        )
+
     return mo.vstack(
         [
-            cards,
+            mo.md("#### 波形全体の指標"),
+            _stat_cards(waveform_metrics),
+            mo.md("#### スパイク形状指標"),
+            _stat_cards(spike_shape_metrics),
             mo.mpl.interactive(
                 DRAW_MAP[eval_ui["draw_func"].value](
                     result["datasets"]["orig"],
