@@ -15,6 +15,20 @@ def lin_exp_form(x):
     )
 
 
+def _inf_ode(alpha, beta):
+    def inf(v):
+        return alpha(v) / (alpha(v) + beta(v))
+
+    return inf
+
+
+def _gate_ode(alpha, beta):
+    def dxdt(v, x):
+        return alpha(v) * (1.0 - x) - beta(v) * x
+
+    return dxdt
+
+
 # rate functions
 
 
@@ -43,30 +57,10 @@ def beta_n(v):
 
 
 # inf
-
-
-def m_inf(v):
-    return alpha_m(v) / (alpha_m(v) + beta_m(v))
-
-
-def h_inf(v):
-    return alpha_h(v) / (alpha_h(v) + beta_h(v))
-
-
-def n_inf(v):
-    return alpha_n(v) / (alpha_n(v) + beta_n(v))
-
-
+m_inf = _inf_ode(alpha_m, beta_m)
+h_inf = _inf_ode(alpha_h, beta_h)
+n_inf = _inf_ode(alpha_n, beta_n)
 # dgdt
-
-
-def _gate_ode(alpha, beta):
-    def dxdt(v, x):
-        return alpha(v) * (1.0 - x) - beta(v) * x
-
-    return dxdt
-
-
 dmdt = _gate_ode(alpha_m, beta_m)
 dhdt = _gate_ode(alpha_h, beta_h)
 dndt = _gate_ode(alpha_n, beta_n)
