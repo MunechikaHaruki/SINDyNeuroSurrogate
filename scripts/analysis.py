@@ -12,6 +12,7 @@ from io_handler import RunInfo, setup_mlflow
 from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.registry_neuron import MCMODELS
+from neurosurrogate.profiler.profiler_wave import DynamicMetrics
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
 CurrentList: list = ["train"] + list(FUNC_MAP.keys())
@@ -192,29 +193,25 @@ def render_eval(eval_ui: mo.ui.dictionary) -> mo.Html:
 
 def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
     target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
-    waveform_metrics = result["waveform_metrics"](target_comp_id)
-    spike_shape_metrics = result["spike_shape_metrics"](target_comp_id)
+    metrics = DynamicMetrics(result["original_ds"], result["surr_ds"], target_comp_id, result["dt"])
     pre = result["get_preprocessed"](target_comp_id)
 
-    def _stat_cards(metrics: dict) -> mo.Html:
+    def _stat_cards(d: dict) -> mo.Html:
         return mo.hstack(
-            [
-                mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
-                for k, v in metrics.items()
-            ],
+            [mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v)) for k, v in d.items()],
             wrap=True,
         )
 
     return mo.vstack(
         [
             mo.md("#### 波形全体の指標"),
-            _stat_cards(waveform_metrics),
+            _stat_cards(metrics.waveform_metrics()),
             mo.md("#### スパイク形状指標"),
-            _stat_cards(spike_shape_metrics),
+            _stat_cards(metrics.spike_shape_metrics()),
             mo.mpl.interactive(
                 DRAW_MAP[eval_ui["draw_func"].value](
-                    result["datasets"]["orig"],
-                    result["datasets"]["surr"],
+                    result["original_ds"],
+                    result["surr_ds"],
                     pre,
                     target_comp_id,
                 )
