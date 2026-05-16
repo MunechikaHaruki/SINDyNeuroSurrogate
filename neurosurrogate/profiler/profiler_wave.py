@@ -199,3 +199,18 @@ class WaveformMetrics:
             **self._timing,
             **self._isi_stats,
         }
+
+    @cached_property
+    def waveform_df(self) -> pd.DataFrame:
+        d = self.compute()
+        nan = float("nan")
+        rows = {
+            "rmse":        (nan,                    nan,                    d["rmse"]),
+            "mae":         (nan,                    nan,                    d["mae"]),
+            "spike_count": (d["orig_spike_count"],  d["surr_spike_count"],  d["spike_count_diff"]),
+            "latency":     (nan,                    nan,                    d["latency_error"]),
+            "periodicity": (nan,                    nan,                    d["periodicity_gap"]),
+            "mean_isi":    (d["orig_mean_isi"],      d["surr_mean_isi"],     nan),
+            "std_isi":     (d["orig_std_isi"],       d["surr_std_isi"],      nan),
+        }
+        return pd.DataFrame.from_dict(rows, orient="index", columns=["orig", "surr", "error"])

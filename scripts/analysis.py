@@ -203,10 +203,11 @@ def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
         )
 
     sm = SpikeMetrics(dm)
+    wm = WaveformMetrics(dm)
     return mo.vstack(
         [
-            mo.md("#### 波形・発火パターン指標"),
-            _stat_cards(WaveformMetrics(dm).compute()),
+            mo.md("#### 波形・発火パターン指標（orig / surr / error）"),
+            wm.waveform_df,
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
             _stat_cards(sm.compute()),
             mo.md("#### AP 形状指標（orig / surr / error）"),
