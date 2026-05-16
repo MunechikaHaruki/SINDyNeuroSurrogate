@@ -69,8 +69,16 @@ class DynamicMetrics:
             )
         return orig_feat, surr_feat
 
-    def waveform_metrics(self) -> dict:
-        """波形全体指標（rmse/mae + 発火パターン）を返す。"""
+    def waveform_error(self) -> dict:
+        """連続波形の誤差指標（スパイクの存在を前提としない）。"""
+        orig_v, surr_v = self._voltages
+        return {
+            "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),
+            "mae": float(np.mean(np.abs(orig_v - surr_v))),
+        }
+
+    def firing_metrics(self) -> dict:
+        """スパイク列の発火パターン統計（spike_count、latency、ISI、periodicity）。"""
 
         def _isi_stats(isi, prefix: str) -> dict:
             return {
@@ -78,10 +86,8 @@ class DynamicMetrics:
                 f"{prefix}_std_isi": _or_nan(np.std, isi),
             }
 
-        orig_v, surr_v = self._voltages
         orig_feat, surr_feat = self._efel
         orig_peaks, surr_peaks = self._peaks
-
         orig_isi = orig_feat.get("ISI_values")
         surr_isi = surr_feat.get("ISI_values")
         orig_tfs = orig_feat.get("time_to_first_spike")
@@ -97,8 +103,6 @@ class DynamicMetrics:
             else float("nan")
         )
         return {
-            "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),
-            "mae": float(np.mean(np.abs(orig_v - surr_v))),
             "orig_spike_count": len(orig_peaks),
             "surr_spike_count": len(surr_peaks),
             "spike_count_diff": abs(len(orig_peaks) - len(surr_peaks)),

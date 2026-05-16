@@ -204,8 +204,10 @@ def view_result(eval_ui: mo.ui.dictionary, result: dict) -> mo.Html:
 
     return mo.vstack(
         [
-            mo.md("#### 波形全体の指標"),
-            _stat_cards(metrics.waveform_metrics()),
+            mo.md("#### 連続波形誤差"),
+            _stat_cards(metrics.waveform_error()),
+            mo.md("#### 発火パターン統計"),
+            _stat_cards(metrics.firing_metrics()),
             mo.md("#### スパイク形状指標"),
             _stat_cards(metrics.spike_shape_metrics()),
             mo.mpl.interactive(

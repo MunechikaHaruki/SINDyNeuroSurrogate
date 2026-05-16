@@ -79,7 +79,7 @@ def sweep_amplitude_metrics(
         )
         def _all_metrics(orig, surr):
             m = DynamicMetrics(orig, surr, comp_id, dt)
-            return {**m.waveform_metrics(), **m.spike_shape_metrics()}
+            return {**m.waveform_error(), **m.firing_metrics(), **m.spike_shape_metrics()}
 
         first_m = _all_metrics(orig_ds, first_surr_ds)
         results["original"].append(float(first_m.get(orig_key, float("nan"))))
