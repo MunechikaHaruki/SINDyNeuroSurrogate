@@ -4,6 +4,7 @@ import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
+import pandas as pd
 from io_handler import load_surrogate_model
 from matplotlib.figure import Figure
 
@@ -16,8 +17,10 @@ from neurosurrogate.profiler.profiler_wave import (
     WaveformMetrics,
 )
 
-_SWEEP_METRICS = [
-    "spike_count",
+# origの絶対値が意味を持つ指標（compute()がorig_{key}/surr_{key}を返す）
+_METRIC_SPLIT_KEYS: list[str] = ["spike_count"]
+# origとsurrの比較値そのものが指標（surr列のみ格納）
+_SWEEP_METRICS_COMPARISON: list[str] = [
     "rmse",
     "mae",
     "latency_error",
@@ -25,6 +28,7 @@ _SWEEP_METRICS = [
     "spike_count_diff",
     "median_amp_error",
 ]
+_SWEEP_METRICS = list(_METRIC_SPLIT_KEYS) + _SWEEP_METRICS_COMPARISON
 
 
 def sweep_amplitude_metrics(
@@ -33,20 +37,19 @@ def sweep_amplitude_metrics(
     model_name: str,
     dt: float,
     target_comp_name: str,
-    metric_key: str = "spike_count",
-) -> dict:
+    metric_key: str,
+) -> pd.DataFrame:
     net = MCMODELS[model_name]
     comp_id = net.name_to_idx(target_comp_name)
+    has_orig = metric_key in _METRIC_SPLIT_KEYS
+    orig_key = f"orig_{metric_key}" if has_orig else metric_key
+    surr_key = f"surr_{metric_key}" if has_orig else metric_key
 
-    results: dict[str, list] = {"amplitudes": list(current_configs.keys()), "original": []}
-    for rid in surrogates:
-        results[rid] = []
-
+    frames: list[pd.DataFrame] = []
     for amp, cfg in current_configs.items():
         u = cfg.build()
         orig_ds = unified_simulator(dt=dt, u=u, net=net)
-
-        first_m: dict | None = None
+        surr_ms: list[tuple[str, dict]] = []
         for rid, surrogate in surrogates.items():
             dm = DynamicMetrics(
                 orig_ds,
@@ -62,42 +65,52 @@ def sweep_amplitude_metrics(
                 comp_id,
                 dt,
             )
-            m = {**WaveformMetrics(dm).compute(), **SpikeMetrics(dm).compute()}
-            if first_m is None:
-                first_m = m
-            results[rid].append(float(m.get(
-                "surr_spike_count" if metric_key == "spike_count" else metric_key,
-                float("nan"),
-            )))
+            surr_ms.append(
+                (rid, {**WaveformMetrics(dm).compute(), **SpikeMetrics(dm).compute()})
+            )
 
-        results["original"].append(
-            float(first_m.get(
-                "orig_spike_count" if metric_key == "spike_count" else metric_key,
-                float("nan"),
-            )) if first_m else float("nan")
-        )
+        surr_vals = {rid: float(m.get(surr_key, float("nan"))) for rid, m in surr_ms}
+        if has_orig:
+            orig_val = (
+                float(surr_ms[0][1].get(orig_key, float("nan")))
+                if surr_ms
+                else float("nan")
+            )
+            frames.append(
+                pd.DataFrame(
+                    [[amp, orig_val, *surr_vals.values()]],
+                    columns=["amplitude", "original", *surr_vals.keys()],
+                )
+            )
+        else:
+            frames.append(
+                pd.DataFrame(
+                    [[amp, *surr_vals.values()]],
+                    columns=["amplitude", *surr_vals.keys()],
+                )
+            )
 
-    return results
+    return pd.concat(frames, ignore_index=True)
 
 
 def plot_sweep(
-    data: dict,
+    data: pd.DataFrame,
     run_ids: list[str],
     metric_key: str,
     comp_name: str,
     run_labels: dict[str, str] | None = None,
 ) -> Figure:
-    amps = data["amplitudes"]
     run_labels = run_labels or {}
 
     fig, ax = plt.subplots()
-    ax.plot(amps, data["original"], "k-o", label="Original", zorder=3)
+    if "original" in data.columns:
+        ax.plot(data["amplitude"], data["original"], "k-o", label="Original", zorder=3)
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     for idx, rid in enumerate(run_ids):
         label = run_labels.get(rid, f"Surr {rid[:6]}")
         ax.plot(
-            amps,
+            data["amplitude"],
             data[rid],
             marker="s",
             linestyle="--",
@@ -136,14 +149,13 @@ def make_sweep_ui(param_keys: list[str]) -> mo.ui.dictionary:
     )
 
 
-
 def run_and_plot(
     sweep_ui: mo.ui.dictionary,
     base_button: mo.ui.dictionary,
     param_button: mo.ui.dictionary,
     eval_ui: mo.ui.dictionary,
     run_ids: list[str],
-) -> Figure:
+) -> tuple[pd.DataFrame, Figure]:
     ds = cast(dict[str, Any], base_button["base_dataset"].value)
     dt = float(ds["dt"])
     comp_name = str(eval_ui["eval_comp"].value)
@@ -168,6 +180,7 @@ def run_and_plot(
 
     surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
     client = mlflow.MlflowClient()
+    metric_key = str(sweep_ui["metric"].value)
     run_labels = {
         rid: client.get_run(rid).data.tags.get("mlflow.runName", rid[:6])
         for rid in run_ids
@@ -178,12 +191,7 @@ def run_and_plot(
         model_name=str(ds["model_name"]),
         dt=dt,
         target_comp_name=comp_name,
-        metric_key=str(sweep_ui["metric"].value),
+        metric_key=metric_key,
     )
-    return plot_sweep(
-        data,
-        run_ids,
-        str(sweep_ui["metric"].value),
-        comp_name,
-        run_labels,
-    )
+    fig = plot_sweep(data, run_ids, metric_key, comp_name, run_labels)
+    return data, fig

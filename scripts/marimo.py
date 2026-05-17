@@ -77,8 +77,8 @@ def _(analysis, eval_ui, result, spike_ui):
 @app.cell
 def _(analysis_sweep, base_button, eval_ui, mo, param_button):
     run_ids = base_button["run_selector"].value["run_id"].tolist()
-    fig = analysis_sweep.run_and_plot(param_button["sweep_ui"], base_button, param_button, eval_ui, run_ids)
-    mo.mpl.interactive(fig)
+    sweep_df, sweep_fig = analysis_sweep.run_and_plot(param_button["sweep_ui"], base_button, param_button, eval_ui, run_ids)
+    mo.vstack([mo.mpl.interactive(sweep_fig), mo.ui.table(sweep_df)])
     return
 
 
