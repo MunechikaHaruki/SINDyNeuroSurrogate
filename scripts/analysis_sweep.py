@@ -8,6 +8,7 @@ from io_handler import load_surrogate_model
 from matplotlib.figure import Figure
 
 from neurosurrogate.calc_engine import unified_simulator
+from neurosurrogate.model.model_dataset import CurrentConfig
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_wave import (
     DynamicMetrics,
@@ -24,40 +25,6 @@ _SWEEP_METRICS = [
     "spike_count_diff",
     "median_amp_error",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Domain logic
-# ---------------------------------------------------------------------------
-
-
-def _make_current_u(
-    current_type: str,
-    base_params: dict,
-    sweep_param: str,
-    amp: float,
-    iteration: int,
-    silence_steps: int,
-) -> np.ndarray:
-    from neurosurrogate.builder.registry_current import FUNC_MAP
-
-    params = {**base_params, sweep_param: amp}
-    u = np.zeros(iteration)
-    FUNC_MAP[current_type](**params)(u[silence_steps : iteration - silence_steps])
-    return u
-
-
-def _run_surr_sim(net, comp_id: int, u, dt: float, surrogate):
-    surr_graph = net.with_surrogates(
-        targets={net.nodes[comp_id].name},
-        make_surr=surrogate.make_surr_comp,
-    )
-    return unified_simulator(dt=dt, u=u, net=surr_graph, surrogate_model=surrogate)
-
-
-def _all_metrics(orig, surr, comp_id: int, dt: float) -> dict:
-    dm = DynamicMetrics(orig, surr, comp_id, dt)
-    return {**WaveformMetrics(dm).compute(), **SpikeMetrics(dm).compute()}
 
 
 def sweep_amplitude_metrics(
@@ -77,30 +44,47 @@ def sweep_amplitude_metrics(
     comp_id = net.name_to_idx(target_comp_name)
     surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
 
-    iteration = int(duration / dt)
-    silence_steps = int(silence_duration / dt)
-
-    orig_key = "orig_spike_count" if metric_key == "spike_count" else metric_key
-    surr_key = "surr_spike_count" if metric_key == "spike_count" else metric_key
-
     results: dict[str, list] = {"amplitudes": list(amplitudes), "original": []}
     for rid in run_ids:
         results[rid] = []
 
     for amp in amplitudes:
-        u = _make_current_u(current_type, base_current_params, sweep_param, amp, iteration, silence_steps)
+        u = CurrentConfig(
+            iteration=int(duration / dt),
+            silence_steps=int(silence_duration / dt),
+            pipeline=CurrentConfig.build_pipeline(current_type, {**base_current_params, sweep_param: amp}),
+        ).build()
         orig_ds = unified_simulator(dt=dt, u=u, net=net)
 
         first_m: dict | None = None
         for rid in run_ids:
-            surr_ds = _run_surr_sim(net, comp_id, u, dt, surrogates[rid])
-            m = _all_metrics(orig_ds, surr_ds, comp_id, dt)
+            dm = DynamicMetrics(
+                orig_ds,
+                unified_simulator(
+                    dt=dt,
+                    u=u,
+                    net=net.with_surrogates(
+                        targets={net.nodes[comp_id].name},
+                        make_surr=surrogates[rid].make_surr_comp,
+                    ),
+                    surrogate_model=surrogates[rid],
+                ),
+                comp_id,
+                dt,
+            )
+            m = {**WaveformMetrics(dm).compute(), **SpikeMetrics(dm).compute()}
             if first_m is None:
                 first_m = m
-            results[rid].append(float(m.get(surr_key, float("nan"))))
+            results[rid].append(float(m.get(
+                "surr_spike_count" if metric_key == "spike_count" else metric_key,
+                float("nan"),
+            )))
 
         results["original"].append(
-            float(first_m.get(orig_key, float("nan"))) if first_m else float("nan")
+            float(first_m.get(
+                "orig_spike_count" if metric_key == "spike_count" else metric_key,
+                float("nan"),
+            )) if first_m else float("nan")
         )
 
     return results
