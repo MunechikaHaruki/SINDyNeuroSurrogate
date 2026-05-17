@@ -28,36 +28,26 @@ _SWEEP_METRICS = [
 
 
 def sweep_amplitude_metrics(
-    run_ids: list[str],
-    amplitudes: list[float],
+    surrogates: dict,
+    current_configs: dict[float, CurrentConfig],
     model_name: str,
     dt: float,
-    silence_duration: float,
-    duration: float,
     target_comp_name: str,
-    current_type: str,
-    base_current_params: dict,
-    sweep_param: str,
     metric_key: str = "spike_count",
 ) -> dict:
     net = MCMODELS[model_name]
     comp_id = net.name_to_idx(target_comp_name)
-    surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
 
-    results: dict[str, list] = {"amplitudes": list(amplitudes), "original": []}
-    for rid in run_ids:
+    results: dict[str, list] = {"amplitudes": list(current_configs.keys()), "original": []}
+    for rid in surrogates:
         results[rid] = []
 
-    for amp in amplitudes:
-        u = CurrentConfig(
-            iteration=int(duration / dt),
-            silence_steps=int(silence_duration / dt),
-            pipeline=CurrentConfig.build_pipeline(current_type, {**base_current_params, sweep_param: amp}),
-        ).build()
+    for amp, cfg in current_configs.items():
+        u = cfg.build()
         orig_ds = unified_simulator(dt=dt, u=u, net=net)
 
         first_m: dict | None = None
-        for rid in run_ids:
+        for rid, surrogate in surrogates.items():
             dm = DynamicMetrics(
                 orig_ds,
                 unified_simulator(
@@ -65,9 +55,9 @@ def sweep_amplitude_metrics(
                     u=u,
                     net=net.with_surrogates(
                         targets={net.nodes[comp_id].name},
-                        make_surr=surrogates[rid].make_surr_comp,
+                        make_surr=surrogate.make_surr_comp,
                     ),
-                    surrogate_model=surrogates[rid],
+                    surrogate_model=surrogate,
                 ),
                 comp_id,
                 dt,
@@ -155,33 +145,39 @@ def run_and_plot(
     run_ids: list[str],
 ) -> Figure:
     ds = cast(dict[str, Any], base_button["base_dataset"].value)
-    current_type = str(base_button["current_type"].value)
-    base_current_params = cast(dict, param_button["current_params"].value)
+    dt = float(ds["dt"])
     comp_name = str(eval_ui["eval_comp"].value)
+    base_current_params = cast(dict, param_button["current_params"].value)
+    sweep_param = str(sweep_ui["sweep_param"].value)
 
+    current_configs: dict[float, CurrentConfig] = {
+        amp: CurrentConfig(
+            iteration=int(float(ds["duration"]) / dt),
+            silence_steps=int(float(ds["silence_duration"]) / dt),
+            pipeline=CurrentConfig.build_pipeline(
+                str(base_button["current_type"].value),
+                {**base_current_params, sweep_param: amp},
+            ),
+        )
+        for amp in np.linspace(
+            float(cast(Any, sweep_ui["amp_start"]).value),
+            float(cast(Any, sweep_ui["amp_stop"]).value),
+            int(cast(Any, sweep_ui["amp_steps"]).value),
+        )
+    }
+
+    surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
     client = mlflow.MlflowClient()
     run_labels = {
         rid: client.get_run(rid).data.tags.get("mlflow.runName", rid[:6])
         for rid in run_ids
     }
-    amplitudes = list(
-        np.linspace(
-            float(cast(Any, sweep_ui["amp_start"]).value),
-            float(cast(Any, sweep_ui["amp_stop"]).value),
-            int(cast(Any, sweep_ui["amp_steps"]).value),
-        )
-    )
     data = sweep_amplitude_metrics(
-        run_ids=run_ids,
-        amplitudes=amplitudes,
+        surrogates=surrogates,
+        current_configs=current_configs,
         model_name=str(ds["model_name"]),
-        dt=float(ds["dt"]),
-        silence_duration=float(ds["silence_duration"]),
-        duration=float(ds["duration"]),
+        dt=dt,
         target_comp_name=comp_name,
-        current_type=current_type,
-        base_current_params=base_current_params,
-        sweep_param=str(sweep_ui["sweep_param"].value),
         metric_key=str(sweep_ui["metric"].value),
     )
     return plot_sweep(
