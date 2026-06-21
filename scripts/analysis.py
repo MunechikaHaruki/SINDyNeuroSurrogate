@@ -233,22 +233,12 @@ def render_neurograph(base_ui: mo.ui.dictionary) -> mo.Html:
     )
 
 
-def _build_dataset_cfg(
-    current_type: str,
-    run_id: str,
-    current_params: dict | None,
-    base_dataset_params: dict,
-) -> DatasetConfig:
-    if current_type == "train":
-        return RunInfo.get_run_info(run_id).dataset
-    assert current_params is not None
-    return DatasetConfig.build_dataset(
-        **base_dataset_params,
-        pipeline=CurrentConfig.build_pipeline(current_type, current_params),
-    )
+# ---------------------------------------------------------------------------
+# Calc Result
+# ---------------------------------------------------------------------------
 
 
-def to_eval_params(
+def _parse_eval_button(
     base_button: mo.ui.dictionary,
     param_button: mo.ui.dictionary,
 ) -> tuple[DatasetConfig, str, list[str]]:
@@ -258,17 +248,22 @@ def to_eval_params(
     current_params = current_params_val if current_params_val else None
     base_dataset_params = cast(dict, base_button["base_dataset"].value)
     surrogate_targets = cast(list[str], param_button["surrogate_targets"].value)
-    dataset_cfg = _build_dataset_cfg(
-        current_type, run_id, current_params, base_dataset_params
-    )
+    if current_type == "train":
+        dataset_cfg = RunInfo.get_run_info(run_id).dataset
+    else:
+        dataset_cfg = DatasetConfig.build_dataset(
+            **base_dataset_params,
+            pipeline=CurrentConfig.build_pipeline(current_type, current_params),
+        )
     return dataset_cfg, run_id, surrogate_targets
 
 
-def build_eval_result(
-    dataset_cfg: DatasetConfig,
-    run_id: str,
-    surrogate_targets: list[str],
-) -> dict:
+def calc_eval(base_button: mo.ui.dictionary, param_button: mo.ui.dictionary) -> dict:
+
+    dataset_cfg, run_id, surrogate_targets = _parse_eval_button(
+        base_button, param_button
+    )
+
     original_graph = dataset_cfg.net
     surrogate_model = load_surrogate_model(run_id)
     u = dataset_cfg.current.build()

@@ -43,10 +43,7 @@ def _(analysis, base_button):
 
 @app.cell
 def _(analysis, base_button, param_button):
-    dataset_cfg, run_id, surrogate_targets = analysis.to_eval_params(
-        base_button, param_button
-    )
-    result = analysis.build_eval_result(dataset_cfg, run_id, surrogate_targets)
+    result=analysis.calc_eval(base_button,param_button)
     return (result,)
 
 
