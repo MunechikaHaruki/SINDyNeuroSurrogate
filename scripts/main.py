@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 setup_mlflow()
 
 
-def build_surrogate(cfg_sindy):
+def _build_surrogate(cfg_sindy):
     feature_lib = FeatureLibrary.build(cfg_sindy["library_specs"])
     return SINDyNeuroSurrogate(
         hydra.utils.instantiate(cfg_sindy["preprocessor"]),
@@ -43,7 +43,7 @@ def build_surrogate(cfg_sindy):
 
 
 def cli_flow(cfg_sindy):
-    surrogate, feature_lib = build_surrogate(cfg_sindy)
+    surrogate, feature_lib = _build_surrogate(cfg_sindy)
     with mlflow.start_run(run_name=f"train:{cfg_sindy['name']}"):
         # train
         train_dataset_cfg = DatasetConfig.build_dataset(**cfg_sindy["datasets"])
