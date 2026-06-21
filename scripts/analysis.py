@@ -15,6 +15,7 @@ from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import CurrentConfig, DatasetConfig
 from neurosurrogate.model.model_neurosindy import transform_gate
 from neurosurrogate.model.registry_neuron import MCMODELS
+from neurosurrogate.profiler.profiler_view import view_neuron_graph
 from neurosurrogate.profiler.profiler_wave import (
     DynamicMetrics,
     SpikeMetrics,
@@ -218,6 +219,16 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
                 ]
             )
             for info in run_infos
+        ]
+    )
+
+
+def render_neurograph(base_ui: mo.ui.dictionary) -> mo.Html:
+    _model_name = base_ui["base_dataset"].value["model_name"]
+    return mo.vstack(
+        [
+            mo.md(f"### NeuronGraph: `{_model_name}`"),
+            mo.mpl.interactive(view_neuron_graph(MCMODELS[_model_name])),
         ]
     )
 
