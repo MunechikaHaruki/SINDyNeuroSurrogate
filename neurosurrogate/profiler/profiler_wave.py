@@ -155,7 +155,9 @@ def spike_shape_corr(dm: DynamicMetrics) -> dict:
         ]
         return np.mean(snippets, axis=0) if snippets else None
 
-    orig_tmpl, surr_tmpl = (_mean_template(v, p) for v, p in zip(dm.voltages, dm.peaks))
+    orig_tmpl, surr_tmpl = (
+        _mean_template(v, p) for v, p in zip(dm.voltages, dm.peaks, strict=True)
+    )
     return {"spike_shape_corr": _corr_or_nan(orig_tmpl, surr_tmpl)}
 
 
@@ -169,8 +171,11 @@ def spike_features_df(
             return _or_nan(np.median, arr)
         return _at_or_nan(arr, spike)
 
+    orig_feat, surr_feat = dm.efel
     rows = [
-        _row(feat, *_pair(lambda f: _pick(f.get(feat)), dm.efel), col="feature")
+        _row(
+            feat, _pick(orig_feat.get(feat)), _pick(surr_feat.get(feat)), col="feature"
+        )
         for feat in _MEDIAN_FEATURES
     ]
     return pd.DataFrame(rows).set_index("feature")
@@ -190,38 +195,36 @@ def _waveform_error(dm: DynamicMetrics) -> dict:
     }
 
 
-def _spike_counts_df(dm: DynamicMetrics) -> pd.DataFrame:
-    o, s = _pair(lambda p: float(len(p)), dm.peaks)
-    return pd.DataFrame([_row("spike_count", o, s)]).set_index("metric")
+def _latency(dm: DynamicMetrics) -> tuple[float, float]:
+    return _pair(lambda f: _at_or_nan(f.get("time_to_first_spike"), 0), dm.efel)
 
 
-def _timing_df(dm: DynamicMetrics) -> pd.DataFrame:
-    o, s = _pair(lambda f: _at_or_nan(f.get("time_to_first_spike"), 0), dm.efel)
-    return pd.DataFrame([_row("latency", o, s)]).set_index("metric")
-
-
-def _isi_stats_df(dm: DynamicMetrics) -> pd.DataFrame:
+def _isi_stat(dm: DynamicMetrics, fn) -> tuple[float, float]:
     isi = _pair(lambda f: f.get("ISI_values"), dm.efel)
-    o_mean, s_mean = _pair(lambda a: _or_nan(np.mean, a), isi)
-    o_std, s_std = _pair(lambda a: _or_nan(np.std, a), isi)
-    return pd.DataFrame(
-        [_row("mean_isi", o_mean, s_mean), _row("std_isi", o_std, s_std)]
-    ).set_index("metric")
+    return _pair(lambda a: _or_nan(fn, a), isi)
 
 
 def waveform_summary_df(dm: DynamicMetrics) -> pd.DataFrame:
     """spike_count / latency / mean_isi / std_isi を縦に並べた DataFrame。"""
-    return pd.concat([_spike_counts_df(dm), _timing_df(dm), _isi_stats_df(dm)])
+    o_n, s_n = n_spikes(dm)
+    return pd.DataFrame(
+        [
+            _row("spike_count", float(o_n), float(s_n)),
+            _row("latency", *_latency(dm)),
+            _row("mean_isi", *_isi_stat(dm, np.mean)),
+            _row("std_isi", *_isi_stat(dm, np.std)),
+        ]
+    ).set_index("metric")
 
 
 def waveform_summary(dm: DynamicMetrics) -> dict:
     """波形誤差 + サマリスカラー（spike_count_diff/latency_error/periodicity_gap）。"""
-    df = waveform_summary_df(dm)
+    o_n, s_n = n_spikes(dm)
     return {
         **_waveform_error(dm),
-        "orig_spike_count": int(df.loc["spike_count", "orig"]),
-        "surr_spike_count": int(df.loc["spike_count", "surr"]),
-        "spike_count_diff": abs(int(df.loc["spike_count", "orig-surr"])),
-        "latency_error": abs(float(df.loc["latency", "orig-surr"])),
-        "periodicity_gap": abs(float(df.loc["mean_isi", "orig-surr"])),
+        "orig_spike_count": o_n,
+        "surr_spike_count": s_n,
+        "spike_count_diff": abs(o_n - s_n),
+        "latency_error": abs(_diff(*_latency(dm))),
+        "periodicity_gap": abs(_diff(*_isi_stat(dm, np.mean))),
     }
