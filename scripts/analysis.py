@@ -291,21 +291,28 @@ def make_spike_ui(result: dict, eval_ui: mo.ui.dictionary) -> mo.ui.dictionary:
         result["original_ds"], result["surr_ds"], target_comp_id, result["dt"]
     )
     n_orig, n_surr = n_spikes(dm)
-    max_n = max(n_orig, n_surr)
-    options: dict = {"median": "median"} | {str(i): i for i in range(max_n)}
+    orig_options: dict = {str(i): i for i in range(n_orig)}
+    surr_options: dict = {str(i): i for i in range(n_surr)}
     return mo.ui.dictionary(
         {
-            "spike": mo.ui.dropdown(
-                options=options,
-                value="median",
-                label=f"spike # (orig: {n_orig}, surr: {n_surr})",
-            )
+            "spike_orig": mo.ui.dropdown(
+                options=orig_options,
+                value="0" if n_orig > 0 else None,
+                label=f"orig spike # (n={n_orig})",
+            ),
+            "spike_surr": mo.ui.dropdown(
+                options=surr_options,
+                value="0" if n_surr > 0 else None,
+                label=f"surr spike # (n={n_surr})",
+            ),
         }
     )
 
 
 def render_spike(spike_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.md(f"スパイク選択: {spike_ui['spike']}")
+    return mo.md(
+        f"スパイク選択 — orig: {spike_ui['spike_orig']} / surr: {spike_ui['spike_surr']}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -324,10 +331,8 @@ def view_result(
     )
     pre = result["get_preprocessed"](target_comp_id)
 
-    raw_spike = spike_ui["spike"].value if spike_ui is not None else "median"
-    spike: int | Literal["median"] = (
-        "median" if raw_spike == "median" else int(raw_spike)
-    )
+    spike_orig: int = int(spike_ui["spike_orig"].value) if spike_ui is not None else 0
+    spike_surr: int = int(spike_ui["spike_surr"].value) if spike_ui is not None else 0
 
     def _stat_cards(d: dict) -> mo.Html:
         return mo.hstack(
@@ -346,8 +351,10 @@ def view_result(
             _stat_cards(waveform_summary(dm)),
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
             _stat_cards(spike_shape_corr(dm)),
-            mo.md(f"#### AP・ISI 指標（orig / surr / orig-surr） — spike: {spike}"),
-            spike_features_df(dm, spike=spike),
+            mo.md(
+                f"#### AP・ISI 指標（orig / surr / orig-surr） — orig: {spike_orig} / surr: {spike_surr}"
+            ),
+            spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr),
             mo.mpl.interactive(
                 DRAW_MAP[eval_ui["draw_func"].value](
                     result["original_ds"],

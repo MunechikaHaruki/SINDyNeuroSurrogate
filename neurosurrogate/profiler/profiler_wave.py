@@ -1,7 +1,7 @@
 import warnings
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, Literal
+from typing import Any
 
 import efel
 import numpy as np
@@ -162,19 +162,18 @@ def spike_shape_corr(dm: DynamicMetrics) -> dict:
 
 
 def spike_features_df(
-    dm: DynamicMetrics, spike: int | Literal["median"] = "median"
+    dm: DynamicMetrics,
+    spike_orig: int = 0,
+    spike_surr: int = 0,
 ) -> pd.DataFrame:
-    """median AP の eFEL 特徴量を orig/surr/orig-surr で並べた DataFrame。"""
-
-    def _pick(arr) -> float:
-        if spike == "median":
-            return _or_nan(np.median, arr)
-        return _at_or_nan(arr, spike)
-
+    """指定 AP の eFEL 特徴量を orig/surr/orig-surr で並べた DataFrame。"""
     orig_feat, surr_feat = dm.efel
     rows = [
         _row(
-            feat, _pick(orig_feat.get(feat)), _pick(surr_feat.get(feat)), col="feature"
+            feat,
+            _at_or_nan(orig_feat.get(feat), spike_orig),
+            _at_or_nan(surr_feat.get(feat), spike_surr),
+            col="feature",
         )
         for feat in _MEDIAN_FEATURES
     ]
