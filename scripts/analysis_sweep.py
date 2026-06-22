@@ -1,4 +1,5 @@
 import inspect
+from collections.abc import Iterator
 from typing import Any, cast
 
 import marimo as mo
@@ -71,13 +72,76 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
 # ---------------------------------------------------------------------------
 
 
-def _extract(dm: DynamicMetrics, metric_key: str) -> tuple[float, float]:
-    """metric_key に応じた (orig, surr) 値を返す。スカラー metric の orig は nan。"""
-    if metric_key in DF_ROW_METRICS:
-        df = waveform_summary_df(dm)
-        return float(df.loc[metric_key, "orig"]), float(df.loc[metric_key, "surr"])
-    scalars = {**waveform_summary(dm), **spike_shape_corr(dm)}
-    return float("nan"), float(scalars.get(metric_key, float("nan")))
+def _iter_amp_dms(
+    surrogates: dict,
+    current_configs: dict[float, CurrentConfig],
+    model_name: str,
+    dt: float,
+    target_comp_name: str,
+) -> Iterator[tuple[float, dict[str, DynamicMetrics]]]:
+    """各 amp で {rid: DynamicMetrics} を yield。orig_ds は amp ごとに1回計算。"""
+    net = MCMODELS[model_name]
+    comp_id = net.name_to_idx(target_comp_name)
+    for amp, cfg in current_configs.items():
+        u = cfg.build()
+        orig_ds = unified_simulator(dt=dt, u=u, net=net)
+        dms: dict[str, DynamicMetrics] = {}
+        for rid, surrogate in surrogates.items():
+            surr_ds = unified_simulator(
+                dt=dt,
+                u=u,
+                net=net.with_surrogates(
+                    targets={net.nodes[comp_id].name},
+                    make_surr=surrogate.make_surr_comp,
+                ),
+                surrogate_model=surrogate,
+            )
+            dms[rid] = DynamicMetrics(orig_ds, surr_ds, comp_id, dt)
+        yield amp, dms
+
+
+def _sweep_df_row(
+    surrogates: dict,
+    current_configs: dict[float, CurrentConfig],
+    model_name: str,
+    dt: float,
+    target_comp_name: str,
+    metric_key: str,
+) -> pd.DataFrame:
+    """orig 列付き。waveform_summary_df の行から orig/surr を取り出す。"""
+    rows: list[dict] = []
+    for amp, dms in _iter_amp_dms(
+        surrogates, current_configs, model_name, dt, target_comp_name
+    ):
+        orig_val = float("nan")
+        surr_vals: dict[str, float] = {}
+        for rid, dm in dms.items():
+            df = waveform_summary_df(dm)
+            orig_val = float(df.loc[metric_key, "orig"])
+            surr_vals[rid] = float(df.loc[metric_key, "surr"])
+        rows.append({"amplitude": amp, "original": orig_val, **surr_vals})
+    return pd.DataFrame(rows)
+
+
+def _sweep_scalar(
+    surrogates: dict,
+    current_configs: dict[float, CurrentConfig],
+    model_name: str,
+    dt: float,
+    target_comp_name: str,
+    metric_key: str,
+) -> pd.DataFrame:
+    """orig 列なし。waveform_summary + spike_shape_corr から surr スカラーを取り出す。"""
+    rows: list[dict] = []
+    for amp, dms in _iter_amp_dms(
+        surrogates, current_configs, model_name, dt, target_comp_name
+    ):
+        surr_vals: dict[str, float] = {}
+        for rid, dm in dms.items():
+            scalars = {**waveform_summary(dm), **spike_shape_corr(dm)}
+            surr_vals[rid] = float(scalars.get(metric_key, float("nan")))
+        rows.append({"amplitude": amp, **surr_vals})
+    return pd.DataFrame(rows)
 
 
 def _sweep_amplitude_metrics(
@@ -88,49 +152,10 @@ def _sweep_amplitude_metrics(
     target_comp_name: str,
     metric_key: str,
 ) -> pd.DataFrame:
-    net = MCMODELS[model_name]
-    comp_id = net.name_to_idx(target_comp_name)
-    has_orig = metric_key in DF_ROW_METRICS
-
-    frames: list[pd.DataFrame] = []
-    for amp, cfg in current_configs.items():
-        u = cfg.build()
-        orig_ds = unified_simulator(dt=dt, u=u, net=net)
-        orig_val = float("nan")
-        surr_vals: dict[str, float] = {}
-        for rid, surrogate in surrogates.items():
-            dm = DynamicMetrics(
-                orig_ds,
-                unified_simulator(
-                    dt=dt,
-                    u=u,
-                    net=net.with_surrogates(
-                        targets={net.nodes[comp_id].name},
-                        make_surr=surrogate.make_surr_comp,
-                    ),
-                    surrogate_model=surrogate,
-                ),
-                comp_id,
-                dt,
-            )
-            orig_val, surr_vals[rid] = _extract(dm, metric_key)
-
-        if has_orig:
-            frames.append(
-                pd.DataFrame(
-                    [[amp, orig_val, *surr_vals.values()]],
-                    columns=["amplitude", "original", *surr_vals.keys()],
-                )
-            )
-        else:
-            frames.append(
-                pd.DataFrame(
-                    [[amp, *surr_vals.values()]],
-                    columns=["amplitude", *surr_vals.keys()],
-                )
-            )
-
-    return pd.concat(frames, ignore_index=True)
+    fn = _sweep_df_row if metric_key in DF_ROW_METRICS else _sweep_scalar
+    return fn(
+        surrogates, current_configs, model_name, dt, target_comp_name, metric_key
+    )
 
 
 def _plot_sweep(
