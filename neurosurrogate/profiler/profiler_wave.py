@@ -66,6 +66,16 @@ def _corr_or_nan(a, b) -> float:
     return float(np.corrcoef(a, b)[0, 1])
 
 
+def _pair(fn, pair: tuple):
+    """(orig, surr) ペアに fn を適用して (fn(orig), fn(surr)) を返す。"""
+    return fn(pair[0]), fn(pair[1])
+
+
+def _row(name: str, o: float, s: float, col: str = "metric") -> dict:
+    """orig/surr/orig-surr の DataFrame 行 dict を生成。col で index 列名を指定。"""
+    return {col: name, "orig": o, "surr": s, "orig-surr": _diff(o, s)}
+
+
 @dataclass
 class DynamicMetrics:
     """電圧・eFEL特徴量を計算するデータ層。下記の純粋関数群から参照される。"""
@@ -130,14 +140,14 @@ class DynamicMetrics:
 
 def n_spikes(dm: DynamicMetrics) -> tuple[int, int]:
     """(n_orig, n_surr): 各信号のスパイク数。"""
-    orig_peaks, surr_peaks = dm.peaks
-    return len(orig_peaks), len(surr_peaks)
+    return _pair(len, dm.peaks)
 
 
 def spike_shape_corr(dm: DynamicMetrics) -> dict:
     """平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
+    half_win = int(2.0 / dm.dt)
 
-    def _mean_template(v, peaks, half_win):
+    def _mean_template(v, peaks):
         snippets = [
             v[p - half_win : p + half_win + 1]
             for p in peaks
@@ -145,11 +155,7 @@ def spike_shape_corr(dm: DynamicMetrics) -> dict:
         ]
         return np.mean(snippets, axis=0) if snippets else None
 
-    orig_v, surr_v = dm.voltages
-    orig_peaks, surr_peaks = dm.peaks
-    half_win = int(2.0 / dm.dt)
-    orig_tmpl = _mean_template(orig_v, orig_peaks, half_win)
-    surr_tmpl = _mean_template(surr_v, surr_peaks, half_win)
+    orig_tmpl, surr_tmpl = (_mean_template(v, p) for v, p in zip(dm.voltages, dm.peaks))
     return {"spike_shape_corr": _corr_or_nan(orig_tmpl, surr_tmpl)}
 
 
@@ -157,18 +163,16 @@ def spike_features_df(
     dm: DynamicMetrics, spike: int | Literal["median"] = "median"
 ) -> pd.DataFrame:
     """median AP の eFEL 特徴量を orig/surr/orig-surr で並べた DataFrame。"""
-    orig_feat, surr_feat = dm.efel
 
-    def _pick(arr, idx: int | Literal["median"]) -> float:
-        if idx == "median":
+    def _pick(arr) -> float:
+        if spike == "median":
             return _or_nan(np.median, arr)
-        return _at_or_nan(arr, idx)
+        return _at_or_nan(arr, spike)
 
-    rows = []
-    for feat in _MEDIAN_FEATURES:
-        o = _pick(orig_feat.get(feat), spike)
-        s = _pick(surr_feat.get(feat), spike)
-        rows.append({"feature": feat, "orig": o, "surr": s, "orig-surr": _diff(o, s)})
+    rows = [
+        _row(feat, *_pair(lambda f: _pick(f.get(feat)), dm.efel), col="feature")
+        for feat in _MEDIAN_FEATURES
+    ]
     return pd.DataFrame(rows).set_index("feature")
 
 
@@ -187,43 +191,21 @@ def _waveform_error(dm: DynamicMetrics) -> dict:
 
 
 def _spike_counts_df(dm: DynamicMetrics) -> pd.DataFrame:
-    orig_peaks, surr_peaks = dm.peaks
-    o, s = float(len(orig_peaks)), float(len(surr_peaks))
-    return pd.DataFrame(
-        [{"metric": "spike_count", "orig": o, "surr": s, "orig-surr": o - s}]
-    ).set_index("metric")
+    o, s = _pair(lambda p: float(len(p)), dm.peaks)
+    return pd.DataFrame([_row("spike_count", o, s)]).set_index("metric")
 
 
 def _timing_df(dm: DynamicMetrics) -> pd.DataFrame:
-    orig_feat, surr_feat = dm.efel
-    o = _at_or_nan(orig_feat.get("time_to_first_spike"), 0)
-    s = _at_or_nan(surr_feat.get("time_to_first_spike"), 0)
-    return pd.DataFrame(
-        [{"metric": "latency", "orig": o, "surr": s, "orig-surr": _diff(o, s)}]
-    ).set_index("metric")
+    o, s = _pair(lambda f: _at_or_nan(f.get("time_to_first_spike"), 0), dm.efel)
+    return pd.DataFrame([_row("latency", o, s)]).set_index("metric")
 
 
 def _isi_stats_df(dm: DynamicMetrics) -> pd.DataFrame:
-    orig_feat, surr_feat = dm.efel
-    orig_isi = orig_feat.get("ISI_values")
-    surr_isi = surr_feat.get("ISI_values")
-    o_mean, s_mean = _or_nan(np.mean, orig_isi), _or_nan(np.mean, surr_isi)
-    o_std, s_std = _or_nan(np.std, orig_isi), _or_nan(np.std, surr_isi)
+    isi = _pair(lambda f: f.get("ISI_values"), dm.efel)
+    o_mean, s_mean = _pair(lambda a: _or_nan(np.mean, a), isi)
+    o_std, s_std = _pair(lambda a: _or_nan(np.std, a), isi)
     return pd.DataFrame(
-        [
-            {
-                "metric": "mean_isi",
-                "orig": o_mean,
-                "surr": s_mean,
-                "orig-surr": _diff(o_mean, s_mean),
-            },
-            {
-                "metric": "std_isi",
-                "orig": o_std,
-                "surr": s_std,
-                "orig-surr": _diff(o_std, s_std),
-            },
-        ]
+        [_row("mean_isi", o_mean, s_mean), _row("std_isi", o_std, s_std)]
     ).set_index("metric")
 
 
