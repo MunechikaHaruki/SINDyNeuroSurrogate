@@ -30,6 +30,15 @@ def _(analysis, param_button):
 
 
 @app.cell
+def _(base_button):
+    import analysis_sweep
+
+    sweep_ui = analysis_sweep.make_sweep_ui(base_button)
+    analysis_sweep.render_sweep(sweep_ui)
+    return analysis_sweep, sweep_ui
+
+
+@app.cell
 def _(analysis, base_button):
     analysis.render_model_info(base_button)
     return
@@ -43,7 +52,7 @@ def _(analysis, base_button):
 
 @app.cell
 def _(analysis, base_button, param_button):
-    result=analysis.calc_eval(base_button,param_button)
+    result = analysis.calc_eval(base_button, param_button)
     return (result,)
 
 
@@ -61,10 +70,11 @@ def _(analysis, eval_ui, result, spike_ui):
 
 
 @app.cell
-def _(base_button, eval_ui, mo, param_button):
-    import analysis_sweep
+def _(analysis_sweep, base_button, eval_ui, mo, param_button, sweep_ui):
     run_ids = base_button["run_selector"].value["run_id"].tolist()
-    sweep_df, sweep_fig = analysis_sweep.run_and_plot(param_button["sweep_ui"], base_button, param_button, eval_ui, run_ids)
+    sweep_df, sweep_fig = analysis_sweep.run_and_plot(
+        sweep_ui, base_button, param_button, eval_ui, run_ids
+    )
     mo.vstack([mo.mpl.interactive(sweep_fig), mo.ui.table(sweep_df)])
     return
 

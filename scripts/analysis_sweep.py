@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, cast
 
 import marimo as mo
@@ -8,6 +9,7 @@ import pandas as pd
 from io_handler import load_surrogate_model
 from matplotlib.figure import Figure
 
+from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import CurrentConfig
 from neurosurrogate.model.registry_neuron import MCMODELS
@@ -131,7 +133,14 @@ def plot_sweep(
 # ---------------------------------------------------------------------------
 
 
-def make_sweep_ui(param_keys: list[str]) -> mo.ui.dictionary:
+def _resolve_param_keys(current_type: str) -> list[str]:
+    if current_type == "train":
+        return []
+    return list(inspect.signature(FUNC_MAP[current_type]).parameters.keys())
+
+
+def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    param_keys = _resolve_param_keys(str(base_ui["current_type"].value))
     sweep_param_ui = (
         mo.ui.dropdown(options=param_keys, value=param_keys[0])
         if param_keys
@@ -147,6 +156,19 @@ def make_sweep_ui(param_keys: list[str]) -> mo.ui.dictionary:
             "metric": mo.ui.dropdown(options=_SWEEP_METRICS, value="spike_count"),
         }
     )
+
+
+def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.md(f"""
+    ### 振幅スイープ設定
+    | | |
+    |---|---|
+    | sweep param | {sweep_ui["sweep_param"]} |
+    | amp start | {sweep_ui["amp_start"]} |
+    | amp stop  | {sweep_ui["amp_stop"]}  |
+    | steps     | {sweep_ui["amp_steps"]} |
+    | metric    | {sweep_ui["metric"]} |
+    """)
 
 
 def run_and_plot(

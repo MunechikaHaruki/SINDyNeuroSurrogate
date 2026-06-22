@@ -124,8 +124,6 @@ def _make_ui_element(name: str, annotation: type, default):
 
 
 def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    import analysis_sweep
-
     model_name = str(cast(dict, base_ui["base_dataset"].value)["model_name"])
     comp_names = MCMODELS[model_name].names
     run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
@@ -133,9 +131,7 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
     if current_type == "train":
         current_params_ui: mo.ui.dictionary = mo.ui.dictionary({})
-        param_keys: list[str] = []
     else:
-        current_sig = inspect.signature(FUNC_MAP[current_type])
         current_params_ui = mo.ui.dictionary(
             {
                 name: _make_ui_element(
@@ -145,10 +141,11 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
                     if param.default is not inspect.Parameter.empty
                     else 0,
                 )
-                for name, param in current_sig.parameters.items()
+                for name, param in inspect.signature(
+                    FUNC_MAP[current_type]
+                ).parameters.items()
             }
         )
-        param_keys = list(current_sig.parameters.keys())
 
     return mo.ui.dictionary(
         {
@@ -157,26 +154,16 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
                 options=comp_names, value=[comp_names[0]]
             ),
             "run_id": mo.ui.dropdown(options=run_ids, value=run_ids[0]),
-            "sweep_ui": analysis_sweep.make_sweep_ui(param_keys),
         }
     )
 
 
 def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
-    sweep = param_ui["sweep_ui"]
     return mo.md(f"""
     ### パラメタ設定
     - currentui: {param_ui["current_params"]}
     - surrogate target: {param_ui["surrogate_targets"]}
     - run id: {param_ui["run_id"]}
-    ### 振幅スイープ設定
-    | | |
-    |---|---|
-    | sweep param | {sweep["sweep_param"]} |
-    | amp start | {sweep["amp_start"]} |
-    | amp stop  | {sweep["amp_stop"]}  |
-    | steps     | {sweep["amp_steps"]} |
-    | metric    | {sweep["metric"]} |
     """)
 
 
