@@ -185,6 +185,17 @@ def spike_features_df(
 # 波形・発火パターン指標（純粋関数群）
 # ---------------------------------------------------------------------------
 
+# waveform_summary_df の row 名（orig/surr 両方を持つ指標）
+DF_ROW_METRICS: list[str] = ["spike_count", "latency", "mean_isi", "std_isi"]
+# waveform_summary + spike_shape_corr のスカラーキー（surr のみの指標）
+SCALAR_METRICS: list[str] = [
+    "rmse",
+    "mae",
+    "latency_error",
+    "periodicity_gap",
+    "spike_shape_corr",
+]
+
 
 def _waveform_error(dm: DynamicMetrics) -> dict:
     """RMSE/MAE の波形誤差スカラー。"""
@@ -218,13 +229,9 @@ def waveform_summary_df(dm: DynamicMetrics) -> pd.DataFrame:
 
 
 def waveform_summary(dm: DynamicMetrics) -> dict:
-    """波形誤差 + サマリスカラー（spike_count_diff/latency_error/periodicity_gap）。"""
-    o_n, s_n = n_spikes(dm)
+    """波形誤差 + サマリスカラー（latency_error/periodicity_gap）。"""
     return {
         **_waveform_error(dm),
-        "orig_spike_count": o_n,
-        "surr_spike_count": s_n,
-        "spike_count_diff": abs(o_n - s_n),
         "latency_error": abs(_diff(*_latency(dm))),
         "periodicity_gap": abs(_diff(*_isi_stat(dm, np.mean))),
     }

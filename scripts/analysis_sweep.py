@@ -14,24 +14,13 @@ from neurosurrogate.calc_engine import unified_simulator
 from neurosurrogate.model.model_dataset import CurrentConfig
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_wave import (
+    DF_ROW_METRICS,
+    SCALAR_METRICS,
     DynamicMetrics,
     spike_shape_corr,
     waveform_summary,
+    waveform_summary_df,
 )
-
-# origの絶対値が意味を持つ指標（compute()がorig_{key}/surr_{key}を返す）
-_METRIC_SPLIT_KEYS: list[str] = ["spike_count"]
-# origとsurrの比較値そのものが指標（surr列のみ格納）
-_SWEEP_METRICS_COMPARISON: list[str] = [
-    "rmse",
-    "mae",
-    "latency_error",
-    "periodicity_gap",
-    "spike_count_diff",
-    "median_amp_error",
-]
-_SWEEP_METRICS = list(_METRIC_SPLIT_KEYS) + _SWEEP_METRICS_COMPARISON
-
 
 # ---------------------------------------------------------------------------
 # Sweep UI
@@ -57,7 +46,9 @@ def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
             "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
             "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
             "amp_steps": mo.ui.number(value=10, step=1, label="steps"),
-            "metric": mo.ui.dropdown(options=_SWEEP_METRICS, value="spike_count"),
+            "metric": mo.ui.dropdown(
+                options=DF_ROW_METRICS + SCALAR_METRICS, value="spike_count"
+            ),
         }
     )
 
@@ -80,6 +71,15 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
 # ---------------------------------------------------------------------------
 
 
+def _extract(dm: DynamicMetrics, metric_key: str) -> tuple[float, float]:
+    """metric_key に応じた (orig, surr) 値を返す。スカラー metric の orig は nan。"""
+    if metric_key in DF_ROW_METRICS:
+        df = waveform_summary_df(dm)
+        return float(df.loc[metric_key, "orig"]), float(df.loc[metric_key, "surr"])
+    scalars = {**waveform_summary(dm), **spike_shape_corr(dm)}
+    return float("nan"), float(scalars.get(metric_key, float("nan")))
+
+
 def _sweep_amplitude_metrics(
     surrogates: dict,
     current_configs: dict[float, CurrentConfig],
@@ -90,15 +90,14 @@ def _sweep_amplitude_metrics(
 ) -> pd.DataFrame:
     net = MCMODELS[model_name]
     comp_id = net.name_to_idx(target_comp_name)
-    has_orig = metric_key in _METRIC_SPLIT_KEYS
-    orig_key = f"orig_{metric_key}" if has_orig else metric_key
-    surr_key = f"surr_{metric_key}" if has_orig else metric_key
+    has_orig = metric_key in DF_ROW_METRICS
 
     frames: list[pd.DataFrame] = []
     for amp, cfg in current_configs.items():
         u = cfg.build()
         orig_ds = unified_simulator(dt=dt, u=u, net=net)
-        surr_ms: list[tuple[str, dict]] = []
+        orig_val = float("nan")
+        surr_vals: dict[str, float] = {}
         for rid, surrogate in surrogates.items():
             dm = DynamicMetrics(
                 orig_ds,
@@ -114,15 +113,9 @@ def _sweep_amplitude_metrics(
                 comp_id,
                 dt,
             )
-            surr_ms.append((rid, {**waveform_summary(dm), **spike_shape_corr(dm)}))
+            orig_val, surr_vals[rid] = _extract(dm, metric_key)
 
-        surr_vals = {rid: float(m.get(surr_key, float("nan"))) for rid, m in surr_ms}
         if has_orig:
-            orig_val = (
-                float(surr_ms[0][1].get(orig_key, float("nan")))
-                if surr_ms
-                else float("nan")
-            )
             frames.append(
                 pd.DataFrame(
                     [[amp, orig_val, *surr_vals.values()]],
