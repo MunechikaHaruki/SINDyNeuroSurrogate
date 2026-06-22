@@ -71,9 +71,9 @@ def make_base_ui() -> mo.ui.dictionary:
                 {
                     "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
                     "silence_duration": mo.ui.number(
-                        value=80, step=1, label="silence_duration"
+                        value=10, step=1, label="silence_duration"
                     ),
-                    "duration": mo.ui.number(value=800, step=100, label="duration"),
+                    "duration": mo.ui.number(value=60, step=10, label="duration"),
                     "model_name": mo.ui.dropdown(
                         options=list(MCMODELS.keys()),
                         label="model_name",

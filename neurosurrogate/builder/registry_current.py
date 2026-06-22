@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 
-def generate_steady(value: float):
+def generate_steady(value: float = 10):
     """一定の電流を生成する。value [μA/cm²]"""
 
     def apply(dset_i_ext: np.ndarray) -> None:
