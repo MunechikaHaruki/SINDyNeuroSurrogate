@@ -171,18 +171,18 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
     """)
 
 
-def run_and_plot(
+def _run_and_plot(
     sweep_ui: mo.ui.dictionary,
     base_button: mo.ui.dictionary,
     param_button: mo.ui.dictionary,
     eval_ui: mo.ui.dictionary,
-    run_ids: list[str],
 ) -> tuple[pd.DataFrame, Figure]:
     ds = cast(dict[str, Any], base_button["base_dataset"].value)
     dt = float(ds["dt"])
     comp_name = str(eval_ui["eval_comp"].value)
     base_current_params = cast(dict, param_button["current_params"].value)
     sweep_param = str(sweep_ui["sweep_param"].value)
+    run_ids = cast(pd.DataFrame, base_button["run_selector"].value)["run_id"].tolist()
 
     current_configs: dict[float, CurrentConfig] = {
         amp: CurrentConfig(
@@ -217,3 +217,13 @@ def run_and_plot(
     )
     fig = plot_sweep(data, run_ids, metric_key, comp_name, run_labels)
     return data, fig
+
+
+def view_sweep(
+    sweep_ui: mo.ui.dictionary,
+    base_button: mo.ui.dictionary,
+    param_button: mo.ui.dictionary,
+    eval_ui: mo.ui.dictionary,
+) -> mo.Html:
+    data, fig = _run_and_plot(sweep_ui, base_button, param_button, eval_ui)
+    return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)])

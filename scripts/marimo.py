@@ -7,11 +7,10 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import analysis
-    import marimo as mo
 
     base_button = analysis.make_base_ui()
     analysis.render_base(base_button)
-    return analysis, base_button, mo
+    return analysis, base_button
 
 
 @app.cell
@@ -70,12 +69,8 @@ def _(analysis, eval_ui, result, spike_ui):
 
 
 @app.cell
-def _(analysis_sweep, base_button, eval_ui, mo, param_button, sweep_ui):
-    run_ids = base_button["run_selector"].value["run_id"].tolist()
-    sweep_df, sweep_fig = analysis_sweep.run_and_plot(
-        sweep_ui, base_button, param_button, eval_ui, run_ids
-    )
-    mo.vstack([mo.mpl.interactive(sweep_fig), mo.ui.table(sweep_df)])
+def _(analysis_sweep, base_button, eval_ui, param_button, sweep_ui):
+    analysis_sweep.view_sweep(sweep_ui, base_button, param_button, eval_ui)
     return
 
 
