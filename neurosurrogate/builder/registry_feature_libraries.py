@@ -135,7 +135,7 @@ def make_gate_poly_volt_lib(max_power: int):
 
 
 def make_identity_lib():
-    """variable をそのまま渡す。zero cost。"""
+    """variable をそのまま渡す。zero cost。1 spec = 1 入力。"""
     entries = [
         LibraryEntry(
             func=lambda x: x,

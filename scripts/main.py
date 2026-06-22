@@ -44,7 +44,7 @@ def _build_surrogate(cfg_sindy):
 
 def cli_flow(cfg_sindy):
     surrogate, feature_lib = _build_surrogate(cfg_sindy)
-    with mlflow.start_run(run_name=f"train:{cfg_sindy['name']}"):
+    with mlflow.start_run(run_name=f"{cfg_sindy['name']}"):
         # train
         train_dataset_cfg = DatasetConfig.build_dataset(**cfg_sindy["datasets"])
 

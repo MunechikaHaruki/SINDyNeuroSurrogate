@@ -1,4 +1,4 @@
-name: Default
+name: base
 preprocessor:
   _target_: sklearn.decomposition.PCA
   n_components: 1
@@ -35,4 +35,3 @@ datasets:
     weights: [0.3, 1, 1, 1]
     sigma: 1
     seed: 991927697
-train_comp_identifier: soma

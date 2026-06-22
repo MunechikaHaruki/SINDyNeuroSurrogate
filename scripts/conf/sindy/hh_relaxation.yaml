@@ -1,4 +1,4 @@
-name: Default
+name: relaxation
 preprocessor:
   _target_: sklearn.decomposition.PCA
   n_components: 1
@@ -12,7 +12,9 @@ library_specs:
     max_power: 4
     inputs: [0, 1]
   - type: identity
-    inputs: [0, 2]
+    inputs: [0]
+  - type: identity
+    inputs: [2]
   - type: const
     inputs: []
   # --- dg0/dt 用 (relaxation形式) ---
