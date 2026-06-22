@@ -33,7 +33,54 @@ _SWEEP_METRICS_COMPARISON: list[str] = [
 _SWEEP_METRICS = list(_METRIC_SPLIT_KEYS) + _SWEEP_METRICS_COMPARISON
 
 
-def sweep_amplitude_metrics(
+# ---------------------------------------------------------------------------
+# Sweep UI
+# ---------------------------------------------------------------------------
+
+
+def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    current_type = str(base_ui["current_type"].value)
+    param_keys = (
+        []
+        if current_type == "train"
+        else list(inspect.signature(FUNC_MAP[current_type]).parameters.keys())
+    )
+    sweep_param_ui = (
+        mo.ui.dropdown(options=param_keys, value=param_keys[0])
+        if param_keys
+        else mo.ui.dropdown(options=["(none)"], value="(none)")
+    )
+
+    return mo.ui.dictionary(
+        {
+            "sweep_param": sweep_param_ui,
+            "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
+            "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
+            "amp_steps": mo.ui.number(value=10, step=1, label="steps"),
+            "metric": mo.ui.dropdown(options=_SWEEP_METRICS, value="spike_count"),
+        }
+    )
+
+
+def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.md(f"""
+    ### 振幅スイープ設定
+    | | |
+    |---|---|
+    | sweep param | {sweep_ui["sweep_param"]} |
+    | amp start | {sweep_ui["amp_start"]} |
+    | amp stop  | {sweep_ui["amp_stop"]}  |
+    | steps     | {sweep_ui["amp_steps"]} |
+    | metric    | {sweep_ui["metric"]} |
+    """)
+
+
+# ---------------------------------------------------------------------------
+# Run and Sweep
+# ---------------------------------------------------------------------------
+
+
+def _sweep_amplitude_metrics(
     surrogates: dict,
     current_configs: dict[float, CurrentConfig],
     model_name: str,
@@ -95,7 +142,7 @@ def sweep_amplitude_metrics(
     return pd.concat(frames, ignore_index=True)
 
 
-def plot_sweep(
+def _plot_sweep(
     data: pd.DataFrame,
     run_ids: list[str],
     metric_key: str,
@@ -126,49 +173,6 @@ def plot_sweep(
     ax.legend()
     fig.tight_layout()
     return fig
-
-
-# ---------------------------------------------------------------------------
-# Sweep UI
-# ---------------------------------------------------------------------------
-
-
-def _resolve_param_keys(current_type: str) -> list[str]:
-    if current_type == "train":
-        return []
-    return list(inspect.signature(FUNC_MAP[current_type]).parameters.keys())
-
-
-def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    param_keys = _resolve_param_keys(str(base_ui["current_type"].value))
-    sweep_param_ui = (
-        mo.ui.dropdown(options=param_keys, value=param_keys[0])
-        if param_keys
-        else mo.ui.dropdown(options=["(none)"], value="(none)")
-    )
-
-    return mo.ui.dictionary(
-        {
-            "sweep_param": sweep_param_ui,
-            "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
-            "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
-            "amp_steps": mo.ui.number(value=10, step=1, label="steps"),
-            "metric": mo.ui.dropdown(options=_SWEEP_METRICS, value="spike_count"),
-        }
-    )
-
-
-def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.md(f"""
-    ### 振幅スイープ設定
-    | | |
-    |---|---|
-    | sweep param | {sweep_ui["sweep_param"]} |
-    | amp start | {sweep_ui["amp_start"]} |
-    | amp stop  | {sweep_ui["amp_stop"]}  |
-    | steps     | {sweep_ui["amp_steps"]} |
-    | metric    | {sweep_ui["metric"]} |
-    """)
 
 
 def _run_and_plot(
@@ -207,7 +211,7 @@ def _run_and_plot(
         rid: client.get_run(rid).data.tags.get("mlflow.runName", rid[:6])
         for rid in run_ids
     }
-    data = sweep_amplitude_metrics(
+    data = _sweep_amplitude_metrics(
         surrogates=surrogates,
         current_configs=current_configs,
         model_name=str(ds["model_name"]),
@@ -215,7 +219,7 @@ def _run_and_plot(
         target_comp_name=comp_name,
         metric_key=metric_key,
     )
-    fig = plot_sweep(data, run_ids, metric_key, comp_name, run_labels)
+    fig = _plot_sweep(data, run_ids, metric_key, comp_name, run_labels)
     return data, fig
 
 
