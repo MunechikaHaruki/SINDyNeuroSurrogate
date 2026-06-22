@@ -29,15 +29,6 @@ def _(analysis, param_button):
 
 
 @app.cell
-def _(base_button):
-    import analysis_sweep
-
-    sweep_ui = analysis_sweep.make_sweep_ui(base_button)
-    analysis_sweep.render_sweep(sweep_ui)
-    return analysis_sweep, sweep_ui
-
-
-@app.cell
 def _(analysis, base_button):
     analysis.render_model_info(base_button)
     return
@@ -66,6 +57,15 @@ def _(analysis, eval_ui, result):
 def _(analysis, eval_ui, result, spike_ui):
     analysis.view_result(eval_ui, result, spike_ui)
     return
+
+
+@app.cell
+def _(base_button):
+    import analysis_sweep
+
+    sweep_ui = analysis_sweep.make_sweep_ui(base_button)
+    analysis_sweep.render_sweep(sweep_ui)
+    return analysis_sweep, sweep_ui
 
 
 @app.cell

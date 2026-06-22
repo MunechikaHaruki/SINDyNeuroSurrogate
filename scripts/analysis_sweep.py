@@ -18,9 +18,7 @@ from neurosurrogate.profiler.profiler_wave import (
     DF_ROW_METRICS,
     SCALAR_METRICS,
     DynamicMetrics,
-    spike_shape_corr,
-    waveform_summary,
-    waveform_summary_df,
+    extract_metric,
 )
 
 # ---------------------------------------------------------------------------
@@ -100,50 +98,6 @@ def _iter_amp_dms(
         yield amp, dms
 
 
-def _sweep_df_row(
-    surrogates: dict,
-    current_configs: dict[float, CurrentConfig],
-    model_name: str,
-    dt: float,
-    target_comp_name: str,
-    metric_key: str,
-) -> pd.DataFrame:
-    """orig 列付き。waveform_summary_df の行から orig/surr を取り出す。"""
-    rows: list[dict] = []
-    for amp, dms in _iter_amp_dms(
-        surrogates, current_configs, model_name, dt, target_comp_name
-    ):
-        orig_val = float("nan")
-        surr_vals: dict[str, float] = {}
-        for rid, dm in dms.items():
-            df = waveform_summary_df(dm)
-            orig_val = float(df.loc[metric_key, "orig"])
-            surr_vals[rid] = float(df.loc[metric_key, "surr"])
-        rows.append({"amplitude": amp, "original": orig_val, **surr_vals})
-    return pd.DataFrame(rows)
-
-
-def _sweep_scalar(
-    surrogates: dict,
-    current_configs: dict[float, CurrentConfig],
-    model_name: str,
-    dt: float,
-    target_comp_name: str,
-    metric_key: str,
-) -> pd.DataFrame:
-    """orig 列なし。waveform_summary + spike_shape_corr から surr スカラーを取り出す。"""
-    rows: list[dict] = []
-    for amp, dms in _iter_amp_dms(
-        surrogates, current_configs, model_name, dt, target_comp_name
-    ):
-        surr_vals: dict[str, float] = {}
-        for rid, dm in dms.items():
-            scalars = {**waveform_summary(dm), **spike_shape_corr(dm)}
-            surr_vals[rid] = float(scalars.get(metric_key, float("nan")))
-        rows.append({"amplitude": amp, **surr_vals})
-    return pd.DataFrame(rows)
-
-
 def _sweep_amplitude_metrics(
     surrogates: dict,
     current_configs: dict[float, CurrentConfig],
@@ -152,10 +106,23 @@ def _sweep_amplitude_metrics(
     target_comp_name: str,
     metric_key: str,
 ) -> pd.DataFrame:
-    fn = _sweep_df_row if metric_key in DF_ROW_METRICS else _sweep_scalar
-    return fn(
-        surrogates, current_configs, model_name, dt, target_comp_name, metric_key
-    )
+    """amp × rid を走査し metric DataFrame を構築。
+
+    orig 列の有無は extract_metric の戻り値 (None かどうか) で決まる。
+    """
+    rows: list[dict] = []
+    for amp, dms in _iter_amp_dms(
+        surrogates, current_configs, model_name, dt, target_comp_name
+    ):
+        extracted = {rid: extract_metric(dm, metric_key) for rid, dm in dms.items()}
+        # orig は rid 非依存 → 任意の 1 件から取得
+        orig_val = next(iter(extracted.values()))[0]
+        row: dict = {"amplitude": amp}
+        if orig_val is not None:
+            row["original"] = orig_val
+        row.update({rid: surr for rid, (_, surr) in extracted.items()})
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def _plot_sweep(
@@ -191,38 +158,35 @@ def _plot_sweep(
     return fig
 
 
-def _run_and_plot(
-    sweep_ui: mo.ui.dictionary,
-    base_button: mo.ui.dictionary,
-    param_button: mo.ui.dictionary,
-    eval_ui: mo.ui.dictionary,
-) -> tuple[pd.DataFrame, Figure]:
-    ds = cast(dict[str, Any], base_button["base_dataset"].value)
-    dt = float(ds["dt"])
-    comp_name = str(eval_ui["eval_comp"].value)
-    base_current_params = cast(dict, param_button["current_params"].value)
-    sweep_param = str(sweep_ui["sweep_param"].value)
-    run_ids = cast(pd.DataFrame, base_button["run_selector"].value)["run_id"].tolist()
-
+def run_sweep(
+    *,
+    run_ids: list[str],
+    model_name: str,
+    dt: float,
+    duration: float,
+    silence_duration: float,
+    comp_name: str,
+    current_type: str,
+    base_current_params: dict,
+    sweep_param: str,
+    amp_start: float,
+    amp_stop: float,
+    amp_steps: int,
+    metric_key: str,
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    """純粋計算層: metric DataFrame と run_label dict を返す。plot しない。"""
     current_configs: dict[float, CurrentConfig] = {
         amp: CurrentConfig(
-            iteration=int(float(ds["duration"]) / dt),
-            silence_steps=int(float(ds["silence_duration"]) / dt),
+            iteration=int(duration / dt),
+            silence_steps=int(silence_duration / dt),
             pipeline=CurrentConfig.build_pipeline(
-                str(base_button["current_type"].value),
-                {**base_current_params, sweep_param: amp},
+                current_type, {**base_current_params, sweep_param: amp}
             ),
         )
-        for amp in np.linspace(
-            float(cast(Any, sweep_ui["amp_start"]).value),
-            float(cast(Any, sweep_ui["amp_stop"]).value),
-            int(cast(Any, sweep_ui["amp_steps"]).value),
-        )
+        for amp in np.linspace(amp_start, amp_stop, amp_steps)
     }
-
     surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
     client = mlflow.MlflowClient()
-    metric_key = str(sweep_ui["metric"].value)
     run_labels = {
         rid: client.get_run(rid).data.tags.get("mlflow.runName", rid[:6])
         for rid in run_ids
@@ -230,13 +194,12 @@ def _run_and_plot(
     data = _sweep_amplitude_metrics(
         surrogates=surrogates,
         current_configs=current_configs,
-        model_name=str(ds["model_name"]),
+        model_name=model_name,
         dt=dt,
         target_comp_name=comp_name,
         metric_key=metric_key,
     )
-    fig = _plot_sweep(data, run_ids, metric_key, comp_name, run_labels)
-    return data, fig
+    return data, run_labels
 
 
 def view_sweep(
@@ -245,5 +208,27 @@ def view_sweep(
     param_button: mo.ui.dictionary,
     eval_ui: mo.ui.dictionary,
 ) -> mo.Html:
-    data, fig = _run_and_plot(sweep_ui, base_button, param_button, eval_ui)
+    """アダプター: marimo UI → run_sweep (計算) → _plot_sweep (描画) → mo.Html。"""
+    ds = cast(dict[str, Any], base_button["base_dataset"].value)
+    run_ids = cast(pd.DataFrame, base_button["run_selector"].value)[
+        "run_id"
+    ].tolist()
+    comp_name = str(eval_ui["eval_comp"].value)
+    metric_key = str(sweep_ui["metric"].value)
+    data, run_labels = run_sweep(
+        run_ids=run_ids,
+        model_name=str(ds["model_name"]),
+        dt=float(ds["dt"]),
+        duration=float(ds["duration"]),
+        silence_duration=float(ds["silence_duration"]),
+        comp_name=comp_name,
+        current_type=str(base_button["current_type"].value),
+        base_current_params=cast(dict, param_button["current_params"].value),
+        sweep_param=str(sweep_ui["sweep_param"].value),
+        amp_start=float(cast(Any, sweep_ui["amp_start"]).value),
+        amp_stop=float(cast(Any, sweep_ui["amp_stop"]).value),
+        amp_steps=int(cast(Any, sweep_ui["amp_steps"]).value),
+        metric_key=metric_key,
+    )
+    fig = _plot_sweep(data, run_ids, metric_key, comp_name, run_labels)
     return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)])

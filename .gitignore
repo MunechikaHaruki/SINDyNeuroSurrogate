@@ -13,5 +13,8 @@ mlflow.db
 **/hydra-multiruns/**
 **/hydra-outputs/**/
 
+tests/
+
+
 .DS_Store
 **/.DS_Store

@@ -235,3 +235,14 @@ def waveform_summary(dm: DynamicMetrics) -> dict:
         "latency_error": abs(_diff(*_latency(dm))),
         "periodicity_gap": abs(_diff(*_isi_stat(dm, np.mean))),
     }
+
+
+def extract_metric(
+    dm: DynamicMetrics, metric_key: str
+) -> tuple[float | None, float]:
+    """指定 metric の (orig, surr) を返す。スカラー metric の orig は None。"""
+    if metric_key in DF_ROW_METRICS:
+        df = waveform_summary_df(dm)
+        return float(df.loc[metric_key, "orig"]), float(df.loc[metric_key, "surr"])
+    scalars = {**waveform_summary(dm), **spike_shape_corr(dm)}
+    return None, float(scalars.get(metric_key, _NAN))
