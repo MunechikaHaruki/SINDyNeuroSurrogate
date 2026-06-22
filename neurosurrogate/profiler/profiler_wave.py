@@ -54,7 +54,7 @@ def _diff(o: float, s: float) -> float:
 
 @dataclass
 class DynamicMetrics:
-    """電圧・eFEL特徴量を計算するデータ層。WaveformMetrics/SpikeMetrics に共有される。"""
+    """電圧・eFEL特徴量を計算するデータ層。下記の純粋関数群から参照される。"""
 
     original: Any = field(repr=False)
     surrogate: Any = field(repr=False)
@@ -109,137 +109,129 @@ class DynamicMetrics:
         return (list(p) if p is not None else []), (list(q) if q is not None else [])
 
 
-@dataclass
-class SpikeMetrics:
-    """スパイク形状指標（median AP誤差、spike_shape_corr）を計算する。"""
-
-    _dm: DynamicMetrics = field(repr=False)
-
-    @cached_property
-    def _spike_shape_corr(self) -> dict:
-        """平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
-
-        def _mean_template(v, peaks, half_win):
-            snippets = [
-                v[p - half_win : p + half_win + 1]
-                for p in peaks
-                if p - half_win >= 0 and p + half_win + 1 <= len(v)
-            ]
-            return np.mean(snippets, axis=0) if snippets else None
-
-        def mean_template(_dm) -> tuple[np.ndarray | None, np.ndarray | None]:
-            orig_v, surr_v = _dm.voltages
-            orig_peaks, surr_peaks = _dm.peaks
-            half_win = int(2.0 / _dm.dt)
-            orig_tmpl = _mean_template(orig_v, orig_peaks, half_win)
-            surr_tmpl = _mean_template(surr_v, surr_peaks, half_win)
-            return orig_tmpl, surr_tmpl
-
-        orig_tmpl, surr_tmpl = mean_template(self._dm)
-        if orig_tmpl is None or surr_tmpl is None:
-            return {"spike_shape_corr": _NAN}
-        return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
-
-    @cached_property
-    def n_spikes(self) -> tuple[int, int]:
-        """(n_orig, n_surr): 各信号のスパイク数。"""
-        orig_peaks, surr_peaks = self._dm.peaks
-        return len(orig_peaks), len(surr_peaks)
-
-    def compute(self) -> dict:
-        return self._spike_shape_corr
-
-    def to_df(self, spike: int | Literal["median"] = "median") -> pd.DataFrame:
-        orig_feat, surr_feat = self._dm.efel
-
-        def _pick(arr, idx: int | Literal["median"]) -> float:
-            if arr is None or len(arr) == 0:
-                return _NAN
-            if idx == "median":
-                return float(np.median(arr))
-            return float(arr[idx]) if idx < len(arr) else _NAN
-
-        rows = []
-        for feat in _MEDIAN_FEATURES:
-            o = _pick(orig_feat.get(feat), spike)
-            s = _pick(surr_feat.get(feat), spike)
-            rows.append(
-                {"feature": feat, "orig": o, "surr": s, "orig-surr": _diff(o, s)}
-            )
-        return pd.DataFrame(rows).set_index("feature")
+# ---------------------------------------------------------------------------
+# スパイク指標（純粋関数群、DynamicMetrics を引数で受ける）
+# ---------------------------------------------------------------------------
 
 
-@dataclass
-class WaveformMetrics:
-    """波形・発火パターン指標（RMSE/MAE・スパイク数・タイミング・ISI）を計算する。"""
+def n_spikes(dm: DynamicMetrics) -> tuple[int, int]:
+    """(n_orig, n_surr): 各信号のスパイク数。"""
+    orig_peaks, surr_peaks = dm.peaks
+    return len(orig_peaks), len(surr_peaks)
 
-    _dm: DynamicMetrics = field(repr=False)
 
-    @cached_property
-    def _waveform_error(self) -> dict:
-        orig_v, surr_v = self._dm.voltages
-        return {
-            "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),
-            "mae": float(np.mean(np.abs(orig_v - surr_v))),
-        }
+def spike_shape_corr(dm: DynamicMetrics) -> dict:
+    """平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
 
-    @cached_property
-    def _spike_counts(self) -> pd.DataFrame:
-        orig_peaks, surr_peaks = self._dm.peaks
-        o, s = float(len(orig_peaks)), float(len(surr_peaks))
-        return pd.DataFrame(
-            [
-                {"metric": "spike_count", "orig": o, "surr": s, "orig-surr": o - s},
-            ]
-        ).set_index("metric")
+    def _mean_template(v, peaks, half_win):
+        snippets = [
+            v[p - half_win : p + half_win + 1]
+            for p in peaks
+            if p - half_win >= 0 and p + half_win + 1 <= len(v)
+        ]
+        return np.mean(snippets, axis=0) if snippets else None
 
-    @cached_property
-    def _timing(self) -> pd.DataFrame:
-        orig_feat, surr_feat = self._dm.efel
-        orig_tfs = orig_feat.get("time_to_first_spike")
-        surr_tfs = surr_feat.get("time_to_first_spike")
-        o = float(orig_tfs[0]) if orig_tfs is not None else _NAN
-        s = float(surr_tfs[0]) if surr_tfs is not None else _NAN
-        return pd.DataFrame(
-            [
-                {"metric": "latency", "orig": o, "surr": s, "orig-surr": _diff(o, s)},
-            ]
-        ).set_index("metric")
+    orig_v, surr_v = dm.voltages
+    orig_peaks, surr_peaks = dm.peaks
+    half_win = int(2.0 / dm.dt)
+    orig_tmpl = _mean_template(orig_v, orig_peaks, half_win)
+    surr_tmpl = _mean_template(surr_v, surr_peaks, half_win)
+    if orig_tmpl is None or surr_tmpl is None:
+        return {"spike_shape_corr": _NAN}
+    return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
 
-    @cached_property
-    def _isi_stats(self) -> pd.DataFrame:
-        orig_feat, surr_feat = self._dm.efel
-        orig_isi = orig_feat.get("ISI_values")
-        surr_isi = surr_feat.get("ISI_values")
-        o_mean, s_mean = _or_nan(np.mean, orig_isi), _or_nan(np.mean, surr_isi)
-        o_std, s_std = _or_nan(np.std, orig_isi), _or_nan(np.std, surr_isi)
-        return pd.DataFrame(
-            [
-                {
-                    "metric": "mean_isi",
-                    "orig": o_mean,
-                    "surr": s_mean,
-                    "orig-surr": _diff(o_mean, s_mean),
-                },
-                {
-                    "metric": "std_isi",
-                    "orig": o_std,
-                    "surr": s_std,
-                    "orig-surr": _diff(o_std, s_std),
-                },
-            ]
-        ).set_index("metric")
 
-    def to_df(self) -> pd.DataFrame:
-        return pd.concat([self._spike_counts, self._timing, self._isi_stats])
+def spike_features_df(
+    dm: DynamicMetrics, spike: int | Literal["median"] = "median"
+) -> pd.DataFrame:
+    """median AP の eFEL 特徴量を orig/surr/orig-surr で並べた DataFrame。"""
+    orig_feat, surr_feat = dm.efel
 
-    def compute(self) -> dict:
-        df = self.to_df()
-        return {
-            **self._waveform_error,
-            "orig_spike_count": int(df.loc["spike_count", "orig"]),
-            "surr_spike_count": int(df.loc["spike_count", "surr"]),
-            "spike_count_diff": abs(int(df.loc["spike_count", "orig-surr"])),
-            "latency_error": abs(float(df.loc["latency", "orig-surr"])),
-            "periodicity_gap": abs(float(df.loc["mean_isi", "orig-surr"])),
-        }
+    def _pick(arr, idx: int | Literal["median"]) -> float:
+        if arr is None or len(arr) == 0:
+            return _NAN
+        if idx == "median":
+            return float(np.median(arr))
+        return float(arr[idx]) if idx < len(arr) else _NAN
+
+    rows = []
+    for feat in _MEDIAN_FEATURES:
+        o = _pick(orig_feat.get(feat), spike)
+        s = _pick(surr_feat.get(feat), spike)
+        rows.append({"feature": feat, "orig": o, "surr": s, "orig-surr": _diff(o, s)})
+    return pd.DataFrame(rows).set_index("feature")
+
+
+# ---------------------------------------------------------------------------
+# 波形・発火パターン指標（純粋関数群）
+# ---------------------------------------------------------------------------
+
+
+def _waveform_error(dm: DynamicMetrics) -> dict:
+    """RMSE/MAE の波形誤差スカラー。"""
+    orig_v, surr_v = dm.voltages
+    return {
+        "rmse": float(np.sqrt(np.mean((orig_v - surr_v) ** 2))),
+        "mae": float(np.mean(np.abs(orig_v - surr_v))),
+    }
+
+
+def _spike_counts_df(dm: DynamicMetrics) -> pd.DataFrame:
+    orig_peaks, surr_peaks = dm.peaks
+    o, s = float(len(orig_peaks)), float(len(surr_peaks))
+    return pd.DataFrame(
+        [{"metric": "spike_count", "orig": o, "surr": s, "orig-surr": o - s}]
+    ).set_index("metric")
+
+
+def _timing_df(dm: DynamicMetrics) -> pd.DataFrame:
+    orig_feat, surr_feat = dm.efel
+    orig_tfs = orig_feat.get("time_to_first_spike")
+    surr_tfs = surr_feat.get("time_to_first_spike")
+    o = float(orig_tfs[0]) if orig_tfs is not None else _NAN
+    s = float(surr_tfs[0]) if surr_tfs is not None else _NAN
+    return pd.DataFrame(
+        [{"metric": "latency", "orig": o, "surr": s, "orig-surr": _diff(o, s)}]
+    ).set_index("metric")
+
+
+def _isi_stats_df(dm: DynamicMetrics) -> pd.DataFrame:
+    orig_feat, surr_feat = dm.efel
+    orig_isi = orig_feat.get("ISI_values")
+    surr_isi = surr_feat.get("ISI_values")
+    o_mean, s_mean = _or_nan(np.mean, orig_isi), _or_nan(np.mean, surr_isi)
+    o_std, s_std = _or_nan(np.std, orig_isi), _or_nan(np.std, surr_isi)
+    return pd.DataFrame(
+        [
+            {
+                "metric": "mean_isi",
+                "orig": o_mean,
+                "surr": s_mean,
+                "orig-surr": _diff(o_mean, s_mean),
+            },
+            {
+                "metric": "std_isi",
+                "orig": o_std,
+                "surr": s_std,
+                "orig-surr": _diff(o_std, s_std),
+            },
+        ]
+    ).set_index("metric")
+
+
+def waveform_summary_df(dm: DynamicMetrics) -> pd.DataFrame:
+    """spike_count / latency / mean_isi / std_isi を縦に並べた DataFrame。"""
+    return pd.concat([_spike_counts_df(dm), _timing_df(dm), _isi_stats_df(dm)])
+
+
+def waveform_summary(dm: DynamicMetrics) -> dict:
+    """波形誤差 + サマリスカラー（spike_count_diff/latency_error/periodicity_gap）。"""
+    df = waveform_summary_df(dm)
+    return {
+        **_waveform_error(dm),
+        "orig_spike_count": int(df.loc["spike_count", "orig"]),
+        "surr_spike_count": int(df.loc["spike_count", "surr"]),
+        "spike_count_diff": abs(int(df.loc["spike_count", "orig-surr"])),
+        "latency_error": abs(float(df.loc["latency", "orig-surr"])),
+        "periodicity_gap": abs(float(df.loc["mean_isi", "orig-surr"])),
+    }

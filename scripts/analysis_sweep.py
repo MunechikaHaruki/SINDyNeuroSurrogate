@@ -15,8 +15,8 @@ from neurosurrogate.model.model_dataset import CurrentConfig
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_wave import (
     DynamicMetrics,
-    SpikeMetrics,
-    WaveformMetrics,
+    spike_shape_corr,
+    waveform_summary,
 )
 
 # origの絶対値が意味を持つ指標（compute()がorig_{key}/surr_{key}を返す）
@@ -114,9 +114,7 @@ def _sweep_amplitude_metrics(
                 comp_id,
                 dt,
             )
-            surr_ms.append(
-                (rid, {**WaveformMetrics(dm).compute(), **SpikeMetrics(dm).compute()})
-            )
+            surr_ms.append((rid, {**waveform_summary(dm), **spike_shape_corr(dm)}))
 
         surr_vals = {rid: float(m.get(surr_key, float("nan"))) for rid, m in surr_ms}
         if has_orig:

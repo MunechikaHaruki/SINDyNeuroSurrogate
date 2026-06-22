@@ -18,8 +18,11 @@ from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_view import view_neuron_graph
 from neurosurrogate.profiler.profiler_wave import (
     DynamicMetrics,
-    SpikeMetrics,
-    WaveformMetrics,
+    n_spikes,
+    spike_features_df,
+    spike_shape_corr,
+    waveform_summary,
+    waveform_summary_df,
 )
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
@@ -287,7 +290,7 @@ def make_spike_ui(result: dict, eval_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     dm = DynamicMetrics(
         result["original_ds"], result["surr_ds"], target_comp_id, result["dt"]
     )
-    n_orig, n_surr = SpikeMetrics(dm).n_spikes
+    n_orig, n_surr = n_spikes(dm)
     max_n = max(n_orig, n_surr)
     options: dict = {"median": "median"} | {str(i): i for i in range(max_n)}
     return mo.ui.dictionary(
@@ -335,18 +338,16 @@ def view_result(
             wrap=True,
         )
 
-    sm = SpikeMetrics(dm)
-    wm = WaveformMetrics(dm)
     return mo.vstack(
         [
             mo.md("#### 波形・発火パターン指標（orig / surr / orig-surr）"),
-            wm.to_df(),
+            waveform_summary_df(dm),
             mo.md("#### 波形誤差スカラー"),
-            _stat_cards(wm.compute()),
+            _stat_cards(waveform_summary(dm)),
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
-            _stat_cards(sm.compute()),
+            _stat_cards(spike_shape_corr(dm)),
             mo.md(f"#### AP・ISI 指標（orig / surr / orig-surr） — spike: {spike}"),
-            sm.to_df(spike=spike),
+            spike_features_df(dm, spike=spike),
             mo.mpl.interactive(
                 DRAW_MAP[eval_ui["draw_func"].value](
                     result["original_ds"],
