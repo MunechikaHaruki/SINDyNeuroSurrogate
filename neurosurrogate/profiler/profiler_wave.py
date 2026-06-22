@@ -41,12 +41,14 @@ _NAN = float("nan")
 
 
 def _or_nan(fn, arr) -> float:
+    """arr が None/空なら nan、それ以外は float(fn(arr))。"""
     if arr is None or len(arr) == 0:
         return _NAN
     return float(fn(arr))
 
 
 def _diff(o: float, s: float) -> float:
+    """o - s。ただし片方でも nan なら nan を返す（差分計算の nan 伝播）。"""
     return o - s if not (np.isnan(o) or np.isnan(s)) else _NAN
 
 
