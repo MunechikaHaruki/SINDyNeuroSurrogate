@@ -331,8 +331,14 @@ def view_result(
     )
     pre = result["get_preprocessed"](target_comp_id)
 
-    spike_orig: int = int(spike_ui["spike_orig"].value) if spike_ui is not None else 0
-    spike_surr: int = int(spike_ui["spike_surr"].value) if spike_ui is not None else 0
+    def _spike_idx(key: str) -> int:
+        if spike_ui is None:
+            return 0
+        v = spike_ui[key].value
+        return int(v) if v is not None else 0
+
+    spike_orig: int = _spike_idx("spike_orig")
+    spike_surr: int = _spike_idx("spike_surr")
 
     def _stat_cards(d: dict) -> mo.Html:
         return mo.hstack(

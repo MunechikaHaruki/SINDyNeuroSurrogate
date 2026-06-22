@@ -130,6 +130,7 @@ def _plot_sweep(
     run_ids: list[str],
     metric_key: str,
     comp_name: str,
+    sweep_param: str,
     run_labels: dict[str, str] | None = None,
 ) -> Figure:
     run_labels = run_labels or {}
@@ -150,9 +151,9 @@ def _plot_sweep(
             label=label,
         )
 
-    ax.set_xlabel("Stimulus amplitude [μA/cm²]")
+    ax.set_xlabel(sweep_param)
     ax.set_ylabel(metric_key)
-    ax.set_title(f"Amplitude sweep — {metric_key} ({comp_name})")
+    ax.set_title(f"{sweep_param} sweep — {metric_key} ({comp_name})")
     ax.legend()
     fig.tight_layout()
     return fig
@@ -230,5 +231,12 @@ def view_sweep(
         amp_steps=int(cast(Any, sweep_ui["amp_steps"]).value),
         metric_key=metric_key,
     )
-    fig = _plot_sweep(data, run_ids, metric_key, comp_name, run_labels)
+    fig = _plot_sweep(
+        data,
+        run_ids,
+        metric_key,
+        comp_name,
+        sweep_param=str(sweep_ui["sweep_param"].value),
+        run_labels=run_labels,
+    )
     return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)])
