@@ -290,6 +290,11 @@ def calc_eval(base_button: mo.ui.dictionary, param_button: mo.ui.dictionary) -> 
     }
 
 
+# ---------------------------------------------------------------------------
+# Select Spike
+# ---------------------------------------------------------------------------
+
+
 def make_spike_ui(result: dict, eval_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
     dm = DynamicMetrics(
@@ -311,6 +316,11 @@ def make_spike_ui(result: dict, eval_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
 def render_spike(spike_ui: mo.ui.dictionary) -> mo.Html:
     return mo.md(f"スパイク選択: {spike_ui['spike']}")
+
+
+# ---------------------------------------------------------------------------
+# View Result
+# ---------------------------------------------------------------------------
 
 
 def view_result(
