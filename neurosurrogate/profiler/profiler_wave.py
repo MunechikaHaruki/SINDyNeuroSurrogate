@@ -37,11 +37,17 @@ _EFEL_FEATURES = [
     *_MEDIAN_FEATURES,
 ]
 
+_NAN = float("nan")
+
 
 def _or_nan(fn, arr) -> float:
     if arr is None or len(arr) == 0:
-        return float("nan")
+        return _NAN
     return float(fn(arr))
+
+
+def _diff(o: float, s: float) -> float:
+    return o - s if not (np.isnan(o) or np.isnan(s)) else _NAN
 
 
 @dataclass
@@ -129,7 +135,7 @@ class SpikeMetrics:
         """平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
         orig_tmpl, surr_tmpl = self._dm.mean_template
         if orig_tmpl is None or surr_tmpl is None:
-            return {"spike_shape_corr": float("nan")}
+            return {"spike_shape_corr": _NAN}
         return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
 
     @cached_property
@@ -146,28 +152,19 @@ class SpikeMetrics:
 
         def _pick(arr, idx: int | Literal["median"]) -> float:
             if arr is None or len(arr) == 0:
-                return float("nan")
+                return _NAN
             if idx == "median":
                 return float(np.median(arr))
-            return float(arr[idx]) if idx < len(arr) else float("nan")
+            return float(arr[idx]) if idx < len(arr) else _NAN
 
-        return pd.DataFrame(
-            [
-                {
-                    "feature": feat,
-                    "orig": o,
-                    "surr": s,
-                    "orig-surr": (o - s) if not (np.isnan(o) or np.isnan(s)) else float("nan"),
-                }
-                for feat in _MEDIAN_FEATURES
-                for o, s in [
-                    (
-                        _pick(orig_feat.get(feat), spike),
-                        _pick(surr_feat.get(feat), spike),
-                    )
-                ]
-            ]
-        ).set_index("feature")
+        rows = []
+        for feat in _MEDIAN_FEATURES:
+            o = _pick(orig_feat.get(feat), spike)
+            s = _pick(surr_feat.get(feat), spike)
+            rows.append(
+                {"feature": feat, "orig": o, "surr": s, "orig-surr": _diff(o, s)}
+            )
+        return pd.DataFrame(rows).set_index("feature")
 
 
 @dataclass
@@ -199,17 +196,11 @@ class WaveformMetrics:
         orig_feat, surr_feat = self._dm.efel
         orig_tfs = orig_feat.get("time_to_first_spike")
         surr_tfs = surr_feat.get("time_to_first_spike")
-        nan = float("nan")
-        o = float(orig_tfs[0]) if orig_tfs is not None else nan
-        s = float(surr_tfs[0]) if surr_tfs is not None else nan
+        o = float(orig_tfs[0]) if orig_tfs is not None else _NAN
+        s = float(surr_tfs[0]) if surr_tfs is not None else _NAN
         return pd.DataFrame(
             [
-                {
-                    "metric": "latency",
-                    "orig": o,
-                    "surr": s,
-                    "orig-surr": o - s if not np.isnan(o + s) else nan,
-                },
+                {"metric": "latency", "orig": o, "surr": s, "orig-surr": _diff(o, s)},
             ]
         ).set_index("metric")
 
@@ -218,7 +209,6 @@ class WaveformMetrics:
         orig_feat, surr_feat = self._dm.efel
         orig_isi = orig_feat.get("ISI_values")
         surr_isi = surr_feat.get("ISI_values")
-        nan = float("nan")
         o_mean, s_mean = _or_nan(np.mean, orig_isi), _or_nan(np.mean, surr_isi)
         o_std, s_std = _or_nan(np.std, orig_isi), _or_nan(np.std, surr_isi)
         return pd.DataFrame(
@@ -227,15 +217,13 @@ class WaveformMetrics:
                     "metric": "mean_isi",
                     "orig": o_mean,
                     "surr": s_mean,
-                    "orig-surr": o_mean - s_mean
-                    if not np.isnan(o_mean + s_mean)
-                    else nan,
+                    "orig-surr": _diff(o_mean, s_mean),
                 },
                 {
                     "metric": "std_isi",
                     "orig": o_std,
                     "surr": s_std,
-                    "orig-surr": o_std - s_std if not np.isnan(o_std + s_std) else nan,
+                    "orig-surr": _diff(o_std, s_std),
                 },
             ]
         ).set_index("metric")
