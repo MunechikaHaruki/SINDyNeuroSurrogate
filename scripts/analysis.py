@@ -73,7 +73,7 @@ def make_base_ui() -> mo.ui.dictionary:
                     "silence_duration": mo.ui.number(
                         value=10, step=1, label="silence_duration"
                     ),
-                    "duration": mo.ui.number(value=60, step=10, label="duration"),
+                    "duration": mo.ui.number(value=30, step=10, label="duration"),
                     "model_name": mo.ui.dropdown(
                         options=list(MCMODELS.keys()),
                         label="model_name",
