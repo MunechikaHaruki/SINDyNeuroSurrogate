@@ -231,14 +231,11 @@ def waveform_summary(dm: DynamicMetrics) -> dict:
     """波形誤差 + サマリスカラー（latency_error/periodicity_gap）。"""
     return {
         **_waveform_error(dm),
-        "latency_error": abs(_diff(*_latency(dm))),
         "periodicity_gap": abs(_diff(*_isi_stat(dm, np.mean))),
     }
 
 
-def extract_metric(
-    dm: DynamicMetrics, metric_key: str
-) -> tuple[float | None, float]:
+def extract_metric(dm: DynamicMetrics, metric_key: str) -> tuple[float | None, float]:
     """指定 metric の (orig, surr) を返す。スカラー metric の orig は None。"""
     if metric_key in DF_ROW_METRICS:
         df = waveform_summary_df(dm)
