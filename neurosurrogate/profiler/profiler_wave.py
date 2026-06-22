@@ -47,9 +47,23 @@ def _or_nan(fn, arr) -> float:
     return float(fn(arr))
 
 
+def _at_or_nan(arr, idx: int) -> float:
+    """arr[idx] を float で返す。arr が None/idx 範囲外なら nan。"""
+    if arr is None or idx >= len(arr):
+        return _NAN
+    return float(arr[idx])
+
+
 def _diff(o: float, s: float) -> float:
     """o - s。ただし片方でも nan なら nan を返す（差分計算の nan 伝播）。"""
     return o - s if not (np.isnan(o) or np.isnan(s)) else _NAN
+
+
+def _corr_or_nan(a, b) -> float:
+    """a, b の Pearson 相関。片方でも None なら nan。"""
+    if a is None or b is None:
+        return _NAN
+    return float(np.corrcoef(a, b)[0, 1])
 
 
 @dataclass
@@ -136,9 +150,7 @@ def spike_shape_corr(dm: DynamicMetrics) -> dict:
     half_win = int(2.0 / dm.dt)
     orig_tmpl = _mean_template(orig_v, orig_peaks, half_win)
     surr_tmpl = _mean_template(surr_v, surr_peaks, half_win)
-    if orig_tmpl is None or surr_tmpl is None:
-        return {"spike_shape_corr": _NAN}
-    return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
+    return {"spike_shape_corr": _corr_or_nan(orig_tmpl, surr_tmpl)}
 
 
 def spike_features_df(
@@ -148,11 +160,9 @@ def spike_features_df(
     orig_feat, surr_feat = dm.efel
 
     def _pick(arr, idx: int | Literal["median"]) -> float:
-        if arr is None or len(arr) == 0:
-            return _NAN
         if idx == "median":
-            return float(np.median(arr))
-        return float(arr[idx]) if idx < len(arr) else _NAN
+            return _or_nan(np.median, arr)
+        return _at_or_nan(arr, idx)
 
     rows = []
     for feat in _MEDIAN_FEATURES:
@@ -186,10 +196,8 @@ def _spike_counts_df(dm: DynamicMetrics) -> pd.DataFrame:
 
 def _timing_df(dm: DynamicMetrics) -> pd.DataFrame:
     orig_feat, surr_feat = dm.efel
-    orig_tfs = orig_feat.get("time_to_first_spike")
-    surr_tfs = surr_feat.get("time_to_first_spike")
-    o = float(orig_tfs[0]) if orig_tfs is not None else _NAN
-    s = float(surr_tfs[0]) if surr_tfs is not None else _NAN
+    o = _at_or_nan(orig_feat.get("time_to_first_spike"), 0)
+    s = _at_or_nan(surr_feat.get("time_to_first_spike"), 0)
     return pd.DataFrame(
         [{"metric": "latency", "orig": o, "surr": s, "orig-surr": _diff(o, s)}]
     ).set_index("metric")
