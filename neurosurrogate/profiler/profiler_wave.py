@@ -108,23 +108,6 @@ class DynamicMetrics:
         p, q = orig_feat.get("peak_indices"), surr_feat.get("peak_indices")
         return (list(p) if p is not None else []), (list(q) if q is not None else [])
 
-    @cached_property
-    def mean_template(self) -> tuple[np.ndarray | None, np.ndarray | None]:
-        def _mean_template(v, peaks, half_win):
-            snippets = [
-                v[p - half_win : p + half_win + 1]
-                for p in peaks
-                if p - half_win >= 0 and p + half_win + 1 <= len(v)
-            ]
-            return np.mean(snippets, axis=0) if snippets else None
-
-        orig_v, surr_v = self.voltages
-        orig_peaks, surr_peaks = self.peaks
-        half_win = int(2.0 / self.dt)
-        orig_tmpl = _mean_template(orig_v, orig_peaks, half_win)
-        surr_tmpl = _mean_template(surr_v, surr_peaks, half_win)
-        return orig_tmpl, surr_tmpl
-
 
 @dataclass
 class SpikeMetrics:
@@ -135,7 +118,24 @@ class SpikeMetrics:
     @cached_property
     def _spike_shape_corr(self) -> dict:
         """平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
-        orig_tmpl, surr_tmpl = self._dm.mean_template
+
+        def _mean_template(v, peaks, half_win):
+            snippets = [
+                v[p - half_win : p + half_win + 1]
+                for p in peaks
+                if p - half_win >= 0 and p + half_win + 1 <= len(v)
+            ]
+            return np.mean(snippets, axis=0) if snippets else None
+
+        def mean_template(_dm) -> tuple[np.ndarray | None, np.ndarray | None]:
+            orig_v, surr_v = _dm.voltages
+            orig_peaks, surr_peaks = _dm.peaks
+            half_win = int(2.0 / _dm.dt)
+            orig_tmpl = _mean_template(orig_v, orig_peaks, half_win)
+            surr_tmpl = _mean_template(surr_v, surr_peaks, half_win)
+            return orig_tmpl, surr_tmpl
+
+        orig_tmpl, surr_tmpl = mean_template(self._dm)
         if orig_tmpl is None or surr_tmpl is None:
             return {"spike_shape_corr": _NAN}
         return {"spike_shape_corr": float(np.corrcoef(orig_tmpl, surr_tmpl)[0, 1])}
