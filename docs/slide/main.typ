@@ -83,41 +83,8 @@ $
 - 電位差に応じて電流がコンパートメント間を流れる($I_"pre",I_"post"$)
 - dend,axonは受動的,somaは隣接するコンパートメントから流入した電流によりスパイク発射
 
-== 3コンパートメントモデルの振る舞い
-#grid(
-  columns: (1.5fr, 1fr),
-  // 2つの列を定義し、幅を均等に (1fr) します
-  gutter: 1em,
-  // 列間の間隔 (オプション)
-
-  // --- 1列目 (左側) ---
-  [
-    #figure(
-      image("pic/result/three_comp_oridginal.png"), // ここに画像ファイルを指定
-    )
-  ],
-
-  // --- 2列目 (右側) ---
-  [
-    // コンパートメント間を流れる電流は、
-    $
-      cases(
-      I_"pre"=g_"pre" (V_"dend"-V_"soma"),
-      I_"post"=g_"post" (V_"soma"-V_"axon"))
-    $
-    // で与えられ、somaコンパートメントへの流入電流は
-
-    $I_"soma"=& g_"pre"(V_"dend"-V_"soma")\
-    -& g_"post"(V_"soma"-V_"axon")$
-  ],
-)
-// - Hodgkin-Huxleyモデルに外部入力として$I_"soma"$があると考える
-// - $I_"soma"$は、外部電流$I_"ext"$以外にsomaコンパートメント自身の膜電位$V_"soma"$にも依存
-//
-- somaコンパートメントに入力される電流は、somaコンパートメント自身の膜電位の影響を受けるため、somaコンパートメントにはスパイク状の電流が入力される 
 
 
-== 
 == 3Compartment代理モデルの作成方法
 #image("3comp.png", width: 100%)
 
@@ -139,8 +106,6 @@ $
 $
 - SINDy(非線形ダイナミクスのスパース同定)で、元のダイナミクスを再現するよう上式の#text(red)[係数]推定
 - 代理モデル内の#text(blue)[関数]はSINDyにおけるハイパーパラメーターで、Hodgkin-Huxleyモデル中に出現する関数群を選択
-
-
 
 
 
