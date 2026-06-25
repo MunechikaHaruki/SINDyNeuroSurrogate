@@ -65,3 +65,10 @@ marimo:
 # Claude Code連携用（MCP + watchモード）
 marimo-mcp:
     {{ VIRTUAL_ENV }} marimo edit --watch --mcp --no-token --port 2701 scripts/marimo.py
+
+unite:
+    gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite \
+      -dDEVICEWIDTHPOINTS=960 -dDEVICEHEIGHTPOINTS=540 \
+      -dFIXEDMEDIA -dPDFFitPage \
+      -sOutputFile=./docs/slide/researchslide.pdf \
+      ./docs/slide/first.pdf ./docs/slide/second.pdf
