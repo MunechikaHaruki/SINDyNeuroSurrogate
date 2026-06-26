@@ -22,13 +22,6 @@ def _(analysis, base_button):
 
 
 @app.cell
-def _(analysis, param_button):
-    eval_ui = analysis.make_eval_ui(param_button)
-    analysis.render_eval(eval_ui)
-    return (eval_ui,)
-
-
-@app.cell
 def _(analysis, base_button):
     analysis.render_model_info(base_button)
     return
@@ -47,16 +40,16 @@ def _(analysis, base_button, param_button):
 
 
 @app.cell
-def _(analysis, eval_ui, result):
-    spike_ui = analysis.make_spike_ui(result, eval_ui)
+def _(analysis, param_button, result):
+    spike_ui = analysis.make_spike_ui(result, param_button)
     analysis.render_spike(spike_ui)
     return (spike_ui,)
 
 
 @app.cell
-def _(analysis, eval_ui, result, spike_ui):
+def _(analysis, param_button, result, spike_ui):
     html_result, fig_result, dfs_result = analysis.view_result(
-        eval_ui, result, spike_ui
+        param_button, result, spike_ui
     )
     html_result
     return dfs_result, fig_result
@@ -72,9 +65,9 @@ def _(base_button):
 
 
 @app.cell
-def _(analysis_sweep, base_button, eval_ui, param_button, sweep_ui):
+def _(analysis_sweep, base_button, param_button, sweep_ui):
     html_sweep, fig_sweep = analysis_sweep.view_sweep(
-        sweep_ui, base_button, param_button, eval_ui
+        sweep_ui, base_button, param_button
     )
     html_sweep
     return (fig_sweep,)

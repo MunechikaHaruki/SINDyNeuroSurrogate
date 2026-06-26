@@ -237,6 +237,8 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
                 options=comp_names, value=[comp_names[0]]
             ),
             "run_id": mo.ui.dropdown(options=run_ids, value=run_ids[0]),
+            "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
+            "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
         }
     )
 
@@ -248,28 +250,9 @@ def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
     - currentui: {param_ui["current_params"]}
     - surrogate target: {param_ui["surrogate_targets"]}
     - run id: {param_ui["run_id"]}
+    - 評価対象comp: {param_ui["eval_comp"]}
+    - 描画関数: {param_ui["draw_func"]}
     """)
-
-
-# ---------------------------------------------------------------------------
-# Eval UI
-# ---------------------------------------------------------------------------
-
-
-def make_eval_ui(param_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_options = cast(list[str], param_ui["surrogate_targets"].value)
-    return mo.ui.dictionary(
-        {
-            "eval_comp": mo.ui.dropdown(options=comp_options, value=comp_options[0]),
-            "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
-        }
-    )
-
-
-def render_eval(eval_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.md(
-        f"評価対象のComp:{eval_ui['eval_comp']},描画関数:{eval_ui['draw_func']}"
-    )
 
 
 # ---------------------------------------------------------------------------
