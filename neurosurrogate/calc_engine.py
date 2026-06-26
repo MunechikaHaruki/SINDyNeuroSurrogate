@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from .builder.build_coords import build_indices, set_coords, set_i_internal
-from .model.model_dataset import NeuronGraph
+from .model.model_dataset import DatasetConfig
 from .model.model_neurosindy import (
     DUMMY_SINDY_ARGS,
     SINDyNeuroSurrogate,
@@ -95,9 +95,12 @@ def generic_euler_solver(init, u, dt, model_args):
 
 
 def unified_simulator(
-    dt, u, net: NeuronGraph, surrogate_model: SINDyNeuroSurrogate | None = None
+    cfg: DatasetConfig, surrogate_model: SINDyNeuroSurrogate | None = None
 ):
     sindy_args = surrogate_model.sindy_args if surrogate_model else DUMMY_SINDY_ARGS
+    net = cfg.net
+    dt = cfg.dt
+    u = cfg.current.build()
     indice = build_indices(net)
     logger.debug(f"surr_target_id:{indice['ids']['surr']}")
     dataset = set_coords(

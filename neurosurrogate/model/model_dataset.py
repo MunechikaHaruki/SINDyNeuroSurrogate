@@ -237,6 +237,18 @@ class DatasetConfig:
             net=NeuronGraph.from_dict(d["net"]),
         )
 
+    def with_surrogates(
+        self,
+        targets: set[str],
+        make_surr: Callable[[str], "Compartment"],
+    ) -> "DatasetConfig":
+        return DatasetConfig(
+            model_name=self.model_name,
+            dt=self.dt,
+            current=self.current,
+            net=self.net.with_surrogates(targets, make_surr),
+        )
+
     @classmethod
     def build_dataset(
         cls,

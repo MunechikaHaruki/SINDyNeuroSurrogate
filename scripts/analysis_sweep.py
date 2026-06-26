@@ -13,7 +13,7 @@ from matplotlib.figure import Figure
 
 from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_dataset import CurrentConfig
+from neurosurrogate.model.model_dataset import CurrentConfig, DatasetConfig
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_wave import (
     DF_ROW_METRICS,
@@ -96,15 +96,13 @@ def _iter_amp_dms(
     """各 amp で {rid: DynamicMetrics} を yield。orig_ds は amp ごとに1回計算。"""
     net = MCMODELS[model_name]
     comp_id = net.name_to_idx(target_comp_name)
-    for amp, cfg in current_configs.items():
-        u = cfg.build()
-        orig_ds = unified_simulator(dt=dt, u=u, net=net)
+    for amp, current in current_configs.items():
+        dset_cfg = DatasetConfig(model_name=model_name, dt=dt, current=current, net=net)
+        orig_ds = unified_simulator(dset_cfg)
         dms: dict[str, DynamicMetrics] = {}
         for rid, surrogate in surrogates.items():
             surr_ds = unified_simulator(
-                dt=dt,
-                u=u,
-                net=net.with_surrogates(
+                dset_cfg.with_surrogates(
                     targets={net.nodes[comp_id].name},
                     make_surr=surrogate.make_surr_comp,
                 ),

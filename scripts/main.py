@@ -49,11 +49,7 @@ def cli_flow(cfg_sindy):
 
         mlflow.log_dict(train_dataset_cfg.to_dict(), "dataset.yaml")
         surrogate_result = surrogate.fit(
-            unified_simulator(
-                dt=train_dataset_cfg.dt,
-                u=train_dataset_cfg.current.build(),
-                net=train_dataset_cfg.net,
-            ),
+            unified_simulator(train_dataset_cfg),
             MCMODELS[cfg_sindy["datasets"]["model_name"]].name_to_idx(
                 cfg_sindy["train_comp_identifier"]
             ),

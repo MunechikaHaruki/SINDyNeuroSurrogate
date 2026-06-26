@@ -309,7 +309,9 @@ def _parse_eval_button(
     param_button: mo.ui.dictionary,
 ) -> tuple[DatasetConfig, str, list[str]]:
     current_type = str(base_button["current_type"].value)
-    run_id = str(cast(pd.DataFrame, param_button["run_selector"].value)["run_id"].iloc[0])
+    run_id = str(
+        cast(pd.DataFrame, param_button["run_selector"].value)["run_id"].iloc[0]
+    )
     current_params_val = param_button["current_params"].value
     current_params = current_params_val if current_params_val else None
     sim_params = cast(dict, param_button["sim_params"].value)
@@ -331,12 +333,9 @@ def calc_eval(base_button: mo.ui.dictionary, param_button: mo.ui.dictionary) -> 
     )
 
     surrogate_model = load_surrogate_model(run_id)
-    u = dataset_cfg.current.build()
-    original_ds = unified_simulator(dt=dataset_cfg.dt, u=u, net=dataset_cfg.net)
+    original_ds = unified_simulator(dataset_cfg)
     surr_ds = unified_simulator(
-        dt=dataset_cfg.dt,
-        u=u,
-        net=dataset_cfg.net.with_surrogates(
+        dataset_cfg.with_surrogates(
             targets=set(surrogate_targets),
             make_surr=surrogate_model.make_surr_comp,
         ),
