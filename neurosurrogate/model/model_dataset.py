@@ -216,6 +216,9 @@ class DatasetConfig:
             net=NeuronGraph.from_dict(d["net"]),
         )
 
+    def build_current(self) -> np.ndarray:
+        return self.current.build(self.dt)
+
     def with_surrogates(
         self,
         targets: set[str],

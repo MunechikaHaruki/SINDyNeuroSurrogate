@@ -100,7 +100,7 @@ def unified_simulator(
     sindy_args = surrogate_model.sindy_args if surrogate_model else DUMMY_SINDY_ARGS
     net = cfg.net
     dt = cfg.dt
-    u = cfg.current.build(dt)
+    u = cfg.build_current()
     indice = build_indices(net)
     logger.debug(f"surr_target_id:{indice['ids']['surr']}")
     dataset = set_coords(
