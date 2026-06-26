@@ -41,7 +41,7 @@ mypy は `strict` モードだが `scripts/` は除外。
 
 **neurosurrogate/profiler/**: `profiler_model.py`(`OpCost`代数、`SINDyResult`、`SINDyAnalyzer`) / `profiler_wave.py`(eFELスパイクメトリクス+RMSE/MAE) / `profiler_view.py`(`draw_engine`/`TraceSpec`/`PanelSpec`、波形描画エンジン) / `registry_view.py`(`DRAW_MAP`、可視化スペックレジストリ)
 
-**scripts/**: `main.py`(Hydraエントリポイント) / `io_handler.py`(MLflow I/O。`RunInfo`でrun情報読み込み、`SINDySurrogateMLflowModel`としてサロゲートをpyfunc形式で保存/復元) / `analysis_core.py`(marimo向け評価ロジック。`build_eval_result`がサロゲート置換後シミュレーション結果を返す) / `analysis_sweep.py`(振幅スイープ評価+plot) / `analysis.py`+`marimo.py`(marimo UI定義+ノートブック本体) / `conf/`(Hydra設定: `config.yaml` / `sindy/base.yaml` / プリセットyaml)
+**scripts/**: `main.py`(Hydraエントリポイント) / `io_handler.py`(MLflow I/O。`RunInfo`でrun情報読み込み、`SINDySurrogateMLflowModel`としてサロゲートをpyfunc形式で保存/復元) / `analysis.py`(marimo向け評価ロジック+UI定義。`calc_eval`がサロゲート置換後シミュレーション結果を返す) / `analysis_sweep.py`(振幅スイープ評価+plot) / `marimo.py`(marimoノートブック本体) / `conf/`(Hydra設定: `config.yaml` / `sindy/{base,hh_relaxation,hh_informed}.yaml`)
 
 **Key notes**:
 - `SINDyNeuroSurrogate._build_source`: PySINDy特徴量名からJAX関数ソースを生成し`exec`でコンパイル（`^`→`**`変換あり）
