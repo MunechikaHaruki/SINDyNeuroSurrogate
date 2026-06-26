@@ -16,7 +16,7 @@ uv sync
 just marimo
 ```
 
-![marimo](docs/figures/marimo.png)
+![marimo](docs/marimo.png)
 
 ## Usage
 ![Status](https://img.shields.io/badge/docs-writing-orange)
