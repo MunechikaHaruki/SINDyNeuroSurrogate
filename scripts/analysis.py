@@ -70,9 +70,7 @@ def render_save_panel(panel: mo.ui.dictionary, names: list[str]) -> mo.Html:
     return mo.vstack([mo.md("### 画像保存パネル (docs/result/ 配下)"), *rows])
 
 
-def save_panel_figs(
-    panel: mo.ui.dictionary, figs: dict[str, Figure]
-) -> mo.Html:
+def save_panel_figs(panel: mo.ui.dictionary, figs: dict[str, Figure]) -> mo.Html:
     """各ボタン状態を見て、押下されているものだけ対応figを保存。"""
     msgs: list = []
     for name, fig in figs.items():
@@ -125,11 +123,6 @@ def make_base_ui() -> mo.ui.dictionary:
             "current_type": mo.ui.dropdown(CurrentList, value="steady"),
             "base_dataset": mo.ui.dictionary(
                 {
-                    "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
-                    "silence_duration": mo.ui.number(
-                        value=10, step=1, label="silence_duration"
-                    ),
-                    "duration": mo.ui.number(value=30, step=10, label="duration"),
                     "model_name": mo.ui.dropdown(
                         options=list(MCMODELS.keys()),
                         label="model_name",
@@ -208,6 +201,15 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
     return mo.ui.dictionary(
         {
+            "sim_params": mo.ui.dictionary(
+                {
+                    "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
+                    "silence_duration": mo.ui.number(
+                        value=10, step=1, label="silence_duration"
+                    ),
+                    "duration": mo.ui.number(value=30, step=10, label="duration"),
+                }
+            ),
             "current_params": current_params_ui,
             "surrogate_targets": mo.ui.multiselect(
                 options=comp_names, value=[comp_names[0]]
@@ -220,6 +222,7 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
     return mo.md(f"""
     ### パラメタ設定
+    - simParamsUI: {param_ui["sim_params"]}
     - currentui: {param_ui["current_params"]}
     - surrogate target: {param_ui["surrogate_targets"]}
     - run id: {param_ui["run_id"]}
@@ -293,12 +296,14 @@ def _parse_eval_button(
     current_params_val = param_button["current_params"].value
     current_params = current_params_val if current_params_val else None
     base_dataset_params = cast(dict, base_button["base_dataset"].value)
+    sim_params = cast(dict, param_button["sim_params"].value)
     surrogate_targets = cast(list[str], param_button["surrogate_targets"].value)
     if current_type == "train":
         dataset_cfg = RunInfo.get_run_info(run_id).dataset
     else:
         dataset_cfg = DatasetConfig.build_dataset(
             **base_dataset_params,
+            **sim_params,
             pipeline=CurrentConfig.build_pipeline(current_type, current_params),
         )
     return dataset_cfg, run_id, surrogate_targets

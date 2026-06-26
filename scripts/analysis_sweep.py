@@ -211,6 +211,7 @@ def view_sweep(
 ) -> tuple[mo.Html, Figure]:
     """アダプター: marimo UI → run_sweep (計算) → _plot_sweep (描画) → (Html, Figure)。"""
     ds = cast(dict[str, Any], base_button["base_dataset"].value)
+    sim = cast(dict[str, Any], param_button["sim_params"].value)
     run_ids = cast(pd.DataFrame, base_button["run_selector"].value)[
         "run_id"
     ].tolist()
@@ -219,9 +220,9 @@ def view_sweep(
     data, run_labels = run_sweep(
         run_ids=run_ids,
         model_name=str(ds["model_name"]),
-        dt=float(ds["dt"]),
-        duration=float(ds["duration"]),
-        silence_duration=float(ds["silence_duration"]),
+        dt=float(sim["dt"]),
+        duration=float(sim["duration"]),
+        silence_duration=float(sim["silence_duration"]),
         comp_name=comp_name,
         current_type=str(base_button["current_type"].value),
         base_current_params=cast(dict, param_button["current_params"].value),
