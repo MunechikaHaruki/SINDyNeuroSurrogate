@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import pandas as pd
+from analysis import get_runs_df
 from io_handler import load_surrogate_model
 from matplotlib.figure import Figure
 
@@ -51,8 +52,15 @@ def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
         if current_type == "train"
         else list(inspect.signature(FUNC_MAP[current_type]).parameters.keys())
     )
+    runs_df = get_runs_df()
     return mo.ui.dictionary(
         {
+            "run_selector": mo.ui.table(
+                pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
+                label="スイープ Run 選択（複数可）",
+                selection="multi",
+                initial_selection=[0],
+            ),
             "sweep_param": mo.ui.dropdown(options=param_keys, value=param_keys[0]),
             "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
             "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
@@ -65,16 +73,21 @@ def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
 
 def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.md(f"""
-    ### 振幅スイープ設定
-    | | |
-    |---|---|
-    | sweep param | {sweep_ui["sweep_param"]} |
-    | amp start | {sweep_ui["amp_start"]} |
-    | amp stop  | {sweep_ui["amp_stop"]}  |
-    | steps     | {sweep_ui["amp_steps"]} |
-    | metric    | {sweep_ui["metric"]} |
-    """)
+    return mo.vstack(
+        [
+            mo.md("### 振幅スイープ設定"),
+            sweep_ui["run_selector"],
+            mo.md(f"""
+| | |
+|---|---|
+| sweep param | {sweep_ui["sweep_param"]} |
+| amp start | {sweep_ui["amp_start"]} |
+| amp stop  | {sweep_ui["amp_stop"]}  |
+| steps     | {sweep_ui["amp_steps"]} |
+| metric    | {sweep_ui["metric"]} |
+"""),
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -220,9 +233,9 @@ def view_sweep(
     param_button: mo.ui.dictionary,
 ) -> tuple[mo.Html, Figure]:
     """アダプター: marimo UI → run_sweep (計算) → _plot_sweep (描画) → (Html, Figure)。"""
-    ds = _ui_val(base_button, "base_dataset")
+    model_name = str(_ui_val(base_button, "model_name"))
     sim = _ui_val(param_button, "sim_params")
-    run_ids = _ui_val(base_button, "run_selector")["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, sweep_ui["run_selector"].value)["run_id"].tolist()
     comp_name = str(_ui_val(param_button, "eval_comp"))
     sweep_cfg = SweepConfig(
         sweep_param=str(_ui_val(sweep_ui, "sweep_param")),
@@ -233,7 +246,7 @@ def view_sweep(
     )
     data, run_labels = run_sweep(
         run_ids=run_ids,
-        model_name=str(ds["model_name"]),
+        model_name=model_name,
         dt=float(sim["dt"]),
         duration=float(sim["duration"]),
         silence_duration=float(sim["silence_duration"]),

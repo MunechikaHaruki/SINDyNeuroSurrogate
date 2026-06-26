@@ -112,7 +112,7 @@ def save_panel_items(panel: mo.ui.dictionary, items: dict[str, SaveItems]) -> mo
 # ---------------------------------------------------------------------------
 
 
-def _get_runs_df():
+def get_runs_df():
     experiment = mlflow.get_experiment_by_name(TARGET_EXP)
     if experiment is None:
         raise ValueError(
@@ -134,24 +134,20 @@ def _get_runs_df():
 
 
 def make_base_ui() -> mo.ui.dictionary:
-    runs_df = _get_runs_df()
+    runs_df = get_runs_df()
     plt_options = list(typing.get_args(MplStyle))
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[0]),
             "current_type": mo.ui.dropdown(CurrentList, value="steady"),
-            "base_dataset": mo.ui.dictionary(
-                {
-                    "model_name": mo.ui.dropdown(
-                        options=list(MCMODELS.keys()),
-                        label="model_name",
-                        value="hh",
-                    ),
-                }
+            "model_name": mo.ui.dropdown(
+                options=list(MCMODELS.keys()),
+                label="model_name",
+                value="hh",
             ),
             "run_selector": mo.ui.table(
                 pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
-                label="比較・解析したいRunを複数選択",
+                label="モデル情報比較 Run 選択（複数可）",
                 selection="multi",
                 initial_selection=[0],
             ),
@@ -160,13 +156,17 @@ def make_base_ui() -> mo.ui.dictionary:
 
 
 def render_base(base_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.md(f"""
-    ### MLflow データ解析
-    - CurrentType: {base_ui["current_type"]}
-    - matplotlib rendering setting: {base_ui["plt_style"]}
-    - baseDatasetUI: {base_ui["base_dataset"]}
-    {base_ui["run_selector"]}
-    """)
+    return mo.vstack(
+        [
+            mo.md(f"""
+### MLflow データ解析
+- CurrentType: {base_ui["current_type"]}
+- matplotlib rendering setting: {base_ui["plt_style"]}
+- model_name: {base_ui["model_name"]}
+"""),
+            base_ui["run_selector"],
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -194,10 +194,10 @@ def _make_ui_element(name: str, annotation: type, default):
 
 
 def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    model_name = str(cast(dict, base_ui["base_dataset"].value)["model_name"])
+    model_name = str(base_ui["model_name"].value)
     comp_names = MCMODELS[model_name].names
-    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
     current_type = str(base_ui["current_type"].value)
+    runs_df = get_runs_df()
 
     if current_type == "train":
         current_params_ui: mo.ui.dictionary = mo.ui.dictionary({})
@@ -217,6 +217,12 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
     return mo.ui.dictionary(
         {
+            "run_selector": mo.ui.table(
+                pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
+                label="単一評価 Run 選択",
+                selection="single",
+                initial_selection=[0],
+            ),
             "sim_params": mo.ui.dictionary(
                 {
                     "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
@@ -230,7 +236,6 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
             "surrogate_targets": mo.ui.multiselect(
                 options=comp_names, value=[comp_names[0]]
             ),
-            "run_id": mo.ui.dropdown(options=run_ids, value=run_ids[0]),
             "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
             "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
         }
@@ -238,15 +243,19 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
 
 def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.md(f"""
-    ### パラメタ設定
-    - simParamsUI: {param_ui["sim_params"]}
-    - currentui: {param_ui["current_params"]}
-    - surrogate target: {param_ui["surrogate_targets"]}
-    - run id: {param_ui["run_id"]}
-    - 評価対象comp: {param_ui["eval_comp"]}
-    - 描画関数: {param_ui["draw_func"]}
-    """)
+    return mo.vstack(
+        [
+            mo.md("### パラメタ設定"),
+            param_ui["run_selector"],
+            mo.md(f"""
+- simParamsUI: {param_ui["sim_params"]}
+- currentui: {param_ui["current_params"]}
+- surrogate target: {param_ui["surrogate_targets"]}
+- 評価対象comp: {param_ui["eval_comp"]}
+- 描画関数: {param_ui["draw_func"]}
+"""),
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -277,11 +286,11 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
 
 
 def get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:
-    return view_neuron_graph(MCMODELS[base_ui["base_dataset"].value["model_name"]])
+    return view_neuron_graph(MCMODELS[str(base_ui["model_name"].value)])
 
 
 def render_neurograph(base_ui: mo.ui.dictionary) -> mo.Html:
-    _model_name = base_ui["base_dataset"].value["model_name"]
+    _model_name = str(base_ui["model_name"].value)
     return mo.vstack(
         [
             mo.md(f"### NeuronGraph: `{_model_name}`"),
@@ -300,17 +309,16 @@ def _parse_eval_button(
     param_button: mo.ui.dictionary,
 ) -> tuple[DatasetConfig, str, list[str]]:
     current_type = str(base_button["current_type"].value)
-    run_id = str(param_button["run_id"].value)
+    run_id = str(cast(pd.DataFrame, param_button["run_selector"].value)["run_id"].iloc[0])
     current_params_val = param_button["current_params"].value
     current_params = current_params_val if current_params_val else None
-    base_dataset_params = cast(dict, base_button["base_dataset"].value)
     sim_params = cast(dict, param_button["sim_params"].value)
     surrogate_targets = cast(list[str], param_button["surrogate_targets"].value)
     if current_type == "train":
         dataset_cfg = RunInfo.get_run_info(run_id).dataset
     else:
         dataset_cfg = DatasetConfig.build_dataset(
-            **base_dataset_params,
+            model_name=str(base_button["model_name"].value),
             **sim_params,
             pipeline=CurrentConfig.build_pipeline(current_type, current_params),
         )
