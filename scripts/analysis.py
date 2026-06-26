@@ -70,21 +70,43 @@ def render_save_panel(panel: mo.ui.dictionary, names: list[str]) -> mo.Html:
     return mo.vstack([mo.md("### 画像保存パネル (docs/result/ 配下)"), *rows])
 
 
-def save_panel_figs(panel: mo.ui.dictionary, figs: dict[str, Figure]) -> mo.Html:
-    """各ボタン状態を見て、押下されているものだけ対応figを保存。"""
+SaveItem = Figure | pd.DataFrame
+SaveItems = SaveItem | dict[str, SaveItem]
+
+
+def _save_one(obj: SaveItem, path: Path) -> None:
+    if isinstance(obj, Figure):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        obj.savefig(path, dpi=300, bbox_inches="tight")
+    elif isinstance(obj, pd.DataFrame):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        obj.to_csv(path)
+    else:
+        raise TypeError(f"unsupported save target: {type(obj)}")
+
+
+def save_panel_items(
+    panel: mo.ui.dictionary, items: dict[str, SaveItems]
+) -> mo.Html:
+    """ボタン押下されたものだけ保存。dict要素はpath末尾に `_<key>` 付与で個別保存。"""
     msgs: list = []
-    for name, fig in figs.items():
-        item = panel[name]
-        if not item["save"].value:
+    for name, obj in items.items():
+        ctrl = panel[name]
+        if not ctrl["save"].value:
             continue
-        rel = str(item["path"].value).strip()
+        rel = str(ctrl["path"].value).strip()
         if not rel:
             msgs.append(mo.md(f"⚠️ {name}: パス未指定"))
             continue
-        out = RESULT_DIR / rel
-        out.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(out, dpi=300, bbox_inches="tight")
-        msgs.append(mo.md(f"✅ {name}: `{out.relative_to(REPO_ROOT)}`"))
+        base = RESULT_DIR / rel
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                out = base.with_name(f"{base.stem}_{k}{base.suffix}")
+                _save_one(v, out)
+                msgs.append(mo.md(f"✅ {name}[{k}]: `{out.relative_to(REPO_ROOT)}`"))
+        else:
+            _save_one(obj, base)
+            msgs.append(mo.md(f"✅ {name}: `{base.relative_to(REPO_ROOT)}`"))
     return mo.vstack(msgs) if msgs else mo.md("(未保存)")
 
 
@@ -255,6 +277,11 @@ def render_eval(eval_ui: mo.ui.dictionary) -> mo.Html:
 # ---------------------------------------------------------------------------
 
 
+def get_model_info_figs(base_ui: mo.ui.dictionary) -> dict[str, Figure]:
+    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
+    return {rid[:8]: RunInfo.get_run_info(rid).sindy_coef for rid in run_ids}
+
+
 def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
     run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
     run_infos = [RunInfo.get_run_info(rid) for rid in run_ids]
@@ -272,12 +299,16 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
     )
 
 
+def get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:
+    return view_neuron_graph(MCMODELS[base_ui["base_dataset"].value["model_name"]])
+
+
 def render_neurograph(base_ui: mo.ui.dictionary) -> mo.Html:
     _model_name = base_ui["base_dataset"].value["model_name"]
     return mo.vstack(
         [
             mo.md(f"### NeuronGraph: `{_model_name}`"),
-            mo.mpl.interactive(view_neuron_graph(MCMODELS[_model_name])),
+            mo.mpl.interactive(get_neurograph_fig(base_ui)),
         ]
     )
 
@@ -385,7 +416,7 @@ def view_result(
     eval_ui: mo.ui.dictionary,
     result: dict,
     spike_ui: mo.ui.dictionary | None = None,
-) -> tuple[mo.Html, Figure]:
+) -> tuple[mo.Html, Figure, dict[str, pd.DataFrame]]:
     target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
     dm = DynamicMetrics(
         result["original_ds"], result["surr_ds"], target_comp_id, result["dt"]
@@ -417,10 +448,17 @@ def view_result(
         target_comp_id,
     )
 
+    df_waveform = waveform_summary_df(dm)
+    df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
+    df_scalar = pd.DataFrame(
+        {**waveform_summary(dm), **spike_shape_corr(dm)}.items(),
+        columns=["metric", "value"],
+    ).set_index("metric")
+
     html = mo.vstack(
         [
             mo.md("#### 波形・発火パターン指標（orig / surr / orig-surr）"),
-            waveform_summary_df(dm),
+            df_waveform,
             mo.md("#### 波形誤差スカラー"),
             _stat_cards(waveform_summary(dm)),
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
@@ -428,8 +466,13 @@ def view_result(
             mo.md(
                 f"#### AP・ISI 指標（orig / surr / orig-surr） — orig: {spike_orig} / surr: {spike_surr}"
             ),
-            spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr),
+            df_spike,
             mo.mpl.interactive(fig),
         ]
     )
-    return html, fig
+    dfs = {
+        "waveform_metrics": df_waveform,
+        "spike_metrics": df_spike,
+        "scalar_metrics": df_scalar,
+    }
+    return html, fig, dfs

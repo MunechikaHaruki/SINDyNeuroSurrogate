@@ -55,9 +55,11 @@ def _(analysis, eval_ui, result):
 
 @app.cell
 def _(analysis, eval_ui, result, spike_ui):
-    html_result, fig_result = analysis.view_result(eval_ui, result, spike_ui)
+    html_result, fig_result, dfs_result = analysis.view_result(
+        eval_ui, result, spike_ui
+    )
     html_result
-    return (fig_result,)
+    return dfs_result, fig_result
 
 
 @app.cell
@@ -83,6 +85,11 @@ def _(analysis):
     save_defaults = {
         "waveform": "waveform.png",
         "sweep": "sweep.png",
+        "neurograph": "neurograph.png",
+        "model_info": "model_info.png",
+        "waveform_metrics": "waveform_metrics.csv",
+        "spike_metrics": "spike_metrics.csv",
+        "scalar_metrics": "scalar_metrics.csv",
     }
     save_panel = analysis.make_save_panel(save_defaults)
     analysis.render_save_panel(save_panel, list(save_defaults.keys()))
@@ -90,10 +97,18 @@ def _(analysis):
 
 
 @app.cell
-def _(analysis, fig_result, fig_sweep, save_panel):
-    analysis.save_panel_figs(
+def _(analysis, base_button, dfs_result, fig_result, fig_sweep, save_panel):
+    analysis.save_panel_items(
         save_panel,
-        {"waveform": fig_result, "sweep": fig_sweep},
+        {
+            "waveform": fig_result,
+            "sweep": fig_sweep,
+            "neurograph": analysis.get_neurograph_fig(base_button),
+            "model_info": analysis.get_model_info_figs(base_button),
+            "waveform_metrics": dfs_result["waveform_metrics"],
+            "spike_metrics": dfs_result["spike_metrics"],
+            "scalar_metrics": dfs_result["scalar_metrics"],
+        },
     )
     return
 
