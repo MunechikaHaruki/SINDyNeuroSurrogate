@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import pandas as pd
-from analysis import get_runs_df
 from io_handler import load_surrogate_model
 from matplotlib.figure import Figure
 
@@ -52,15 +51,8 @@ def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
         if current_type == "train"
         else list(inspect.signature(FUNC_MAP[current_type]).parameters.keys())
     )
-    runs_df = get_runs_df()
     return mo.ui.dictionary(
         {
-            "run_selector": mo.ui.table(
-                pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
-                label="スイープ Run 選択（複数可）",
-                selection="multi",
-                initial_selection=[0],
-            ),
             "sweep_param": mo.ui.dropdown(options=param_keys, value=param_keys[0]),
             "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
             "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
@@ -76,7 +68,6 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
     return mo.vstack(
         [
             mo.md("### 振幅スイープ設定"),
-            sweep_ui["run_selector"],
             mo.md(f"""
 | | |
 |---|---|
@@ -232,10 +223,10 @@ def view_sweep(
     base_button: mo.ui.dictionary,
     param_button: mo.ui.dictionary,
 ) -> tuple[mo.Html, Figure]:
-    """アダプター: marimo UI → run_sweep (計算) → _plot_sweep (描画) → (Html, Figure)。"""
+    """アダプター: marimo UI → run_sweep → _plot_sweep → (Html, Figure)。"""
     model_name = str(_ui_val(base_button, "model_name"))
     sim = _ui_val(param_button, "sim_params")
-    run_ids = cast(pd.DataFrame, sweep_ui["run_selector"].value)["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, base_button["run_selector"].value)["run_id"].tolist()
     comp_name = str(_ui_val(param_button, "eval_comp"))
     sweep_cfg = SweepConfig(
         sweep_param=str(_ui_val(sweep_ui, "sweep_param")),

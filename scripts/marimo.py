@@ -15,14 +15,6 @@ def _():
 
 @app.cell
 def _(analysis, base_button):
-    analysis.setup_mpl(base_button["plt_style"].value)
-    param_button = analysis.make_param_ui(base_button)
-    analysis.render_param(param_button)
-    return (param_button,)
-
-
-@app.cell
-def _(analysis, base_button):
     analysis.render_model_info(base_button)
     return
 
@@ -31,6 +23,14 @@ def _(analysis, base_button):
 def _(analysis, base_button):
     analysis.render_neurograph(base_button)
     return
+
+
+@app.cell
+def _(analysis, base_button):
+    analysis.setup_mpl(base_button["plt_style"].value)
+    param_button = analysis.make_param_ui(base_button)
+    analysis.render_param(param_button)
+    return (param_button,)
 
 
 @app.cell
