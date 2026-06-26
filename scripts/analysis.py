@@ -2,6 +2,7 @@ import inspect
 import os
 import typing
 from functools import partial
+from pathlib import Path
 from typing import Literal, cast
 
 import marimo as mo
@@ -9,6 +10,7 @@ import matplotlib.pyplot as plt
 import mlflow
 import pandas as pd
 from io_handler import TARGET_EXP, RunInfo, load_surrogate_model, setup_mlflow
+from matplotlib.figure import Figure
 
 from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.calc_engine import unified_simulator
@@ -32,6 +34,60 @@ MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
 
 setup_mlflow()
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+RESULT_DIR = REPO_ROOT / "docs" / "result"
+
+
+# ---------------------------------------------------------------------------
+# Save Panel
+# ---------------------------------------------------------------------------
+
+
+def make_save_panel(defaults: dict[str, str]) -> mo.ui.dictionary:
+    """defaults = {name: default_path}. 各nameごとに path入力＋保存ボタンを生成。"""
+    return mo.ui.dictionary(
+        {
+            name: mo.ui.dictionary(
+                {
+                    "path": mo.ui.text(value=default, label=name),
+                    "save": mo.ui.run_button(label=f"{name} 保存"),
+                }
+            )
+            for name, default in defaults.items()
+        }
+    )
+
+
+def render_save_panel(panel: mo.ui.dictionary, names: list[str]) -> mo.Html:
+    rows = [
+        mo.hstack(
+            [panel[name]["path"], panel[name]["save"]],
+            justify="start",
+        )
+        for name in names
+    ]
+    return mo.vstack([mo.md("### 画像保存パネル (docs/result/ 配下)"), *rows])
+
+
+def save_panel_figs(
+    panel: mo.ui.dictionary, figs: dict[str, Figure]
+) -> mo.Html:
+    """各ボタン状態を見て、押下されているものだけ対応figを保存。"""
+    msgs: list = []
+    for name, fig in figs.items():
+        item = panel[name]
+        if not item["save"].value:
+            continue
+        rel = str(item["path"].value).strip()
+        if not rel:
+            msgs.append(mo.md(f"⚠️ {name}: パス未指定"))
+            continue
+        out = RESULT_DIR / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out, dpi=300, bbox_inches="tight")
+        msgs.append(mo.md(f"✅ {name}: `{out.relative_to(REPO_ROOT)}`"))
+    return mo.vstack(msgs) if msgs else mo.md("(未保存)")
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +380,7 @@ def view_result(
     eval_ui: mo.ui.dictionary,
     result: dict,
     spike_ui: mo.ui.dictionary | None = None,
-) -> mo.Html:
+) -> tuple[mo.Html, Figure]:
     target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
     dm = DynamicMetrics(
         result["original_ds"], result["surr_ds"], target_comp_id, result["dt"]
@@ -349,7 +405,14 @@ def view_result(
             wrap=True,
         )
 
-    return mo.vstack(
+    fig = DRAW_MAP[eval_ui["draw_func"].value](
+        result["original_ds"],
+        result["surr_ds"],
+        pre,
+        target_comp_id,
+    )
+
+    html = mo.vstack(
         [
             mo.md("#### 波形・発火パターン指標（orig / surr / orig-surr）"),
             waveform_summary_df(dm),
@@ -361,13 +424,7 @@ def view_result(
                 f"#### AP・ISI 指標（orig / surr / orig-surr） — orig: {spike_orig} / surr: {spike_surr}"
             ),
             spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr),
-            mo.mpl.interactive(
-                DRAW_MAP[eval_ui["draw_func"].value](
-                    result["original_ds"],
-                    result["surr_ds"],
-                    pre,
-                    target_comp_id,
-                )
-            ),
+            mo.mpl.interactive(fig),
         ]
     )
+    return html, fig

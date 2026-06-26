@@ -208,8 +208,8 @@ def view_sweep(
     base_button: mo.ui.dictionary,
     param_button: mo.ui.dictionary,
     eval_ui: mo.ui.dictionary,
-) -> mo.Html:
-    """アダプター: marimo UI → run_sweep (計算) → _plot_sweep (描画) → mo.Html。"""
+) -> tuple[mo.Html, Figure]:
+    """アダプター: marimo UI → run_sweep (計算) → _plot_sweep (描画) → (Html, Figure)。"""
     ds = cast(dict[str, Any], base_button["base_dataset"].value)
     run_ids = cast(pd.DataFrame, base_button["run_selector"].value)[
         "run_id"
@@ -239,4 +239,5 @@ def view_sweep(
         sweep_param=str(sweep_ui["sweep_param"].value),
         run_labels=run_labels,
     )
-    return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)])
+    html = mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)])
+    return html, fig

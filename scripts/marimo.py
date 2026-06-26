@@ -55,8 +55,9 @@ def _(analysis, eval_ui, result):
 
 @app.cell
 def _(analysis, eval_ui, result, spike_ui):
-    analysis.view_result(eval_ui, result, spike_ui)
-    return
+    html_result, fig_result = analysis.view_result(eval_ui, result, spike_ui)
+    html_result
+    return (fig_result,)
 
 
 @app.cell
@@ -70,7 +71,30 @@ def _(base_button):
 
 @app.cell
 def _(analysis_sweep, base_button, eval_ui, param_button, sweep_ui):
-    analysis_sweep.view_sweep(sweep_ui, base_button, param_button, eval_ui)
+    html_sweep, fig_sweep = analysis_sweep.view_sweep(
+        sweep_ui, base_button, param_button, eval_ui
+    )
+    html_sweep
+    return (fig_sweep,)
+
+
+@app.cell
+def _(analysis):
+    save_defaults = {
+        "waveform": "waveform.png",
+        "sweep": "sweep.png",
+    }
+    save_panel = analysis.make_save_panel(save_defaults)
+    analysis.render_save_panel(save_panel, list(save_defaults.keys()))
+    return (save_panel,)
+
+
+@app.cell
+def _(analysis, fig_result, fig_sweep, save_panel):
+    analysis.save_panel_figs(
+        save_panel,
+        {"waveform": fig_result, "sweep": fig_sweep},
+    )
     return
 
 
