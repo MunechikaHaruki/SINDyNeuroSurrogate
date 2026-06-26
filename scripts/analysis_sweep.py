@@ -1,5 +1,6 @@
 import inspect
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any, cast
 
 import marimo as mo
@@ -20,6 +21,23 @@ from neurosurrogate.profiler.profiler_wave import (
     DynamicMetrics,
     extract_metric,
 )
+
+
+@dataclass(frozen=True)
+class SweepConfig:
+    sweep_param: str
+    amp_start: float
+    amp_stop: float
+    amp_steps: int
+    metric_key: str
+
+    @property
+    def amp_values(self) -> np.ndarray:
+        return np.linspace(self.amp_start, self.amp_stop, self.amp_steps)
+
+    def override(self, base: dict, amp: float) -> dict:
+        return {**base, self.sweep_param: amp}
+
 
 # ---------------------------------------------------------------------------
 # Sweep UI
@@ -163,11 +181,7 @@ def run_sweep(
     comp_name: str,
     current_type: str,
     base_current_params: dict,
-    sweep_param: str,
-    amp_start: float,
-    amp_stop: float,
-    amp_steps: int,
-    metric_key: str,
+    cfg: SweepConfig,
 ) -> tuple[pd.DataFrame, dict[str, str]]:
     """純粋計算層: metric DataFrame と run_label dict を返す。plot しない。"""
     current_configs: dict[float, CurrentConfig] = {
@@ -175,15 +189,14 @@ def run_sweep(
             iteration=int(duration / dt),
             silence_steps=int(silence_duration / dt),
             pipeline=CurrentConfig.build_pipeline(
-                current_type, {**base_current_params, sweep_param: amp}
+                current_type, cfg.override(base_current_params, amp)
             ),
         )
-        for amp in np.linspace(amp_start, amp_stop, amp_steps)
+        for amp in cfg.amp_values
     }
     surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
-    client = mlflow.MlflowClient()
     run_labels = {
-        rid: client.get_run(rid).data.tags.get("mlflow.runName", rid[:6])
+        rid: mlflow.MlflowClient().get_run(rid).data.tags.get("mlflow.runName", rid[:6])
         for rid in run_ids
     }
     data = _sweep_amplitude_metrics(
@@ -192,7 +205,7 @@ def run_sweep(
         model_name=model_name,
         dt=dt,
         target_comp_name=comp_name,
-        metric_key=metric_key,
+        metric_key=cfg.metric_key,
     )
     return data, run_labels
 
@@ -211,8 +224,13 @@ def view_sweep(
     sim = _ui_val(param_button, "sim_params")
     run_ids = _ui_val(base_button, "run_selector")["run_id"].tolist()
     comp_name = str(_ui_val(param_button, "eval_comp"))
-    metric_key = str(_ui_val(sweep_ui, "metric"))
-    sweep_param = str(_ui_val(sweep_ui, "sweep_param"))
+    sweep_cfg = SweepConfig(
+        sweep_param=str(_ui_val(sweep_ui, "sweep_param")),
+        amp_start=float(_ui_val(sweep_ui, "amp_start")),
+        amp_stop=float(_ui_val(sweep_ui, "amp_stop")),
+        amp_steps=int(_ui_val(sweep_ui, "amp_steps")),
+        metric_key=str(_ui_val(sweep_ui, "metric")),
+    )
     data, run_labels = run_sweep(
         run_ids=run_ids,
         model_name=str(ds["model_name"]),
@@ -222,18 +240,14 @@ def view_sweep(
         comp_name=comp_name,
         current_type=str(_ui_val(base_button, "current_type")),
         base_current_params=_ui_val(param_button, "current_params"),
-        sweep_param=sweep_param,
-        amp_start=float(_ui_val(sweep_ui, "amp_start")),
-        amp_stop=float(_ui_val(sweep_ui, "amp_stop")),
-        amp_steps=int(_ui_val(sweep_ui, "amp_steps")),
-        metric_key=metric_key,
+        cfg=sweep_cfg,
     )
     fig = _plot_sweep(
         data,
         run_ids,
-        metric_key,
+        sweep_cfg.metric_key,
         comp_name,
-        sweep_param=sweep_param,
+        sweep_param=sweep_cfg.sweep_param,
         run_labels=run_labels,
     )
     return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)]), fig
