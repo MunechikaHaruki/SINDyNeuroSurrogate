@@ -20,14 +20,13 @@ from neurosurrogate.model.registry_compartments import COMPARTMENT_TEMPLATES
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
 
-# プロキシ設定を一時的に無効化
-os.environ["HTTP_PROXY"] = ""
-os.environ["HTTPS_PROXY"] = ""
-os.environ["NO_PROXY"] = "localhost,127.0.0.1"
-
-
 logger = logging.getLogger(__name__)
-setup_mlflow()
+
+
+def _disable_proxy() -> None:
+    os.environ["HTTP_PROXY"] = ""
+    os.environ["HTTPS_PROXY"] = ""
+    os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 
 def _build_surrogate(cfg_sindy):
@@ -71,6 +70,8 @@ def cli_flow(cfg_sindy):
 
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
+    _disable_proxy()
+    setup_mlflow()
     OmegaConf.resolve(cfg)
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(cfg_dict, dict)

@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 def setup_mlflow() -> None:
-    PROJECT_ROOT = Path(__file__).parent.parent  # 階層に応じて調整
-    mlflow.set_tracking_uri(f"sqlite:///{PROJECT_ROOT}/mlflow.db")
+    project_root = Path(__file__).parent.parent
+    mlflow.set_tracking_uri(f"sqlite:///{project_root}/mlflow.db")
     mlflow.enable_system_metrics_logging()
     mlflow.set_experiment(TARGET_EXP)
     os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
@@ -43,22 +43,15 @@ class RunInfo:
 
     @staticmethod
     def get_run_info(run_id: str) -> "RunInfo":
-        client = mlflow.MlflowClient()
-
-        def load_yaml(filename: str) -> dict:
-            return yaml.safe_load(
-                mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
-            )
-
-        def load_text(filename: str) -> str:
+        def load(filename: str) -> str:
             return mlflow.artifacts.load_text(f"runs:/{run_id}/{filename}")
 
         return RunInfo(
             run_id=run_id,
-            run_name=client.get_run(run_id).data.tags["mlflow.runName"],
-            sindy_coef=view_model(**load_yaml("view.json")),
-            dataset=DatasetConfig.from_dict(load_yaml("dataset.yaml")),
-            equations=load_text("equations.txt"),
+            run_name=mlflow.MlflowClient().get_run(run_id).data.tags["mlflow.runName"],
+            sindy_coef=view_model(**yaml.safe_load(load("view.json"))),
+            dataset=DatasetConfig.from_dict(yaml.safe_load(load("dataset.yaml"))),
+            equations=load("equations.txt"),
         )
 
 
@@ -124,15 +117,6 @@ def log_surrogate_model(surrogate: SINDyNeuroSurrogate):
 
 
 def load_surrogate_model(run_id: str):
-    # log_surrogate_model で指定した artifact_path を使用
     model_uri = f"runs:/{run_id}/surrogate_model"
     logger.info(f"Loading custom MLflow model from: {model_uri}")
-
-    try:
-        # pyfuncとしてロード（内部で load_context が実行される）
-        # PythonModelの実体（SINDySurrogateMLflowModelのインスタンス）を取り出す
-        return mlflow.pyfunc.load_model(model_uri)._model_impl.python_model
-
-    except Exception as e:
-        logger.error(f"Failed to load surrogate from MLflow: {e}")
-        raise
+    return mlflow.pyfunc.load_model(model_uri)._model_impl.python_model

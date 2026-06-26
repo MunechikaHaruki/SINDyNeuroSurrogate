@@ -1,5 +1,4 @@
 import inspect
-import os
 import typing
 from functools import partial
 from pathlib import Path
@@ -85,9 +84,7 @@ def _save_one(obj: SaveItem, path: Path) -> None:
         raise TypeError(f"unsupported save target: {type(obj)}")
 
 
-def save_panel_items(
-    panel: mo.ui.dictionary, items: dict[str, SaveItems]
-) -> mo.Html:
+def save_panel_items(panel: mo.ui.dictionary, items: dict[str, SaveItems]) -> mo.Html:
     """ボタン押下されたものだけ保存。dict要素はpath末尾に `_<key>` 付与で個別保存。"""
     msgs: list = []
     for name, obj in items.items():
@@ -178,10 +175,9 @@ def render_base(base_ui: mo.ui.dictionary) -> mo.Html:
 
 
 def setup_mpl(matplotlib_style: str):
-    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-    STYLE_DIR = os.path.join(CURRENT_DIR, "./conf/style")
-    plt.style.use(os.path.join(STYLE_DIR, "./base.mplstyle"))
-    plt.style.use(os.path.join(STYLE_DIR, f"./{matplotlib_style}.mplstyle"))
+    style_dir = Path(__file__).resolve().parent / "conf" / "style"
+    plt.style.use(style_dir / "base.mplstyle")
+    plt.style.use(style_dir / f"{matplotlib_style}.mplstyle")
 
 
 def _make_ui_element(name: str, annotation: type, default):
@@ -211,9 +207,7 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
                 name: _make_ui_element(
                     name,
                     param.annotation,
-                    param.default
-                    if param.default is not inspect.Parameter.empty
-                    else 0,
+                    0 if param.default is inspect.Parameter.empty else param.default,
                 )
                 for name, param in inspect.signature(
                     FUNC_MAP[current_type]
@@ -324,20 +318,17 @@ def _parse_eval_button(
 
 
 def calc_eval(base_button: mo.ui.dictionary, param_button: mo.ui.dictionary) -> dict:
-
     dataset_cfg, run_id, surrogate_targets = _parse_eval_button(
         base_button, param_button
     )
 
-    original_graph = dataset_cfg.net
     surrogate_model = load_surrogate_model(run_id)
     u = dataset_cfg.current.build()
-    original_ds = unified_simulator(dt=dataset_cfg.dt, u=u, net=original_graph)
-
+    original_ds = unified_simulator(dt=dataset_cfg.dt, u=u, net=dataset_cfg.net)
     surr_ds = unified_simulator(
         dt=dataset_cfg.dt,
         u=u,
-        net=original_graph.with_surrogates(
+        net=dataset_cfg.net.with_surrogates(
             targets=set(surrogate_targets),
             make_surr=surrogate_model.make_surr_comp,
         ),
@@ -352,6 +343,9 @@ def calc_eval(base_button: mo.ui.dictionary, param_button: mo.ui.dictionary) -> 
             transform_gate, surrogate_model.preprocessor, original_ds
         ),
         "name_to_idx": MCMODELS[dataset_cfg.model_name].name_to_idx,
+        "make_dm": lambda comp_id: DynamicMetrics(
+            original_ds, surr_ds, comp_id, dataset_cfg.dt
+        ),
     }
 
 
@@ -361,10 +355,7 @@ def calc_eval(base_button: mo.ui.dictionary, param_button: mo.ui.dictionary) -> 
 
 
 def make_spike_ui(result: dict, eval_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
-    dm = DynamicMetrics(
-        result["original_ds"], result["surr_ds"], target_comp_id, result["dt"]
-    )
+    dm = result["make_dm"](result["name_to_idx"](eval_ui["eval_comp"].value))
     n_orig, n_surr = n_spikes(dm)
     orig_options: dict = {str(i): i for i in range(n_orig)}
     surr_options: dict = {str(i): i for i in range(n_surr)}
@@ -395,57 +386,57 @@ def render_spike(spike_ui: mo.ui.dictionary) -> mo.Html:
 # ---------------------------------------------------------------------------
 
 
+def _spike_idx(spike_ui: mo.ui.dictionary | None, key: str) -> int:
+    if spike_ui is None:
+        return 0
+    v = spike_ui[key].value
+    return int(v) if v is not None else 0
+
+
+def _stat_cards(d: dict) -> mo.Html:
+    return mo.hstack(
+        [
+            mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
+            for k, v in d.items()
+        ],
+        wrap=True,
+    )
+
+
 def view_result(
     eval_ui: mo.ui.dictionary,
     result: dict,
     spike_ui: mo.ui.dictionary | None = None,
 ) -> tuple[mo.Html, Figure, dict[str, pd.DataFrame]]:
     target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
-    dm = DynamicMetrics(
-        result["original_ds"], result["surr_ds"], target_comp_id, result["dt"]
-    )
-    pre = result["get_preprocessed"](target_comp_id)
+    dm = result["make_dm"](target_comp_id)
+    spike_orig = _spike_idx(spike_ui, "spike_orig")
+    spike_surr = _spike_idx(spike_ui, "spike_surr")
 
-    def _spike_idx(key: str) -> int:
-        if spike_ui is None:
-            return 0
-        v = spike_ui[key].value
-        return int(v) if v is not None else 0
-
-    spike_orig: int = _spike_idx("spike_orig")
-    spike_surr: int = _spike_idx("spike_surr")
-
-    def _stat_cards(d: dict) -> mo.Html:
-        return mo.hstack(
-            [
-                mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
-                for k, v in d.items()
-            ],
-            wrap=True,
-        )
+    wf_summary = waveform_summary(dm)
+    spike_corr = spike_shape_corr(dm)
+    df_waveform = waveform_summary_df(dm)
+    df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
+    df_scalar = pd.DataFrame(
+        {**wf_summary, **spike_corr}.items(),
+        columns=["metric", "value"],
+    ).set_index("metric")
 
     fig = DRAW_MAP[eval_ui["draw_func"].value](
         result["original_ds"],
         result["surr_ds"],
-        pre,
+        result["get_preprocessed"](target_comp_id),
         target_comp_id,
     )
-
-    df_waveform = waveform_summary_df(dm)
-    df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
-    df_scalar = pd.DataFrame(
-        {**waveform_summary(dm), **spike_shape_corr(dm)}.items(),
-        columns=["metric", "value"],
-    ).set_index("metric")
 
     html = mo.vstack(
         [
             mo.md("#### 波形・発火パターン指標（orig / surr / orig-surr）"),
             df_waveform,
             mo.md("#### 波形誤差スカラー"),
-            _stat_cards(waveform_summary(dm)),
+            _stat_cards(wf_summary),
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
-            _stat_cards(spike_shape_corr(dm)),
+            _stat_cards(spike_corr),
             mo.md(
                 f"#### AP・ISI 指標（orig / surr / orig-surr） — orig: {spike_orig} / surr: {spike_surr}"
             ),
@@ -453,9 +444,12 @@ def view_result(
             mo.mpl.interactive(fig),
         ]
     )
-    dfs = {
-        "waveform_metrics": df_waveform,
-        "spike_metrics": df_spike,
-        "scalar_metrics": df_scalar,
-    }
-    return html, fig, dfs
+    return (
+        html,
+        fig,
+        {
+            "waveform_metrics": df_waveform,
+            "spike_metrics": df_spike,
+            "scalar_metrics": df_scalar,
+        },
+    )

@@ -29,19 +29,13 @@ from neurosurrogate.profiler.profiler_wave import (
 def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     current_type = str(base_ui["current_type"].value)
     param_keys = (
-        []
+        ["(none)"]
         if current_type == "train"
         else list(inspect.signature(FUNC_MAP[current_type]).parameters.keys())
     )
-    sweep_param_ui = (
-        mo.ui.dropdown(options=param_keys, value=param_keys[0])
-        if param_keys
-        else mo.ui.dropdown(options=["(none)"], value="(none)")
-    )
-
     return mo.ui.dictionary(
         {
-            "sweep_param": sweep_param_ui,
+            "sweep_param": mo.ui.dropdown(options=param_keys, value=param_keys[0]),
             "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
             "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
             "amp_steps": mo.ui.number(value=10, step=1, label="steps"),
@@ -203,19 +197,22 @@ def run_sweep(
     return data, run_labels
 
 
+def _ui_val(ui: mo.ui.dictionary, key: str) -> Any:
+    return cast(Any, ui[key]).value
+
+
 def view_sweep(
     sweep_ui: mo.ui.dictionary,
     base_button: mo.ui.dictionary,
     param_button: mo.ui.dictionary,
 ) -> tuple[mo.Html, Figure]:
     """アダプター: marimo UI → run_sweep (計算) → _plot_sweep (描画) → (Html, Figure)。"""
-    ds = cast(dict[str, Any], base_button["base_dataset"].value)
-    sim = cast(dict[str, Any], param_button["sim_params"].value)
-    run_ids = cast(pd.DataFrame, base_button["run_selector"].value)[
-        "run_id"
-    ].tolist()
-    comp_name = str(param_button["eval_comp"].value)
-    metric_key = str(sweep_ui["metric"].value)
+    ds = _ui_val(base_button, "base_dataset")
+    sim = _ui_val(param_button, "sim_params")
+    run_ids = _ui_val(base_button, "run_selector")["run_id"].tolist()
+    comp_name = str(_ui_val(param_button, "eval_comp"))
+    metric_key = str(_ui_val(sweep_ui, "metric"))
+    sweep_param = str(_ui_val(sweep_ui, "sweep_param"))
     data, run_labels = run_sweep(
         run_ids=run_ids,
         model_name=str(ds["model_name"]),
@@ -223,12 +220,12 @@ def view_sweep(
         duration=float(sim["duration"]),
         silence_duration=float(sim["silence_duration"]),
         comp_name=comp_name,
-        current_type=str(base_button["current_type"].value),
-        base_current_params=cast(dict, param_button["current_params"].value),
-        sweep_param=str(sweep_ui["sweep_param"].value),
-        amp_start=float(cast(Any, sweep_ui["amp_start"]).value),
-        amp_stop=float(cast(Any, sweep_ui["amp_stop"]).value),
-        amp_steps=int(cast(Any, sweep_ui["amp_steps"]).value),
+        current_type=str(_ui_val(base_button, "current_type")),
+        base_current_params=_ui_val(param_button, "current_params"),
+        sweep_param=sweep_param,
+        amp_start=float(_ui_val(sweep_ui, "amp_start")),
+        amp_stop=float(_ui_val(sweep_ui, "amp_stop")),
+        amp_steps=int(_ui_val(sweep_ui, "amp_steps")),
         metric_key=metric_key,
     )
     fig = _plot_sweep(
@@ -236,8 +233,7 @@ def view_sweep(
         run_ids,
         metric_key,
         comp_name,
-        sweep_param=str(sweep_ui["sweep_param"].value),
+        sweep_param=sweep_param,
         run_labels=run_labels,
     )
-    html = mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)])
-    return html, fig
+    return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)]), fig
