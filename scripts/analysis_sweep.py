@@ -178,8 +178,6 @@ def run_sweep(
     run_ids: list[str],
     model_name: str,
     dt: float,
-    duration: float,
-    silence_duration: float,
     comp_name: str,
     current_type: str,
     base_current_params: dict,
@@ -188,8 +186,6 @@ def run_sweep(
     """純粋計算層: metric DataFrame と run_label dict を返す。plot しない。"""
     current_configs: dict[float, CurrentConfig] = {
         amp: CurrentConfig(
-            iteration=int(duration / dt),
-            silence_steps=int(silence_duration / dt),
             pipeline=CurrentConfig.build_pipeline(
                 current_type, cfg.override(base_current_params, amp)
             ),
@@ -237,8 +233,6 @@ def view_sweep(
         run_ids=run_ids,
         model_name=model_name,
         dt=float(sim["dt"]),
-        duration=float(sim["duration"]),
-        silence_duration=float(sim["silence_duration"]),
         comp_name=comp_name,
         current_type=str(_ui_val(base_button, "current_type")),
         base_current_params=_ui_val(param_button, "current_params"),

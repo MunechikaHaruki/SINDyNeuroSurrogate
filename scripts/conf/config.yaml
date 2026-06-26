@@ -6,7 +6,8 @@ defaults:
 sindy:
   datasets:
     dt: 0.01
-    silence_duration: 80
+    pipeline:
+      silence_duration: 80
   train_comp_identifier: soma
 
 hydra:

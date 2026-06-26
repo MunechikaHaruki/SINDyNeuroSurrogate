@@ -65,23 +65,10 @@ class Compartment:
 
 @dataclass
 class CurrentConfig:
-    iteration: int
-    silence_steps: int
     pipeline: dict
 
-    def build(self):
-        dset_i_ext = np.zeros(self.iteration)
-
-        if (
-            self.iteration - self.silence_steps <= self.silence_steps
-        ):  # active_end <=active_start
-            raise ValueError(
-                f"silence_steps={self.silence_steps} が大きすぎます（iteration={self.iteration}）"
-            )
-        active = dset_i_ext[self.silence_steps : self.iteration - self.silence_steps]
-        func = hydra.utils.instantiate(self.pipeline)
-        func(active)
-        return dset_i_ext
+    def build(self, dt: float) -> np.ndarray:
+        return hydra.utils.instantiate(self.pipeline)(dt)
 
     @staticmethod
     def build_pipeline(current_type: str, kw: dict) -> dict:
@@ -91,19 +78,11 @@ class CurrentConfig:
         }
 
     def to_dict(self) -> dict:
-        return {
-            "iteration": self.iteration,
-            "silence_steps": self.silence_steps,
-            "pipeline": self.pipeline,
-        }
+        return {"pipeline": self.pipeline}
 
     @classmethod
     def from_dict(cls, d: dict) -> "CurrentConfig":
-        return cls(
-            iteration=d["iteration"],
-            silence_steps=d["silence_steps"],
-            pipeline=d["pipeline"],
-        )
+        return cls(pipeline=d["pipeline"])
 
 
 @dataclass
@@ -253,8 +232,6 @@ class DatasetConfig:
     def build_dataset(
         cls,
         dt: float,
-        silence_duration: float,
-        duration: float,
         model_name: str,
         pipeline: dict,
     ) -> "DatasetConfig":
@@ -264,10 +241,6 @@ class DatasetConfig:
         return DatasetConfig(
             model_name=model_name,
             dt=dt,
-            current=CurrentConfig(
-                iteration=int(duration / dt),
-                silence_steps=int(silence_duration / dt),
-                pipeline=pipeline,
-            ),
+            current=CurrentConfig(pipeline=pipeline),
             net=MCMODELS[model_name],
         )

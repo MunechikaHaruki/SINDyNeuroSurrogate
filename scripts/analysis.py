@@ -226,10 +226,6 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
             "sim_params": mo.ui.dictionary(
                 {
                     "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
-                    "silence_duration": mo.ui.number(
-                        value=10, step=1, label="silence_duration"
-                    ),
-                    "duration": mo.ui.number(value=30, step=10, label="duration"),
                 }
             ),
             "current_params": current_params_ui,
