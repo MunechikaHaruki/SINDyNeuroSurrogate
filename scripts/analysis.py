@@ -145,10 +145,17 @@ def make_base_ui() -> mo.ui.dictionary:
                 label="model_name",
                 value="hh",
             ),
-            "run_selector": mo.ui.table(
+            "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
+            "sweep_run_selector": mo.ui.table(
                 pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
-                label="モデル情報比較 Run 選択（複数可）",
+                label="sweep Run 選択（複数可）",
                 selection="multi",
+                initial_selection=[0],
+            ),
+            "eval_run_selector": mo.ui.table(
+                pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
+                label="単一評価 Run 選択",
+                selection="single",
                 initial_selection=[0],
             ),
         }
@@ -163,8 +170,10 @@ def render_base(base_ui: mo.ui.dictionary) -> mo.Html:
 - CurrentType: {base_ui["current_type"]}
 - matplotlib rendering setting: {base_ui["plt_style"]}
 - model_name: {base_ui["model_name"]}
+- dt: {base_ui["dt"]}
 """),
-            base_ui["run_selector"],
+            base_ui["sweep_run_selector"],
+            base_ui["eval_run_selector"],
         ]
     )
 
@@ -217,17 +226,6 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
     return mo.ui.dictionary(
         {
-            "run_selector": mo.ui.table(
-                pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
-                label="単一評価 Run 選択",
-                selection="single",
-                initial_selection=[0],
-            ),
-            "sim_params": mo.ui.dictionary(
-                {
-                    "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
-                }
-            ),
             "current_params": current_params_ui,
             "surrogate_targets": mo.ui.multiselect(
                 options=comp_names, value=[comp_names[0]]
@@ -242,9 +240,7 @@ def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
     return mo.vstack(
         [
             mo.md("### パラメタ設定"),
-            param_ui["run_selector"],
             mo.md(f"""
-- simParamsUI: {param_ui["sim_params"]}
 - currentui: {param_ui["current_params"]}
 - surrogate target: {param_ui["surrogate_targets"]}
 - 評価対象comp: {param_ui["eval_comp"]}
@@ -260,7 +256,7 @@ def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
 
 
 def get_model_info_figs(base_ui: mo.ui.dictionary) -> dict[str, Figure]:
-    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, base_ui["sweep_run_selector"].value)["run_id"].tolist()
     return {rid[:8]: RunInfo.get_run_info(rid).sindy_coef for rid in run_ids}
 
 
@@ -269,7 +265,7 @@ def get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:
 
 
 def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
-    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, base_ui["sweep_run_selector"].value)["run_id"].tolist()
     run_infos = [RunInfo.get_run_info(rid) for rid in run_ids]
     _model_name = str(base_ui["model_name"].value)
     return mo.vstack(
@@ -301,18 +297,17 @@ def _parse_eval_button(
 ) -> tuple[DatasetConfig, str, list[str]]:
     current_type = str(base_button["current_type"].value)
     run_id = str(
-        cast(pd.DataFrame, param_button["run_selector"].value)["run_id"].iloc[0]
+        cast(pd.DataFrame, base_button["eval_run_selector"].value)["run_id"].iloc[0]
     )
     current_params_val = param_button["current_params"].value
     current_params = current_params_val if current_params_val else None
-    sim_params = cast(dict, param_button["sim_params"].value)
     surrogate_targets = cast(list[str], param_button["surrogate_targets"].value)
     if current_type == "train":
         dataset_cfg = RunInfo.get_run_info(run_id).dataset
     else:
         dataset_cfg = DatasetConfig.build_dataset(
             model_name=str(base_button["model_name"].value),
-            **sim_params,
+            dt=float(base_button["dt"].value),
             pipeline=CurrentConfig.build_pipeline(current_type, current_params),
         )
     return dataset_cfg, run_id, surrogate_targets

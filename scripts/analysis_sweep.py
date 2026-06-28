@@ -219,8 +219,7 @@ def view_sweep(
 ) -> tuple[mo.Html, Figure]:
     """アダプター: marimo UI → run_sweep → _plot_sweep → (Html, Figure)。"""
     model_name = str(_ui_val(base_button, "model_name"))
-    sim = _ui_val(param_button, "sim_params")
-    run_ids = cast(pd.DataFrame, base_button["run_selector"].value)["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)["run_id"].tolist()
     comp_name = str(_ui_val(param_button, "eval_comp"))
     sweep_cfg = SweepConfig(
         sweep_param=str(_ui_val(sweep_ui, "sweep_param")),
@@ -232,7 +231,7 @@ def view_sweep(
     data, run_labels = run_sweep(
         run_ids=run_ids,
         model_name=model_name,
-        dt=float(sim["dt"]),
+        dt=float(base_button["dt"].value),
         comp_name=comp_name,
         current_type=str(_ui_val(base_button, "current_type")),
         base_current_params=_ui_val(param_button, "current_params"),
