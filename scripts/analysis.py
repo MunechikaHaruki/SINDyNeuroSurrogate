@@ -271,17 +271,22 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     )
 
 
-def render_draw_ui(draw_ui: mo.ui.dictionary, spike_ui: mo.ui.dictionary) -> mo.Html:
+def render_draw_ui(draw_ui: mo.ui.dictionary) -> mo.Html:
     return mo.vstack(
         [
             mo.md("### 描画設定"),
             mo.md(f"""
 - 評価対象comp: {draw_ui["eval_comp"]}
 - 描画関数: {draw_ui["draw_func"]}
-- spike orig: {spike_ui["spike_orig"]} / surr: {spike_ui["spike_surr"]}
 """),
         ]
     )
+
+
+def render_spike_ui(spike_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.md(f"""
+- spike orig: {spike_ui["spike_orig"]} / surr: {spike_ui["spike_surr"]}
+""")
 
 
 # ---------------------------------------------------------------------------

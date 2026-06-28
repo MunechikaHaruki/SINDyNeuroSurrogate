@@ -42,35 +42,41 @@ def _(analysis, base_button, eval_button, mo, sim_ui):
 @app.cell
 def _(analysis, base_button):
     draw_ui = analysis.make_draw_ui(base_button)
+    analysis.render_draw_ui(draw_ui)
     return (draw_ui,)
 
 
 @app.cell
 def _(analysis, draw_ui, result):
     spike_ui = analysis.make_spike_ui(result, draw_ui)
-    analysis.render_draw_ui(draw_ui, spike_ui)
+    analysis.render_spike_ui(spike_ui)
     return (spike_ui,)
 
 
 @app.cell
-def _(analysis, draw_ui, result, spike_ui):
+def _(
+    analysis,
+    base_button,
+    draw_ui,
+    mo,
+    result,
+    spike_ui,
+    sweep_button,
+    sweep_ui,
+):
+    import analysis_sweep
+
     html_result, fig_result, dfs_result = analysis.view_result(
         draw_ui, result, spike_ui
     )
-    html_result
-    return dfs_result, fig_result
-
-
-@app.cell
-def _(base_button, mo, sweep_button, sweep_ui):
-    import analysis_sweep
-
-    mo.stop(not sweep_button.value)
-    html_sweep, fig_sweep = analysis_sweep.view_sweep(
-        sweep_ui, base_button, str(base_button["sweep_current_type"].value)
-    )
-    html_sweep
-    return (fig_sweep,)
+    if sweep_button.value:
+        html_sweep, fig_sweep = analysis_sweep.view_sweep(
+            sweep_ui, base_button, draw_ui
+        )
+    else:
+        html_sweep, fig_sweep = None, None
+    mo.vstack([h for h in [html_result, html_sweep] if h is not None])
+    return dfs_result, fig_result, fig_sweep
 
 
 @app.cell

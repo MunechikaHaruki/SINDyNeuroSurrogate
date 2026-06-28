@@ -63,7 +63,6 @@ def _make_sweep_current_params(current_type: str) -> mo.ui.dictionary:
 
 
 def make_sweep_ui(base_ui: mo.ui.dictionary, current_type: str) -> mo.ui.dictionary:
-    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
     param_keys = (
         ["(none)"]
         if current_type == "train"
@@ -79,7 +78,6 @@ def make_sweep_ui(base_ui: mo.ui.dictionary, current_type: str) -> mo.ui.diction
                 options=DF_ROW_METRICS + SCALAR_METRICS, value="spike_count"
             ),
             "current_params": _make_sweep_current_params(current_type),
-            "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
         }
     )
 
@@ -95,7 +93,6 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
 - steps: {sweep_ui["amp_steps"]}
 - metric: {sweep_ui["metric"]}
 - current params: {sweep_ui["current_params"]}
-- eval comp: {sweep_ui["eval_comp"]}
 """),
         ]
     )
@@ -235,12 +232,13 @@ def _ui_val(ui: mo.ui.dictionary, key: str) -> Any:
 def view_sweep(
     sweep_ui: mo.ui.dictionary,
     base_button: mo.ui.dictionary,
-    current_type: str,
+    draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, Figure]:
     """アダプター: marimo UI → run_sweep → _plot_sweep → (Html, Figure)。"""
     model_name = str(_ui_val(base_button, "model_name"))
     run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)["run_id"].tolist()
-    comp_name = str(_ui_val(sweep_ui, "eval_comp"))
+    comp_name = str(_ui_val(draw_ui, "eval_comp"))
+    current_type = str(_ui_val(base_button, "sweep_current_type"))
     sweep_cfg = SweepConfig(
         sweep_param=str(_ui_val(sweep_ui, "sweep_param")),
         amp_start=float(_ui_val(sweep_ui, "amp_start")),
