@@ -23,20 +23,12 @@ def _(analysis, base_button):
 def _(analysis, base_button, mo):
     analysis.setup_mpl(base_button["plt_style"].value)
     combined_ui = analysis.make_combined_ui(base_button)
-    eval_button = mo.ui.run_button(label="単一シミュレーション実行")
-    sweep_button = mo.ui.run_button(label="スイープ実行")
+    run_button = mo.ui.run_button(label="実行")
     mo.vstack([
         analysis.render_combined_ui(combined_ui),
-        mo.hstack([eval_button, sweep_button]),
+        run_button,
     ])
-    return combined_ui, eval_button, sweep_button
-
-
-@app.cell
-def _(analysis, base_button, combined_ui, eval_button, mo):
-    mo.stop(not eval_button.value)
-    result = analysis.calc_eval(base_button, combined_ui)
-    return (result,)
+    return combined_ui, run_button
 
 
 @app.cell
@@ -47,6 +39,14 @@ def _(analysis, base_button):
 
 
 @app.cell
+def _(analysis, base_button, combined_ui, draw_ui, mo, run_button):
+    mo.stop(not run_button.value)
+    result = analysis.calc_eval(base_button, combined_ui)
+    sweep_result = analysis.calc_sweep(base_button, combined_ui, draw_ui)
+    return result, sweep_result
+
+
+@app.cell
 def _(analysis, draw_ui, result):
     spike_ui = analysis.make_spike_ui(result, draw_ui)
     analysis.render_spike_ui(spike_ui)
@@ -54,26 +54,12 @@ def _(analysis, draw_ui, result):
 
 
 @app.cell
-def _(
-    analysis,
-    base_button,
-    combined_ui,
-    draw_ui,
-    mo,
-    result,
-    spike_ui,
-    sweep_button,
-):
+def _(analysis, draw_ui, mo, result, spike_ui, sweep_result):
     html_result, fig_result, dfs_result = analysis.view_result(
         draw_ui, result, spike_ui
     )
-    if sweep_button.value:
-        html_sweep, fig_sweep = analysis.view_sweep(
-            base_button, combined_ui, draw_ui
-        )
-    else:
-        html_sweep, fig_sweep = None, None
-    mo.vstack([h for h in [html_result, html_sweep] if h is not None])
+    html_sweep, fig_sweep = analysis.plot_sweep(sweep_result)
+    mo.vstack([html_result, html_sweep])
     return dfs_result, fig_result, fig_sweep
 
 

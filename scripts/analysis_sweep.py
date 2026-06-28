@@ -250,12 +250,12 @@ def _ui_val(ui: mo.ui.dictionary, key: str) -> Any:
     return cast(Any, ui[key]).value
 
 
-def view_sweep(
+def calc_sweep(
     base_button: mo.ui.dictionary,
     combined_ui: mo.ui.dictionary,
     draw_ui: mo.ui.dictionary,
-) -> tuple[mo.Html, Figure]:
-    """アダプター: marimo UI → run_sweep → _plot_sweep → (Html, Figure)。"""
+) -> dict:
+    """純粋実行層: marimo UI → run_sweep → 結果dict。"""
     sweep_ui = cast(mo.ui.dictionary, combined_ui["sweep"])
     model_name = str(_ui_val(base_button, "model_name"))
     run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)[
@@ -281,12 +281,26 @@ def view_sweep(
         base_current_params=_ui_val(sweep_ui, "current_params"),
         cfg=sweep_cfg,
     )
+    return {
+        "data": data,
+        "run_labels": run_labels,
+        "run_ids": run_ids,
+        "metric_key": sweep_cfg.metric_key,
+        "sweep_param": sweep_cfg.sweep_param,
+        "eval_comp_name": eval_comp_name,
+    }
+
+
+def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure]:
+    """純粋描画層: 結果dict → (Html, Figure)。"""
     fig = _plot_sweep(
-        data,
-        run_ids,
-        sweep_cfg.metric_key,
-        eval_comp_name,
-        sweep_param=sweep_cfg.sweep_param,
-        run_labels=run_labels,
+        sweep_result["data"],
+        sweep_result["run_ids"],
+        sweep_result["metric_key"],
+        sweep_result["eval_comp_name"],
+        sweep_param=sweep_result["sweep_param"],
+        run_labels=sweep_result["run_labels"],
     )
-    return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)]), fig
+    return mo.vstack(
+        [mo.mpl.interactive(fig), mo.ui.table(sweep_result["data"])]
+    ), fig

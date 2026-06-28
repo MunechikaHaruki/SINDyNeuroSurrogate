@@ -254,12 +254,16 @@ def make_combined_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     )
 
 
-def view_sweep(
+def calc_sweep(
     base_button: mo.ui.dictionary,
     combined_ui: mo.ui.dictionary,
     draw_ui: mo.ui.dictionary,
-) -> tuple[mo.Html, Figure]:
-    return analysis_sweep.view_sweep(base_button, combined_ui, draw_ui)
+) -> dict:
+    return analysis_sweep.calc_sweep(base_button, combined_ui, draw_ui)
+
+
+def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure]:
+    return analysis_sweep.plot_sweep(sweep_result)
 
 
 def render_combined_ui(combined_ui: mo.ui.dictionary) -> mo.Html:
