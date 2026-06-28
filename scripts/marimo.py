@@ -21,30 +21,21 @@ def _(analysis, base_button):
 
 @app.cell
 def _(analysis, base_button, mo):
-    import analysis_sweep
-
     analysis.setup_mpl(base_button["plt_style"].value)
-    sim_ui = analysis.make_sim_ui(base_button, str(base_button["sim_current_type"].value))
-    sweep_ui = analysis_sweep.make_sweep_ui(base_button, str(base_button["sweep_current_type"].value))
-    mo.hstack(
-        [analysis.render_sim_ui(sim_ui), analysis_sweep.render_sweep(sweep_ui)],
-        align="start",
-    )
-    return analysis_sweep, sim_ui, sweep_ui
-
-
-@app.cell
-def _(mo):
+    sim_ui, sweep_ui = analysis.make_combined_ui(base_button)
     eval_button = mo.ui.run_button(label="単一シミュレーション実行")
     sweep_button = mo.ui.run_button(label="スイープ実行")
-    mo.hstack([eval_button, sweep_button])
-    return eval_button, sweep_button
+    mo.vstack([
+        analysis.render_combined_ui(sim_ui, sweep_ui),
+        mo.hstack([eval_button, sweep_button]),
+    ])
+    return eval_button, sim_ui, sweep_button, sweep_ui
 
 
 @app.cell
 def _(analysis, base_button, eval_button, mo, sim_ui):
     mo.stop(not eval_button.value)
-    result = analysis.calc_eval(base_button, sim_ui, str(base_button["sim_current_type"].value))
+    result = analysis.calc_eval(base_button, sim_ui)
     return (result,)
 
 
@@ -71,7 +62,9 @@ def _(analysis, draw_ui, result, spike_ui):
 
 
 @app.cell
-def _(analysis_sweep, base_button, mo, sweep_button, sweep_ui):
+def _(base_button, mo, sweep_button, sweep_ui):
+    import analysis_sweep
+
     mo.stop(not sweep_button.value)
     html_sweep, fig_sweep = analysis_sweep.view_sweep(
         sweep_ui, base_button, str(base_button["sweep_current_type"].value)

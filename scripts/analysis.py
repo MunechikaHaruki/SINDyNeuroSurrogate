@@ -4,6 +4,8 @@ from functools import partial
 from pathlib import Path
 from typing import Literal, cast
 
+import analysis_sweep
+
 import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
@@ -243,6 +245,22 @@ def render_sim_ui(sim_ui: mo.ui.dictionary) -> mo.Html:
     )
 
 
+def make_combined_ui(
+    base_ui: mo.ui.dictionary,
+) -> tuple[mo.ui.dictionary, mo.ui.dictionary]:
+    return (
+        make_sim_ui(base_ui, str(base_ui["sim_current_type"].value)),
+        analysis_sweep.make_sweep_ui(base_ui, str(base_ui["sweep_current_type"].value)),
+    )
+
+
+def render_combined_ui(sim_ui: mo.ui.dictionary, sweep_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.hstack(
+        [render_sim_ui(sim_ui), analysis_sweep.render_sweep(sweep_ui)],
+        align="start",
+    )
+
+
 def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     comp_names = MCMODELS[str(base_ui["model_name"].value)].names
     return mo.ui.dictionary(
@@ -310,11 +328,11 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
 def _parse_eval_button(
     base_button: mo.ui.dictionary,
     sim_ui: mo.ui.dictionary,
-    current_type: str,
 ) -> tuple[DatasetConfig, str, list[str]]:
     run_id = str(
         cast(pd.DataFrame, base_button["eval_run_selector"].value)["run_id"].iloc[0]
     )
+    current_type = str(base_button["sim_current_type"].value)
     current_params_val = sim_ui["current_params"].value
     current_params = current_params_val if current_params_val else None
     surrogate_targets = cast(list[str], sim_ui["surrogate_targets"].value)
@@ -329,9 +347,9 @@ def _parse_eval_button(
     return dataset_cfg, run_id, surrogate_targets
 
 
-def calc_eval(base_button: mo.ui.dictionary, sim_ui: mo.ui.dictionary, current_type: str) -> dict:
+def calc_eval(base_button: mo.ui.dictionary, sim_ui: mo.ui.dictionary) -> dict:
     dataset_cfg, run_id, surrogate_targets = _parse_eval_button(
-        base_button, sim_ui, current_type
+        base_button, sim_ui
     )
 
     surrogate_model = load_surrogate_model(run_id)
