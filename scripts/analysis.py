@@ -202,12 +202,9 @@ def _make_ui_element(name: str, annotation: type, default):
         raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
 
 
-def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    model_name = str(base_ui["model_name"].value)
-    comp_names = MCMODELS[model_name].names
+def make_sim_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
     current_type = str(base_ui["current_type"].value)
-    runs_df = get_runs_df()
-
     if current_type == "train":
         current_params_ui: mo.ui.dictionary = mo.ui.dictionary({})
     else:
@@ -223,28 +220,46 @@ def make_param_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
                 ).parameters.items()
             }
         )
-
     return mo.ui.dictionary(
         {
             "current_params": current_params_ui,
             "surrogate_targets": mo.ui.multiselect(
                 options=comp_names, value=[comp_names[0]]
             ),
+        }
+    )
+
+
+def render_sim_ui(sim_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.vstack(
+        [
+            mo.md("### シミュレーション設定"),
+            mo.md(f"""
+- current params: {sim_ui["current_params"]}
+- surrogate targets: {sim_ui["surrogate_targets"]}
+"""),
+        ]
+    )
+
+
+def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
+    return mo.ui.dictionary(
+        {
             "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
             "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
         }
     )
 
 
-def render_param(param_ui: mo.ui.dictionary) -> mo.Html:
+def render_draw_ui(draw_ui: mo.ui.dictionary, spike_ui: mo.ui.dictionary) -> mo.Html:
     return mo.vstack(
         [
-            mo.md("### パラメタ設定"),
+            mo.md("### 描画設定"),
             mo.md(f"""
-- currentui: {param_ui["current_params"]}
-- surrogate target: {param_ui["surrogate_targets"]}
-- 評価対象comp: {param_ui["eval_comp"]}
-- 描画関数: {param_ui["draw_func"]}
+- 評価対象comp: {draw_ui["eval_comp"]}
+- 描画関数: {draw_ui["draw_func"]}
+- spike orig: {spike_ui["spike_orig"]} / surr: {spike_ui["spike_surr"]}
 """),
         ]
     )
@@ -293,15 +308,15 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
 
 def _parse_eval_button(
     base_button: mo.ui.dictionary,
-    param_button: mo.ui.dictionary,
+    sim_ui: mo.ui.dictionary,
 ) -> tuple[DatasetConfig, str, list[str]]:
     current_type = str(base_button["current_type"].value)
     run_id = str(
         cast(pd.DataFrame, base_button["eval_run_selector"].value)["run_id"].iloc[0]
     )
-    current_params_val = param_button["current_params"].value
+    current_params_val = sim_ui["current_params"].value
     current_params = current_params_val if current_params_val else None
-    surrogate_targets = cast(list[str], param_button["surrogate_targets"].value)
+    surrogate_targets = cast(list[str], sim_ui["surrogate_targets"].value)
     if current_type == "train":
         dataset_cfg = RunInfo.get_run_info(run_id).dataset
     else:
@@ -313,9 +328,9 @@ def _parse_eval_button(
     return dataset_cfg, run_id, surrogate_targets
 
 
-def calc_eval(base_button: mo.ui.dictionary, param_button: mo.ui.dictionary) -> dict:
+def calc_eval(base_button: mo.ui.dictionary, sim_ui: mo.ui.dictionary) -> dict:
     dataset_cfg, run_id, surrogate_targets = _parse_eval_button(
-        base_button, param_button
+        base_button, sim_ui
     )
 
     surrogate_model = load_surrogate_model(run_id)
@@ -347,8 +362,8 @@ def calc_eval(base_button: mo.ui.dictionary, param_button: mo.ui.dictionary) -> 
 # ---------------------------------------------------------------------------
 
 
-def make_spike_ui(result: dict, eval_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    dm = result["make_dm"](result["name_to_idx"](eval_ui["eval_comp"].value))
+def make_spike_ui(result: dict, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    dm = result["make_dm"](result["name_to_idx"](draw_ui["eval_comp"].value))
     n_orig, n_surr = n_spikes(dm)
     orig_options: dict = {str(i): i for i in range(n_orig)}
     surr_options: dict = {str(i): i for i in range(n_surr)}
@@ -365,12 +380,6 @@ def make_spike_ui(result: dict, eval_ui: mo.ui.dictionary) -> mo.ui.dictionary:
                 label=f"surr spike # (n={n_surr})",
             ),
         }
-    )
-
-
-def render_spike(spike_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.md(
-        f"スパイク選択 — orig: {spike_ui['spike_orig']} / surr: {spike_ui['spike_surr']}"
     )
 
 
@@ -397,11 +406,11 @@ def _stat_cards(d: dict) -> mo.Html:
 
 
 def view_result(
-    eval_ui: mo.ui.dictionary,
+    draw_ui: mo.ui.dictionary,
     result: dict,
     spike_ui: mo.ui.dictionary | None = None,
 ) -> tuple[mo.Html, Figure, dict[str, pd.DataFrame]]:
-    target_comp_id = result["name_to_idx"](eval_ui["eval_comp"].value)
+    target_comp_id = result["name_to_idx"](draw_ui["eval_comp"].value)
     dm = result["make_dm"](target_comp_id)
     spike_orig = _spike_idx(spike_ui, "spike_orig")
     spike_surr = _spike_idx(spike_ui, "spike_surr")
@@ -415,7 +424,7 @@ def view_result(
         columns=["metric", "value"],
     ).set_index("metric")
 
-    fig = DRAW_MAP[eval_ui["draw_func"].value](
+    fig = DRAW_MAP[draw_ui["draw_func"].value](
         result["original_ds"],
         result["surr_ds"],
         result["get_preprocessed"](target_comp_id),

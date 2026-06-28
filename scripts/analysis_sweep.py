@@ -215,12 +215,13 @@ def _ui_val(ui: mo.ui.dictionary, key: str) -> Any:
 def view_sweep(
     sweep_ui: mo.ui.dictionary,
     base_button: mo.ui.dictionary,
-    param_button: mo.ui.dictionary,
+    sim_ui: mo.ui.dictionary,
+    draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, Figure]:
     """アダプター: marimo UI → run_sweep → _plot_sweep → (Html, Figure)。"""
     model_name = str(_ui_val(base_button, "model_name"))
     run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)["run_id"].tolist()
-    comp_name = str(_ui_val(param_button, "eval_comp"))
+    comp_name = str(_ui_val(draw_ui, "eval_comp"))
     sweep_cfg = SweepConfig(
         sweep_param=str(_ui_val(sweep_ui, "sweep_param")),
         amp_start=float(_ui_val(sweep_ui, "amp_start")),
@@ -234,7 +235,7 @@ def view_sweep(
         dt=float(base_button["dt"].value),
         comp_name=comp_name,
         current_type=str(_ui_val(base_button, "current_type")),
-        base_current_params=_ui_val(param_button, "current_params"),
+        base_current_params=_ui_val(sim_ui, "current_params"),
         cfg=sweep_cfg,
     )
     fig = _plot_sweep(

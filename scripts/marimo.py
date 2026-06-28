@@ -22,28 +22,34 @@ def _(analysis, base_button):
 @app.cell
 def _(analysis, base_button):
     analysis.setup_mpl(base_button["plt_style"].value)
-    param_button = analysis.make_param_ui(base_button)
-    analysis.render_param(param_button)
-    return (param_button,)
+    sim_ui = analysis.make_sim_ui(base_button)
+    analysis.render_sim_ui(sim_ui)
+    return (sim_ui,)
 
 
 @app.cell
-def _(analysis, base_button, param_button):
-    result = analysis.calc_eval(base_button, param_button)
+def _(analysis, base_button, sim_ui):
+    result = analysis.calc_eval(base_button, sim_ui)
     return (result,)
 
 
 @app.cell
-def _(analysis, param_button, result):
-    spike_ui = analysis.make_spike_ui(result, param_button)
-    analysis.render_spike(spike_ui)
+def _(analysis, base_button):
+    draw_ui = analysis.make_draw_ui(base_button)
+    return (draw_ui,)
+
+
+@app.cell
+def _(analysis, draw_ui, result):
+    spike_ui = analysis.make_spike_ui(result, draw_ui)
+    analysis.render_draw_ui(draw_ui, spike_ui)
     return (spike_ui,)
 
 
 @app.cell
-def _(analysis, param_button, result, spike_ui):
+def _(analysis, draw_ui, result, spike_ui):
     html_result, fig_result, dfs_result = analysis.view_result(
-        param_button, result, spike_ui
+        draw_ui, result, spike_ui
     )
     html_result
     return dfs_result, fig_result
@@ -59,9 +65,9 @@ def _(base_button):
 
 
 @app.cell
-def _(analysis_sweep, base_button, param_button, sweep_ui):
+def _(analysis_sweep, base_button, draw_ui, sim_ui, sweep_ui):
     html_sweep, fig_sweep = analysis_sweep.view_sweep(
-        sweep_ui, base_button, param_button
+        sweep_ui, base_button, sim_ui, draw_ui
     )
     html_sweep
     return (fig_sweep,)
