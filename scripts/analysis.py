@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Literal, cast
 
 import analysis_sweep
-
 import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
@@ -141,8 +140,12 @@ def make_base_ui() -> mo.ui.dictionary:
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[0]),
-            "sim_current_type": mo.ui.dropdown(CurrentList, value="steady", label="single: current_type"),
-            "sweep_current_type": mo.ui.dropdown(CurrentList, value="steady", label="sweep: current_type"),
+            "sim_current_type": mo.ui.dropdown(
+                CurrentList, value="steady", label="single: current_type"
+            ),
+            "sweep_current_type": mo.ui.dropdown(
+                CurrentList, value="steady", label="sweep: current_type"
+            ),
             "model_name": mo.ui.dropdown(
                 options=list(MCMODELS.keys()),
                 label="model_name",
@@ -353,9 +356,7 @@ def _parse_eval_button(
 
 
 def calc_eval(base_button: mo.ui.dictionary, sim_ui: mo.ui.dictionary) -> dict:
-    dataset_cfg, run_id, surrogate_targets = _parse_eval_button(
-        base_button, sim_ui
-    )
+    dataset_cfg, run_id, surrogate_targets = _parse_eval_button(base_button, sim_ui)
 
     surrogate_model = load_surrogate_model(run_id)
     original_ds = unified_simulator(dataset_cfg)

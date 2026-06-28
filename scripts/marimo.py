@@ -60,6 +60,7 @@ def _(
     draw_ui,
     mo,
     result,
+    sim_ui,
     spike_ui,
     sweep_button,
     sweep_ui,
@@ -71,7 +72,7 @@ def _(
     )
     if sweep_button.value:
         html_sweep, fig_sweep = analysis_sweep.view_sweep(
-            sweep_ui, base_button, draw_ui
+            sweep_ui, base_button, sim_ui, draw_ui
         )
     else:
         html_sweep, fig_sweep = None, None

@@ -50,11 +50,28 @@ def _make_sweep_current_params(current_type: str) -> mo.ui.dictionary:
     return mo.ui.dictionary(
         {
             name: (
-                mo.ui.number(value=int(p.default if p.default is not inspect.Parameter.empty else 0), step=1, label=name)
+                mo.ui.number(
+                    value=int(
+                        p.default if p.default is not inspect.Parameter.empty else 0
+                    ),
+                    step=1,
+                    label=name,
+                )
                 if p.annotation is int
-                else mo.ui.number(value=float(p.default if p.default is not inspect.Parameter.empty else 0.0), step=0.1, label=name)
+                else mo.ui.number(
+                    value=float(
+                        p.default if p.default is not inspect.Parameter.empty else 0.0
+                    ),
+                    step=0.1,
+                    label=name,
+                )
                 if p.annotation is float
-                else mo.ui.checkbox(value=bool(p.default if p.default is not inspect.Parameter.empty else False), label=name)
+                else mo.ui.checkbox(
+                    value=bool(
+                        p.default if p.default is not inspect.Parameter.empty else False
+                    ),
+                    label=name,
+                )
             )
             for name, p in inspect.signature(FUNC_MAP[current_type]).parameters.items()
             if p.annotation in (int, float, bool)
@@ -108,11 +125,12 @@ def _iter_amp_dms(
     current_configs: dict[float, CurrentConfig],
     model_name: str,
     dt: float,
-    target_comp_name: str,
+    target_comp_names: list[str],
+    eval_comp_name: str,
 ) -> Iterator[tuple[float, dict[str, DynamicMetrics]]]:
     """各 amp で {rid: DynamicMetrics} を yield。orig_ds は amp ごとに1回計算。"""
     net = MCMODELS[model_name]
-    comp_id = net.name_to_idx(target_comp_name)
+    eval_comp_id = net.name_to_idx(eval_comp_name)
     for amp, current in current_configs.items():
         dset_cfg = DatasetConfig(model_name=model_name, dt=dt, current=current, net=net)
         orig_ds = unified_simulator(dset_cfg)
@@ -120,12 +138,12 @@ def _iter_amp_dms(
         for rid, surrogate in surrogates.items():
             surr_ds = unified_simulator(
                 dset_cfg.with_surrogates(
-                    targets={net.nodes[comp_id].name},
+                    targets=set(target_comp_names),
                     make_surr=surrogate.make_surr_comp,
                 ),
                 surrogate_model=surrogate,
             )
-            dms[rid] = DynamicMetrics(orig_ds, surr_ds, comp_id, dt)
+            dms[rid] = DynamicMetrics(orig_ds, surr_ds, eval_comp_id, dt)
         yield amp, dms
 
 
@@ -134,7 +152,8 @@ def _sweep_amplitude_metrics(
     current_configs: dict[float, CurrentConfig],
     model_name: str,
     dt: float,
-    target_comp_name: str,
+    target_comp_names: list[str],
+    eval_comp_name: str,
     metric_key: str,
 ) -> pd.DataFrame:
     """amp × rid を走査し metric DataFrame を構築。
@@ -143,7 +162,7 @@ def _sweep_amplitude_metrics(
     """
     rows: list[dict] = []
     for amp, dms in _iter_amp_dms(
-        surrogates, current_configs, model_name, dt, target_comp_name
+        surrogates, current_configs, model_name, dt, target_comp_names, eval_comp_name
     ):
         extracted = {rid: extract_metric(dm, metric_key) for rid, dm in dms.items()}
         # orig は rid 非依存 → 任意の 1 件から取得
@@ -195,7 +214,8 @@ def run_sweep(
     run_ids: list[str],
     model_name: str,
     dt: float,
-    comp_name: str,
+    target_comp_names: list[str],
+    eval_comp_name: str,
     current_type: str,
     base_current_params: dict,
     cfg: SweepConfig,
@@ -219,7 +239,8 @@ def run_sweep(
         current_configs=current_configs,
         model_name=model_name,
         dt=dt,
-        target_comp_name=comp_name,
+        target_comp_names=target_comp_names,
+        eval_comp_name=eval_comp_name,
         metric_key=cfg.metric_key,
     )
     return data, run_labels
@@ -232,12 +253,16 @@ def _ui_val(ui: mo.ui.dictionary, key: str) -> Any:
 def view_sweep(
     sweep_ui: mo.ui.dictionary,
     base_button: mo.ui.dictionary,
+    sim_ui: mo.ui.dictionary,
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, Figure]:
     """アダプター: marimo UI → run_sweep → _plot_sweep → (Html, Figure)。"""
     model_name = str(_ui_val(base_button, "model_name"))
-    run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)["run_id"].tolist()
-    comp_name = str(_ui_val(draw_ui, "eval_comp"))
+    run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)[
+        "run_id"
+    ].tolist()
+    target_comp_names = cast(list[str], _ui_val(sim_ui, "surrogate_targets"))
+    eval_comp_name = str(_ui_val(draw_ui, "eval_comp"))
     current_type = str(_ui_val(base_button, "sweep_current_type"))
     sweep_cfg = SweepConfig(
         sweep_param=str(_ui_val(sweep_ui, "sweep_param")),
@@ -250,7 +275,8 @@ def view_sweep(
         run_ids=run_ids,
         model_name=model_name,
         dt=float(base_button["dt"].value),
-        comp_name=comp_name,
+        target_comp_names=target_comp_names,
+        eval_comp_name=eval_comp_name,
         current_type=current_type,
         base_current_params=_ui_val(sweep_ui, "current_params"),
         cfg=sweep_cfg,
@@ -259,7 +285,7 @@ def view_sweep(
         data,
         run_ids,
         sweep_cfg.metric_key,
-        comp_name,
+        eval_comp_name,
         sweep_param=sweep_cfg.sweep_param,
         run_labels=run_labels,
     )
