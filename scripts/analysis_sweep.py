@@ -100,19 +100,7 @@ def make_sweep_ui(base_ui: mo.ui.dictionary, current_type: str) -> mo.ui.diction
 
 
 def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.vstack(
-        [
-            mo.md("### 振幅スイープ設定"),
-            mo.md(f"""
-- sweep param: {sweep_ui["sweep_param"]}
-- amp start: {sweep_ui["amp_start"]}
-- amp stop: {sweep_ui["amp_stop"]}
-- steps: {sweep_ui["amp_steps"]}
-- metric: {sweep_ui["metric"]}
-- current params: {sweep_ui["current_params"]}
-"""),
-        ]
-    )
+    return mo.vstack([mo.md("### 振幅スイープ設定"), mo.md(f"{sweep_ui}")])
 
 
 # ---------------------------------------------------------------------------
@@ -252,16 +240,15 @@ def _ui_val(ui: mo.ui.dictionary, key: str) -> Any:
 
 def calc_sweep(
     base_button: mo.ui.dictionary,
-    combined_ui: mo.ui.dictionary,
+    sweep_ui: mo.ui.dictionary,
+    surrogate_targets: list[str],
     draw_ui: mo.ui.dictionary,
 ) -> dict:
     """純粋実行層: marimo UI → run_sweep → 結果dict。"""
-    sweep_ui = cast(mo.ui.dictionary, combined_ui["sweep"])
     model_name = str(_ui_val(base_button, "model_name"))
     run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)[
         "run_id"
     ].tolist()
-    target_comp_names = cast(list[str], _ui_val(combined_ui, "surrogate_targets"))
     eval_comp_name = str(_ui_val(draw_ui, "eval_comp"))
     current_type = str(_ui_val(base_button, "sweep_current_type"))
     sweep_cfg = SweepConfig(
@@ -275,7 +262,7 @@ def calc_sweep(
         run_ids=run_ids,
         model_name=model_name,
         dt=float(base_button["dt"].value),
-        target_comp_names=target_comp_names,
+        target_comp_names=surrogate_targets,
         eval_comp_name=eval_comp_name,
         current_type=current_type,
         base_current_params=_ui_val(sweep_ui, "current_params"),
@@ -301,6 +288,4 @@ def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure]:
         sweep_param=sweep_result["sweep_param"],
         run_labels=sweep_result["run_labels"],
     )
-    return mo.vstack(
-        [mo.mpl.interactive(fig), mo.ui.table(sweep_result["data"])]
-    ), fig
+    return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(sweep_result["data"])]), fig

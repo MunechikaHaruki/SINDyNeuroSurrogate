@@ -256,10 +256,11 @@ def make_combined_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
 def calc_sweep(
     base_button: mo.ui.dictionary,
-    combined_ui: mo.ui.dictionary,
+    sweep_ui: mo.ui.dictionary,
+    surrogate_targets: list[str],
     draw_ui: mo.ui.dictionary,
 ) -> dict:
-    return analysis_sweep.calc_sweep(base_button, combined_ui, draw_ui)
+    return analysis_sweep.calc_sweep(base_button, sweep_ui, surrogate_targets, draw_ui)
 
 
 def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure]:
@@ -272,10 +273,8 @@ def render_combined_ui(combined_ui: mo.ui.dictionary) -> mo.Html:
             mo.md(f"- surrogate targets: {combined_ui['surrogate_targets']}"),
             mo.hstack(
                 [
-                    render_sim_ui(cast(mo.ui.dictionary, combined_ui["sim"])),
-                    analysis_sweep.render_sweep(
-                        cast(mo.ui.dictionary, combined_ui["sweep"])
-                    ),
+                    render_sim_ui(combined_ui["sim"]),
+                    analysis_sweep.render_sweep(combined_ui["sweep"]),
                 ],
                 align="start",
             ),
@@ -354,16 +353,15 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
 
 def _parse_eval_button(
     base_button: mo.ui.dictionary,
-    combined_ui: mo.ui.dictionary,
-) -> tuple[DatasetConfig, str, list[str]]:
+    sim_ui: mo.ui.dictionary,
+    surrogate_targets: list[str],
+) -> tuple[DatasetConfig, str]:
     run_id = str(
         cast(pd.DataFrame, base_button["eval_run_selector"].value)["run_id"].iloc[0]
     )
     current_type = str(base_button["sim_current_type"].value)
-    sim_ui = cast(mo.ui.dictionary, combined_ui["sim"])
     current_params_val = sim_ui["current_params"].value
     current_params = current_params_val if current_params_val else None
-    surrogate_targets = cast(list[str], combined_ui["surrogate_targets"].value)
     if current_type == "train":
         dataset_cfg = RunInfo.get_run_info(run_id).dataset
     else:
@@ -372,11 +370,15 @@ def _parse_eval_button(
             dt=float(base_button["dt"].value),
             pipeline=CurrentConfig.build_pipeline(current_type, current_params),
         )
-    return dataset_cfg, run_id, surrogate_targets
+    return dataset_cfg, run_id
 
 
-def calc_eval(base_button: mo.ui.dictionary, combined_ui: mo.ui.dictionary) -> dict:
-    dataset_cfg, run_id, surrogate_targets = _parse_eval_button(base_button, combined_ui)
+def calc_eval(
+    base_button: mo.ui.dictionary,
+    sim_ui: mo.ui.dictionary,
+    surrogate_targets: list[str],
+) -> dict:
+    dataset_cfg, run_id = _parse_eval_button(base_button, sim_ui, surrogate_targets)
 
     surrogate_model = load_surrogate_model(run_id)
     original_ds = unified_simulator(dataset_cfg)

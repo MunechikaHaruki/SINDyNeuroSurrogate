@@ -41,8 +41,11 @@ def _(analysis, base_button):
 @app.cell
 def _(analysis, base_button, combined_ui, draw_ui, mo, run_button):
     mo.stop(not run_button.value)
-    result = analysis.calc_eval(base_button, combined_ui)
-    sweep_result = analysis.calc_sweep(base_button, combined_ui, draw_ui)
+    surrogate_targets = combined_ui["surrogate_targets"].value
+    result = analysis.calc_eval(base_button, combined_ui["sim"], surrogate_targets)
+    sweep_result = analysis.calc_sweep(
+        base_button, combined_ui["sweep"], surrogate_targets, draw_ui
+    )
     return result, sweep_result
 
 
