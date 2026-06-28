@@ -7,10 +7,10 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import analysis
-
+    import marimo as mo
     base_button = analysis.make_base_ui()
     analysis.render_base(base_button)
-    return analysis, base_button
+    return analysis, base_button, mo
 
 
 @app.cell
@@ -20,16 +20,31 @@ def _(analysis, base_button):
 
 
 @app.cell
-def _(analysis, base_button):
+def _(analysis, base_button, mo):
+    import analysis_sweep
+
     analysis.setup_mpl(base_button["plt_style"].value)
-    sim_ui = analysis.make_sim_ui(base_button)
-    analysis.render_sim_ui(sim_ui)
-    return (sim_ui,)
+    sim_ui = analysis.make_sim_ui(base_button, str(base_button["sim_current_type"].value))
+    sweep_ui = analysis_sweep.make_sweep_ui(base_button, str(base_button["sweep_current_type"].value))
+    mo.hstack(
+        [analysis.render_sim_ui(sim_ui), analysis_sweep.render_sweep(sweep_ui)],
+        align="start",
+    )
+    return analysis_sweep, sim_ui, sweep_ui
 
 
 @app.cell
-def _(analysis, base_button, sim_ui):
-    result = analysis.calc_eval(base_button, sim_ui)
+def _(mo):
+    eval_button = mo.ui.run_button(label="単一シミュレーション実行")
+    sweep_button = mo.ui.run_button(label="スイープ実行")
+    mo.hstack([eval_button, sweep_button])
+    return eval_button, sweep_button
+
+
+@app.cell
+def _(analysis, base_button, eval_button, mo, sim_ui):
+    mo.stop(not eval_button.value)
+    result = analysis.calc_eval(base_button, sim_ui, str(base_button["sim_current_type"].value))
     return (result,)
 
 
@@ -56,18 +71,10 @@ def _(analysis, draw_ui, result, spike_ui):
 
 
 @app.cell
-def _(base_button):
-    import analysis_sweep
-
-    sweep_ui = analysis_sweep.make_sweep_ui(base_button)
-    analysis_sweep.render_sweep(sweep_ui)
-    return analysis_sweep, sweep_ui
-
-
-@app.cell
-def _(analysis_sweep, base_button, draw_ui, sim_ui, sweep_ui):
+def _(analysis_sweep, base_button, mo, sweep_button, sweep_ui):
+    mo.stop(not sweep_button.value)
     html_sweep, fig_sweep = analysis_sweep.view_sweep(
-        sweep_ui, base_button, sim_ui, draw_ui
+        sweep_ui, base_button, str(base_button["sweep_current_type"].value)
     )
     html_sweep
     return (fig_sweep,)

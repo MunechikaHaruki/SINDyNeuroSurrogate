@@ -44,8 +44,26 @@ class SweepConfig:
 # ---------------------------------------------------------------------------
 
 
-def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    current_type = str(base_ui["current_type"].value)
+def _make_sweep_current_params(current_type: str) -> mo.ui.dictionary:
+    if current_type == "train":
+        return mo.ui.dictionary({})
+    return mo.ui.dictionary(
+        {
+            name: (
+                mo.ui.number(value=int(p.default if p.default is not inspect.Parameter.empty else 0), step=1, label=name)
+                if p.annotation is int
+                else mo.ui.number(value=float(p.default if p.default is not inspect.Parameter.empty else 0.0), step=0.1, label=name)
+                if p.annotation is float
+                else mo.ui.checkbox(value=bool(p.default if p.default is not inspect.Parameter.empty else False), label=name)
+            )
+            for name, p in inspect.signature(FUNC_MAP[current_type]).parameters.items()
+            if p.annotation in (int, float, bool)
+        }
+    )
+
+
+def make_sweep_ui(base_ui: mo.ui.dictionary, current_type: str) -> mo.ui.dictionary:
+    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
     param_keys = (
         ["(none)"]
         if current_type == "train"
@@ -60,6 +78,8 @@ def make_sweep_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
             "metric": mo.ui.dropdown(
                 options=DF_ROW_METRICS + SCALAR_METRICS, value="spike_count"
             ),
+            "current_params": _make_sweep_current_params(current_type),
+            "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
         }
     )
 
@@ -69,13 +89,13 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
         [
             mo.md("### 振幅スイープ設定"),
             mo.md(f"""
-| | |
-|---|---|
-| sweep param | {sweep_ui["sweep_param"]} |
-| amp start | {sweep_ui["amp_start"]} |
-| amp stop  | {sweep_ui["amp_stop"]}  |
-| steps     | {sweep_ui["amp_steps"]} |
-| metric    | {sweep_ui["metric"]} |
+- sweep param: {sweep_ui["sweep_param"]}
+- amp start: {sweep_ui["amp_start"]}
+- amp stop: {sweep_ui["amp_stop"]}
+- steps: {sweep_ui["amp_steps"]}
+- metric: {sweep_ui["metric"]}
+- current params: {sweep_ui["current_params"]}
+- eval comp: {sweep_ui["eval_comp"]}
 """),
         ]
     )
@@ -215,13 +235,12 @@ def _ui_val(ui: mo.ui.dictionary, key: str) -> Any:
 def view_sweep(
     sweep_ui: mo.ui.dictionary,
     base_button: mo.ui.dictionary,
-    sim_ui: mo.ui.dictionary,
-    draw_ui: mo.ui.dictionary,
+    current_type: str,
 ) -> tuple[mo.Html, Figure]:
     """アダプター: marimo UI → run_sweep → _plot_sweep → (Html, Figure)。"""
     model_name = str(_ui_val(base_button, "model_name"))
     run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)["run_id"].tolist()
-    comp_name = str(_ui_val(draw_ui, "eval_comp"))
+    comp_name = str(_ui_val(sweep_ui, "eval_comp"))
     sweep_cfg = SweepConfig(
         sweep_param=str(_ui_val(sweep_ui, "sweep_param")),
         amp_start=float(_ui_val(sweep_ui, "amp_start")),
@@ -234,8 +253,8 @@ def view_sweep(
         model_name=model_name,
         dt=float(base_button["dt"].value),
         comp_name=comp_name,
-        current_type=str(_ui_val(base_button, "current_type")),
-        base_current_params=_ui_val(sim_ui, "current_params"),
+        current_type=current_type,
+        base_current_params=_ui_val(sweep_ui, "current_params"),
         cfg=sweep_cfg,
     )
     fig = _plot_sweep(

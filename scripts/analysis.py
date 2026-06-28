@@ -139,7 +139,8 @@ def make_base_ui() -> mo.ui.dictionary:
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[0]),
-            "current_type": mo.ui.dropdown(CurrentList, value="steady"),
+            "sim_current_type": mo.ui.dropdown(CurrentList, value="steady", label="single: current_type"),
+            "sweep_current_type": mo.ui.dropdown(CurrentList, value="steady", label="sweep: current_type"),
             "model_name": mo.ui.dropdown(
                 options=list(MCMODELS.keys()),
                 label="model_name",
@@ -167,8 +168,9 @@ def render_base(base_ui: mo.ui.dictionary) -> mo.Html:
         [
             mo.md(f"""
 ### MLflow データ解析
-- CurrentType: {base_ui["current_type"]}
 - matplotlib rendering setting: {base_ui["plt_style"]}
+- single current_type: {base_ui["sim_current_type"]}
+- sweep current_type: {base_ui["sweep_current_type"]}
 - model_name: {base_ui["model_name"]}
 - dt: {base_ui["dt"]}
 """),
@@ -202,9 +204,8 @@ def _make_ui_element(name: str, annotation: type, default):
         raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
 
 
-def make_sim_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+def make_sim_ui(base_ui: mo.ui.dictionary, current_type: str) -> mo.ui.dictionary:
     comp_names = MCMODELS[str(base_ui["model_name"].value)].names
-    current_type = str(base_ui["current_type"].value)
     if current_type == "train":
         current_params_ui: mo.ui.dictionary = mo.ui.dictionary({})
     else:
@@ -309,8 +310,8 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
 def _parse_eval_button(
     base_button: mo.ui.dictionary,
     sim_ui: mo.ui.dictionary,
+    current_type: str,
 ) -> tuple[DatasetConfig, str, list[str]]:
-    current_type = str(base_button["current_type"].value)
     run_id = str(
         cast(pd.DataFrame, base_button["eval_run_selector"].value)["run_id"].iloc[0]
     )
@@ -328,9 +329,9 @@ def _parse_eval_button(
     return dataset_cfg, run_id, surrogate_targets
 
 
-def calc_eval(base_button: mo.ui.dictionary, sim_ui: mo.ui.dictionary) -> dict:
+def calc_eval(base_button: mo.ui.dictionary, sim_ui: mo.ui.dictionary, current_type: str) -> dict:
     dataset_cfg, run_id, surrogate_targets = _parse_eval_button(
-        base_button, sim_ui
+        base_button, sim_ui, current_type
     )
 
     surrogate_model = load_surrogate_model(run_id)
