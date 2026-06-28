@@ -7,10 +7,13 @@ import numpy as np
 
 
 def current_generator(fn: Callable) -> Callable:
-    """silence_duration/duration を引数に持たない apply(active, dt) 返し関数を build(dt) 返し関数に昇格。"""
+    """silence_duration/duration を引数に持たない apply(active, dt) 返し関数を
+    build(dt) 返し関数に昇格。"""
 
     @functools.wraps(fn)
-    def wrapper(*args, silence_duration: float = 0.0, duration: float = 100.0, **kwargs):
+    def wrapper(
+        *args, silence_duration: float = 0.0, duration: float = 100.0, **kwargs
+    ):
         apply = fn(*args, **kwargs)
 
         def build(dt: float) -> np.ndarray:
@@ -18,7 +21,8 @@ def current_generator(fn: Callable) -> Callable:
             silence_steps = int(silence_duration / dt)
             if iteration - silence_steps <= silence_steps:
                 raise ValueError(
-                    f"silence_duration={silence_duration} が大きすぎます（duration={duration}）"
+                    f"silence_duration={silence_duration} is too long"
+                    f" (duration={duration})"
                 )
             dset_i_ext = np.zeros(iteration)
             apply(dset_i_ext[silence_steps : iteration - silence_steps], dt)
@@ -109,7 +113,8 @@ def generate_sinousoidal(
     frequency: float = 10.0,
     baseline: float = 7.5,
 ):
-    """サイン波電流を生成する。baseline ± amplitude で振動。amplitude/baseline [μA/cm²]、frequency [Hz]"""
+    """サイン波電流を生成する。baseline ± amplitude で振動。amplitude/baseline [μA/cm²]
+    frequency [Hz]"""
 
     def apply(active: np.ndarray, dt: float) -> None:
         t = np.arange(len(active)) * dt * 1e-3  # ms → s
@@ -145,7 +150,8 @@ def generate_discretized(
     sigma: float = 0.1,
     seed: int = 0,
 ):
-    """離散値からランダムに選んだパルス電流を生成する。options [μA/cm²]、pulse_step [steps]、sigma [μA/cm²]"""
+    """離散値からランダムに選んだパルス電流を生成する。
+    options [μA/cm²]、pulse_step [steps]、sigma [μA/cm²]"""
 
     def apply(active: np.ndarray, _dt: float) -> None:
         rng = np.random.default_rng(seed)

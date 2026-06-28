@@ -264,9 +264,14 @@ def get_model_info_figs(base_ui: mo.ui.dictionary) -> dict[str, Figure]:
     return {rid[:8]: RunInfo.get_run_info(rid).sindy_coef for rid in run_ids}
 
 
+def get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:
+    return view_neuron_graph(MCMODELS[str(base_ui["model_name"].value)])
+
+
 def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
     run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
     run_infos = [RunInfo.get_run_info(rid) for rid in run_ids]
+    _model_name = str(base_ui["model_name"].value)
     return mo.vstack(
         [
             mo.vstack(
@@ -278,17 +283,7 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
             )
             for info in run_infos
         ]
-    )
-
-
-def get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:
-    return view_neuron_graph(MCMODELS[str(base_ui["model_name"].value)])
-
-
-def render_neurograph(base_ui: mo.ui.dictionary) -> mo.Html:
-    _model_name = str(base_ui["model_name"].value)
-    return mo.vstack(
-        [
+        + [
             mo.md(f"### NeuronGraph: `{_model_name}`"),
             mo.mpl.interactive(get_neurograph_fig(base_ui)),
         ]
