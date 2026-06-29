@@ -2,6 +2,7 @@ import functools
 import inspect
 import math
 from collections.abc import Callable
+from typing import Literal
 
 import numpy as np
 
@@ -51,8 +52,13 @@ def current_generator(fn: Callable) -> Callable:
     return wrapper
 
 
+# ---------------------------------------------------------------------------
+# 線形の電流
+# ---------------------------------------------------------------------------
+
+
 @current_generator
-def generate_steady(value: float = 10):
+def _generate_steady(value: float = 10):
     """一定の電流を生成する。value [μA/cm²]"""
 
     def apply(active: np.ndarray, _dt: float) -> None:
@@ -62,53 +68,31 @@ def generate_steady(value: float = 10):
 
 
 def single_pulse(value: float = 10):
-    return generate_steady(value, silence_duration=10, duration=30)
+    return _generate_steady(value, silence_duration=10, duration=30)
+
+
+def steady(value: float = 10):
+    return _generate_steady(value, silence_duration=10, duration=120)
 
 
 @current_generator
-def generate_rand_pulse(
-    max_val: int = 20,
-    pulse_step: int = 2000,
-    flow_rate: float = 0.5,
-    baseline: float = 0.0,
-    seed: int = 0,
-):
-    """ランダムなパルス電流を生成する。max_val [μA/cm²]、pulse_step [steps]"""
+def _generate_ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
+    """線形に増加・減少する電流を生成する。amplitude [μA/cm²]"""
 
     def apply(active: np.ndarray, _dt: float) -> None:
-        rng = np.random.default_rng(seed)
-        n_active = len(active)
-        for n in range(math.floor(n_active / pulse_step)):
-            v = rng.integers(0, max_val) if rng.random() < flow_rate else baseline
-            active[n * pulse_step : (n + 1) * pulse_step] = v
+        lo, hi = (amplitude, 0.0) if direction == "down" else (0.0, amplitude)
+        active[:] = np.linspace(lo, hi, len(active))
 
     return apply
 
 
-@current_generator
-def generate_ramp(start: float, stop: float):
-    """線形に増加・減少する電流を生成する。start/stop [μA/cm²]"""
-
-    def apply(active: np.ndarray, _dt: float) -> None:
-        active[:] = np.linspace(start, stop, len(active))
-
-    return apply
+def ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
+    return _generate_ramp(amplitude, direction, silence_duration=0, duration=150)
 
 
-@current_generator
-def generate_step(values: list, step_duration: int):
-    """段階的に変化する電流を生成する。values [μA/cm²]、step_duration [steps]"""
-
-    def apply(active: np.ndarray, _dt: float) -> None:
-        n_active = len(active)
-        for i, value in enumerate(values):
-            start = i * step_duration
-            end = min((i + 1) * step_duration, n_active)
-            if start >= n_active:
-                break
-            active[start:end] = value
-
-    return apply
+# ---------------------------------------------------------------------------
+# 周期性の電流
+# ---------------------------------------------------------------------------
 
 
 @current_generator
@@ -146,6 +130,31 @@ def generate_chirp(
     return apply
 
 
+# ---------------------------------------------------------------------------
+# ランダムな電流
+# ---------------------------------------------------------------------------
+
+
+@current_generator
+def generate_rand_pulse(
+    max_val: int = 20,
+    pulse_step: int = 2000,
+    flow_rate: float = 0.5,
+    baseline: float = 0.0,
+    seed: int = 0,
+):
+    """ランダムなパルス電流を生成する。max_val [μA/cm²]、pulse_step [steps]"""
+
+    def apply(active: np.ndarray, _dt: float) -> None:
+        rng = np.random.default_rng(seed)
+        n_active = len(active)
+        for n in range(math.floor(n_active / pulse_step)):
+            v = rng.integers(0, max_val) if rng.random() < flow_rate else baseline
+            active[n * pulse_step : (n + 1) * pulse_step] = v
+
+    return apply
+
+
 @current_generator
 def generate_discretized(
     pulse_step: int = 2000,
@@ -168,6 +177,27 @@ def generate_discretized(
     return apply
 
 
+# ---------------------------------------------------------------------------
+# Others
+# ---------------------------------------------------------------------------
+
+
+@current_generator
+def generate_step(values: list, step_duration: int):
+    """段階的に変化する電流を生成する。values [μA/cm²]、step_duration [steps]"""
+
+    def apply(active: np.ndarray, _dt: float) -> None:
+        n_active = len(active)
+        for i, value in enumerate(values):
+            start = i * step_duration
+            end = min((i + 1) * step_duration, n_active)
+            if start >= n_active:
+                break
+            active[start:end] = value
+
+    return apply
+
+
 @current_generator
 def add_white_noise(sigma: float = 0.1):
     """既存の電流にガウスホワイトノイズを加算する。sigma [μA/cm²]"""
@@ -179,10 +209,10 @@ def add_white_noise(sigma: float = 0.1):
 
 
 FUNC_MAP = {
-    "steady": generate_steady,
+    "steady": steady,
     "single_pulse": single_pulse,
+    "ramp": ramp,
     "random": generate_rand_pulse,
-    "ramp": generate_ramp,
     "step": generate_step,
     "sinousoidal": generate_sinousoidal,
     "chirp": generate_chirp,

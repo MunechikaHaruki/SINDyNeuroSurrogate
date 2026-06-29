@@ -43,17 +43,6 @@ def _(analysis, base_button):
 
 
 @app.cell
-def _(analysis, base_button, combined_ui, draw_ui, mo, run_button):
-    mo.stop(not run_button.value)
-    surrogate_targets = combined_ui["surrogate_targets"].value
-    result = analysis.calc_eval(base_button, combined_ui["sim"], surrogate_targets)
-    sweep_result = analysis.calc_sweep(
-        base_button, combined_ui["sweep"], surrogate_targets, draw_ui
-    )
-    return result, sweep_result
-
-
-@app.cell
 def _(analysis, draw_ui, result):
     spike_ui = analysis.make_spike_ui(result, draw_ui)
     analysis.render_spike_ui(spike_ui)
@@ -117,6 +106,35 @@ def _(
 def _(analysis, base_button):
     analysis.render_model_info(base_button)
     return
+
+
+@app.cell
+def _(mo):
+    get_armed, set_armed = mo.state(True)
+    return get_armed, set_armed
+
+
+@app.cell
+def _(
+    analysis,
+    base_button,
+    combined_ui,
+    draw_ui,
+    get_armed,
+    mo,
+    run_button,
+    set_armed,
+):
+    armed = get_armed()
+    mo.stop(not (run_button.value or armed))
+    if armed:
+        set_armed(False)
+    surrogate_targets = combined_ui["surrogate_targets"].value
+    result = analysis.calc_eval(base_button, combined_ui["sim"], surrogate_targets)
+    sweep_result = analysis.calc_sweep(
+        base_button, combined_ui["sweep"], surrogate_targets, draw_ui
+    )
+    return result, sweep_result
 
 
 if __name__ == "__main__":

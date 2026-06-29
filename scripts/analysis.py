@@ -164,7 +164,14 @@ def setup_mpl(matplotlib_style: str):
     plt.style.use(style_dir / f"{matplotlib_style}.mplstyle")
 
 
-def _make_ui_element(name: str, annotation: type, default):
+def _make_ui_element(name: str, annotation, default):
+    if typing.get_origin(annotation) is Literal:
+        options = list(typing.get_args(annotation))
+        return mo.ui.dropdown(
+            options=options,
+            value=default if default in options else options[0],
+            label=name,
+        )
     if annotation is int:
         return mo.ui.number(value=int(default), step=1, label=name)
     elif annotation is float:

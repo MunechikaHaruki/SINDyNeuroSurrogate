@@ -83,7 +83,13 @@ def make_sweep_ui(base_ui: mo.ui.dictionary, current_type: str) -> mo.ui.diction
     param_keys = (
         ["(none)"]
         if current_type == "train"
-        else list(inspect.signature(FUNC_MAP[current_type]).parameters.keys())
+        else [
+            name
+            for name, p in inspect.signature(
+                FUNC_MAP[current_type]
+            ).parameters.items()
+            if p.annotation in (int, float)
+        ]
     )
     return mo.ui.dictionary(
         {
