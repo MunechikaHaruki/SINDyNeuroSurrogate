@@ -14,7 +14,7 @@ mlflow.db
 **/hydra-outputs/**/
 
 tests/
-docs/slide/result
+docs/slide/result/_*
 
 .DS_Store
 **/.DS_Store
