@@ -90,6 +90,13 @@ def ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
     return _generate_ramp(amplitude, direction, silence_duration=0, duration=150)
 
 
+LINEAR_FUNC = {
+    "lin_steady": steady,
+    "lin_single_pulse": single_pulse,
+    "lin_ramp": ramp,
+}
+
+
 # ---------------------------------------------------------------------------
 # 周期性の電流
 # ---------------------------------------------------------------------------
@@ -128,6 +135,12 @@ def generate_chirp(
         active[:] = baseline + amplitude * np.sin(phase)
 
     return apply
+
+
+PERIODIC_FUNC = {
+    "periodic_sinousoidal": generate_sinousoidal,
+    "periodic_chirp": generate_chirp,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +190,12 @@ def generate_discretized(
     return apply
 
 
+RANDOM_FUNC = {
+    "random": generate_rand_pulse,
+    "random_discretized": generate_discretized,
+}
+
+
 # ---------------------------------------------------------------------------
 # Others
 # ---------------------------------------------------------------------------
@@ -220,15 +239,16 @@ def train():
     )
 
 
-FUNC_MAP = {
+OTHER_FUNC = {
     "train": train,
-    "steady": steady,
-    "single_pulse": single_pulse,
-    "ramp": ramp,
-    "random": generate_rand_pulse,
     "step": generate_step,
-    "sinousoidal": generate_sinousoidal,
-    "chirp": generate_chirp,
-    "discretized": generate_discretized,
     "noise": add_white_noise,
+}
+
+
+FUNC_MAP = {
+    **OTHER_FUNC,
+    **LINEAR_FUNC,
+    **RANDOM_FUNC,
+    **PERIODIC_FUNC,
 }
