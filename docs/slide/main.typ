@@ -88,10 +88,17 @@
 }
 
 // CSV読み込み＋数値フォーマット＋booktabs描画
-#let booktabs(path) = {
+// 指定した行インデックス（0始まり、ヘッダー除く）だけを抜き出して描画
+#let booktabs(path, rows: none, offset: -2) = {
   let data = csv(path)
   let header = data.at(0)
-  let rows = data.slice(1)
+  // rows指定があればその行だけ、なければ全行
+  let all_rows = data.slice(1)
+  let selected = if rows == none {
+    all_rows
+  } else {
+    rows.map(i => all_rows.at(i + offset))
+  }
   table(
     columns: header.len(),
     stroke: none,
@@ -100,7 +107,7 @@
     table.hline(stroke: 1.2pt),
     ..header.map(h => text(weight: "bold", size: 0.78em, h)),
     table.hline(stroke: 0.6pt),
-    ..rows.flatten().map(v => text(size: 0.78em, fmt(v))),
+    ..selected.flatten().map(v => text(size: 0.78em, fmt(v))),
     table.hline(stroke: 1.2pt),
   )
 }
@@ -113,7 +120,7 @@
   gutter: 0.3em,
   image("result/single_waveform.png", width: 90%),
   {
-    booktabs("result/single_metrics.csv")
+    booktabs("result/single_metrics.csv",rows:(3,))
     v(1.2em)
     booktabs("result/single_scalar_metrics.csv")
   }
