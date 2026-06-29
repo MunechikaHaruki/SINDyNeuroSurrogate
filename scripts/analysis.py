@@ -36,7 +36,7 @@ MCNameList = list(MCMODELS.keys())
 setup_mlflow()
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RESULT_DIR = REPO_ROOT / "docs" / "result"
+RESULT_DIR = REPO_ROOT / "docs" / "slide" / "result"
 
 
 # ---------------------------------------------------------------------------
