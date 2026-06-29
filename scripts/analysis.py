@@ -29,7 +29,7 @@ from neurosurrogate.profiler.profiler_wave import (
 )
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
-CurrentList: list = ["train"] + list(FUNC_MAP.keys())
+CurrentList: list = list(FUNC_MAP.keys())
 DRAW_LIST: list = list(DRAW_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
@@ -185,21 +185,18 @@ def _make_ui_element(name: str, annotation, default):
 
 
 def make_sim_ui(base_ui: mo.ui.dictionary, current_type: str) -> mo.ui.dictionary:
-    if current_type == "train":
-        current_params_ui: mo.ui.dictionary = mo.ui.dictionary({})
-    else:
-        current_params_ui = mo.ui.dictionary(
-            {
-                name: _make_ui_element(
-                    name,
-                    param.annotation,
-                    0 if param.default is inspect.Parameter.empty else param.default,
-                )
-                for name, param in inspect.signature(
-                    FUNC_MAP[current_type]
-                ).parameters.items()
-            }
-        )
+    current_params_ui = mo.ui.dictionary(
+        {
+            name: _make_ui_element(
+                name,
+                param.annotation,
+                0 if param.default is inspect.Parameter.empty else param.default,
+            )
+            for name, param in inspect.signature(
+                FUNC_MAP[current_type]
+            ).parameters.items()
+        }
+    )
     return mo.ui.dictionary({"current_params": current_params_ui})
 
 
@@ -207,10 +204,8 @@ def plot_current_preview(
     base_ui: mo.ui.dictionary, sim_ui: mo.ui.dictionary
 ) -> Figure | None:
     """sim_ui の current_params から電流波形を構築してプレビュー描画。
-    current_type=="train" or 構築失敗時は None。"""
+    構築失敗時は None。"""
     current_type = str(base_ui["sim_current_type"].value)
-    if current_type == "train":
-        return None
     dt = float(base_ui["dt"].value)
     params = sim_ui["current_params"].value or {}
     try:
@@ -245,7 +240,7 @@ def render_sim_ui(sim_ui: mo.ui.dictionary) -> mo.Html:
 
 def render_current_preview(fig: Figure | None) -> mo.Html:
     if fig is None:
-        return mo.md("（train モード: プレビューなし）")
+        return mo.md("（プレビューなし）")
     return mo.vstack(
         [
             mo.md("### 電流プレビュー"),
@@ -254,43 +249,44 @@ def render_current_preview(fig: Figure | None) -> mo.Html:
     )
 
 
-def make_combined_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+def make_combined_ui(base_ui: mo.ui.dictionary) -> dict:
     comp_names = MCMODELS[str(base_ui["model_name"].value)].names
-    return mo.ui.dictionary(
-        {
-            "surrogate_targets": mo.ui.multiselect(
-                options=comp_names, value=[comp_names[0]]
-            ),
-            "sim": make_sim_ui(base_ui, str(base_ui["sim_current_type"].value)),
-            "sweep": analysis_sweep.make_sweep_ui(
-                base_ui, str(base_ui["sim_current_type"].value)
-            ),
-        }
-    )
+    return {
+        "surrogate_targets": mo.ui.multiselect(
+            options=comp_names, value=[comp_names[0]]
+        ),
+        "sim": make_sim_ui(base_ui, str(base_ui["sim_current_type"].value)),
+        "sweep": analysis_sweep.make_sweep_ui(
+            base_ui, str(base_ui["sim_current_type"].value)
+        ),
+    }
 
 
 def calc_sweep(
     base_button: mo.ui.dictionary,
-    sweep_ui: mo.ui.dictionary,
+    sweep_ui: mo.ui.dictionary | None,
     surrogate_targets: list[str],
     draw_ui: mo.ui.dictionary,
 ) -> dict:
+    if sweep_ui is None:
+        return {}
     return analysis_sweep.calc_sweep(base_button, sweep_ui, surrogate_targets, draw_ui)
 
 
-def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure]:
+def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure | None]:
     return analysis_sweep.plot_sweep(sweep_result)
 
 
-def render_combined_ui(combined_ui: mo.ui.dictionary) -> mo.Html:
+def render_combined_ui(combined_ui: dict) -> mo.Html:
+    sweep_ui = combined_ui["sweep"]
+    sweep_html = (
+        analysis_sweep.render_sweep(sweep_ui) if sweep_ui is not None else mo.md("")
+    )
     return mo.vstack(
         [
             mo.md(f"- surrogate targets: {combined_ui['surrogate_targets']}"),
             mo.hstack(
-                [
-                    render_sim_ui(combined_ui["sim"]),
-                    analysis_sweep.render_sweep(combined_ui["sweep"]),
-                ],
+                [render_sim_ui(combined_ui["sim"]), sweep_html],
                 align="start",
             ),
         ]
@@ -375,16 +371,12 @@ def _parse_eval_button(
         cast(pd.DataFrame, base_button["eval_run_selector"].value)["run_id"].iloc[0]
     )
     current_type = str(base_button["sim_current_type"].value)
-    current_params_val = sim_ui["current_params"].value
-    current_params = current_params_val if current_params_val else None
-    if current_type == "train":
-        dataset_cfg = RunInfo.get_run_info(run_id).dataset
-    else:
-        dataset_cfg = DatasetConfig.build_dataset(
-            model_name=str(base_button["model_name"].value),
-            dt=float(base_button["dt"].value),
-            pipeline=CurrentConfig.build_pipeline(current_type, current_params),
-        )
+    current_params = sim_ui["current_params"].value or {}
+    dataset_cfg = DatasetConfig.build_dataset(
+        model_name=str(base_button["model_name"].value),
+        dt=float(base_button["dt"].value),
+        pipeline=CurrentConfig.build_pipeline(current_type, current_params),
+    )
     return dataset_cfg, run_id
 
 

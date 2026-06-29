@@ -45,8 +45,6 @@ class SweepConfig:
 
 
 def _make_sweep_current_params(current_type: str) -> mo.ui.dictionary:
-    if current_type == "train":
-        return mo.ui.dictionary({})
     return mo.ui.dictionary(
         {
             name: (
@@ -79,18 +77,16 @@ def _make_sweep_current_params(current_type: str) -> mo.ui.dictionary:
     )
 
 
-def make_sweep_ui(base_ui: mo.ui.dictionary, current_type: str) -> mo.ui.dictionary:
-    param_keys = (
-        ["(none)"]
-        if current_type == "train"
-        else [
-            name
-            for name, p in inspect.signature(
-                FUNC_MAP[current_type]
-            ).parameters.items()
-            if p.annotation in (int, float)
-        ]
-    )
+def make_sweep_ui(
+    base_ui: mo.ui.dictionary, current_type: str
+) -> mo.ui.dictionary | None:
+    param_keys = [
+        name
+        for name, p in inspect.signature(FUNC_MAP[current_type]).parameters.items()
+        if p.annotation in (int, float)
+    ]
+    if not param_keys:
+        return None
     return mo.ui.dictionary(
         {
             "sweep_param": mo.ui.dropdown(options=param_keys, value=param_keys[0]),
@@ -284,8 +280,10 @@ def calc_sweep(
     }
 
 
-def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure]:
+def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure | None]:
     """純粋描画層: 結果dict → (Html, Figure)。"""
+    if not sweep_result:
+        return mo.md(""), None
     fig = _plot_sweep(
         sweep_result["data"],
         sweep_result["run_ids"],
