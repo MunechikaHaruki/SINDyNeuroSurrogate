@@ -73,38 +73,50 @@ def render_save_panel(panel: mo.ui.dictionary, names: list[str]) -> mo.Html:
 SaveItem = Figure | pd.DataFrame
 SaveItems = SaveItem | dict[str, SaveItem]
 
+SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
+    Figure: lambda o, p: o.savefig(p, dpi=300, bbox_inches="tight"),
+    pd.DataFrame: lambda o, p: o.to_csv(p),
+}
+
 
 def _save_one(obj: SaveItem, path: Path) -> None:
-    if isinstance(obj, Figure):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        obj.savefig(path, dpi=300, bbox_inches="tight")
-    elif isinstance(obj, pd.DataFrame):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        obj.to_csv(path)
-    else:
-        raise TypeError(f"unsupported save target: {type(obj)}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    SAVERS[type(obj)](obj, path)
+
+
+def _expand(name: str, base: Path, obj: SaveItems) -> list[tuple[str, Path, SaveItem]]:
+    if isinstance(obj, dict):
+        return [
+            (f"{name}[{k}]", base.with_name(f"{base.stem}_{k}{base.suffix}"), v)
+            for k, v in obj.items()
+        ]
+    return [(name, base, obj)]
+
+
+def _resolve_targets(
+    panel: mo.ui.dictionary, items: dict[str, SaveItems]
+) -> list[tuple[str, Path | None, SaveItem | None]]:
+    """ボタン押下エントリを (label, path, obj) に正規化。path=None は未指定。"""
+    out: list[tuple[str, Path | None, SaveItem | None]] = []
+    pressed = ((n, panel[n], o) for n, o in items.items() if panel[n]["save"].value)
+    for name, ctrl, obj in pressed:
+        rel = str(ctrl["path"].value).strip()
+        if not rel:
+            out.append((name, None, None))
+            continue
+        out.extend(_expand(name, RESULT_DIR / rel, obj))
+    return out
+
+
+def _save_and_report(label: str, path: Path | None, obj: SaveItem | None) -> mo.Html:
+    if path is None or obj is None:
+        return mo.md(f"⚠️ {label}: パス未指定")
+    _save_one(obj, path)
+    return mo.md(f"✅ {label}: `{path.relative_to(REPO_ROOT)}`")
 
 
 def save_panel_items(panel: mo.ui.dictionary, items: dict[str, SaveItems]) -> mo.Html:
-    """ボタン押下されたものだけ保存。dict要素はpath末尾に `_<key>` 付与で個別保存。"""
-    msgs: list = []
-    for name, obj in items.items():
-        ctrl = panel[name]
-        if not ctrl["save"].value:
-            continue
-        rel = str(ctrl["path"].value).strip()
-        if not rel:
-            msgs.append(mo.md(f"⚠️ {name}: パス未指定"))
-            continue
-        base = RESULT_DIR / rel
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                out = base.with_name(f"{base.stem}_{k}{base.suffix}")
-                _save_one(v, out)
-                msgs.append(mo.md(f"✅ {name}[{k}]: `{out.relative_to(REPO_ROOT)}`"))
-        else:
-            _save_one(obj, base)
-            msgs.append(mo.md(f"✅ {name}: `{base.relative_to(REPO_ROOT)}`"))
+    msgs = [_save_and_report(*t) for t in _resolve_targets(panel, items)]
     return mo.vstack(msgs) if msgs else mo.md("(未保存)")
 
 
