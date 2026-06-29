@@ -88,7 +88,12 @@
 )
 == 振幅を変えた時の振る舞い
 100ms間の定常電流を振幅を変えながら加えた時のスパイク数の推移
-
+#grid(columns:(1fr,1fr),gutter:0.5em,
+  figure(image(image_path+"amptitude_waveform.png"),
+  caption: "baseモデルとオリジナルモデルに10mAの定常電流付加"),
+  
+  image(image_path+"amptitude_sweep.png")
+  )
 == 定常電流以外の入力
 sin波電流を与える
 == 5compモデル
