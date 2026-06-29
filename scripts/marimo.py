@@ -72,12 +72,12 @@ def _(analysis, draw_ui, mo, result, spike_ui, sweep_result):
 @app.cell
 def _(analysis):
     save_defaults = {
-        "waveform": "waveform.png",
-        "sweep": "sweep.png",
-        "neurograph": "neurograph.png",
-        "waveform_metrics": "waveform_metrics.csv",
-        "spike_metrics": "spike_metrics.csv",
-        "scalar_metrics": "scalar_metrics.csv",
+        "waveform": "_waveform.png",
+        "sweep": "_sweep.png",
+        "neurograph": "_neurograph.png",
+        "waveform_metrics": "_waveform_metrics.csv",
+        "spike_metrics": "_spike_metrics.csv",
+        "scalar_metrics": "_scalar_metrics.csv",
     }
     save_panel = analysis.make_save_panel(save_defaults)
     analysis.render_save_panel(save_panel)
