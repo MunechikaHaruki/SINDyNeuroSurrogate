@@ -73,8 +73,46 @@
   #image("result/model.png")
 ]
 
-== 単一スパイクとの比較
-Write Result Here
+#let booktabs(data) = {
+  let header = data.at(0)
+  let rows = data.slice(1)
+  table(
+    columns: header.len(),
+    stroke: none,
+    inset: (x: 6pt, y: 5pt),
+    align: (col, _) => if col == 0 { left } else { right },
+    table.hline(stroke: 1.2pt),
+    ..header.map(h => text(weight: "bold", size: 0.78em, h)),
+    table.hline(stroke: 0.6pt),
+    ..rows.flatten().map(v => text(size: 0.78em, v)),
+    table.hline(stroke: 1.2pt),
+  )
+}
+
+
+
+== 単一スパイクの比較
+
+オリジナルのHHモデル、baseモデルに10ms秒の振幅10mAの定常電流を与えた
+#grid(
+  columns: (1.3fr, 1fr),
+  gutter: 0.3em,
+  // 左：グラフ画像
+  image("result/single_waveform.png", width: 90%),
+
+  // 右：テーブル＋サマリー
+  {
+    // ── metrics テーブル（三線表）────────────────────────
+    let raw = csv("result/single_waveform_metrics.csv")
+    booktabs(raw)
+
+    v(1.2em)
+
+    // ── スカラー metrics（三線表）────────────────────────
+    let scalars = csv("result/single_scalar_metrics.csv")
+    booktabs(scalars)
+  }
+)
 
 == 振幅を変えた時の振る舞い
 a
