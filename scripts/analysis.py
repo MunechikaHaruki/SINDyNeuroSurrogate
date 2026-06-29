@@ -8,6 +8,7 @@ import analysis_sweep
 import marimo as mo
 import matplotlib.pyplot as plt
 import mlflow
+import numpy as np
 import pandas as pd
 from io_handler import TARGET_EXP, RunInfo, load_surrogate_model, setup_mlflow
 from matplotlib.figure import Figure
@@ -84,6 +85,9 @@ def save_panel_items(panel: mo.ui.dictionary, items: dict[str, SaveItem]) -> mo.
         ctrl = panel[name]
         if not ctrl["save"].value:
             continue
+        if obj is None:
+            msgs.append(mo.md(f"⚠️ {name}: 保存対象なし"))
+            continue
         rel = str(ctrl["path"].value).strip()
         if not rel:
             msgs.append(mo.md(f"⚠️ {name}: パス未指定"))
@@ -126,7 +130,7 @@ def make_base_ui() -> mo.ui.dictionary:
     plt_options = list(typing.get_args(MplStyle))
     return mo.ui.dictionary(
         {
-            "plt_style": mo.ui.radio(options=plt_options, value=plt_options[0]),
+            "plt_style": mo.ui.radio(options=plt_options, value=plt_options[1]),
             "sim_current_type": mo.ui.dropdown(
                 CurrentList, value="steady", label="single: current_type"
             ),
@@ -215,6 +219,35 @@ def make_sim_ui(base_ui: mo.ui.dictionary, current_type: str) -> mo.ui.dictionar
     return mo.ui.dictionary({"current_params": current_params_ui})
 
 
+def plot_current_preview(
+    base_ui: mo.ui.dictionary, sim_ui: mo.ui.dictionary
+) -> Figure | None:
+    """sim_ui の current_params から電流波形を構築してプレビュー描画。
+    current_type=="train" or 構築失敗時は None。"""
+    current_type = str(base_ui["sim_current_type"].value)
+    if current_type == "train":
+        return None
+    dt = float(base_ui["dt"].value)
+    params = sim_ui["current_params"].value or {}
+    try:
+        i_ext = CurrentConfig(
+            pipeline=CurrentConfig.build_pipeline(current_type, params)
+        ).build(dt)
+    except Exception as e:  # noqa: BLE001
+        fig, ax = plt.subplots(figsize=(6, 1.5))
+        ax.text(0.5, 0.5, f"build失敗: {e}", ha="center", va="center", fontsize=8)
+        ax.axis("off")
+        return fig
+    t = np.arange(len(i_ext)) * dt
+    fig, ax = plt.subplots(figsize=(6, 2))
+    ax.plot(t, i_ext, lw=0.8)
+    ax.set_xlabel("t [ms]")
+    ax.set_ylabel("I_ext [μA/cm²]")
+    ax.set_title(f"{current_type} preview")
+    fig.tight_layout()
+    return fig
+
+
 def render_sim_ui(sim_ui: mo.ui.dictionary) -> mo.Html:
     return mo.vstack(
         [
@@ -222,6 +255,17 @@ def render_sim_ui(sim_ui: mo.ui.dictionary) -> mo.Html:
             mo.md(f"""
 - current params: {sim_ui["current_params"]}
 """),
+        ]
+    )
+
+
+def render_current_preview(fig: Figure | None) -> mo.Html:
+    if fig is None:
+        return mo.md("（train モード: プレビューなし）")
+    return mo.vstack(
+        [
+            mo.md("### 電流プレビュー"),
+            mo.mpl.interactive(fig),
         ]
     )
 

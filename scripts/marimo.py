@@ -1,10 +1,10 @@
 import marimo
 
 __generated_with = "0.23.6"
-app = marimo.App(width="medium")
+app = marimo.App(width="columns")
 
 
-@app.cell
+@app.cell(column=0)
 def _():
     import analysis
     import marimo as mo
@@ -12,12 +12,6 @@ def _():
     base_button = analysis.make_base_ui()
     analysis.render_base(base_button)
     return analysis, base_button, mo
-
-
-@app.cell
-def _(analysis, base_button):
-    analysis.render_model_info(base_button)
-    return
 
 
 @app.cell
@@ -32,6 +26,13 @@ def _(analysis, base_button, mo):
         ]
     )
     return combined_ui, run_button
+
+
+@app.cell
+def _(analysis, base_button, combined_ui):
+    fig_current = analysis.plot_current_preview(base_button, combined_ui["sim"])
+    analysis.render_current_preview(fig_current)
+    return (fig_current,)
 
 
 @app.cell
@@ -75,6 +76,7 @@ def _(analysis, base_button):
     save_defaults = {
         "waveform": "_waveform.png",
         "sweep": "_sweep.png",
+        "current_preview": "_current_preview.png",
         "neurograph": "_neurograph.png",
         **{f"model_info_{k}": f"_model_info_{k}.png" for k in model_info_figs},
         "metrics": "_metrics.csv",
@@ -90,6 +92,7 @@ def _(
     analysis,
     base_button,
     dfs_result,
+    fig_current,
     fig_result,
     fig_sweep,
     model_info_figs,
@@ -100,12 +103,19 @@ def _(
         {
             "waveform": fig_result,
             "sweep": fig_sweep,
+            "current_preview": fig_current,
             "neurograph": analysis.get_neurograph_fig(base_button),
             **{f"model_info_{k}": v for k, v in model_info_figs.items()},
             "metrics": dfs_result["metrics"],
             "scalar_metrics": dfs_result["scalar_metrics"],
         },
     )
+    return
+
+
+@app.cell(column=1)
+def _(analysis, base_button):
+    analysis.render_model_info(base_button)
     return
 
 
