@@ -61,6 +61,10 @@ def generate_steady(value: float = 10):
     return apply
 
 
+def single_pulse(value: float = 10):
+    return generate_steady(value, silence_duration=10, duration=30)
+
+
 @current_generator
 def generate_rand_pulse(
     max_val: int = 20,
@@ -176,6 +180,7 @@ def add_white_noise(sigma: float = 0.1):
 
 FUNC_MAP = {
     "steady": generate_steady,
+    "single_pulse": single_pulse,
     "random": generate_rand_pulse,
     "ramp": generate_ramp,
     "step": generate_step,
