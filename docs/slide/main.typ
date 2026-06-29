@@ -1,5 +1,5 @@
 #import "@preview/slydst:0.1.4": *
-
+#import "shared/style.typ": booktabs
 #set text(font: ("Hiragino Kaku Gothic ProN", "New Computer Modern"))
 #show figure.caption: it => it.body
 #show link: underline
@@ -17,6 +17,7 @@
 
 #include "shared/method.typ"
 
+#let image_path = "/docs/slide/result/"
 
 == Compartment学習の条件
 
@@ -70,65 +71,25 @@
 == 結果 得られたモデル
 #v(5em)
 #align(center)[
-  #image("result/model.png")
+  #image(image_path + "model.png")
 ]
-
-// 数値文字列を小数第2位まで丸める（非数値はそのまま返す）
-#let fmt(v) = {
-  // 前後の空白を除去
-  let trimmed = v.trim()
-  // 整数・小数・科学記法を判定する正規表現
-  if trimmed.match(regex("^-?[0-9]+(\.[0-9]+)?(e[+-]?[0-9]+)?$")) != none {
-    // 数値なら小数第2位に丸めて文字列に変換
-    str(calc.round(float(trimmed), digits: 2))
-  } else {
-    // 非数値（ヘッダー等）はそのまま返す
-    trimmed
-  }
-}
-
-// CSV読み込み＋数値フォーマット＋booktabs描画
-// 指定した行インデックス（0始まり、ヘッダー除く）だけを抜き出して描画
-#let booktabs(path, rows: none, offset: -2) = {
-  let data = csv(path)
-  let header = data.at(0)
-  // rows指定があればその行だけ、なければ全行
-  let all_rows = data.slice(1)
-  let selected = if rows == none {
-    all_rows
-  } else {
-    rows.map(i => all_rows.at(i + offset))
-  }
-  table(
-    columns: header.len(),
-    stroke: none,
-    inset: (x: 6pt, y: 5pt),
-    align: (col, _) => if col == 0 { left } else { right },
-    table.hline(stroke: 1.2pt),
-    ..header.map(h => text(weight: "bold", size: 0.78em, h)),
-    table.hline(stroke: 0.6pt),
-    ..selected.flatten().map(v => text(size: 0.78em, fmt(v))),
-    table.hline(stroke: 1.2pt),
-  )
-}
-
 
 == 単一スパイクの比較
 オリジナルのHHモデル、baseモデルに10ms秒の振幅10mAの定常電流を与えた
 #grid(
-  columns: (1.3fr, 1fr),
-  gutter: 0.3em,
-  image("result/single_waveform.png", width: 90%),
+  columns: (1.3fr, 1.5fr),
+  gutter: -1.5em,
+  image(image_path + "single_waveform.png", width: 90%),
   {
-    booktabs("result/single_metrics.csv",rows:(3,))
-    v(1.2em)
-    booktabs("result/single_scalar_metrics.csv")
+    booktabs(image_path + "single_metrics.csv",rows:(3,7,8,11),size: 0.67em)
+    v(-0.3em)
+    booktabs(image_path + "single_scalar_metrics.csv")
   }
 )
 == 振幅を変えた時の振る舞い
 a
 == 定常電流以外の入力
-
+a
 == 5compモデル
 a
 
