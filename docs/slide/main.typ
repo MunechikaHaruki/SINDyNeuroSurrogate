@@ -74,18 +74,18 @@
 ]
 
 #let booktabs(data) = {
-  let header = data.at(0)
-  let rows = data.slice(1)
+  let header = data.at(0) // header row
+  let rows = data.slice(1) // data rows(2行目以降)
   table(
-    columns: header.len(),
-    stroke: none,
-    inset: (x: 6pt, y: 5pt),
-    align: (col, _) => if col == 0 { left } else { right },
-    table.hline(stroke: 1.2pt),
+    columns: header.len(), // header要素数
+    stroke: none, // 枠線なし
+    inset: (x: 6pt, y: 5pt), // セル内余白
+    align: (col, _) => if col == 0 { left } else { right }, // 1列目は左揃え、それ以外は右揃え（数値向け）
+    table.hline(stroke: 1.2pt), //太線
     ..header.map(h => text(weight: "bold", size: 0.78em, h)),
-    table.hline(stroke: 0.6pt),
+    table.hline(stroke: 0.6pt), //細線
     ..rows.flatten().map(v => text(size: 0.78em, v)),
-    table.hline(stroke: 1.2pt),
+    table.hline(stroke: 1.2pt), //太線
   )
 }
 
@@ -103,7 +103,7 @@
   // 右：テーブル＋サマリー
   {
     // ── metrics テーブル（三線表）────────────────────────
-    let raw = csv("result/single_waveform_metrics.csv")
+    let raw = csv("result/single_metrics.csv")
     booktabs(raw)
 
     v(1.2em)
