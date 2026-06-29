@@ -59,13 +59,13 @@ def make_save_panel(defaults: dict[str, str]) -> mo.ui.dictionary:
     )
 
 
-def render_save_panel(panel: mo.ui.dictionary, names: list[str]) -> mo.Html:
+def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
     rows = [
         mo.hstack(
-            [panel[name]["path"], panel[name]["save"]],
+            [item["path"], item["save"]],
             justify="start",
         )
-        for name in names
+        for item in panel.values()
     ]
     return mo.vstack([mo.md("### 画像保存パネル (docs/result/ 配下)"), *rows])
 

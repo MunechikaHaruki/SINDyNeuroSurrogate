@@ -78,7 +78,7 @@ def _(analysis):
         "scalar_metrics": "scalar_metrics.csv",
     }
     save_panel = analysis.make_save_panel(save_defaults)
-    analysis.render_save_panel(save_panel, list(save_defaults.keys()))
+    analysis.render_save_panel(save_panel)
     return (save_panel,)
 
 
