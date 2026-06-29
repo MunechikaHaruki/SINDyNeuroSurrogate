@@ -250,7 +250,7 @@ def calc_sweep(
         "run_id"
     ].tolist()
     eval_comp_name = str(_ui_val(draw_ui, "eval_comp"))
-    current_type = str(_ui_val(base_button, "sweep_current_type"))
+    current_type = str(_ui_val(base_button, "sim_current_type"))
     sweep_cfg = SweepConfig(
         sweep_param=str(_ui_val(sweep_ui, "sweep_param")),
         amp_start=float(_ui_val(sweep_ui, "amp_start")),

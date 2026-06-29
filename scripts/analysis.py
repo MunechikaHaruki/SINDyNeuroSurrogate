@@ -131,18 +131,12 @@ def make_base_ui() -> mo.ui.dictionary:
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[1]),
-            "sim_current_type": mo.ui.dropdown(
-                CurrentList, value="steady", label="single: current_type"
-            ),
-            "sweep_current_type": mo.ui.dropdown(
-                CurrentList, value="steady", label="sweep: current_type"
-            ),
+            "sim_current_type": mo.ui.dropdown(CurrentList, value="steady"),
             "model_name": mo.ui.dropdown(
                 options=list(MCMODELS.keys()),
-                label="model_name",
                 value="hh",
             ),
-            "dt": mo.ui.number(value=0.01, step=0.001, label="dt"),
+            "dt": mo.ui.number(value=0.01, step=0.001),
             "sweep_run_selector": mo.ui.table(
                 pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
                 label="sweep Run 選択（複数可）",
@@ -156,23 +150,6 @@ def make_base_ui() -> mo.ui.dictionary:
                 initial_selection=[0],
             ),
         }
-    )
-
-
-def render_base(base_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.vstack(
-        [
-            mo.md(f"""
-### MLflow データ解析
-- matplotlib rendering setting: {base_ui["plt_style"]}
-- single current_type: {base_ui["sim_current_type"]}
-- sweep current_type: {base_ui["sweep_current_type"]}
-- model_name: {base_ui["model_name"]}
-- dt: {base_ui["dt"]}
-"""),
-            base_ui["sweep_run_selector"],
-            base_ui["eval_run_selector"],
-        ]
     )
 
 
@@ -279,7 +256,7 @@ def make_combined_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
             ),
             "sim": make_sim_ui(base_ui, str(base_ui["sim_current_type"].value)),
             "sweep": analysis_sweep.make_sweep_ui(
-                base_ui, str(base_ui["sweep_current_type"].value)
+                base_ui, str(base_ui["sim_current_type"].value)
             ),
         }
     )

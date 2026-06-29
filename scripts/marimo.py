@@ -10,7 +10,7 @@ def _():
     import marimo as mo
 
     base_button = analysis.make_base_ui()
-    analysis.render_base(base_button)
+    base_button
     return analysis, base_button, mo
 
 
