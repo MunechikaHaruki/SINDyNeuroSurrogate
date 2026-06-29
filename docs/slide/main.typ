@@ -73,47 +73,51 @@
   #image("result/model.png")
 ]
 
-#let booktabs(data) = {
-  let header = data.at(0) // header row
-  let rows = data.slice(1) // data rows(2行目以降)
+// 数値文字列を小数第2位まで丸める（非数値はそのまま返す）
+#let fmt(v) = {
+  // 前後の空白を除去
+  let trimmed = v.trim()
+  // 整数・小数・科学記法を判定する正規表現
+  if trimmed.match(regex("^-?[0-9]+(\.[0-9]+)?(e[+-]?[0-9]+)?$")) != none {
+    // 数値なら小数第2位に丸めて文字列に変換
+    str(calc.round(float(trimmed), digits: 2))
+  } else {
+    // 非数値（ヘッダー等）はそのまま返す
+    trimmed
+  }
+}
+
+// CSV読み込み＋数値フォーマット＋booktabs描画
+#let booktabs(path) = {
+  let data = csv(path)
+  let header = data.at(0)
+  let rows = data.slice(1)
   table(
-    columns: header.len(), // header要素数
-    stroke: none, // 枠線なし
-    inset: (x: 6pt, y: 5pt), // セル内余白
-    align: (col, _) => if col == 0 { left } else { right }, // 1列目は左揃え、それ以外は右揃え（数値向け）
-    table.hline(stroke: 1.2pt), //太線
+    columns: header.len(),
+    stroke: none,
+    inset: (x: 6pt, y: 5pt),
+    align: (col, _) => if col == 0 { left } else { right },
+    table.hline(stroke: 1.2pt),
     ..header.map(h => text(weight: "bold", size: 0.78em, h)),
-    table.hline(stroke: 0.6pt), //細線
-    ..rows.flatten().map(v => text(size: 0.78em, v)),
-    table.hline(stroke: 1.2pt), //太線
+    table.hline(stroke: 0.6pt),
+    ..rows.flatten().map(v => text(size: 0.78em, fmt(v))),
+    table.hline(stroke: 1.2pt),
   )
 }
 
 
-
 == 単一スパイクの比較
-
 オリジナルのHHモデル、baseモデルに10ms秒の振幅10mAの定常電流を与えた
 #grid(
   columns: (1.3fr, 1fr),
   gutter: 0.3em,
-  // 左：グラフ画像
   image("result/single_waveform.png", width: 90%),
-
-  // 右：テーブル＋サマリー
   {
-    // ── metrics テーブル（三線表）────────────────────────
-    let raw = csv("result/single_metrics.csv")
-    booktabs(raw)
-
+    booktabs("result/single_metrics.csv")
     v(1.2em)
-
-    // ── スカラー metrics（三線表）────────────────────────
-    let scalars = csv("result/single_scalar_metrics.csv")
-    booktabs(scalars)
+    booktabs("result/single_scalar_metrics.csv")
   }
 )
-
 == 振幅を変えた時の振る舞い
 a
 == 定常電流以外の入力
