@@ -71,7 +71,6 @@ def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
 
 
 SaveItem = Figure | pd.DataFrame
-SaveItems = SaveItem | dict[str, SaveItem]
 
 SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
     Figure: lambda o, p: o.savefig(p, dpi=300, bbox_inches="tight"),
@@ -79,44 +78,20 @@ SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
 }
 
 
-def _save_one(obj: SaveItem, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    SAVERS[type(obj)](obj, path)
-
-
-def _expand(name: str, base: Path, obj: SaveItems) -> list[tuple[str, Path, SaveItem]]:
-    if isinstance(obj, dict):
-        return [
-            (f"{name}[{k}]", base.with_name(f"{base.stem}_{k}{base.suffix}"), v)
-            for k, v in obj.items()
-        ]
-    return [(name, base, obj)]
-
-
-def _resolve_targets(
-    panel: mo.ui.dictionary, items: dict[str, SaveItems]
-) -> list[tuple[str, Path | None, SaveItem | None]]:
-    """ボタン押下エントリを (label, path, obj) に正規化。path=None は未指定。"""
-    out: list[tuple[str, Path | None, SaveItem | None]] = []
-    pressed = ((n, panel[n], o) for n, o in items.items() if panel[n]["save"].value)
-    for name, ctrl, obj in pressed:
+def save_panel_items(panel: mo.ui.dictionary, items: dict[str, SaveItem]) -> mo.Html:
+    msgs: list[mo.Html] = []
+    for name, obj in items.items():
+        ctrl = panel[name]
+        if not ctrl["save"].value:
+            continue
         rel = str(ctrl["path"].value).strip()
         if not rel:
-            out.append((name, None, None))
+            msgs.append(mo.md(f"⚠️ {name}: パス未指定"))
             continue
-        out.extend(_expand(name, RESULT_DIR / rel, obj))
-    return out
-
-
-def _save_and_report(label: str, path: Path | None, obj: SaveItem | None) -> mo.Html:
-    if path is None or obj is None:
-        return mo.md(f"⚠️ {label}: パス未指定")
-    _save_one(obj, path)
-    return mo.md(f"✅ {label}: `{path.relative_to(REPO_ROOT)}`")
-
-
-def save_panel_items(panel: mo.ui.dictionary, items: dict[str, SaveItems]) -> mo.Html:
-    msgs = [_save_and_report(*t) for t in _resolve_targets(panel, items)]
+        path = RESULT_DIR / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        SAVERS[type(obj)](obj, path)
+        msgs.append(mo.md(f"✅ {name}: `{path.relative_to(REPO_ROOT)}`"))
     return mo.vstack(msgs) if msgs else mo.md("(未保存)")
 
 
@@ -325,11 +300,6 @@ def render_spike_ui(spike_ui: mo.ui.dictionary) -> mo.Html:
 # ---------------------------------------------------------------------------
 # Model Info
 # ---------------------------------------------------------------------------
-
-
-def get_model_info_figs(base_ui: mo.ui.dictionary) -> dict[str, Figure]:
-    run_ids = cast(pd.DataFrame, base_ui["sweep_run_selector"].value)["run_id"].tolist()
-    return {rid[:8]: RunInfo.get_run_info(rid).sindy_coef for rid in run_ids}
 
 
 def get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:

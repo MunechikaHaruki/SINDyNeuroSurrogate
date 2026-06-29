@@ -8,6 +8,7 @@ app = marimo.App(width="medium")
 def _():
     import analysis
     import marimo as mo
+
     base_button = analysis.make_base_ui()
     analysis.render_base(base_button)
     return analysis, base_button, mo
@@ -24,10 +25,12 @@ def _(analysis, base_button, mo):
     analysis.setup_mpl(base_button["plt_style"].value)
     combined_ui = analysis.make_combined_ui(base_button)
     run_button = mo.ui.run_button(label="実行")
-    mo.vstack([
-        analysis.render_combined_ui(combined_ui),
-        run_button,
-    ])
+    mo.vstack(
+        [
+            analysis.render_combined_ui(combined_ui),
+            run_button,
+        ]
+    )
     return combined_ui, run_button
 
 
@@ -72,7 +75,6 @@ def _(analysis):
         "waveform": "waveform.png",
         "sweep": "sweep.png",
         "neurograph": "neurograph.png",
-        "model_info": "model_info.png",
         "waveform_metrics": "waveform_metrics.csv",
         "spike_metrics": "spike_metrics.csv",
         "scalar_metrics": "scalar_metrics.csv",
@@ -90,7 +92,6 @@ def _(analysis, base_button, dfs_result, fig_result, fig_sweep, save_panel):
             "waveform": fig_result,
             "sweep": fig_sweep,
             "neurograph": analysis.get_neurograph_fig(base_button),
-            "model_info": analysis.get_model_info_figs(base_button),
             "waveform_metrics": dfs_result["waveform_metrics"],
             "spike_metrics": dfs_result["spike_metrics"],
             "scalar_metrics": dfs_result["scalar_metrics"],
