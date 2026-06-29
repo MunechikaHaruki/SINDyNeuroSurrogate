@@ -453,6 +453,8 @@ def view_result(
     spike_corr = spike_shape_corr(dm)
     df_waveform = waveform_summary_df(dm)
     df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
+    df_spike.index.name = "metric"
+    df_metrics = pd.concat([df_waveform, df_spike])
     df_scalar = pd.DataFrame(
         {**wf_summary, **spike_corr}.items(),
         columns=["metric", "value"],
@@ -467,16 +469,14 @@ def view_result(
 
     html = mo.vstack(
         [
-            mo.md("#### 波形・発火パターン指標（orig / surr / orig-surr）"),
-            df_waveform,
+            mo.md(
+                f"#### 動的指標（orig / surr / orig-surr） — spike orig: {spike_orig} / surr: {spike_surr}"
+            ),
+            df_metrics,
             mo.md("#### 波形誤差スカラー"),
             _stat_cards(wf_summary),
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
             _stat_cards(spike_corr),
-            mo.md(
-                f"#### AP・ISI 指標（orig / surr / orig-surr） — orig: {spike_orig} / surr: {spike_surr}"
-            ),
-            df_spike,
             mo.mpl.interactive(fig),
         ]
     )
@@ -484,8 +484,7 @@ def view_result(
         html,
         fig,
         {
-            "waveform_metrics": df_waveform,
-            "spike_metrics": df_spike,
+            "metrics": df_metrics,
             "scalar_metrics": df_scalar,
         },
     )

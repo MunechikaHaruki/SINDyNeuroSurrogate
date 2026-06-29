@@ -77,8 +77,7 @@ def _(analysis, base_button):
         "sweep": "_sweep.png",
         "neurograph": "_neurograph.png",
         **{f"model_info_{k}": f"_model_info_{k}.png" for k in model_info_figs},
-        "waveform_metrics": "_waveform_metrics.csv",
-        "spike_metrics": "_spike_metrics.csv",
+        "metrics": "_metrics.csv",
         "scalar_metrics": "_scalar_metrics.csv",
     }
     save_panel = analysis.make_save_panel(save_defaults)
@@ -103,8 +102,7 @@ def _(
             "sweep": fig_sweep,
             "neurograph": analysis.get_neurograph_fig(base_button),
             **{f"model_info_{k}": v for k, v in model_info_figs.items()},
-            "waveform_metrics": dfs_result["waveform_metrics"],
-            "spike_metrics": dfs_result["spike_metrics"],
+            "metrics": dfs_result["metrics"],
             "scalar_metrics": dfs_result["scalar_metrics"],
         },
     )
