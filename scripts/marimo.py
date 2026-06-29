@@ -70,28 +70,39 @@ def _(analysis, draw_ui, mo, result, spike_ui, sweep_result):
 
 
 @app.cell
-def _(analysis):
+def _(analysis, base_button):
+    model_info_figs = analysis.get_model_info_figs(base_button)
     save_defaults = {
         "waveform": "_waveform.png",
         "sweep": "_sweep.png",
         "neurograph": "_neurograph.png",
+        **{f"model_info_{k}": f"_model_info_{k}.png" for k in model_info_figs},
         "waveform_metrics": "_waveform_metrics.csv",
         "spike_metrics": "_spike_metrics.csv",
         "scalar_metrics": "_scalar_metrics.csv",
     }
     save_panel = analysis.make_save_panel(save_defaults)
     analysis.render_save_panel(save_panel)
-    return (save_panel,)
+    return model_info_figs, save_panel
 
 
 @app.cell
-def _(analysis, base_button, dfs_result, fig_result, fig_sweep, save_panel):
+def _(
+    analysis,
+    base_button,
+    dfs_result,
+    fig_result,
+    fig_sweep,
+    model_info_figs,
+    save_panel,
+):
     analysis.save_panel_items(
         save_panel,
         {
             "waveform": fig_result,
             "sweep": fig_sweep,
             "neurograph": analysis.get_neurograph_fig(base_button),
+            **{f"model_info_{k}": v for k, v in model_info_figs.items()},
             "waveform_metrics": dfs_result["waveform_metrics"],
             "spike_metrics": dfs_result["spike_metrics"],
             "scalar_metrics": dfs_result["scalar_metrics"],

@@ -302,6 +302,11 @@ def render_spike_ui(spike_ui: mo.ui.dictionary) -> mo.Html:
 # ---------------------------------------------------------------------------
 
 
+def get_model_info_figs(base_ui: mo.ui.dictionary) -> dict[str, Figure]:
+    run_ids = cast(pd.DataFrame, base_ui["sweep_run_selector"].value)["run_id"].tolist()
+    return {rid[:8]: RunInfo.get_run_info(rid).sindy_coef for rid in run_ids}
+
+
 def get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:
     return view_neuron_graph(MCMODELS[str(base_ui["model_name"].value)])
 
