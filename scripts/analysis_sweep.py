@@ -77,9 +77,7 @@ def _make_sweep_current_params(current_type: str) -> mo.ui.dictionary:
     )
 
 
-def make_sweep_ui(
-    base_ui: mo.ui.dictionary, current_type: str
-) -> mo.ui.dictionary | None:
+def make_sweep_ui(current_type: str) -> mo.ui.dictionary | None:
     param_keys = [
         name
         for name, p in inspect.signature(FUNC_MAP[current_type]).parameters.items()

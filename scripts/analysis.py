@@ -256,9 +256,7 @@ def make_combined_ui(base_ui: mo.ui.dictionary) -> dict:
             options=comp_names, value=[comp_names[0]]
         ),
         "sim": make_sim_ui(base_ui, str(base_ui["sim_current_type"].value)),
-        "sweep": analysis_sweep.make_sweep_ui(
-            base_ui, str(base_ui["sim_current_type"].value)
-        ),
+        "sweep": analysis_sweep.make_sweep_ui(str(base_ui["sim_current_type"].value)),
     }
 
 
