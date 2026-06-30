@@ -96,6 +96,13 @@
   )
 == 定常電流以外の入力
 sin波電流を与える
+#grid(columns:(1fr,1fr),gutter:0.5em,
+  figure(image(image_path+"sinousoidal_waveform.png"),
+  caption: "50Hz"),
+  
+  image(image_path+"sinousoidal_sweep.png")
+  )
+
 == 5compモデル
 a
 
