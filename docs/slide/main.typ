@@ -103,8 +103,31 @@ sin波電流を与える
   image(image_path+"sinousoidal_sweep.png")
   )
 
-== 5compモデル
-a
+==　5Compモデル
+h0,h1,h2をbaseモデルに置換
+// 上部: タイトル行とネットワーク図を横並びに
+
+#place(top+right,dx: -8em,dy: -3em)[
+
+  #image("result/5comp_neurograph.png", height: 2.2cm)
+]
+#v(1em)
+// 下部: 左に4パネルの時系列図、右にスパイクカウント図
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 12pt,
+  [
+    #image("result/5comp_waveform.png", width: 90%)
+  ],
+  [
+    #image("result/5comp_sweep.png", width: 90%)
+    #v(4pt)
+    #align(center)[
+      #text(size: 12pt)[100msの定常電流を与えた時のスパイク数]
+    ]
+  ]
+)
+
 
 == まとめ
 まとめ

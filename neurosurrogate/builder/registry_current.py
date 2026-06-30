@@ -13,7 +13,7 @@ def current_generator(fn: Callable) -> Callable:
 
     @functools.wraps(fn)
     def wrapper(
-        *args, silence_duration: float = 0.0, duration: float = 100.0, **kwargs
+        *args, silence_duration: float = 10.0, duration: float = 120.0, **kwargs
     ):
         apply = fn(*args, **kwargs)
 
@@ -67,14 +67,6 @@ def _generate_steady(value: float = 10):
     return apply
 
 
-def single_pulse(value: float = 10):
-    return _generate_steady(value, silence_duration=10, duration=30)
-
-
-def steady(value: float = 10):
-    return _generate_steady(value, silence_duration=10, duration=120)
-
-
 @current_generator
 def _generate_ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
     """線形に増加・減少する電流を生成する。amplitude [μA/cm²]"""
@@ -84,6 +76,14 @@ def _generate_ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up
         active[:] = np.linspace(lo, hi, len(active))
 
     return apply
+
+
+def steady(value: float = 10):
+    return _generate_steady(value, silence_duration=10, duration=120)
+
+
+def single_pulse(value: float = 10):
+    return _generate_steady(value, silence_duration=10, duration=30)
 
 
 def ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
@@ -103,7 +103,7 @@ LINEAR_FUNC = {
 
 
 @current_generator
-def generate_sinousoidal(
+def _generate_sinousoidal(
     amplitude: float = 7.5,
     frequency: float = 10.0,
     baseline: float = 7.5,
@@ -137,8 +137,18 @@ def generate_chirp(
     return apply
 
 
+def sinousoidal(frequency: float = 50):
+    return _generate_sinousoidal(
+        amplitude=7.5,
+        frequency=frequency,
+        baseline=7.5,
+        silence_duration=10,
+        duration=120,
+    )
+
+
 PERIODIC_FUNC = {
-    "periodic_sinousoidal": generate_sinousoidal,
+    "periodic_sinousoidal": sinousoidal,
     "periodic_chirp": generate_chirp,
 }
 
