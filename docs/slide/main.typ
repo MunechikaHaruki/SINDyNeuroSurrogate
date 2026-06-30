@@ -31,6 +31,7 @@
 
   #colbreak()
 
+  #v(4em)
   - *optimizer*: STLSQ なオプティマイザ
   - *solver*: 陽的 Euler 法　$Delta t = 0.01$ [ms]
 ]
@@ -94,6 +95,15 @@
   
   image(image_path+"amptitude_sweep.png")
   )
+
+== 閾値付近での振る舞い
+閾値
+
+#grid(columns:(1fr,1fr),gutter:0.5em,
+figure(image(image_path+"ramp_waveform.png"),)
+  )
+
+
 == 定常電流以外の入力
 sin波電流を与える
 #grid(columns:(1fr,1fr),gutter:0.5em,

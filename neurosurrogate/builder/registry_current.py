@@ -86,8 +86,8 @@ def single_pulse(value: float = 10):
     return _generate_steady(value, silence_duration=10, duration=30)
 
 
-def ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
-    return _generate_ramp(amplitude, direction, silence_duration=0, duration=150)
+def ramp(amplitude: float = 20, direction: Literal["up", "down"] = "up"):
+    return _generate_ramp(amplitude, direction, silence_duration=0, duration=100)
 
 
 LINEAR_FUNC = {
