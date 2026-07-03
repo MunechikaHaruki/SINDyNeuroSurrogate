@@ -1,0 +1,275 @@
+import inspect
+import typing
+from functools import partial
+from typing import Literal, cast
+
+import marimo as mo
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from io_handler import load_surrogate_model
+from matplotlib.figure import Figure
+
+from neurosurrogate.builder.registry_current import FUNC_MAP
+from neurosurrogate.calc_engine import unified_simulator
+from neurosurrogate.model.model_dataset import CurrentConfig, DatasetConfig
+from neurosurrogate.model.model_neurosindy import transform_gate
+from neurosurrogate.model.registry_neuron import MCMODELS
+from neurosurrogate.profiler.profiler_wave import (
+    DynamicMetrics,
+    n_spikes,
+    spike_features_df,
+    spike_shape_corr,
+    waveform_summary,
+    waveform_summary_df,
+)
+from neurosurrogate.profiler.registry_view import DRAW_MAP
+
+
+# ---------------------------------------------------------------------------
+# Sim UI
+# ---------------------------------------------------------------------------
+
+
+def _make_ui_element(name: str, annotation, default):
+    if typing.get_origin(annotation) is Literal:
+        options = list(typing.get_args(annotation))
+        return mo.ui.dropdown(
+            options=options,
+            value=default if default in options else options[0],
+            label=name,
+        )
+    if annotation is int:
+        return mo.ui.number(value=int(default), step=1, label=name)
+    elif annotation is float:
+        return mo.ui.number(value=float(default), step=0.1, label=name)
+    elif annotation is bool:
+        return mo.ui.checkbox(value=bool(default), label=name)
+    elif annotation is list:
+        return mo.ui.array([mo.ui.number(value=0.0, step=0.1)], label=name)
+    else:
+        raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
+
+
+def make_sim_ui(current_type: str) -> mo.ui.dictionary:
+    current_params_ui = mo.ui.dictionary(
+        {
+            name: _make_ui_element(
+                name,
+                param.annotation,
+                0 if param.default is inspect.Parameter.empty else param.default,
+            )
+            for name, param in inspect.signature(
+                FUNC_MAP[current_type]
+            ).parameters.items()
+        }
+    )
+    return mo.ui.dictionary({"current_params": current_params_ui})
+
+
+def render_sim_ui(sim_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.vstack(
+        [
+            mo.md("### シミュレーション設定"),
+            mo.md(f"""
+- current params: {sim_ui["current_params"]}
+"""),
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Current Preview
+# ---------------------------------------------------------------------------
+
+
+def plot_current_preview(
+    base_ui: mo.ui.dictionary, sim_ui: mo.ui.dictionary
+) -> Figure | None:
+    """sim_ui の current_params から電流波形を構築してプレビュー描画。
+    構築失敗時は None。"""
+    current_type = str(base_ui["sim_current_type"].value)
+    dt = float(base_ui["dt"].value)
+    params = sim_ui["current_params"].value or {}
+    try:
+        i_ext = CurrentConfig(
+            pipeline=CurrentConfig.build_pipeline(current_type, params)
+        ).build(dt)
+    except Exception as e:  # noqa: BLE001
+        fig, ax = plt.subplots(figsize=(6, 1.5))
+        ax.text(0.5, 0.5, f"build失敗: {e}", ha="center", va="center", fontsize=8)
+        ax.axis("off")
+        return fig
+    t = np.arange(len(i_ext)) * dt
+    fig, ax = plt.subplots(figsize=(6, 2))
+    ax.plot(t, i_ext, lw=0.8)
+    ax.set_xlabel("t [ms]")
+    ax.set_ylabel("I_ext [μA/cm²]")
+    ax.set_title(f"{current_type} preview")
+    fig.tight_layout()
+    return fig
+
+
+def render_current_preview(fig: Figure | None) -> mo.Html:
+    if fig is None:
+        return mo.md("（プレビューなし）")
+    return mo.vstack(
+        [
+            mo.md("### 電流プレビュー"),
+            mo.mpl.interactive(fig),
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Calc Eval
+# ---------------------------------------------------------------------------
+
+
+def _parse_eval_button(
+    base_ui: mo.ui.dictionary,
+    sim_ui: mo.ui.dictionary,
+) -> tuple[DatasetConfig, str]:
+    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
+    if len(run_ids) != 1:
+        raise ValueError(
+            f"single モードでは Run を 1 件だけ選択。現在: {len(run_ids)} 件"
+        )
+    current_type = str(base_ui["sim_current_type"].value)
+    current_params = sim_ui["current_params"].value or {}
+    dataset_cfg = DatasetConfig.build_dataset(
+        model_name=str(base_ui["model_name"].value),
+        dt=float(base_ui["dt"].value),
+        pipeline=CurrentConfig.build_pipeline(current_type, current_params),
+    )
+    return dataset_cfg, str(run_ids[0])
+
+
+def calc_eval(
+    base_ui: mo.ui.dictionary,
+    sim_ui: mo.ui.dictionary,
+    surrogate_targets: list[str],
+) -> dict:
+    dataset_cfg, run_id = _parse_eval_button(base_ui, sim_ui)
+
+    surrogate_model = load_surrogate_model(run_id)
+    original_ds = unified_simulator(dataset_cfg)
+    surr_ds = unified_simulator(
+        dataset_cfg.with_surrogates(
+            targets=set(surrogate_targets),
+            make_surr=surrogate_model.make_surr_comp,
+        ),
+        surrogate_model=surrogate_model,
+    )
+
+    return {
+        "original_ds": original_ds,
+        "surr_ds": surr_ds,
+        "dt": dataset_cfg.dt,
+        "get_preprocessed": partial(
+            transform_gate, surrogate_model.preprocessor, original_ds
+        ),
+        "name_to_idx": MCMODELS[dataset_cfg.model_name].name_to_idx,
+        "make_dm": lambda comp_id: DynamicMetrics(
+            original_ds, surr_ds, comp_id, dataset_cfg.dt
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Spike UI
+# ---------------------------------------------------------------------------
+
+
+def make_spike_ui(result: dict, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    dm = result["make_dm"](result["name_to_idx"](draw_ui["eval_comp"].value))
+    n_orig, n_surr = n_spikes(dm)
+    orig_options: dict = {str(i): i for i in range(n_orig)}
+    surr_options: dict = {str(i): i for i in range(n_surr)}
+    return mo.ui.dictionary(
+        {
+            "spike_orig": mo.ui.dropdown(
+                options=orig_options,
+                value="0" if n_orig > 0 else None,
+                label=f"orig spike # (n={n_orig})",
+            ),
+            "spike_surr": mo.ui.dropdown(
+                options=surr_options,
+                value="0" if n_surr > 0 else None,
+                label=f"surr spike # (n={n_surr})",
+            ),
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# View Result
+# ---------------------------------------------------------------------------
+
+
+def _spike_idx(spike_ui: mo.ui.dictionary | None, key: str) -> int:
+    if spike_ui is None:
+        return 0
+    v = spike_ui[key].value
+    return int(v) if v is not None else 0
+
+
+def _stat_cards(d: dict) -> mo.Html:
+    return mo.hstack(
+        [
+            mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
+            for k, v in d.items()
+        ],
+        wrap=True,
+    )
+
+
+def view_result(
+    draw_ui: mo.ui.dictionary,
+    result: dict,
+    spike_ui: mo.ui.dictionary | None = None,
+) -> tuple[mo.Html, Figure, dict[str, pd.DataFrame]]:
+    target_comp_id = result["name_to_idx"](draw_ui["eval_comp"].value)
+    dm = result["make_dm"](target_comp_id)
+    spike_orig = _spike_idx(spike_ui, "spike_orig")
+    spike_surr = _spike_idx(spike_ui, "spike_surr")
+
+    wf_summary = waveform_summary(dm)
+    spike_corr = spike_shape_corr(dm)
+    df_waveform = waveform_summary_df(dm)
+    df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
+    df_spike.index.name = "metric"
+    df_metrics = pd.concat([df_waveform, df_spike])
+    df_scalar = pd.DataFrame(
+        {**wf_summary, **spike_corr}.items(),
+        columns=["metric", "value"],
+    ).set_index("metric")
+
+    fig = DRAW_MAP[draw_ui["draw_func"].value](
+        result["original_ds"],
+        result["surr_ds"],
+        result["get_preprocessed"](target_comp_id),
+        target_comp_id,
+    )
+
+    html = mo.vstack(
+        [
+            mo.md(
+                f"#### 動的指標（orig / surr / orig-surr） — spike orig: {spike_orig} / surr: {spike_surr}"
+            ),
+            df_metrics,
+            mo.md("#### 波形誤差スカラー"),
+            _stat_cards(wf_summary),
+            mo.md("#### スパイク波形相関（spike_shape_corr）"),
+            _stat_cards(spike_corr),
+            mo.mpl.interactive(fig),
+        ]
+    )
+    return (
+        html,
+        fig,
+        {
+            "metrics": df_metrics,
+            "scalar_metrics": df_scalar,
+        },
+    )
