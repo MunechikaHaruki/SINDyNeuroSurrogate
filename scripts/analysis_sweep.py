@@ -22,18 +22,6 @@ from neurosurrogate.profiler.profiler_wave import (
     extract_metric,
 )
 
-
-@dataclass(frozen=True)
-class SweepConfig:
-    amp_start: float
-    amp_stop: float
-    amp_steps: int
-
-    @property
-    def amp_values(self) -> np.ndarray:
-        return np.linspace(self.amp_start, self.amp_stop, self.amp_steps)
-
-
 # ---------------------------------------------------------------------------
 # Sweep UI
 # ---------------------------------------------------------------------------
@@ -68,8 +56,19 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
 
 
 # ---------------------------------------------------------------------------
-# Run and Sweep
+# Calc
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SweepConfig:
+    amp_start: float
+    amp_stop: float
+    amp_steps: int
+
+    @property
+    def amp_values(self) -> np.ndarray:
+        return np.linspace(self.amp_start, self.amp_stop, self.amp_steps)
 
 
 def _iter_amp_datasets(
@@ -95,66 +94,6 @@ def _iter_amp_datasets(
             for rid, surrogate in surrogates.items()
         }
         yield amp, orig_ds, surr_datasets
-
-
-def _compute_metrics_df(
-    amp_datasets: list[tuple[float, Any, dict[str, Any]]],
-    eval_comp_name: str,
-    model_name: str,
-    dt: float,
-    metric_key: str,
-) -> pd.DataFrame:
-    """plot時呼び出し: eval_comp_name + metric_key でメトリクス DataFrame 構築。"""
-    net = MCMODELS[model_name]
-    eval_comp_id = net.name_to_idx(eval_comp_name)
-    rows: list[dict] = []
-    for amp, orig_ds, surr_datasets in amp_datasets:
-        dms = {
-            rid: DynamicMetrics(orig_ds, surr_ds, eval_comp_id, dt)
-            for rid, surr_ds in surr_datasets.items()
-        }
-        extracted = {rid: extract_metric(dm, metric_key) for rid, dm in dms.items()}
-        orig_val = next(iter(extracted.values()))[0]
-        row: dict = {"amplitude": amp}
-        if orig_val is not None:
-            row["original"] = orig_val
-        row.update({rid: surr for rid, (_, surr) in extracted.items()})
-        rows.append(row)
-    return pd.DataFrame(rows)
-
-
-def _plot_sweep(
-    data: pd.DataFrame,
-    run_ids: list[str],
-    metric_key: str,
-    comp_name: str,
-    sweep_param: str,
-    run_labels: dict[str, str] | None = None,
-) -> Figure:
-    run_labels = run_labels or {}
-
-    fig, ax = plt.subplots()
-    if "original" in data.columns:
-        ax.plot(data["amplitude"], data["original"], "k-o", label="Original", zorder=3)
-
-    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for idx, rid in enumerate(run_ids):
-        label = run_labels.get(rid, f"Surr {rid[:6]}")
-        ax.plot(
-            data["amplitude"],
-            data[rid],
-            marker="s",
-            linestyle="--",
-            color=colors[idx % len(colors)],
-            label=label,
-        )
-
-    ax.set_xlabel(sweep_param)
-    ax.set_ylabel(metric_key)
-    ax.set_title(f"{sweep_param} sweep — {metric_key} ({comp_name})")
-    ax.legend()
-    fig.tight_layout()
-    return fig
 
 
 def _run_sweep(
@@ -224,6 +163,71 @@ def calc_sweep(
         "model_name": model_name,
         "dt": dt,
     }
+
+
+# ---------------------------------------------------------------------------
+# Draw
+# ---------------------------------------------------------------------------
+
+
+def _compute_metrics_df(
+    amp_datasets: list[tuple[float, Any, dict[str, Any]]],
+    eval_comp_name: str,
+    model_name: str,
+    dt: float,
+    metric_key: str,
+) -> pd.DataFrame:
+    """plot時呼び出し: eval_comp_name + metric_key でメトリクス DataFrame 構築。"""
+    net = MCMODELS[model_name]
+    eval_comp_id = net.name_to_idx(eval_comp_name)
+    rows: list[dict] = []
+    for amp, orig_ds, surr_datasets in amp_datasets:
+        dms = {
+            rid: DynamicMetrics(orig_ds, surr_ds, eval_comp_id, dt)
+            for rid, surr_ds in surr_datasets.items()
+        }
+        extracted = {rid: extract_metric(dm, metric_key) for rid, dm in dms.items()}
+        orig_val = next(iter(extracted.values()))[0]
+        row: dict = {"amplitude": amp}
+        if orig_val is not None:
+            row["original"] = orig_val
+        row.update({rid: surr for rid, (_, surr) in extracted.items()})
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _plot_sweep(
+    data: pd.DataFrame,
+    run_ids: list[str],
+    metric_key: str,
+    comp_name: str,
+    sweep_param: str,
+    run_labels: dict[str, str] | None = None,
+) -> Figure:
+    run_labels = run_labels or {}
+
+    fig, ax = plt.subplots()
+    if "original" in data.columns:
+        ax.plot(data["amplitude"], data["original"], "k-o", label="Original", zorder=3)
+
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    for idx, rid in enumerate(run_ids):
+        label = run_labels.get(rid, f"Surr {rid[:6]}")
+        ax.plot(
+            data["amplitude"],
+            data[rid],
+            marker="s",
+            linestyle="--",
+            color=colors[idx % len(colors)],
+            label=label,
+        )
+
+    ax.set_xlabel(sweep_param)
+    ax.set_ylabel(metric_key)
+    ax.set_title(f"{sweep_param} sweep — {metric_key} ({comp_name})")
+    ax.legend()
+    fig.tight_layout()
+    return fig
 
 
 def plot_sweep(
