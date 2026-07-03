@@ -1,6 +1,7 @@
 import inspect
 from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import Any
 
 import marimo as mo
 import matplotlib.pyplot as plt
@@ -27,7 +28,6 @@ class SweepConfig:
     amp_start: float
     amp_stop: float
     amp_steps: int
-    metric_key: str
 
     @property
     def amp_values(self) -> np.ndarray:
@@ -72,52 +72,48 @@ def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
 # ---------------------------------------------------------------------------
 
 
-def _iter_amp_dms(
+def _iter_amp_datasets(
     surrogates: dict,
     current_configs: dict[float, CurrentConfig],
     model_name: str,
     dt: float,
     target_comp_names: list[str],
-    eval_comp_name: str,
-) -> Iterator[tuple[float, dict[str, DynamicMetrics]]]:
-    """各 amp で {rid: DynamicMetrics} を yield。orig_ds は amp ごとに1回計算。"""
+) -> Iterator[tuple[float, Any, dict[str, Any]]]:
+    """各 amp で (amp, orig_ds, {rid: surr_ds}) を yield。eval_comp 不要。"""
     net = MCMODELS[model_name]
-    eval_comp_id = net.name_to_idx(eval_comp_name)
     for amp, current in current_configs.items():
         dset_cfg = DatasetConfig(model_name=model_name, dt=dt, current=current, net=net)
         orig_ds = unified_simulator(dset_cfg)
-        dms: dict[str, DynamicMetrics] = {}
-        for rid, surrogate in surrogates.items():
-            surr_ds = unified_simulator(
+        surr_datasets: dict[str, Any] = {
+            rid: unified_simulator(
                 dset_cfg.with_surrogates(
                     targets=set(target_comp_names),
                     make_surr=surrogate.make_surr_comp,
                 ),
                 surrogate_model=surrogate,
             )
-            dms[rid] = DynamicMetrics(orig_ds, surr_ds, eval_comp_id, dt)
-        yield amp, dms
+            for rid, surrogate in surrogates.items()
+        }
+        yield amp, orig_ds, surr_datasets
 
 
-def _sweep_amplitude_metrics(
-    surrogates: dict,
-    current_configs: dict[float, CurrentConfig],
+def _compute_metrics_df(
+    amp_datasets: list[tuple[float, Any, dict[str, Any]]],
+    eval_comp_name: str,
     model_name: str,
     dt: float,
-    target_comp_names: list[str],
-    eval_comp_name: str,
     metric_key: str,
 ) -> pd.DataFrame:
-    """amp × rid を走査し metric DataFrame を構築。
-
-    orig 列の有無は extract_metric の戻り値 (None かどうか) で決まる。
-    """
+    """plot時呼び出し: eval_comp_name + metric_key でメトリクス DataFrame 構築。"""
+    net = MCMODELS[model_name]
+    eval_comp_id = net.name_to_idx(eval_comp_name)
     rows: list[dict] = []
-    for amp, dms in _iter_amp_dms(
-        surrogates, current_configs, model_name, dt, target_comp_names, eval_comp_name
-    ):
+    for amp, orig_ds, surr_datasets in amp_datasets:
+        dms = {
+            rid: DynamicMetrics(orig_ds, surr_ds, eval_comp_id, dt)
+            for rid, surr_ds in surr_datasets.items()
+        }
         extracted = {rid: extract_metric(dm, metric_key) for rid, dm in dms.items()}
-        # orig は rid 非依存 → 任意の 1 件から取得
         orig_val = next(iter(extracted.values()))[0]
         row: dict = {"amplitude": amp}
         if orig_val is not None:
@@ -167,12 +163,11 @@ def _run_sweep(
     model_name: str,
     dt: float,
     target_comp_names: list[str],
-    eval_comp_name: str,
     current_type: str,
     sweep_param: str,
     cfg: SweepConfig,
-) -> tuple[pd.DataFrame, dict[str, str]]:
-    """純粋計算層: metric DataFrame と run_label dict を返す。plot しない。"""
+) -> tuple[list[tuple[float, Any, dict[str, Any]]], dict[str, str]]:
+    """純粋計算層: raw amp_datasets と run_label dict を返す。plot しない。"""
     current_configs: dict[float, CurrentConfig] = {
         amp: CurrentConfig(
             pipeline=CurrentConfig.build_pipeline(current_type, {sweep_param: amp})
@@ -184,66 +179,74 @@ def _run_sweep(
         rid: mlflow.MlflowClient().get_run(rid).data.tags.get("mlflow.runName", rid[:6])
         for rid in run_ids
     }
-    data = _sweep_amplitude_metrics(
-        surrogates=surrogates,
-        current_configs=current_configs,
-        model_name=model_name,
-        dt=dt,
-        target_comp_names=target_comp_names,
-        eval_comp_name=eval_comp_name,
-        metric_key=cfg.metric_key,
+    amp_datasets = list(
+        _iter_amp_datasets(
+            surrogates=surrogates,
+            current_configs=current_configs,
+            model_name=model_name,
+            dt=dt,
+            target_comp_names=target_comp_names,
+        )
     )
-    return data, run_labels
+    return amp_datasets, run_labels
 
 
 def calc_sweep(
     base_button: mo.ui.dictionary,
     sweep_ui: mo.ui.dictionary,
     surrogate_targets: list[str],
-    draw_ui: mo.ui.dictionary,
 ) -> dict:
-    """純粋実行層: marimo UI → _run_sweep → 結果dict。"""
+    """純粋実行層: draw_ui 不要。raw sim データを返す。"""
     model_name = base_button["model_name"].value
     run_ids = base_button["run_selector"].value["run_id"].tolist()
-    eval_comp_name = draw_ui["eval_comp"].value
     current_type = base_button["sim_current_type"].value
     sweep_param = _sweep_param_of(current_type)
     sweep_cfg = SweepConfig(
         amp_start=sweep_ui["amp_start"].value,
         amp_stop=sweep_ui["amp_stop"].value,
         amp_steps=sweep_ui["amp_steps"].value,
-        metric_key=sweep_ui["metric"].value,
     )
-    data, run_labels = _run_sweep(
+    dt = float(base_button["dt"].value)
+    amp_datasets, run_labels = _run_sweep(
         run_ids=run_ids,
         model_name=model_name,
-        dt=float(base_button["dt"].value),
+        dt=dt,
         target_comp_names=surrogate_targets,
-        eval_comp_name=eval_comp_name,
         current_type=current_type,
         sweep_param=sweep_param,
         cfg=sweep_cfg,
     )
     return {
-        "data": data,
+        "amp_datasets": amp_datasets,
         "run_labels": run_labels,
         "run_ids": run_ids,
-        "metric_key": sweep_cfg.metric_key,
         "sweep_param": sweep_param,
-        "eval_comp_name": eval_comp_name,
+        "model_name": model_name,
+        "dt": dt,
     }
 
 
-def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure | None]:
-    """純粋描画層: 結果dict → (Html, Figure)。"""
-    if not sweep_result:
+def plot_sweep(
+    sweep_raw: dict,
+    eval_comp_name: str,
+    metric_key: str,
+) -> tuple[mo.Html, Figure | None]:
+    """描画層: eval_comp_name + metric_key でメトリクス計算 → 描画。シミュ再走なし。"""
+    if not sweep_raw:
         return mo.md(""), None
-    fig = _plot_sweep(
-        sweep_result["data"],
-        sweep_result["run_ids"],
-        sweep_result["metric_key"],
-        sweep_result["eval_comp_name"],
-        sweep_param=sweep_result["sweep_param"],
-        run_labels=sweep_result["run_labels"],
+    data = _compute_metrics_df(
+        sweep_raw["amp_datasets"],
+        eval_comp_name=eval_comp_name,
+        model_name=sweep_raw["model_name"],
+        dt=sweep_raw["dt"],
+        metric_key=metric_key,
     )
-    return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(sweep_result["data"])]), fig
+    fig = _plot_sweep(
+        data,
+        sweep_raw["run_ids"],
+        metric_key,
+        eval_comp_name,
+        sweep_param=sweep_raw["sweep_param"],
+        run_labels=sweep_raw["run_labels"],
+    )
+    return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)]), fig

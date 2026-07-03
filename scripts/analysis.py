@@ -105,13 +105,12 @@ def render_setting_ui(setting_ui: mo.ui.dictionary) -> mo.Html:
 def calc(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
-    draw_ui: mo.ui.dictionary,
 ) -> dict | None:
     targets = setting_ui["surrogate_targets"].value
     if setting_ui["run_sim"].value:
         return analysis_single.calc_eval(base_ui, setting_ui["sim"], targets)
     if "run_sweep" in setting_ui and setting_ui["run_sweep"].value:
-        return analysis_sweep.calc_sweep(base_ui, setting_ui["sweep"], targets, draw_ui)
+        return analysis_sweep.calc_sweep(base_ui, setting_ui["sweep"], targets)
     return None
 
 
@@ -214,7 +213,11 @@ def view(
         save_items["metrics"] = dfs["metrics"]
         save_items["scalar_metrics"] = dfs["scalar_metrics"]
         return html, save_items
-    html, fig = analysis_sweep.plot_sweep(res)
+    html, fig = analysis_sweep.plot_sweep(
+        res,
+        eval_comp_name=draw_ui["eval_comp"].value,
+        metric_key=setting_ui["sweep"]["metric"].value,
+    )
     save_items["sweep"] = fig
     return html, save_items
 
