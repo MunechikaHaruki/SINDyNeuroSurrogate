@@ -4,12 +4,14 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import joblib
 import mlflow
 import mlflow.artifacts
 import mlflow.pyfunc
 import numpy as np
+import pandas as pd
 import yaml
 from matplotlib.figure import Figure
 from mlflow.pyfunc.model import PythonModel
@@ -120,3 +122,24 @@ def load_surrogate_model(run_id: str):
     model_uri = f"runs:/{run_id}/surrogate_model"
     logger.info(f"Loading custom MLflow model from: {model_uri}")
     return mlflow.pyfunc.load_model(model_uri)._model_impl.python_model
+
+
+def get_runs_df():
+    experiment = mlflow.get_experiment_by_name(TARGET_EXP)
+    if experiment is None:
+        raise ValueError(
+            f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
+        )
+    all_runs_df = cast(
+        pd.DataFrame, mlflow.search_runs(experiment_ids=[experiment.experiment_id])
+    )
+    if all_runs_df.empty:
+        raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
+    runs_df = all_runs_df.copy()
+    runs_df = runs_df.sort_values("start_time", ascending=False)
+    runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
+    runs_df = runs_df[
+        ["tags.mlflow.runName", "run_id", "start_time"]
+        + [c for c in runs_df.columns if "metrics" in c or "params" in c]
+    ]
+    return runs_df

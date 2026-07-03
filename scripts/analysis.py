@@ -6,9 +6,8 @@ import analysis_single
 import analysis_sweep
 import marimo as mo
 import matplotlib.pyplot as plt
-import mlflow
 import pandas as pd
-from io_handler import TARGET_EXP, RunInfo, setup_mlflow
+from io_handler import RunInfo, get_runs_df, setup_mlflow
 from matplotlib.figure import Figure
 
 from neurosurrogate.builder.registry_current import FUNC_MAP
@@ -32,29 +31,8 @@ RESULT_DIR = REPO_ROOT / "docs" / "slide" / "result"
 # ---------------------------------------------------------------------------
 
 
-def _get_runs_df():
-    experiment = mlflow.get_experiment_by_name(TARGET_EXP)
-    if experiment is None:
-        raise ValueError(
-            f"Experiment '{TARGET_EXP}' が見つかりません。名前を確認してください。"
-        )
-    all_runs_df = cast(
-        pd.DataFrame, mlflow.search_runs(experiment_ids=[experiment.experiment_id])
-    )
-    if all_runs_df.empty:
-        raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
-    runs_df = all_runs_df.copy()
-    runs_df = runs_df.sort_values("start_time", ascending=False)
-    runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
-    runs_df = runs_df[
-        ["tags.mlflow.runName", "run_id", "start_time"]
-        + [c for c in runs_df.columns if "metrics" in c or "params" in c]
-    ]
-    return runs_df
-
-
 def make_base_ui() -> mo.ui.dictionary:
-    runs_df = _get_runs_df()
+    runs_df = get_runs_df()
     plt_options = list(typing.get_args(MplStyle))
     return mo.ui.dictionary(
         {
@@ -75,15 +53,15 @@ def make_base_ui() -> mo.ui.dictionary:
     )
 
 
+# ---------------------------------------------------------------------------
+# Setting UI (集約)
+# ---------------------------------------------------------------------------
+
+
 def setup_mpl(matplotlib_style: str):
     style_dir = Path(__file__).resolve().parent / "conf" / "style"
     plt.style.use(style_dir / "base.mplstyle")
     plt.style.use(style_dir / f"{matplotlib_style}.mplstyle")
-
-
-# ---------------------------------------------------------------------------
-# Draw / Surrogate Targets UI
-# ---------------------------------------------------------------------------
 
 
 def _make_surrogate_targets_ui(base_ui: mo.ui.dictionary) -> mo.ui.multiselect:
@@ -91,38 +69,6 @@ def _make_surrogate_targets_ui(base_ui: mo.ui.dictionary) -> mo.ui.multiselect:
     return mo.ui.multiselect(
         options=comp_names, value=[comp_names[0]], label="surrogate targets"
     )
-
-
-def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
-    return mo.ui.dictionary(
-        {
-            "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
-            "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
-        }
-    )
-
-
-def render_draw_ui(draw_ui: mo.ui.dictionary, spike_ui: mo.ui.dictionary) -> mo.Html:
-    parts: list = [
-        mo.md("### 描画設定"),
-        mo.md(f"""
-- 評価対象comp: {draw_ui["eval_comp"]}
-- 描画関数: {draw_ui["draw_func"]}
-"""),
-    ]
-    if "spike_orig" in spike_ui:
-        parts.append(
-            mo.md(
-                f"- spike orig: {spike_ui['spike_orig']} / surr: {spike_ui['spike_surr']}"
-            )
-        )
-    return mo.vstack(parts)
-
-
-# ---------------------------------------------------------------------------
-# Setting UI (集約)
-# ---------------------------------------------------------------------------
 
 
 def make_setting_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
@@ -152,7 +98,7 @@ def render_setting_ui(setting_ui: mo.ui.dictionary) -> mo.Html:
 
 
 # ---------------------------------------------------------------------------
-# Calc / Spike / View (集約)
+# Calc
 # ---------------------------------------------------------------------------
 
 
@@ -167,6 +113,38 @@ def calc(
     if "run_sweep" in setting_ui and setting_ui["run_sweep"].value:
         return analysis_sweep.calc_sweep(base_ui, setting_ui["sweep"], targets, draw_ui)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Draw setttings
+# ---------------------------------------------------------------------------
+
+
+def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
+    return mo.ui.dictionary(
+        {
+            "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
+            "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
+        }
+    )
+
+
+def render_draw_ui(draw_ui: mo.ui.dictionary, spike_ui: mo.ui.dictionary) -> mo.Html:
+    parts: list = [
+        mo.md("### 描画設定"),
+        mo.md(f"""
+- 評価対象comp: {draw_ui["eval_comp"]}
+- 描画関数: {draw_ui["draw_func"]}
+"""),
+    ]
+    if "spike_orig" in spike_ui:
+        parts.append(
+            mo.md(
+                f"- spike orig: {spike_ui['spike_orig']} / surr: {spike_ui['spike_surr']}"
+            )
+        )
+    return mo.vstack(parts)
 
 
 def make_spike_ui(res: dict | None, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
