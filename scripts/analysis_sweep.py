@@ -197,7 +197,7 @@ def _plot_sweep(
     return fig
 
 
-def run_sweep(
+def _run_sweep(
     *,
     run_ids: list[str],
     model_name: str,
@@ -244,7 +244,7 @@ def calc_sweep(
     surrogate_targets: list[str],
     draw_ui: mo.ui.dictionary,
 ) -> dict:
-    """純粋実行層: marimo UI → run_sweep → 結果dict。"""
+    """純粋実行層: marimo UI → _run_sweep → 結果dict。"""
     model_name = str(_ui_val(base_button, "model_name"))
     run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)[
         "run_id"
@@ -258,7 +258,7 @@ def calc_sweep(
         amp_steps=int(_ui_val(sweep_ui, "amp_steps")),
         metric_key=str(_ui_val(sweep_ui, "metric")),
     )
-    data, run_labels = run_sweep(
+    data, run_labels = _run_sweep(
         run_ids=run_ids,
         model_name=model_name,
         dt=float(base_button["dt"].value),
