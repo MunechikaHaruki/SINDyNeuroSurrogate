@@ -33,6 +33,7 @@ CurrentList: list = list(FUNC_MAP.keys())
 DRAW_LIST: list = list(DRAW_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
+Mode = Literal["single", "sweep"]
 
 setup_mlflow()
 
@@ -45,19 +46,32 @@ RESULT_DIR = REPO_ROOT / "docs" / "slide" / "result"
 # ---------------------------------------------------------------------------
 
 
-def make_save_panel(defaults: dict[str, str]) -> mo.ui.dictionary:
-    """defaults = {name: default_path}. 各nameごとに path入力＋保存ボタンを生成。"""
+def _default_save_path(name: str, item: "SaveItem | None") -> str:
+    ext = ".csv" if isinstance(item, pd.DataFrame) else ".png"
+    return f"_{name}{ext}"
+
+
+def make_save_panel(save_items: dict[str, "SaveItem | None"]) -> mo.ui.dictionary:
+    """save_items から各 name の path入力＋保存ボタンを生成。"""
     return mo.ui.dictionary(
         {
             name: mo.ui.dictionary(
                 {
-                    "path": mo.ui.text(value=default, label=name),
+                    "path": mo.ui.text(
+                        value=_default_save_path(name, item), label=name
+                    ),
                     "save": mo.ui.run_button(label=f"{name} 保存"),
                 }
             )
-            for name, default in defaults.items()
+            for name, item in save_items.items()
         }
     )
+
+
+def save(
+    save_panel: mo.ui.dictionary, save_items: dict[str, "SaveItem | None"]
+) -> mo.Html:
+    return save_panel_items(save_panel, save_items)
 
 
 def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
@@ -128,8 +142,12 @@ def get_runs_df():
 def make_base_ui() -> mo.ui.dictionary:
     runs_df = get_runs_df()
     plt_options = list(typing.get_args(MplStyle))
+    mode_options = list(typing.get_args(Mode))
     return mo.ui.dictionary(
         {
+            "mode": mo.ui.radio(
+                options=mode_options, value=mode_options[0], label="mode"
+            ),
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[1]),
             "sim_current_type": mo.ui.dropdown(CurrentList, value="lin_single_pulse"),
             "model_name": mo.ui.dropdown(
@@ -137,16 +155,10 @@ def make_base_ui() -> mo.ui.dictionary:
                 value="hh",
             ),
             "dt": mo.ui.number(value=0.01, step=0.001),
-            "sweep_run_selector": mo.ui.table(
+            "run_selector": mo.ui.table(
                 pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
-                label="sweep Run 選択（複数可）",
+                label="Run 選択 (single: 1件のみ / sweep: 複数可)",
                 selection="multi",
-                initial_selection=[0],
-            ),
-            "eval_run_selector": mo.ui.table(
-                pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
-                label="単一評価 Run 選択",
-                selection="single",
                 initial_selection=[0],
             ),
         }
@@ -249,46 +261,96 @@ def render_current_preview(fig: Figure | None) -> mo.Html:
     )
 
 
-def make_combined_ui(base_ui: mo.ui.dictionary) -> dict:
+def make_surrogate_targets_ui(base_ui: mo.ui.dictionary) -> mo.ui.multiselect:
     comp_names = MCMODELS[str(base_ui["model_name"].value)].names
-    return {
-        "surrogate_targets": mo.ui.multiselect(
-            options=comp_names, value=[comp_names[0]]
-        ),
-        "sim": make_sim_ui(base_ui, str(base_ui["sim_current_type"].value)),
-        "sweep": analysis_sweep.make_sweep_ui(str(base_ui["sim_current_type"].value)),
+    return mo.ui.multiselect(
+        options=comp_names, value=[comp_names[0]], label="surrogate targets"
+    )
+
+
+def make_setting_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    mode = str(base_ui["mode"].value)
+    current_type = str(base_ui["sim_current_type"].value)
+    d: dict = {
+        "surrogate_targets": make_surrogate_targets_ui(base_ui),
+        "run": mo.ui.run_button(label="実行"),
     }
+    if mode == "single":
+        d["sim"] = make_sim_ui(base_ui, current_type)
+    else:
+        sweep = analysis_sweep.make_sweep_ui(current_type)
+        if sweep is not None:
+            d["sweep"] = sweep
+    return mo.ui.dictionary(d)
 
 
-def calc_sweep(
-    base_button: mo.ui.dictionary,
-    sweep_ui: mo.ui.dictionary | None,
-    surrogate_targets: list[str],
+def render_setting_ui(setting_ui: mo.ui.dictionary) -> mo.Html:
+    parts: list = [mo.md(f"- {setting_ui['surrogate_targets']}")]
+    if "sim" in setting_ui:
+        parts.append(render_sim_ui(setting_ui["sim"]))
+    elif "sweep" in setting_ui:
+        parts.append(analysis_sweep.render_sweep(setting_ui["sweep"]))
+    else:
+        parts.append(mo.md("(この current_type は sweep 不可)"))
+    parts.append(setting_ui["run"])
+    return mo.vstack(parts)
+
+
+def plot_preview(
+    base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary
+) -> mo.Html:
+    if "sim" not in setting_ui:
+        return mo.md("")
+    fig = plot_current_preview(base_ui, setting_ui["sim"])
+    return render_current_preview(fig)
+
+
+def calc(
+    base_ui: mo.ui.dictionary,
+    setting_ui: mo.ui.dictionary,
     draw_ui: mo.ui.dictionary,
 ) -> dict:
-    if sweep_ui is None:
-        return {}
-    return analysis_sweep.calc_sweep(base_button, sweep_ui, surrogate_targets, draw_ui)
+    mode = str(base_ui["mode"].value)
+    res: dict = {"mode": mode, "result": None, "sweep_result": None}
+    if not setting_ui["run"].value:
+        return res
+    targets = setting_ui["surrogate_targets"].value
+    if mode == "single":
+        res["result"] = calc_eval(base_ui, setting_ui["sim"], targets)
+    elif "sweep" in setting_ui:
+        res["sweep_result"] = analysis_sweep.calc_sweep(
+            base_ui, setting_ui["sweep"], targets, draw_ui
+        )
+    return res
 
 
-def plot_sweep(sweep_result: dict) -> tuple[mo.Html, Figure | None]:
-    return analysis_sweep.plot_sweep(sweep_result)
+def view(
+    base_ui: mo.ui.dictionary,
+    setting_ui: mo.ui.dictionary,
+    res: dict,
+    draw_ui: mo.ui.dictionary,
+    spike_ui: mo.ui.dictionary,
+) -> tuple[mo.Html, dict]:
+    save_items: dict = {"neurograph": get_neurograph_fig(base_ui)}
+    if "sim" in setting_ui:
+        save_items["current_preview"] = plot_current_preview(
+            base_ui, setting_ui["sim"]
+        )
+    for k, v in get_model_info_figs(base_ui).items():
+        save_items[f"model_info_{k}"] = v
 
-
-def render_combined_ui(combined_ui: dict) -> mo.Html:
-    sweep_ui = combined_ui["sweep"]
-    sweep_html = (
-        analysis_sweep.render_sweep(sweep_ui) if sweep_ui is not None else mo.md("")
-    )
-    return mo.vstack(
-        [
-            mo.md(f"- surrogate targets: {combined_ui['surrogate_targets']}"),
-            mo.hstack(
-                [render_sim_ui(combined_ui["sim"]), sweep_html],
-                align="start",
-            ),
-        ]
-    )
+    if res["mode"] == "single" and res["result"] is not None:
+        _spike = spike_ui if "spike_orig" in spike_ui else None
+        html, fig, dfs = view_result(draw_ui, res["result"], _spike)
+        save_items["waveform"] = fig
+        save_items["metrics"] = dfs["metrics"]
+        save_items["scalar_metrics"] = dfs["scalar_metrics"]
+        return html, save_items
+    if res["mode"] == "sweep" and res["sweep_result"]:
+        html, fig = analysis_sweep.plot_sweep(res["sweep_result"])
+        save_items["sweep"] = fig
+        return html, save_items
+    return mo.md("(結果なし)"), save_items
 
 
 def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
@@ -314,6 +376,8 @@ def render_draw_ui(draw_ui: mo.ui.dictionary) -> mo.Html:
 
 
 def render_spike_ui(spike_ui: mo.ui.dictionary) -> mo.Html:
+    if "spike_orig" not in spike_ui:
+        return mo.md("")
     return mo.md(f"""
 - spike orig: {spike_ui["spike_orig"]} / surr: {spike_ui["spike_surr"]}
 """)
@@ -325,7 +389,7 @@ def render_spike_ui(spike_ui: mo.ui.dictionary) -> mo.Html:
 
 
 def get_model_info_figs(base_ui: mo.ui.dictionary) -> dict[str, Figure]:
-    run_ids = cast(pd.DataFrame, base_ui["sweep_run_selector"].value)["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
     return {rid[:8]: RunInfo.get_run_info(rid).sindy_coef for rid in run_ids}
 
 
@@ -334,7 +398,7 @@ def get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:
 
 
 def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
-    run_ids = cast(pd.DataFrame, base_ui["sweep_run_selector"].value)["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
     run_infos = [RunInfo.get_run_info(rid) for rid in run_ids]
     _model_name = str(base_ui["model_name"].value)
     return mo.vstack(
@@ -365,9 +429,11 @@ def _parse_eval_button(
     sim_ui: mo.ui.dictionary,
     surrogate_targets: list[str],
 ) -> tuple[DatasetConfig, str]:
-    run_id = str(
-        cast(pd.DataFrame, base_button["eval_run_selector"].value)["run_id"].iloc[0]
-    )
+    run_ids = cast(pd.DataFrame, base_button["run_selector"].value)["run_id"].tolist()
+    if len(run_ids) != 1:
+        raise ValueError(
+            f"single モードでは Run を 1 件だけ選択。現在: {len(run_ids)} 件"
+        )
     current_type = str(base_button["sim_current_type"].value)
     current_params = sim_ui["current_params"].value or {}
     dataset_cfg = DatasetConfig.build_dataset(
@@ -375,7 +441,7 @@ def _parse_eval_button(
         dt=float(base_button["dt"].value),
         pipeline=CurrentConfig.build_pipeline(current_type, current_params),
     )
-    return dataset_cfg, run_id
+    return dataset_cfg, str(run_ids[0])
 
 
 def calc_eval(
@@ -414,7 +480,7 @@ def calc_eval(
 # ---------------------------------------------------------------------------
 
 
-def make_spike_ui(result: dict, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+def _build_spike_ui(result: dict, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     dm = result["make_dm"](result["name_to_idx"](draw_ui["eval_comp"].value))
     n_orig, n_surr = n_spikes(dm)
     orig_options: dict = {str(i): i for i in range(n_orig)}
@@ -433,6 +499,12 @@ def make_spike_ui(result: dict, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
             ),
         }
     )
+
+
+def make_spike_ui(res: dict, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    if res["result"] is None:
+        return mo.ui.dictionary({})
+    return _build_spike_ui(res["result"], draw_ui)
 
 
 # ---------------------------------------------------------------------------

@@ -246,7 +246,7 @@ def calc_sweep(
 ) -> dict:
     """純粋実行層: marimo UI → _run_sweep → 結果dict。"""
     model_name = str(_ui_val(base_button, "model_name"))
-    run_ids = cast(pd.DataFrame, base_button["sweep_run_selector"].value)[
+    run_ids = cast(pd.DataFrame, base_button["run_selector"].value)[
         "run_id"
     ].tolist()
     eval_comp_name = str(_ui_val(draw_ui, "eval_comp"))
