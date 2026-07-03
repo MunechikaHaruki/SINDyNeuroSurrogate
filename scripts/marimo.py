@@ -22,17 +22,16 @@ def _(analysis, base_ui):
 
 
 @app.cell
-def _(analysis, base_ui):
-    draw_ui = analysis.make_draw_ui(base_ui)
-    return (draw_ui,)
+def _(analysis, base_ui, setting_ui):
+    res = analysis.calc(base_ui, setting_ui)
+    return (res,)
 
 
 @app.cell
-def _(analysis, base_ui, draw_ui, setting_ui):
-    res = analysis.calc(base_ui, setting_ui)
-    spike_ui = analysis.make_spike_ui(res, draw_ui)
-    analysis.render_draw_ui(draw_ui, spike_ui)
-    return res, spike_ui
+def _(analysis, base_ui):
+    draw_ui = analysis.make_draw_ui(base_ui)
+    analysis.render_draw_ui(draw_ui)
+    return (draw_ui,)
 
 
 @app.cell
@@ -61,8 +60,8 @@ def _(analysis, base_ui, setting_ui):
 
 
 @app.cell
-def _(analysis, base_ui, draw_ui, res, setting_ui, spike_ui):
-    html_view, save_items = analysis.view(base_ui, setting_ui, res, draw_ui, spike_ui)
+def _(analysis, base_ui, draw_ui, res, setting_ui):
+    html_view, save_items = analysis.view(base_ui, setting_ui, res, draw_ui)
     html_view
     return (save_items,)
 

@@ -180,37 +180,9 @@ def calc_eval(
 # ---------------------------------------------------------------------------
 
 
-def make_spike_ui(result: dict, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    dm = result["make_dm"](result["name_to_idx"](draw_ui["eval_comp"].value))
-    n_orig, n_surr = n_spikes(dm)
-    orig_options: dict = {str(i): i for i in range(n_orig)}
-    surr_options: dict = {str(i): i for i in range(n_surr)}
-    return mo.ui.dictionary(
-        {
-            "spike_orig": mo.ui.dropdown(
-                options=orig_options,
-                value="0" if n_orig > 0 else None,
-                label=f"orig spike # (n={n_orig})",
-            ),
-            "spike_surr": mo.ui.dropdown(
-                options=surr_options,
-                value="0" if n_surr > 0 else None,
-                label=f"surr spike # (n={n_surr})",
-            ),
-        }
-    )
-
-
 # ---------------------------------------------------------------------------
 # View Result
 # ---------------------------------------------------------------------------
-
-
-def _spike_idx(spike_ui: mo.ui.dictionary | None, key: str) -> int:
-    if spike_ui is None:
-        return 0
-    v = spike_ui[key].value
-    return int(v) if v is not None else 0
 
 
 def _stat_cards(d: dict) -> mo.Html:
@@ -226,23 +198,19 @@ def _stat_cards(d: dict) -> mo.Html:
 def view_result(
     draw_ui: mo.ui.dictionary,
     result: dict,
-    spike_ui: mo.ui.dictionary | None = None,
 ) -> tuple[mo.Html, Figure, dict[str, pd.DataFrame]]:
     target_comp_id = result["name_to_idx"](draw_ui["eval_comp"].value)
     dm = result["make_dm"](target_comp_id)
-    spike_orig = _spike_idx(spike_ui, "spike_orig")
-    spike_surr = _spike_idx(spike_ui, "spike_surr")
+
+    n_orig_count, n_surr_count = n_spikes(dm)
+    spike_orig = int(draw_ui["spike"]["orig"].value)
+    spike_surr = int(draw_ui["spike"]["surr"].value)
+    has_valid_spikes = (
+        0 <= spike_orig < n_orig_count and 0 <= spike_surr < n_surr_count
+    )
 
     wf_summary = waveform_summary(dm)
-    spike_corr = spike_shape_corr(dm)
     df_waveform = waveform_summary_df(dm)
-    df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
-    df_spike.index.name = "metric"
-    df_metrics = pd.concat([df_waveform, df_spike])
-    df_scalar = pd.DataFrame(
-        {**wf_summary, **spike_corr}.items(),
-        columns=["metric", "value"],
-    ).set_index("metric")
 
     fig = DRAW_MAP[draw_ui["draw_func"].value](
         result["original_ds"],
@@ -251,21 +219,44 @@ def view_result(
         target_comp_id,
     )
 
-    html = mo.vstack(
-        [
+    html_parts: list = [
+        mo.md("#### 波形誤差スカラー"),
+        _stat_cards(wf_summary),
+    ]
+    df_metrics = df_waveform
+    scalar_data: dict = dict(wf_summary)
+
+    if has_valid_spikes:
+        spike_corr = spike_shape_corr(dm)
+        df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
+        df_spike.index.name = "metric"
+        df_metrics = pd.concat([df_waveform, df_spike])
+        scalar_data.update(spike_corr)
+        html_parts += [
             mo.md(
-                f"#### 動的指標（orig / surr / orig-surr） — spike orig: {spike_orig} / surr: {spike_surr}"
+                f"#### 動的指標（orig / surr / orig-surr）"
+                f" — spike orig: {spike_orig} / surr: {spike_surr}"
             ),
             df_metrics,
-            mo.md("#### 波形誤差スカラー"),
-            _stat_cards(wf_summary),
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
             _stat_cards(spike_corr),
-            mo.mpl.interactive(fig),
         ]
-    )
+    else:
+        html_parts.append(
+            mo.md(
+                f"（スパイク指標なし: orig {spike_orig}/{n_orig_count}"
+                f" surr {spike_surr}/{n_surr_count}）"
+            )
+        )
+
+    html_parts.append(mo.mpl.interactive(fig))
+
+    df_scalar = pd.DataFrame(
+        scalar_data.items(), columns=["metric", "value"]
+    ).set_index("metric")
+
     return (
-        html,
+        mo.vstack(html_parts),
         fig,
         {
             "metrics": df_metrics,

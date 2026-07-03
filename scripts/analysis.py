@@ -127,31 +127,29 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
         {
             "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
             "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
+            "spike": mo.ui.dictionary(
+                {
+                    "orig": mo.ui.number(value=0, step=1),
+                    "surr": mo.ui.number(value=0, step=1),
+                }
+            ),
         }
     )
 
 
-def render_draw_ui(draw_ui: mo.ui.dictionary, spike_ui: mo.ui.dictionary) -> mo.Html:
-    parts: list = [
-        mo.md("### 描画設定"),
-        mo.md(f"""
+def render_draw_ui(draw_ui: mo.ui.dictionary) -> mo.Html:
+    return mo.vstack(
+        [
+            mo.md("### 描画設定"),
+            mo.md(f"""
 - 評価対象comp: {draw_ui["eval_comp"]}
 - 描画関数: {draw_ui["draw_func"]}
+- spike  
+    - orig:{draw_ui["spike"]["orig"]} 
+    - surr:{draw_ui["spike"]["surr"]}
 """),
-    ]
-    if "spike_orig" in spike_ui:
-        parts.append(
-            mo.md(
-                f"- spike orig: {spike_ui['spike_orig']} / surr: {spike_ui['spike_surr']}"
-            )
-        )
-    return mo.vstack(parts)
-
-
-def make_spike_ui(res: dict | None, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    if res is None or "make_dm" not in res:
-        return mo.ui.dictionary({})
-    return analysis_single.make_spike_ui(res, draw_ui)
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +193,6 @@ def view(
     setting_ui: mo.ui.dictionary,
     res: dict | None,
     draw_ui: mo.ui.dictionary,
-    spike_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, dict]:
     save_items: dict = {
         "neurograph": _get_neurograph_fig(base_ui),
@@ -209,8 +206,7 @@ def view(
     if res is None:
         return mo.md("(結果なし)"), save_items
     if "make_dm" in res:
-        _spike = spike_ui if "spike_orig" in spike_ui else None
-        html, fig, dfs = analysis_single.view_result(draw_ui, res, _spike)
+        html, fig, dfs = analysis_single.view_result(draw_ui, res)
         save_items["waveform"] = fig
         save_items["metrics"] = dfs["metrics"]
         save_items["scalar_metrics"] = dfs["scalar_metrics"]
