@@ -92,7 +92,9 @@ def render_setting_ui(setting_ui: mo.ui.dictionary) -> mo.Html:
         setting_ui["run_sim"],
     ]
     if "sweep" in setting_ui:
-        parts.append(analysis_sweep.render_sweep(setting_ui["sweep"]))
+        parts.append(
+            mo.vstack([mo.md("### 振幅スイープ設定"), mo.md(f"{setting_ui['sweep']}")])
+        )
         parts.append(setting_ui["run_sweep"])
     return mo.vstack(parts)
 

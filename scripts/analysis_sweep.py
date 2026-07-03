@@ -51,10 +51,6 @@ def make_sweep_ui(current_type: str) -> mo.ui.dictionary | None:
     )
 
 
-def render_sweep(sweep_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.vstack([mo.md("### 振幅スイープ設定"), mo.md(f"{sweep_ui}")])
-
-
 # ---------------------------------------------------------------------------
 # Calc
 # ---------------------------------------------------------------------------
