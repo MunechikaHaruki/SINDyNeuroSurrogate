@@ -25,7 +25,6 @@ from neurosurrogate.profiler.profiler_wave import (
 )
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
-
 # ---------------------------------------------------------------------------
 # Sim UI
 # ---------------------------------------------------------------------------

@@ -7,7 +7,6 @@ app = marimo.App(width="columns")
 @app.cell(column=0)
 def _():
     import analysis
-    import marimo as mo
 
     base_ui = analysis.make_base_ui()
     base_ui
@@ -25,27 +24,15 @@ def _(analysis, base_ui):
 @app.cell
 def _(analysis, base_ui):
     draw_ui = analysis.make_draw_ui(base_ui)
-    analysis.render_draw_ui(draw_ui)
     return (draw_ui,)
-
-
-@app.cell
-def _(analysis, base_ui, setting_ui):
-    analysis.plot_preview(base_ui, setting_ui)
-    return
 
 
 @app.cell
 def _(analysis, base_ui, draw_ui, setting_ui):
     res = analysis.calc(base_ui, setting_ui, draw_ui)
-    return (res,)
-
-
-@app.cell
-def _(analysis, draw_ui, res):
-    spike_ui = analysis.make_spike_ui(res, draw_ui)
-    analysis.render_spike_ui(spike_ui)
-    return (spike_ui,)
+    spike_ui = analysis.make_spike_ui(base_ui, res, draw_ui)
+    analysis.render_draw_ui(draw_ui, spike_ui)
+    return res, spike_ui
 
 
 @app.cell
@@ -62,18 +49,22 @@ def _(analysis, save_items, save_panel):
 
 
 @app.cell(column=1)
-def _(analysis, base_ui, draw_ui, res, setting_ui, spike_ui):
-    html_view, save_items = analysis.view(
-        base_ui, setting_ui, res, draw_ui, spike_ui
-    )
-    html_view
-    return (save_items,)
-
-
-@app.cell
 def _(analysis, base_ui):
     analysis.render_model_info(base_ui)
     return
+
+
+@app.cell
+def _(analysis, base_ui, setting_ui):
+    analysis.plot_preview(base_ui, setting_ui)
+    return
+
+
+@app.cell
+def _(analysis, base_ui, draw_ui, res, setting_ui, spike_ui):
+    html_view, save_items = analysis.view(base_ui, setting_ui, res, draw_ui, spike_ui)
+    html_view
+    return (save_items,)
 
 
 if __name__ == "__main__":

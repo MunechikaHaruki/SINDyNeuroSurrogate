@@ -176,16 +176,21 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     )
 
 
-def render_draw_ui(draw_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.vstack(
-        [
-            mo.md("### 描画設定"),
-            mo.md(f"""
+def render_draw_ui(draw_ui: mo.ui.dictionary, spike_ui: mo.ui.dictionary) -> mo.Html:
+    parts: list = [
+        mo.md("### 描画設定"),
+        mo.md(f"""
 - 評価対象comp: {draw_ui["eval_comp"]}
 - 描画関数: {draw_ui["draw_func"]}
 """),
-        ]
-    )
+    ]
+    if "spike_orig" in spike_ui:
+        parts.append(
+            mo.md(
+                f"- spike orig: {spike_ui['spike_orig']} / surr: {spike_ui['spike_surr']}"
+            )
+        )
+    return mo.vstack(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -237,39 +242,32 @@ def calc(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
     draw_ui: mo.ui.dictionary,
-) -> dict:
-    mode = str(base_ui["mode"].value)
-    res: dict = {"mode": mode, "result": None, "sweep_result": None}
+) -> dict | None:
     if not setting_ui["run"].value:
-        return res
+        return None
     targets = setting_ui["surrogate_targets"].value
+    mode = str(base_ui["mode"].value)
     if mode == "single":
-        res["result"] = analysis_single.calc_eval(base_ui, setting_ui["sim"], targets)
-    elif "sweep" in setting_ui:
-        res["sweep_result"] = analysis_sweep.calc_sweep(
-            base_ui, setting_ui["sweep"], targets, draw_ui
-        )
-    return res
+        return analysis_single.calc_eval(base_ui, setting_ui["sim"], targets)
+    if "sweep" in setting_ui:
+        return analysis_sweep.calc_sweep(base_ui, setting_ui["sweep"], targets, draw_ui)
+    return None
 
 
-def make_spike_ui(res: dict, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    if res["result"] is None:
+def make_spike_ui(
+    base_ui: mo.ui.dictionary,
+    res: dict | None,
+    draw_ui: mo.ui.dictionary,
+) -> mo.ui.dictionary:
+    if res is None or str(base_ui["mode"].value) != "single":
         return mo.ui.dictionary({})
-    return analysis_single.make_spike_ui(res["result"], draw_ui)
-
-
-def render_spike_ui(spike_ui: mo.ui.dictionary) -> mo.Html:
-    if "spike_orig" not in spike_ui:
-        return mo.md("")
-    return mo.md(f"""
-- spike orig: {spike_ui["spike_orig"]} / surr: {spike_ui["spike_surr"]}
-""")
+    return analysis_single.make_spike_ui(res, draw_ui)
 
 
 def view(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
-    res: dict,
+    res: dict | None,
     draw_ui: mo.ui.dictionary,
     spike_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, dict]:
@@ -281,15 +279,16 @@ def view(
     for k, v in get_model_info_figs(base_ui).items():
         save_items[f"model_info_{k}"] = v
 
-    if res["mode"] == "single" and res["result"] is not None:
+    mode = str(base_ui["mode"].value)
+    if mode == "single" and res is not None:
         _spike = spike_ui if "spike_orig" in spike_ui else None
-        html, fig, dfs = analysis_single.view_result(draw_ui, res["result"], _spike)
+        html, fig, dfs = analysis_single.view_result(draw_ui, res, _spike)
         save_items["waveform"] = fig
         save_items["metrics"] = dfs["metrics"]
         save_items["scalar_metrics"] = dfs["scalar_metrics"]
         return html, save_items
-    if res["mode"] == "sweep" and res["sweep_result"]:
-        html, fig = analysis_sweep.plot_sweep(res["sweep_result"])
+    if mode == "sweep" and res:
+        html, fig = analysis_sweep.plot_sweep(res)
         save_items["sweep"] = fig
         return html, save_items
     return mo.md("(結果なし)"), save_items
