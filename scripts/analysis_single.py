@@ -66,17 +66,6 @@ def make_sim_ui(current_type: str) -> mo.ui.dictionary:
     return mo.ui.dictionary({"current_params": current_params_ui})
 
 
-def render_sim_ui(sim_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.vstack(
-        [
-            mo.md("### シミュレーション設定"),
-            mo.md(f"""
-- current params: {sim_ui["current_params"]}
-"""),
-        ]
-    )
-
-
 # ---------------------------------------------------------------------------
 # Current Preview
 # ---------------------------------------------------------------------------
@@ -176,11 +165,6 @@ def calc_eval(
 
 
 # ---------------------------------------------------------------------------
-# Spike UI
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # View Result
 # ---------------------------------------------------------------------------
 
@@ -205,9 +189,7 @@ def view_result(
     n_orig_count, n_surr_count = n_spikes(dm)
     spike_orig = int(draw_ui["spike"]["orig"].value)
     spike_surr = int(draw_ui["spike"]["surr"].value)
-    has_valid_spikes = (
-        0 <= spike_orig < n_orig_count and 0 <= spike_surr < n_surr_count
-    )
+    has_valid_spikes = 0 <= spike_orig < n_orig_count and 0 <= spike_surr < n_surr_count
 
     wf_summary = waveform_summary(dm)
     df_waveform = waveform_summary_df(dm)

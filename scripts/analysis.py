@@ -85,20 +85,6 @@ def make_setting_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     return mo.ui.dictionary(d)
 
 
-def render_setting_ui(setting_ui: mo.ui.dictionary) -> mo.Html:
-    parts: list = [
-        mo.md(f"- {setting_ui['surrogate_targets']}"),
-        analysis_single.render_sim_ui(setting_ui["sim"]),
-        setting_ui["run_sim"],
-    ]
-    if "sweep" in setting_ui:
-        parts.append(
-            mo.vstack([mo.md("### 振幅スイープ設定"), mo.md(f"{setting_ui['sweep']}")])
-        )
-        parts.append(setting_ui["run_sweep"])
-    return mo.vstack(parts)
-
-
 # ---------------------------------------------------------------------------
 # Calc
 # ---------------------------------------------------------------------------
@@ -125,30 +111,15 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     comp_names = MCMODELS[str(base_ui["model_name"].value)].names
     return mo.ui.dictionary(
         {
-            "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0]),
-            "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0]),
+            "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0], label="評価対象comp"),
+            "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0], label="描画関数"),
             "spike": mo.ui.dictionary(
                 {
-                    "orig": mo.ui.number(value=0, step=1),
-                    "surr": mo.ui.number(value=0, step=1),
+                    "orig": mo.ui.number(value=0, step=1, label="spike orig #"),
+                    "surr": mo.ui.number(value=0, step=1, label="spike surr #"),
                 }
             ),
         }
-    )
-
-
-def render_draw_ui(draw_ui: mo.ui.dictionary) -> mo.Html:
-    return mo.vstack(
-        [
-            mo.md("### 描画設定"),
-            mo.md(f"""
-- 評価対象comp: {draw_ui["eval_comp"]}
-- 描画関数: {draw_ui["draw_func"]}
-- spike  
-    - orig:{draw_ui["spike"]["orig"]} 
-    - surr:{draw_ui["spike"]["surr"]}
-"""),
-        ]
     )
 
 
