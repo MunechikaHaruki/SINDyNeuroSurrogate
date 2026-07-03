@@ -1,7 +1,6 @@
 import inspect
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, cast
 
 import marimo as mo
 import matplotlib.pyplot as plt
@@ -41,12 +40,12 @@ class SweepConfig:
 
 
 def _sweep_param_of(current_type: str) -> str | None:
-    param_keys = [
-        name
-        for name, p in inspect.signature(FUNC_MAP[current_type]).parameters.items()
+    keys = [
+        n
+        for n, p in inspect.signature(FUNC_MAP[current_type]).parameters.items()
         if p.annotation in (int, float)
     ]
-    return param_keys[0] if len(param_keys) == 1 else None
+    return keys[0] if len(keys) == 1 else None
 
 
 def make_sweep_ui(current_type: str) -> mo.ui.dictionary | None:
@@ -176,7 +175,7 @@ def _run_sweep(
     """純粋計算層: metric DataFrame と run_label dict を返す。plot しない。"""
     current_configs: dict[float, CurrentConfig] = {
         amp: CurrentConfig(
-            pipeline=CurrentConfig.build_pipeline(current_type, {sweep_param: amp}),
+            pipeline=CurrentConfig.build_pipeline(current_type, {sweep_param: amp})
         )
         for amp in cfg.amp_values
     }
@@ -197,10 +196,6 @@ def _run_sweep(
     return data, run_labels
 
 
-def _ui_val(ui: mo.ui.dictionary, key: str) -> Any:
-    return cast(Any, ui[key]).value
-
-
 def calc_sweep(
     base_button: mo.ui.dictionary,
     sweep_ui: mo.ui.dictionary,
@@ -208,16 +203,16 @@ def calc_sweep(
     draw_ui: mo.ui.dictionary,
 ) -> dict:
     """純粋実行層: marimo UI → _run_sweep → 結果dict。"""
-    model_name = str(_ui_val(base_button, "model_name"))
-    run_ids = cast(pd.DataFrame, base_button["run_selector"].value)["run_id"].tolist()
-    eval_comp_name = str(_ui_val(draw_ui, "eval_comp"))
-    current_type = str(_ui_val(base_button, "sim_current_type"))
-    sweep_param = cast(str, _sweep_param_of(current_type))
+    model_name = base_button["model_name"].value
+    run_ids = base_button["run_selector"].value["run_id"].tolist()
+    eval_comp_name = draw_ui["eval_comp"].value
+    current_type = base_button["sim_current_type"].value
+    sweep_param = _sweep_param_of(current_type)
     sweep_cfg = SweepConfig(
-        amp_start=float(_ui_val(sweep_ui, "amp_start")),
-        amp_stop=float(_ui_val(sweep_ui, "amp_stop")),
-        amp_steps=int(_ui_val(sweep_ui, "amp_steps")),
-        metric_key=str(_ui_val(sweep_ui, "metric")),
+        amp_start=sweep_ui["amp_start"].value,
+        amp_stop=sweep_ui["amp_stop"].value,
+        amp_steps=sweep_ui["amp_steps"].value,
+        metric_key=sweep_ui["metric"].value,
     )
     data, run_labels = _run_sweep(
         run_ids=run_ids,
