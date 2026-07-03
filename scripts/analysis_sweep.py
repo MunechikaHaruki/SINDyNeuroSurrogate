@@ -25,7 +25,6 @@ from neurosurrogate.profiler.profiler_wave import (
 
 @dataclass(frozen=True)
 class SweepConfig:
-    sweep_param: str
     amp_start: float
     amp_stop: float
     amp_steps: int
@@ -35,66 +34,32 @@ class SweepConfig:
     def amp_values(self) -> np.ndarray:
         return np.linspace(self.amp_start, self.amp_stop, self.amp_steps)
 
-    def override(self, base: dict, amp: float) -> dict:
-        return {**base, self.sweep_param: amp}
-
 
 # ---------------------------------------------------------------------------
 # Sweep UI
 # ---------------------------------------------------------------------------
 
 
-def _make_sweep_current_params(current_type: str) -> mo.ui.dictionary:
-    return mo.ui.dictionary(
-        {
-            name: (
-                mo.ui.number(
-                    value=int(
-                        p.default if p.default is not inspect.Parameter.empty else 0
-                    ),
-                    step=1,
-                    label=name,
-                )
-                if p.annotation is int
-                else mo.ui.number(
-                    value=float(
-                        p.default if p.default is not inspect.Parameter.empty else 0.0
-                    ),
-                    step=0.1,
-                    label=name,
-                )
-                if p.annotation is float
-                else mo.ui.checkbox(
-                    value=bool(
-                        p.default if p.default is not inspect.Parameter.empty else False
-                    ),
-                    label=name,
-                )
-            )
-            for name, p in inspect.signature(FUNC_MAP[current_type]).parameters.items()
-            if p.annotation in (int, float, bool)
-        }
-    )
-
-
-def make_sweep_ui(current_type: str) -> mo.ui.dictionary | None:
+def _sweep_param_of(current_type: str) -> str | None:
     param_keys = [
         name
         for name, p in inspect.signature(FUNC_MAP[current_type]).parameters.items()
         if p.annotation in (int, float)
     ]
-    if not param_keys:
+    return param_keys[0] if len(param_keys) == 1 else None
+
+
+def make_sweep_ui(current_type: str) -> mo.ui.dictionary | None:
+    if _sweep_param_of(current_type) is None:
         return None
     return mo.ui.dictionary(
         {
-            "sweep_param": mo.ui.dropdown(options=param_keys, value=param_keys[0]),
             "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
             "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
             "amp_steps": mo.ui.number(value=10, step=1, label="steps"),
             "metric": mo.ui.dropdown(
                 options=DF_ROW_METRICS + SCALAR_METRICS, value="spike_count"
             ),
-            "current_params": _make_sweep_current_params(current_type),
         }
     )
 
@@ -205,15 +170,13 @@ def _run_sweep(
     target_comp_names: list[str],
     eval_comp_name: str,
     current_type: str,
-    base_current_params: dict,
+    sweep_param: str,
     cfg: SweepConfig,
 ) -> tuple[pd.DataFrame, dict[str, str]]:
     """純粋計算層: metric DataFrame と run_label dict を返す。plot しない。"""
     current_configs: dict[float, CurrentConfig] = {
         amp: CurrentConfig(
-            pipeline=CurrentConfig.build_pipeline(
-                current_type, cfg.override(base_current_params, amp)
-            ),
+            pipeline=CurrentConfig.build_pipeline(current_type, {sweep_param: amp}),
         )
         for amp in cfg.amp_values
     }
@@ -249,8 +212,8 @@ def calc_sweep(
     run_ids = cast(pd.DataFrame, base_button["run_selector"].value)["run_id"].tolist()
     eval_comp_name = str(_ui_val(draw_ui, "eval_comp"))
     current_type = str(_ui_val(base_button, "sim_current_type"))
+    sweep_param = cast(str, _sweep_param_of(current_type))
     sweep_cfg = SweepConfig(
-        sweep_param=str(_ui_val(sweep_ui, "sweep_param")),
         amp_start=float(_ui_val(sweep_ui, "amp_start")),
         amp_stop=float(_ui_val(sweep_ui, "amp_stop")),
         amp_steps=int(_ui_val(sweep_ui, "amp_steps")),
@@ -263,7 +226,7 @@ def calc_sweep(
         target_comp_names=surrogate_targets,
         eval_comp_name=eval_comp_name,
         current_type=current_type,
-        base_current_params=_ui_val(sweep_ui, "current_params"),
+        sweep_param=sweep_param,
         cfg=sweep_cfg,
     )
     return {
@@ -271,7 +234,7 @@ def calc_sweep(
         "run_labels": run_labels,
         "run_ids": run_ids,
         "metric_key": sweep_cfg.metric_key,
-        "sweep_param": sweep_cfg.sweep_param,
+        "sweep_param": sweep_param,
         "eval_comp_name": eval_comp_name,
     }
 

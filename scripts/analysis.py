@@ -20,7 +20,6 @@ CurrentList: list = list(FUNC_MAP.keys())
 DRAW_LIST: list = list(DRAW_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
-Mode = Literal["single", "sweep"]
 
 setup_mlflow()
 
@@ -125,12 +124,8 @@ def get_runs_df():
 def make_base_ui() -> mo.ui.dictionary:
     runs_df = get_runs_df()
     plt_options = list(typing.get_args(MplStyle))
-    mode_options = list(typing.get_args(Mode))
     return mo.ui.dictionary(
         {
-            "mode": mo.ui.radio(
-                options=mode_options, value=mode_options[0], label="mode"
-            ),
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[1]),
             "sim_current_type": mo.ui.dropdown(CurrentList, value="lin_single_pulse"),
             "model_name": mo.ui.dropdown(
@@ -199,36 +194,32 @@ def render_draw_ui(draw_ui: mo.ui.dictionary, spike_ui: mo.ui.dictionary) -> mo.
 
 
 def make_setting_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    mode = str(base_ui["mode"].value)
     current_type = str(base_ui["sim_current_type"].value)
     d: dict = {
         "surrogate_targets": make_surrogate_targets_ui(base_ui),
-        "run": mo.ui.run_button(label="実行"),
+        "sim": analysis_single.make_sim_ui(current_type),
+        "run_sim": mo.ui.run_button(label="single 実行"),
     }
-    if mode == "single":
-        d["sim"] = analysis_single.make_sim_ui(current_type)
-    else:
-        sweep = analysis_sweep.make_sweep_ui(current_type)
-        if sweep is not None:
-            d["sweep"] = sweep
+    sweep = analysis_sweep.make_sweep_ui(current_type)
+    if sweep is not None:
+        d["sweep"] = sweep
+        d["run_sweep"] = mo.ui.run_button(label="sweep 実行")
     return mo.ui.dictionary(d)
 
 
 def render_setting_ui(setting_ui: mo.ui.dictionary) -> mo.Html:
-    parts: list = [mo.md(f"- {setting_ui['surrogate_targets']}")]
-    if "sim" in setting_ui:
-        parts.append(analysis_single.render_sim_ui(setting_ui["sim"]))
-    elif "sweep" in setting_ui:
+    parts: list = [
+        mo.md(f"- {setting_ui['surrogate_targets']}"),
+        analysis_single.render_sim_ui(setting_ui["sim"]),
+        setting_ui["run_sim"],
+    ]
+    if "sweep" in setting_ui:
         parts.append(analysis_sweep.render_sweep(setting_ui["sweep"]))
-    else:
-        parts.append(mo.md("(この current_type は sweep 不可)"))
-    parts.append(setting_ui["run"])
+        parts.append(setting_ui["run_sweep"])
     return mo.vstack(parts)
 
 
 def plot_preview(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> mo.Html:
-    if "sim" not in setting_ui:
-        return mo.md("")
     fig = analysis_single.plot_current_preview(base_ui, setting_ui["sim"])
     return analysis_single.render_current_preview(fig)
 
@@ -243,23 +234,16 @@ def calc(
     setting_ui: mo.ui.dictionary,
     draw_ui: mo.ui.dictionary,
 ) -> dict | None:
-    if not setting_ui["run"].value:
-        return None
     targets = setting_ui["surrogate_targets"].value
-    mode = str(base_ui["mode"].value)
-    if mode == "single":
+    if setting_ui["run_sim"].value:
         return analysis_single.calc_eval(base_ui, setting_ui["sim"], targets)
-    if "sweep" in setting_ui:
+    if "run_sweep" in setting_ui and setting_ui["run_sweep"].value:
         return analysis_sweep.calc_sweep(base_ui, setting_ui["sweep"], targets, draw_ui)
     return None
 
 
-def make_spike_ui(
-    base_ui: mo.ui.dictionary,
-    res: dict | None,
-    draw_ui: mo.ui.dictionary,
-) -> mo.ui.dictionary:
-    if res is None or str(base_ui["mode"].value) != "single":
+def make_spike_ui(res: dict | None, draw_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    if res is None or "make_dm" not in res:
         return mo.ui.dictionary({})
     return analysis_single.make_spike_ui(res, draw_ui)
 
@@ -271,27 +255,27 @@ def view(
     draw_ui: mo.ui.dictionary,
     spike_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, dict]:
-    save_items: dict = {"neurograph": get_neurograph_fig(base_ui)}
-    if "sim" in setting_ui:
-        save_items["current_preview"] = analysis_single.plot_current_preview(
+    save_items: dict = {
+        "neurograph": get_neurograph_fig(base_ui),
+        "current_preview": analysis_single.plot_current_preview(
             base_ui, setting_ui["sim"]
-        )
+        ),
+    }
     for k, v in get_model_info_figs(base_ui).items():
         save_items[f"model_info_{k}"] = v
 
-    mode = str(base_ui["mode"].value)
-    if mode == "single" and res is not None:
+    if res is None:
+        return mo.md("(結果なし)"), save_items
+    if "make_dm" in res:
         _spike = spike_ui if "spike_orig" in spike_ui else None
         html, fig, dfs = analysis_single.view_result(draw_ui, res, _spike)
         save_items["waveform"] = fig
         save_items["metrics"] = dfs["metrics"]
         save_items["scalar_metrics"] = dfs["scalar_metrics"]
         return html, save_items
-    if mode == "sweep" and res:
-        html, fig = analysis_sweep.plot_sweep(res)
-        save_items["sweep"] = fig
-        return html, save_items
-    return mo.md("(結果なし)"), save_items
+    html, fig = analysis_sweep.plot_sweep(res)
+    save_items["sweep"] = fig
+    return html, save_items
 
 
 # ---------------------------------------------------------------------------

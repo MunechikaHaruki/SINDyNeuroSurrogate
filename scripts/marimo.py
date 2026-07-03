@@ -30,7 +30,7 @@ def _(analysis, base_ui):
 @app.cell
 def _(analysis, base_ui, draw_ui, setting_ui):
     res = analysis.calc(base_ui, setting_ui, draw_ui)
-    spike_ui = analysis.make_spike_ui(base_ui, res, draw_ui)
+    spike_ui = analysis.make_spike_ui(res, draw_ui)
     analysis.render_draw_ui(draw_ui, spike_ui)
     return res, spike_ui
 
