@@ -30,8 +30,8 @@ def _(analysis, base_ui):
 
 
 @app.cell
-def _(analysis, save_items):
-    save_panel = analysis.make_save_panel(save_items)
+def _(analysis, base_ui, save_items, setting_ui):
+    save_panel = analysis.make_save_panel(save_items, base_ui, setting_ui)
     analysis.render_save_panel(save_panel)
     return (save_panel,)
 
@@ -61,17 +61,17 @@ def _(mo):
 
 
 @app.cell
+def _(get_res):
+    res = get_res()
+    return (res,)
+
+
+@app.cell
 def _(analysis, base_ui, set_res, setting_ui):
     _new = analysis.calc(base_ui, setting_ui)
     if _new is not None:
         set_res(_new)
     return
-
-
-@app.cell
-def _(get_res):
-    res = get_res()
-    return (res,)
 
 
 @app.cell

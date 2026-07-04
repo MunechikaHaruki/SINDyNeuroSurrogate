@@ -209,19 +209,43 @@ SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
 }
 
 
-def _default_save_path(name: str, item: SaveItem | None) -> str:
+def _build_prefix(
+    base_ui: mo.ui.dictionary,
+    setting_ui: mo.ui.dictionary,
+    save_items: dict,
+) -> str:
+    model = base_ui["model_name"].value
+    ct = base_ui["sim_current_type"].value
+    if "sweep" in save_items:
+        s = setting_ui["sweep"]
+        tail = (
+            f"sw{s['amp_start'].value:g}-{s['amp_stop'].value:g}"
+            f"n{s['amp_steps'].value}"
+        )
+    else:
+        params = setting_ui["sim"]["current_params"].value or {}
+        tail = "_".join(f"{k}{v}" for k, v in params.items())
+    return f"{model}_{ct}_{tail}" if tail else f"{model}_{ct}"
+
+
+def _default_save_path(name: str, item: SaveItem | None, prefix: str) -> str:
     ext = ".csv" if isinstance(item, pd.DataFrame) else ".png"
-    return f"_{name}{ext}"
+    return f"_{prefix}_{name}{ext}"
 
 
-def make_save_panel(save_items: dict[str, SaveItem | None]) -> mo.ui.dictionary:
+def make_save_panel(
+    save_items: dict[str, SaveItem | None],
+    base_ui: mo.ui.dictionary,
+    setting_ui: mo.ui.dictionary,
+) -> mo.ui.dictionary:
     """save_items から各 name の path入力＋保存ボタンを生成。"""
+    prefix = _build_prefix(base_ui, setting_ui, save_items)
     return mo.ui.dictionary(
         {
             name: mo.ui.dictionary(
                 {
                     "path": mo.ui.text(
-                        value=_default_save_path(name, item), label=name
+                        value=_default_save_path(name, item, prefix), label=name
                     ),
                     "save": mo.ui.run_button(label=f"{name} 保存"),
                 }
