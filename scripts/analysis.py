@@ -173,13 +173,14 @@ SaveItem = Figure | pd.DataFrame
 
 @dataclass(frozen=True)
 class SaveEntry:
+    name: str
     obj: SaveItem
     path: str  # default path (docs/slide/result 相対)
 
 
 def _entry(name: str, obj: SaveItem, prefix: str) -> SaveEntry:
     ext = ".csv" if isinstance(obj, pd.DataFrame) else ".png"
-    return SaveEntry(obj, f"_{prefix}_{name}{ext}")
+    return SaveEntry(name, obj, f"_{prefix}_{name}{ext}")
 
 
 def _fmt_current(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
@@ -208,32 +209,31 @@ def view(
     setting_ui: mo.ui.dictionary,
     res: dict | None,
     draw_ui: mo.ui.dictionary,
-) -> tuple[mo.Html, dict[str, SaveEntry]]:
+) -> tuple[mo.Html, list[SaveEntry]]:
     model = base_ui["model_name"].value
     current = _fmt_current(base_ui, setting_ui)
     targets = _fmt_targets(setting_ui)
     single_prefix = f"{model}_{current}_{targets}"
 
-    entries: dict[str, SaveEntry] = {
-        "neurograph": _entry("neurograph", _get_neurograph_fig(base_ui), model),
-        "current_preview": _entry(
+    entries: list[SaveEntry] = [
+        _entry("neurograph", _get_neurograph_fig(base_ui), model),
+        _entry(
             "current_preview",
             analysis_single.plot_current_preview(base_ui, setting_ui["sim"]),
             current,
         ),
-    }
+    ]
     for rid, fig in _get_model_info_figs(base_ui).items():
-        name = f"model_info_{rid}"
-        entries[name] = _entry(name, fig, model)
+        entries.append(_entry(f"model_info_{rid}", fig, model))
 
     if res is None:
         return mo.md("(結果なし)"), entries
     if "make_dm" in res:
         html, fig, dfs = analysis_single.view_result(draw_ui, res)
-        entries["waveform"] = _entry("waveform", fig, single_prefix)
-        entries["metrics"] = _entry("metrics", dfs["metrics"], single_prefix)
-        entries["scalar_metrics"] = _entry(
-            "scalar_metrics", dfs["scalar_metrics"], single_prefix
+        entries.append(_entry("waveform", fig, single_prefix))
+        entries.append(_entry("metrics", dfs["metrics"], single_prefix))
+        entries.append(
+            _entry("scalar_metrics", dfs["scalar_metrics"], single_prefix)
         )
         return html, entries
     html, fig = analysis_sweep.plot_sweep(
@@ -241,8 +241,8 @@ def view(
         eval_comp_name=draw_ui["eval_comp"].value,
         metric_key=setting_ui["sweep"]["metric"].value,
     )
-    entries["sweep"] = _entry(
-        "sweep", fig, f"{model}_{_fmt_sweep(base_ui, setting_ui)}_{targets}"
+    entries.append(
+        _entry("sweep", fig, f"{model}_{_fmt_sweep(base_ui, setting_ui)}_{targets}")
     )
     return html, entries
 
@@ -263,17 +263,17 @@ SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
 }
 
 
-def make_save_panel(entries: dict[str, SaveEntry]) -> mo.ui.dictionary:
+def make_save_panel(entries: list[SaveEntry]) -> mo.ui.dictionary:
     """SaveEntry から各 name の path入力＋保存ボタンを生成。"""
     return mo.ui.dictionary(
         {
-            name: mo.ui.dictionary(
+            e.name: mo.ui.dictionary(
                 {
-                    "path": mo.ui.text(value=e.path, label=name),
-                    "save": mo.ui.run_button(label=f"{name} 保存"),
+                    "path": mo.ui.text(value=e.path, label=e.name),
+                    "save": mo.ui.run_button(label=f"{e.name} 保存"),
                 }
             )
-            for name, e in entries.items()
+            for e in entries
         }
     )
 
@@ -290,19 +290,15 @@ def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
 
 
 def save(
-    save_panel: mo.ui.dictionary, entries: dict[str, SaveEntry]
+    save_panel: mo.ui.dictionary, entries: list[SaveEntry]
 ) -> mo.Html:
     msgs: list[mo.Html] = []
-    for name, e in entries.items():
-        ctrl = save_panel[name]
+    for e in entries:
+        ctrl = save_panel[e.name]
         if not ctrl["save"].value:
             continue
-        rel = str(ctrl["path"].value).strip()
-        if not rel:
-            msgs.append(mo.md(f"⚠️ {name}: パス未指定"))
-            continue
-        path = RESULT_DIR / rel
+        path = RESULT_DIR / str(ctrl["path"].value).strip()
         path.parent.mkdir(parents=True, exist_ok=True)
         SAVERS[type(e.obj)](e.obj, path)
-        msgs.append(mo.md(f"✅ {name}: `{path.relative_to(REPO_ROOT)}`"))
+        msgs.append(mo.md(f"✅ {e.name}: `{path.relative_to(REPO_ROOT)}`"))
     return mo.vstack(msgs) if msgs else mo.md("(未保存)")
