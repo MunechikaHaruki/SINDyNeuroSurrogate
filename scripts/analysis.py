@@ -1,4 +1,5 @@
 import typing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
@@ -19,7 +20,6 @@ CurrentList: list = list(FUNC_MAP.keys())
 DRAW_LIST: list = list(DRAW_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
-SaveItem = Figure | pd.DataFrame
 
 setup_mlflow()
 
@@ -160,36 +160,80 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
     )
 
 
+# ---------------------------------------------------------------------------
+# Result View
+# ---------------------------------------------------------------------------
+
+
+SaveItem = Figure | pd.DataFrame
+
+
+@dataclass(frozen=True)
+class SaveEntry:
+    obj: SaveItem
+    path: str  # default path (docs/slide/result 相対)
+
+
+def _entry(name: str, obj: SaveItem, prefix: str) -> SaveEntry:
+    ext = ".csv" if isinstance(obj, pd.DataFrame) else ".png"
+    return SaveEntry(obj, f"_{prefix}_{name}{ext}")
+
+
+def _fmt_current(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
+    ct = base_ui["sim_current_type"].value
+    params = setting_ui["sim"]["current_params"].value or {}
+    tail = "_".join(f"{k}{v}" for k, v in params.items())
+    return f"{ct}_{tail}" if tail else ct
+
+
+def _fmt_sweep(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
+    ct = base_ui["sim_current_type"].value
+    s = setting_ui["sweep"]
+    return (
+        f"{ct}_sw{s['amp_start'].value:g}-{s['amp_stop'].value:g}"
+        f"n{s['amp_steps'].value}"
+    )
+
+
 def view(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
     res: dict | None,
     draw_ui: mo.ui.dictionary,
-) -> tuple[mo.Html, dict[str, SaveItem]]:
-    save_items: dict[str, SaveItem] = {
-        "neurograph": _get_neurograph_fig(base_ui),
-        "current_preview": analysis_single.plot_current_preview(
-            base_ui, setting_ui["sim"]
+) -> tuple[mo.Html, dict[str, SaveEntry]]:
+    model = base_ui["model_name"].value
+    current = _fmt_current(base_ui, setting_ui)
+    single_prefix = f"{model}_{current}"
+
+    entries: dict[str, SaveEntry] = {
+        "neurograph": _entry("neurograph", _get_neurograph_fig(base_ui), model),
+        "current_preview": _entry(
+            "current_preview",
+            analysis_single.plot_current_preview(base_ui, setting_ui["sim"]),
+            current,
         ),
     }
-    for k, v in _get_model_info_figs(base_ui).items():
-        save_items[f"model_info_{k}"] = v
+    for rid, fig in _get_model_info_figs(base_ui).items():
+        name = f"model_info_{rid}"
+        entries[name] = _entry(name, fig, model)
 
     if res is None:
-        return mo.md("(結果なし)"), save_items
+        return mo.md("(結果なし)"), entries
     if "make_dm" in res:
         html, fig, dfs = analysis_single.view_result(draw_ui, res)
-        save_items["waveform"] = fig
-        save_items["metrics"] = dfs["metrics"]
-        save_items["scalar_metrics"] = dfs["scalar_metrics"]
-        return html, save_items
+        entries["waveform"] = _entry("waveform", fig, single_prefix)
+        entries["metrics"] = _entry("metrics", dfs["metrics"], single_prefix)
+        entries["scalar_metrics"] = _entry(
+            "scalar_metrics", dfs["scalar_metrics"], single_prefix
+        )
+        return html, entries
     html, fig = analysis_sweep.plot_sweep(
         res,
         eval_comp_name=draw_ui["eval_comp"].value,
         metric_key=setting_ui["sweep"]["metric"].value,
     )
-    save_items["sweep"] = fig
-    return html, save_items
+    entries["sweep"] = _entry("sweep", fig, f"{model}_{_fmt_sweep(base_ui, setting_ui)}")
+    return html, entries
 
 
 def plot_preview(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> mo.Html:
@@ -208,48 +252,17 @@ SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
 }
 
 
-def _build_prefix(
-    base_ui: mo.ui.dictionary,
-    setting_ui: mo.ui.dictionary,
-    save_items: dict,
-) -> str:
-    model = base_ui["model_name"].value
-    ct = base_ui["sim_current_type"].value
-    if "sweep" in save_items:
-        s = setting_ui["sweep"]
-        tail = (
-            f"sw{s['amp_start'].value:g}-{s['amp_stop'].value:g}"
-            f"n{s['amp_steps'].value}"
-        )
-    else:
-        params = setting_ui["sim"]["current_params"].value or {}
-        tail = "_".join(f"{k}{v}" for k, v in params.items())
-    return f"{model}_{ct}_{tail}" if tail else f"{model}_{ct}"
-
-
-def _default_save_path(name: str, item: SaveItem, prefix: str) -> str:
-    ext = ".csv" if isinstance(item, pd.DataFrame) else ".png"
-    return f"_{prefix}_{name}{ext}"
-
-
-def make_save_panel(
-    save_items: dict[str, SaveItem],
-    base_ui: mo.ui.dictionary,
-    setting_ui: mo.ui.dictionary,
-) -> mo.ui.dictionary:
-    """save_items から各 name の path入力＋保存ボタンを生成。"""
-    prefix = _build_prefix(base_ui, setting_ui, save_items)
+def make_save_panel(entries: dict[str, SaveEntry]) -> mo.ui.dictionary:
+    """SaveEntry から各 name の path入力＋保存ボタンを生成。"""
     return mo.ui.dictionary(
         {
             name: mo.ui.dictionary(
                 {
-                    "path": mo.ui.text(
-                        value=_default_save_path(name, item, prefix), label=name
-                    ),
+                    "path": mo.ui.text(value=e.path, label=name),
                     "save": mo.ui.run_button(label=f"{name} 保存"),
                 }
             )
-            for name, item in save_items.items()
+            for name, e in entries.items()
         }
     )
 
@@ -266,10 +279,10 @@ def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
 
 
 def save(
-    save_panel: mo.ui.dictionary, save_items: dict[str, SaveItem]
+    save_panel: mo.ui.dictionary, entries: dict[str, SaveEntry]
 ) -> mo.Html:
     msgs: list[mo.Html] = []
-    for name, obj in save_items.items():
+    for name, e in entries.items():
         ctrl = save_panel[name]
         if not ctrl["save"].value:
             continue
@@ -279,6 +292,6 @@ def save(
             continue
         path = RESULT_DIR / rel
         path.parent.mkdir(parents=True, exist_ok=True)
-        SAVERS[type(obj)](obj, path)
+        SAVERS[type(e.obj)](e.obj, path)
         msgs.append(mo.md(f"✅ {name}: `{path.relative_to(REPO_ROOT)}`"))
     return mo.vstack(msgs) if msgs else mo.md("(未保存)")

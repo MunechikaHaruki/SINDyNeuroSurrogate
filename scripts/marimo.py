@@ -30,8 +30,8 @@ def _(analysis, base_ui):
 
 
 @app.cell
-def _(analysis, base_ui, save_items, setting_ui):
-    save_panel = analysis.make_save_panel(save_items, base_ui, setting_ui)
+def _(analysis, save_items):
+    save_panel = analysis.make_save_panel(save_items)
     analysis.render_save_panel(save_panel)
     return (save_panel,)
 
