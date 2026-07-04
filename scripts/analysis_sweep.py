@@ -51,8 +51,24 @@ def make_sweep_ui(
             "amp_start": mo.ui.number(value=start, step=1.0, label="amp_start"),
             "amp_stop": mo.ui.number(value=stop, step=1.0, label="amp_stop"),
             "amp_steps": mo.ui.number(value=steps, step=1, label="steps"),
+        }
+    )
+
+
+def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary | None:
+    current_type = str(base_ui["sim_current_type"].value)
+    if _sweep_param_of(current_type) is None:
+        return None
+    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
+    return mo.ui.dictionary(
+        {
+            "eval_comp": mo.ui.dropdown(
+                options=comp_names, value=comp_names[0], label="評価対象comp"
+            ),
             "metric": mo.ui.dropdown(
-                options=DF_ROW_METRICS + SCALAR_METRICS, value="spike_count"
+                options=DF_ROW_METRICS + SCALAR_METRICS,
+                value="spike_count",
+                label="metric",
             ),
         }
     )

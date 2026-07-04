@@ -14,10 +14,8 @@ from matplotlib.figure import Figure
 from neurosurrogate.builder.registry_current import FUNC_MAP
 from neurosurrogate.model.registry_neuron import MCMODELS
 from neurosurrogate.profiler.profiler_view import view_neuron_graph
-from neurosurrogate.profiler.registry_view import DRAW_MAP
 
 CurrentList: list = list(FUNC_MAP.keys())
-DRAW_LIST: list = list(DRAW_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
 
@@ -112,23 +110,11 @@ def calc(
 
 
 def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
-    return mo.ui.dictionary(
-        {
-            "eval_comp": mo.ui.dropdown(
-                options=comp_names, value=comp_names[0], label="評価対象comp"
-            ),
-            "draw_func": mo.ui.dropdown(
-                options=DRAW_LIST, value=DRAW_LIST[0], label="描画関数"
-            ),
-            "spike": mo.ui.dictionary(
-                {
-                    "orig": mo.ui.number(value=0, step=1, label="spike orig #"),
-                    "surr": mo.ui.number(value=0, step=1, label="spike surr #"),
-                }
-            ),
-        }
-    )
+    d: dict = {"single": analysis_single.make_draw_ui(base_ui)}
+    sweep = analysis_sweep.make_draw_ui(base_ui)
+    if sweep is not None:
+        d["sweep"] = sweep
+    return mo.ui.dictionary(d)
 
 
 # ---------------------------------------------------------------------------
@@ -233,15 +219,15 @@ def view(
     if res is None:
         return mo.md("(結果なし)"), entries
     if "make_dm" in res:
-        html, fig, dfs = analysis_single.view_result(draw_ui, res)
+        html, fig, dfs = analysis_single.view_result(draw_ui["single"], res)
         entries.append(_entry("waveform", fig, single_prefix))
         entries.append(_entry("metrics", dfs["metrics"], single_prefix))
         entries.append(_entry("metrics(scalar)", dfs["metrics(scalar)"], single_prefix))
         return html, entries
     html, fig = analysis_sweep.plot_sweep(
         res,
-        eval_comp_name=draw_ui["eval_comp"].value,
-        metric_key=setting_ui["sweep"]["metric"].value,
+        eval_comp_name=draw_ui["sweep"]["eval_comp"].value,
+        metric_key=draw_ui["sweep"]["metric"].value,
     )
     entries.append(
         _entry("sweep", fig, f"{model}_{_fmt_sweep(base_ui, setting_ui)}_{targets}")

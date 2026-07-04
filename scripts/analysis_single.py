@@ -25,6 +25,8 @@ from neurosurrogate.profiler.profiler_wave import (
 )
 from neurosurrogate.profiler.registry_view import DRAW_MAP
 
+DRAW_LIST = list(DRAW_MAP.keys())
+
 # ---------------------------------------------------------------------------
 # Sim UI
 # ---------------------------------------------------------------------------
@@ -48,6 +50,26 @@ def _make_ui_element(name: str, annotation, default):
         return mo.ui.array([mo.ui.number(value=0.0, step=0.1)], label=name)
     else:
         raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
+
+
+def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
+    return mo.ui.dictionary(
+        {
+            "eval_comp": mo.ui.dropdown(
+                options=comp_names, value=comp_names[0], label="評価対象comp"
+            ),
+            "draw_func": mo.ui.dropdown(
+                options=DRAW_LIST, value=DRAW_LIST[0], label="描画関数"
+            ),
+            "spike": mo.ui.dictionary(
+                {
+                    "orig": mo.ui.number(value=0, step=1, label="spike orig #"),
+                    "surr": mo.ui.number(value=0, step=1, label="spike surr #"),
+                }
+            ),
+        }
+    )
 
 
 def make_sim_ui(current_type: str) -> mo.ui.dictionary:
