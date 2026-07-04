@@ -115,8 +115,12 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
     comp_names = MCMODELS[str(base_ui["model_name"].value)].names
     return mo.ui.dictionary(
         {
-            "eval_comp": mo.ui.dropdown(options=comp_names, value=comp_names[0], label="評価対象comp"),
-            "draw_func": mo.ui.dropdown(options=DRAW_LIST, value=DRAW_LIST[0], label="描画関数"),
+            "eval_comp": mo.ui.dropdown(
+                options=comp_names, value=comp_names[0], label="評価対象comp"
+            ),
+            "draw_func": mo.ui.dropdown(
+                options=DRAW_LIST, value=DRAW_LIST[0], label="描画関数"
+            ),
             "spike": mo.ui.dictionary(
                 {
                     "orig": mo.ui.number(value=0, step=1, label="spike orig #"),
@@ -218,13 +222,13 @@ def view(
     entries: list[SaveEntry] = [
         _entry("neurograph", _get_neurograph_fig(base_ui), model),
         _entry(
-            "current_preview",
+            "current",
             analysis_single.plot_current_preview(base_ui, setting_ui["sim"]),
             current,
         ),
     ]
     for rid, fig in _get_model_info_figs(base_ui).items():
-        entries.append(_entry(f"model_info_{rid}", fig, model))
+        entries.append(_entry(f"model({rid})", fig, model))
 
     if res is None:
         return mo.md("(結果なし)"), entries
@@ -232,9 +236,7 @@ def view(
         html, fig, dfs = analysis_single.view_result(draw_ui, res)
         entries.append(_entry("waveform", fig, single_prefix))
         entries.append(_entry("metrics", dfs["metrics"], single_prefix))
-        entries.append(
-            _entry("scalar_metrics", dfs["scalar_metrics"], single_prefix)
-        )
+        entries.append(_entry("metrics(scalar)", dfs["metrics(scalar)"], single_prefix))
         return html, entries
     html, fig = analysis_sweep.plot_sweep(
         res,
@@ -289,9 +291,7 @@ def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
     return mo.vstack([mo.md("### 画像保存パネル (docs/result/ 配下)"), *rows])
 
 
-def save(
-    save_panel: mo.ui.dictionary, entries: list[SaveEntry]
-) -> mo.Html:
+def save(save_panel: mo.ui.dictionary, entries: list[SaveEntry]) -> mo.Html:
     msgs: list[mo.Html] = []
     for e in entries:
         ctrl = save_panel[e.name]

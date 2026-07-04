@@ -71,9 +71,7 @@ def make_sim_ui(current_type: str) -> mo.ui.dictionary:
 # ---------------------------------------------------------------------------
 
 
-def plot_current_preview(
-    base_ui: mo.ui.dictionary, sim_ui: mo.ui.dictionary
-) -> Figure:
+def plot_current_preview(base_ui: mo.ui.dictionary, sim_ui: mo.ui.dictionary) -> Figure:
     """sim_ui の current_params から電流波形を構築してプレビュー描画。
     構築失敗時はエラーメッセージ表示 Figure を返す。"""
     current_type = str(base_ui["sim_current_type"].value)
@@ -240,6 +238,6 @@ def view_result(
         fig,
         {
             "metrics": df_metrics,
-            "scalar_metrics": df_scalar,
+            "metrics(scalar)": df_scalar,
         },
     )
