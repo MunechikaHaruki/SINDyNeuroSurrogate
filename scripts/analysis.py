@@ -176,8 +176,8 @@ def _entry(name: str, obj: SaveItem, prefix: str) -> SaveEntry:
 def _fmt_current(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
     ct = base_ui["sim_current_type"].value
     params = setting_ui["sim"]["current_params"].value or {}
-    tail = "_".join(f"{k}{v}" for k, v in params.items())
-    return f"{ct}_{tail}" if tail else ct
+    tail = "&".join(f"{k}:{v}" for k, v in params.items())
+    return f"{ct}&{tail}" if tail else ct
 
 
 def _fmt_sweep(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
@@ -191,7 +191,7 @@ def _fmt_sweep(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
 
 def _fmt_targets(setting_ui: mo.ui.dictionary) -> str:
     targets = setting_ui["surrogate_targets"].value or []
-    return "surr" + ("-".join(targets) if targets else "none")
+    return "surr:" + ("-".join(targets) if targets else "none")
 
 
 def view(
@@ -203,7 +203,7 @@ def view(
     model = base_ui["model_name"].value
     current = _fmt_current(base_ui, setting_ui)
     targets = _fmt_targets(setting_ui)
-    single_prefix = f"{model}_{current}_{targets}"
+    single_prefix = f"{model}({targets})_{current}"
 
     entries: list[SaveEntry] = [
         _entry("neurograph", _get_neurograph_fig(base_ui), model),
