@@ -230,10 +230,8 @@ def plot_sweep(
     sweep_raw: dict,
     eval_comp_name: str,
     metric_key: str,
-) -> tuple[mo.Html, Figure | None]:
+) -> tuple[mo.Html, Figure]:
     """描画層: eval_comp_name + metric_key でメトリクス計算 → 描画。シミュ再走なし。"""
-    if not sweep_raw:
-        return mo.md(""), None
     data = _compute_metrics_df(
         sweep_raw["amp_datasets"],
         eval_comp_name=eval_comp_name,

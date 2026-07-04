@@ -19,6 +19,7 @@ CurrentList: list = list(FUNC_MAP.keys())
 DRAW_LIST: list = list(DRAW_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
+SaveItem = Figure | pd.DataFrame
 
 setup_mlflow()
 
@@ -164,8 +165,8 @@ def view(
     setting_ui: mo.ui.dictionary,
     res: dict | None,
     draw_ui: mo.ui.dictionary,
-) -> tuple[mo.Html, dict]:
-    save_items: dict = {
+) -> tuple[mo.Html, dict[str, SaveItem]]:
+    save_items: dict[str, SaveItem] = {
         "neurograph": _get_neurograph_fig(base_ui),
         "current_preview": analysis_single.plot_current_preview(
             base_ui, setting_ui["sim"]
@@ -201,8 +202,6 @@ def plot_preview(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> mo.
 # ---------------------------------------------------------------------------
 
 
-SaveItem = Figure | pd.DataFrame
-
 SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
     Figure: lambda o, p: o.savefig(p, dpi=300, bbox_inches="tight"),
     pd.DataFrame: lambda o, p: o.to_csv(p),
@@ -228,13 +227,13 @@ def _build_prefix(
     return f"{model}_{ct}_{tail}" if tail else f"{model}_{ct}"
 
 
-def _default_save_path(name: str, item: SaveItem | None, prefix: str) -> str:
+def _default_save_path(name: str, item: SaveItem, prefix: str) -> str:
     ext = ".csv" if isinstance(item, pd.DataFrame) else ".png"
     return f"_{prefix}_{name}{ext}"
 
 
 def make_save_panel(
-    save_items: dict[str, SaveItem | None],
+    save_items: dict[str, SaveItem],
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
 ) -> mo.ui.dictionary:
@@ -267,15 +266,12 @@ def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
 
 
 def save(
-    save_panel: mo.ui.dictionary, save_items: dict[str, SaveItem | None]
+    save_panel: mo.ui.dictionary, save_items: dict[str, SaveItem]
 ) -> mo.Html:
     msgs: list[mo.Html] = []
     for name, obj in save_items.items():
         ctrl = save_panel[name]
         if not ctrl["save"].value:
-            continue
-        if obj is None:
-            msgs.append(mo.md(f"⚠️ {name}: 保存対象なし"))
             continue
         rel = str(ctrl["path"].value).strip()
         if not rel:

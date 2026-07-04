@@ -73,9 +73,9 @@ def make_sim_ui(current_type: str) -> mo.ui.dictionary:
 
 def plot_current_preview(
     base_ui: mo.ui.dictionary, sim_ui: mo.ui.dictionary
-) -> Figure | None:
+) -> Figure:
     """sim_ui の current_params から電流波形を構築してプレビュー描画。
-    構築失敗時は None。"""
+    構築失敗時はエラーメッセージ表示 Figure を返す。"""
     current_type = str(base_ui["sim_current_type"].value)
     dt = float(base_ui["dt"].value)
     params = sim_ui["current_params"].value or {}
@@ -98,9 +98,7 @@ def plot_current_preview(
     return fig
 
 
-def render_current_preview(fig: Figure | None) -> mo.Html:
-    if fig is None:
-        return mo.md("（プレビューなし）")
+def render_current_preview(fig: Figure) -> mo.Html:
     return mo.vstack(
         [
             mo.md("### 電流プレビュー"),
