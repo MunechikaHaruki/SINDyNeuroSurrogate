@@ -92,7 +92,7 @@ def ramp(amplitude: float = 20, direction: Literal["up", "down"] = "up"):
 
 LINEAR_FUNC = {
     "lin:steady": steady,
-    "lin:single_pulse": single_pulse,
+    "lin:steady(pulse)": single_pulse,
     "lin:ramp": ramp,
 }
 

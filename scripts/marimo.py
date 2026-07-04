@@ -12,7 +12,7 @@ def _():
     # current_type → (amp_start, amp_stop, amp_steps)
     # 未登録 current は fallback (-5.0, 20.0, 10)
     SWEEP_DEFAULTS = {
-        "lin:single_pulse":     (0,  20.0, 10),  # value [μA/cm²]
+        "lin:steady(pulse)":     (0,  20.0, 10),  # value [μA/cm²]
         "periodic:sinousoidal": ( 1.0, 100.0, 10),  # frequency [Hz]
     }
 

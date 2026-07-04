@@ -36,7 +36,7 @@ def make_base_ui() -> mo.ui.dictionary:
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[1]),
-            "sim_current_type": mo.ui.dropdown(CurrentList, value="lin_single_pulse"),
+            "sim_current_type": mo.ui.dropdown(CurrentList, value="lin:steady(pulse)"),
             "model_name": mo.ui.dropdown(
                 options=list(MCMODELS.keys()),
                 value="hh",
