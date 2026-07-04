@@ -52,13 +52,9 @@ def _make_ui_element(name: str, annotation, default):
         raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
 
 
-def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
+def make_draw_ui() -> mo.ui.dictionary:
     return mo.ui.dictionary(
         {
-            "eval_comp": mo.ui.dropdown(
-                options=comp_names, value=comp_names[0], label="評価対象comp"
-            ),
             "draw_func": mo.ui.dropdown(
                 options=DRAW_LIST, value=DRAW_LIST[0], label="描画関数"
             ),
@@ -200,8 +196,9 @@ def _stat_cards(d: dict) -> mo.Html:
 def view_result(
     draw_ui: mo.ui.dictionary,
     result: dict,
+    eval_comp_name: str,
 ) -> tuple[mo.Html, Figure, dict[str, pd.DataFrame]]:
-    target_comp_id = result["name_to_idx"](draw_ui["eval_comp"].value)
+    target_comp_id = result["name_to_idx"](eval_comp_name)
     dm = result["make_dm"](target_comp_id)
 
     n_orig_count, n_surr_count = n_spikes(dm)

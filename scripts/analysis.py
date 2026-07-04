@@ -36,7 +36,7 @@ def make_base_ui() -> mo.ui.dictionary:
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[1]),
-            "sim_current_type": mo.ui.dropdown(CurrentList, value="lin:steady(pulse)"),
+            "sim_current_type": mo.ui.dropdown(CurrentList, value="lin&steady&pulse"),
             "model_name": mo.ui.dropdown(
                 options=list(MCMODELS.keys()),
                 value="hh",
@@ -110,7 +110,13 @@ def calc(
 
 
 def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    d: dict = {"single": analysis_single.make_draw_ui(base_ui)}
+    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
+    d: dict = {
+        "eval_comp": mo.ui.dropdown(
+            options=comp_names, value=comp_names[0], label="評価対象comp"
+        ),
+        "single": analysis_single.make_draw_ui(),
+    }
     sweep = analysis_sweep.make_draw_ui(base_ui)
     if sweep is not None:
         d["sweep"] = sweep
@@ -203,7 +209,9 @@ def view(
     model = base_ui["model_name"].value
     current = _fmt_current(base_ui, setting_ui)
     targets = _fmt_targets(setting_ui)
-    single_prefix = f"{model}({targets})_{current}"
+    eval_comp = str(draw_ui["eval_comp"].value)
+    info = f"{targets}&eval:{eval_comp}"
+    single_prefix = f"{model}({info})_{current}"
 
     entries: list[SaveEntry] = [
         _entry("neurograph", _get_neurograph_fig(base_ui), model),
@@ -219,18 +227,18 @@ def view(
     if res is None:
         return mo.md("(結果なし)"), entries
     if "make_dm" in res:
-        html, fig, dfs = analysis_single.view_result(draw_ui["single"], res)
+        html, fig, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
         entries.append(_entry("waveform", fig, single_prefix))
         entries.append(_entry("metrics", dfs["metrics"], single_prefix))
         entries.append(_entry("metrics(scalar)", dfs["metrics(scalar)"], single_prefix))
         return html, entries
     html, fig = analysis_sweep.plot_sweep(
         res,
-        eval_comp_name=draw_ui["sweep"]["eval_comp"].value,
+        eval_comp_name=eval_comp,
         metric_key=draw_ui["sweep"]["metric"].value,
     )
     entries.append(
-        _entry("sweep", fig, f"{model}_{_fmt_sweep(base_ui, setting_ui)}_{targets}")
+        _entry("sweep", fig, f"{model}({info})_{_fmt_sweep(base_ui, setting_ui)}")
     )
     return html, entries
 

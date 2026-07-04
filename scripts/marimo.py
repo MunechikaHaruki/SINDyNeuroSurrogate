@@ -6,14 +6,14 @@ app = marimo.App(width="columns")
 
 @app.cell(column=0)
 def _():
-    import marimo as mo
     import analysis
+    import marimo as mo
 
     # current_type → (amp_start, amp_stop, amp_steps)
     # 未登録 current は fallback (-5.0, 20.0, 10)
     SWEEP_DEFAULTS = {
-        "lin:steady(pulse)":     (0,  20.0, 10),  # value [μA/cm²]
-        "periodic:sinousoidal": ( 1.0, 100.0, 10),  # frequency [Hz]
+        "lin&steady&pulse": (0, 20.0, 10),  # value [μA/cm²]
+        "periodic&sinousoidal": (1.0, 100.0, 10),  # frequency [Hz]
     }
 
     base_ui = analysis.make_base_ui()

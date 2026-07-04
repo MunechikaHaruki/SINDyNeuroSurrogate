@@ -91,9 +91,9 @@ def ramp(amplitude: float = 20, direction: Literal["up", "down"] = "up"):
 
 
 LINEAR_FUNC = {
-    "lin:steady": steady,
-    "lin:steady(pulse)": single_pulse,
-    "lin:ramp": ramp,
+    "lin&steady": steady,
+    "lin&steady&pulse": single_pulse,
+    "lin&ramp": ramp,
 }
 
 
@@ -148,8 +148,8 @@ def sinousoidal(frequency: float = 50):
 
 
 PERIODIC_FUNC = {
-    "periodic:sinousoidal": sinousoidal,
-    "periodic:chirp": generate_chirp,
+    "periodic&sinousoidal": sinousoidal,
+    "periodic&chirp": generate_chirp,
 }
 
 
@@ -202,7 +202,7 @@ def generate_discretized(
 
 RANDOM_FUNC = {
     "random": generate_rand_pulse,
-    "random:discretized": generate_discretized,
+    "random&discretized": generate_discretized,
 }
 
 
