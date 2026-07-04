@@ -200,9 +200,39 @@ def generate_discretized(
     return apply
 
 
+@current_generator
+def generate_poisson_synapse(
+    rate: float = 20.0,
+    amplitude: float = 20.0,
+    tau_rise: float = 0.5,
+    tau_decay: float = 5.0,
+    seed: int = 0,
+):
+    """Poisson過程スパイク列 由来 シナプス電流を生成。
+    2重指数 (α-like) カーネルで rise/decay。
+    rate [Hz]、amplitude [μA/cm²] (単一スパイクピーク)、tau_rise/tau_decay [ms]"""
+
+    def apply(active: np.ndarray, dt: float) -> None:
+        rng = np.random.default_rng(seed)
+        n_active = len(active)
+        prob_per_step = rate * dt * 1e-3
+        spikes = (rng.random(n_active) < prob_per_step).astype(np.float64)
+
+        kernel_len = max(2, int(5 * tau_decay / dt))
+        t_k = np.arange(kernel_len) * dt
+        kernel = np.exp(-t_k / tau_decay) - np.exp(-t_k / tau_rise)
+        kernel /= kernel.max()  # peak = 1
+        kernel *= amplitude
+
+        active[:] += np.convolve(spikes, kernel, mode="full")[:n_active]
+
+    return apply
+
+
 RANDOM_FUNC = {
     "random": generate_rand_pulse,
     "random&discretized": generate_discretized,
+    "random&poisson_synapse": generate_poisson_synapse,
 }
 
 
