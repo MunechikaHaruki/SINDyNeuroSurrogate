@@ -72,14 +72,17 @@ def _make_surrogate_targets_ui(base_ui: mo.ui.dictionary) -> mo.ui.multiselect:
     )
 
 
-def make_setting_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+def make_setting_ui(
+    base_ui: mo.ui.dictionary,
+    sweep_defaults: analysis_sweep.SweepDefaults,
+) -> mo.ui.dictionary:
     current_type = str(base_ui["sim_current_type"].value)
     d: dict = {
         "surrogate_targets": _make_surrogate_targets_ui(base_ui),
         "sim": analysis_single.make_sim_ui(current_type),
         "run_sim": mo.ui.run_button(label="single 実行"),
     }
-    sweep = analysis_sweep.make_sweep_ui(current_type)
+    sweep = analysis_sweep.make_sweep_ui(current_type, sweep_defaults)
     if sweep is not None:
         d["sweep"] = sweep
         d["run_sweep"] = mo.ui.run_button(label="sweep 実行")

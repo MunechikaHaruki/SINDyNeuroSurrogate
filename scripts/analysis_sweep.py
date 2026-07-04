@@ -36,14 +36,21 @@ def _sweep_param_of(current_type: str) -> str | None:
     return keys[0] if len(keys) == 1 else None
 
 
-def make_sweep_ui(current_type: str) -> mo.ui.dictionary | None:
+SweepDefaults = dict[str, tuple[float, float, int]]
+_SWEEP_FALLBACK = (-5.0, 20.0, 10)
+
+
+def make_sweep_ui(
+    current_type: str, defaults: SweepDefaults
+) -> mo.ui.dictionary | None:
     if _sweep_param_of(current_type) is None:
         return None
+    start, stop, steps = defaults.get(current_type, _SWEEP_FALLBACK)
     return mo.ui.dictionary(
         {
-            "amp_start": mo.ui.number(value=-5.0, step=1.0, label="amp_start"),
-            "amp_stop": mo.ui.number(value=20.0, step=1.0, label="amp_stop"),
-            "amp_steps": mo.ui.number(value=10, step=1, label="steps"),
+            "amp_start": mo.ui.number(value=start, step=1.0, label="amp_start"),
+            "amp_stop": mo.ui.number(value=stop, step=1.0, label="amp_stop"),
+            "amp_steps": mo.ui.number(value=steps, step=1, label="steps"),
             "metric": mo.ui.dropdown(
                 options=DF_ROW_METRICS + SCALAR_METRICS, value="spike_count"
             ),

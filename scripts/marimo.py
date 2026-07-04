@@ -9,15 +9,24 @@ def _():
     import marimo as mo
     import analysis
 
+    # current_type → (amp_start, amp_stop, amp_steps)
+    # 未登録 current は fallback (-5.0, 20.0, 10)
+    SWEEP_DEFAULTS = {
+        "lin_steady":           (-5.0,  20.0, 10),  # value [μA/cm²]
+        "lin_single_pulse":     (-5.0,  20.0, 10),  # value [μA/cm²]
+        "lin_ramp":             ( 0.0,  50.0, 10),  # amplitude [μA/cm²]
+        "periodic_sinousoidal": ( 1.0, 100.0, 10),  # frequency [Hz]
+    }
+
     base_ui = analysis.make_base_ui()
     base_ui
-    return analysis, base_ui, mo
+    return SWEEP_DEFAULTS, analysis, base_ui, mo
 
 
 @app.cell
-def _(analysis, base_ui):
+def _(SWEEP_DEFAULTS, analysis, base_ui):
     analysis.setup_mpl(base_ui["plt_style"].value)
-    setting_ui = analysis.make_setting_ui(base_ui)
+    setting_ui = analysis.make_setting_ui(base_ui, SWEEP_DEFAULTS)
     setting_ui
     return (setting_ui,)
 
