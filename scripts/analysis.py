@@ -198,6 +198,11 @@ def _fmt_sweep(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
     )
 
 
+def _fmt_targets(setting_ui: mo.ui.dictionary) -> str:
+    targets = setting_ui["surrogate_targets"].value or []
+    return "surr" + ("-".join(targets) if targets else "none")
+
+
 def view(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
@@ -206,7 +211,8 @@ def view(
 ) -> tuple[mo.Html, dict[str, SaveEntry]]:
     model = base_ui["model_name"].value
     current = _fmt_current(base_ui, setting_ui)
-    single_prefix = f"{model}_{current}"
+    targets = _fmt_targets(setting_ui)
+    single_prefix = f"{model}_{current}_{targets}"
 
     entries: dict[str, SaveEntry] = {
         "neurograph": _entry("neurograph", _get_neurograph_fig(base_ui), model),
@@ -235,7 +241,9 @@ def view(
         eval_comp_name=draw_ui["eval_comp"].value,
         metric_key=setting_ui["sweep"]["metric"].value,
     )
-    entries["sweep"] = _entry("sweep", fig, f"{model}_{_fmt_sweep(base_ui, setting_ui)}")
+    entries["sweep"] = _entry(
+        "sweep", fig, f"{model}_{_fmt_sweep(base_ui, setting_ui)}_{targets}"
+    )
     return html, entries
 
 
