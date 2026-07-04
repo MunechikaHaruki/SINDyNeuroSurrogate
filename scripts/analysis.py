@@ -232,10 +232,17 @@ def view(
         entries.append(_entry("metrics", dfs["metrics"], single_prefix))
         entries.append(_entry("metrics(scalar)", dfs["metrics(scalar)"], single_prefix))
         return html, entries
+    ylim_ui = draw_ui["sweep"]["ylim"]
+    ylim = (
+        None
+        if ylim_ui["auto"].value
+        else (float(ylim_ui["min"].value), float(ylim_ui["max"].value))
+    )
     html, fig = analysis_sweep.plot_sweep(
         res,
         eval_comp_name=eval_comp,
         metric_key=draw_ui["sweep"]["metric"].value,
+        ylim=ylim,
     )
     entries.append(
         _entry("sweep", fig, f"{model}({info})_{_fmt_sweep(base_ui, setting_ui)}")

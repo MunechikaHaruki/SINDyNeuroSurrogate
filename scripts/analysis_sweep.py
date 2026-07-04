@@ -66,6 +66,13 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary | None:
                 value="spike_count",
                 label="metric",
             ),
+            "ylim": mo.ui.dictionary(
+                {
+                    "auto": mo.ui.checkbox(value=True, label="auto"),
+                    "min": mo.ui.number(value=0.0, step=1.0, label="ymin"),
+                    "max": mo.ui.number(value=1.0, step=1.0, label="ymax"),
+                }
+            ),
         }
     )
 
@@ -218,6 +225,7 @@ def _plot_sweep(
     comp_name: str,
     sweep_param: str,
     run_labels: dict[str, str] | None = None,
+    ylim: tuple[float, float] | None = None,
 ) -> Figure:
     run_labels = run_labels or {}
 
@@ -240,6 +248,8 @@ def _plot_sweep(
     ax.set_xlabel(sweep_param)
     ax.set_ylabel(metric_key)
     ax.set_title(f"{sweep_param} sweep — {metric_key} ({comp_name})")
+    if ylim is not None:
+        ax.set_ylim(*ylim)
     ax.legend()
     fig.tight_layout()
     return fig
@@ -249,6 +259,7 @@ def plot_sweep(
     sweep_raw: dict,
     eval_comp_name: str,
     metric_key: str,
+    ylim: tuple[float, float] | None = None,
 ) -> tuple[mo.Html, Figure]:
     """描画層: eval_comp_name + metric_key でメトリクス計算 → 描画。シミュ再走なし。"""
     data = _compute_metrics_df(
@@ -265,5 +276,6 @@ def plot_sweep(
         eval_comp_name,
         sweep_param=sweep_raw["sweep_param"],
         run_labels=sweep_raw["run_labels"],
+        ylim=ylim,
     )
     return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)]), fig
