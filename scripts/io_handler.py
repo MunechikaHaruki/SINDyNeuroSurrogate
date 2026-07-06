@@ -1,23 +1,23 @@
-import inspect
+import importlib
+import json
 import logging
 import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import joblib
 import mlflow
 import mlflow.artifacts
-import mlflow.pyfunc
 import numpy as np
 import pandas as pd
 import yaml
 from matplotlib.figure import Figure
-from mlflow.pyfunc.model import PythonModel
 
 from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate, make_surr_comp
+from neurosurrogate.model.registry_compartments import Compartment
 from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
 from neurosurrogate.profiler.profiler_view import view_model
 
@@ -69,59 +69,56 @@ def log_surrogate_summary(summary: SINDyAnalyzer):
         mlflow.log_text(content, artifact_file=filename)
 
 
-class SINDySurrogateMLflowModel(PythonModel):
-    def load_context(self, context):
-        import importlib.util
+SURR_ARTIFACT_DIR = "surrogate"
+_XI_FILE = "xi.npy"
+_GATE_INITS_FILE = "gate_inits.npy"
+_SOURCE_FILE = "source.py"
+_PREPROCESSOR_FILE = "preprocessor.joblib"
+_MANIFEST_FILE = "manifest.json"
 
-        spec = importlib.util.spec_from_file_location(
-            "target_module", context.artifacts["target_module_path"]
+
+@dataclass(frozen=True)
+class LoadedSurrogate:
+    sindy_args: tuple
+    preprocessor: Any
+    gate_inits: list
+
+    def make_surr_comp(self, name: str) -> Compartment:
+        return make_surr_comp(name, self.gate_inits)
+
+
+def log_surrogate_model(surrogate: SINDyNeuroSurrogate) -> None:
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        np.save(tmp / _XI_FILE, surrogate.sindy.coefficients())
+        np.save(tmp / _GATE_INITS_FILE, np.array(surrogate._gate_inits))
+        (tmp / _SOURCE_FILE).write_text(surrogate.source)
+        joblib.dump(surrogate.preprocessor, tmp / _PREPROCESSOR_FILE)
+        (tmp / _MANIFEST_FILE).write_text(
+            json.dumps({"target_module": surrogate.target_module.__name__})
         )
-        assert spec is not None and spec.loader is not None
-        target_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(target_module)
-        local_vars = {}
-        with open(context.artifacts["source_path"]) as f:
-            exec(f.read(), vars(target_module), local_vars)
-        self._gate_inits = np.load(context.artifacts["gate_inits_path"]).tolist()
-        self.sindy_args = (
-            np.load(context.artifacts["xi_path"]),
-            local_vars["dynamic_compute_theta"],
+        mlflow.log_artifacts(str(tmp), artifact_path=SURR_ARTIFACT_DIR)
+
+
+def load_surrogate_model(run_id: str) -> LoadedSurrogate:
+    logger.info(f"Loading surrogate from run {run_id}")
+    with tempfile.TemporaryDirectory() as tmp_str:
+        local = Path(
+            mlflow.artifacts.download_artifacts(
+                f"runs:/{run_id}/{SURR_ARTIFACT_DIR}", dst_path=tmp_str
+            )
         )
-        self.preprocessor = joblib.load(context.artifacts["preprocessor_path"])
-
-    def make_surr_comp(self, name: str):
-        return make_surr_comp(name, self._gate_inits)
-
-    def predict(self, context, model_input, params=None):
-        pass  # unified_simulatorに直接渡すので不要
-
-
-def log_surrogate_model(surrogate: SINDyNeuroSurrogate):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-
-        np.save(tmpdir / "xi.npy", surrogate.sindy.coefficients())
-        np.save(tmpdir / "gate_inits.npy", np.array(surrogate._gate_inits))
-        (tmpdir / "source.py").write_text(surrogate.source)
-        joblib.dump(surrogate.preprocessor, tmpdir / "preprocessor.joblib")
-
-        mlflow.pyfunc.log_model(
-            artifact_path="surrogate_model",
-            python_model=SINDySurrogateMLflowModel(),
-            artifacts={
-                "xi_path": str(tmpdir / "xi.npy"),
-                "gate_inits_path": str(tmpdir / "gate_inits.npy"),
-                "source_path": str(tmpdir / "source.py"),
-                "target_module_path": inspect.getfile(surrogate.target_module),
-                "preprocessor_path": str(tmpdir / "preprocessor.joblib"),
-            },
+        manifest = json.loads((local / _MANIFEST_FILE).read_text())
+        target_module = importlib.import_module(manifest["target_module"])
+        source = (local / _SOURCE_FILE).read_text()
+        return LoadedSurrogate(
+            sindy_args=(
+                np.load(local / _XI_FILE),
+                SINDyNeuroSurrogate._compile_source(source, target_module),
+            ),
+            preprocessor=joblib.load(local / _PREPROCESSOR_FILE),
+            gate_inits=np.load(local / _GATE_INITS_FILE).tolist(),
         )
-
-
-def load_surrogate_model(run_id: str):
-    model_uri = f"runs:/{run_id}/surrogate_model"
-    logger.info(f"Loading custom MLflow model from: {model_uri}")
-    return mlflow.pyfunc.load_model(model_uri)._model_impl.python_model
 
 
 def get_runs_df():
