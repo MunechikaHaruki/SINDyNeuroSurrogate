@@ -50,10 +50,10 @@ class FeatureLibrary:
 
     @staticmethod
     def build(library_specs: list[dict]) -> "FeatureLibrary":
-        from .registry_feature_libraries import LIB_BUILDER_REGISTRY
+        from . import registry_feature_libraries as reg
 
         def _resolve(spec: dict) -> SubLibrary:
-            builder = LIB_BUILDER_REGISTRY.get(spec["type"])
+            builder = getattr(reg, spec["type"], None)
             if builder is None:
                 raise ValueError(f"未知の library type: {spec['type']}")
             return builder(spec)

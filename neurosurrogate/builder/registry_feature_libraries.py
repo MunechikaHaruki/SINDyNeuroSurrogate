@@ -26,7 +26,7 @@ GATE_PAIR_REGISTRY = {
 }
 
 
-def build_gate_sub(spec: dict) -> SubLibrary:
+def gate(spec: dict) -> SubLibrary:
     """Gate 単体、または Gate * y のペア。"""
     func_names = spec["funcs"]
     is_product = spec.get("is_product", False)
@@ -47,7 +47,7 @@ def build_gate_sub(spec: dict) -> SubLibrary:
     return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def build_relaxation1_sub(spec: dict) -> SubLibrary:
+def relaxation1(spec: dict) -> SubLibrary:
     """緩和ダイナミクスの駆動項: alpha_k(V)。inputs=[0] (V のみ)。"""
     entries: list[LibraryEntry] = []
     for g in spec["gates"]:
@@ -63,7 +63,7 @@ def build_relaxation1_sub(spec: dict) -> SubLibrary:
     return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def build_relaxation2_sub(spec: dict) -> SubLibrary:
+def relaxation2(spec: dict) -> SubLibrary:
     """緩和ダイナミクスの減衰項: (alpha_k + beta_k)(V) * g0。inputs=[0, 1] (V, g0)。"""
     entries: list[LibraryEntry] = []
     for g in spec["gates"]:
@@ -85,7 +85,7 @@ def build_relaxation2_sub(spec: dict) -> SubLibrary:
     return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def build_volt_sub(spec: dict) -> SubLibrary:
+def volt(spec: dict) -> SubLibrary:
     """V^a * g0^b * (...) 系の多項式項 (legacy)。"""
     entries = [
         LibraryEntry(
@@ -113,7 +113,7 @@ def build_volt_sub(spec: dict) -> SubLibrary:
     return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def build_gate_poly_volt_sub(spec: dict) -> SubLibrary:
+def gate_poly_volt(spec: dict) -> SubLibrary:
     """g^k と g^k * V (k=1..max_power) のペア。inputs 順は (V, g) で固定。"""
     max_power = spec["max_power"]
     entries: list[LibraryEntry] = []
@@ -137,7 +137,7 @@ def build_gate_poly_volt_sub(spec: dict) -> SubLibrary:
     return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def build_identity_sub(spec: dict) -> SubLibrary:
+def identity(spec: dict) -> SubLibrary:
     """variable をそのまま渡す。zero cost。1 spec = 1 入力。"""
     entries = [
         LibraryEntry(
@@ -149,7 +149,7 @@ def build_identity_sub(spec: dict) -> SubLibrary:
     return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def build_const_sub(spec: dict) -> SubLibrary:
+def const(spec: dict) -> SubLibrary:
     """定数項 1。zero cost。"""
     entries = [
         LibraryEntry(
@@ -159,14 +159,3 @@ def build_const_sub(spec: dict) -> SubLibrary:
         )
     ]
     return SubLibrary(entries=entries, inputs=spec["inputs"])
-
-
-LIB_BUILDER_REGISTRY = {
-    "gate": build_gate_sub,
-    "volt": build_volt_sub,
-    "gate_poly_volt": build_gate_poly_volt_sub,
-    "identity": build_identity_sub,
-    "const": build_const_sub,
-    "relaxation1": build_relaxation1_sub,
-    "relaxation2": build_relaxation2_sub,
-}
