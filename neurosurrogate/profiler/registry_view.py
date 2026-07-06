@@ -177,13 +177,13 @@ def plot_2d_attractor_comparison(
     return fig
 
 
-DrawFn = Callable[[xr.Dataset, xr.Dataset, xr.Dataset, int], Figure]
+DrawFn = Callable[[xr.Dataset, xr.Dataset, Callable[[], xr.Dataset], int], Figure]
 DRAW_MAP: dict = {
-    "diff": lambda orig, surr, pre, comp_id: draw_engine(
-        spec_diff(orig, pre, surr, surr_id=comp_id)
+    "diff": lambda orig, surr, get_pre, comp_id: draw_engine(
+        spec_diff(orig, get_pre(), surr, surr_id=comp_id)
     ),
-    "simple": lambda orig, surr, pre, comp_id: draw_engine(spec_simple(orig)),
-    "attractor": lambda orig, surr, pre, comp_id: plot_2d_attractor_comparison(
-        pre, surr, comp_id
+    "simple": lambda orig, surr, get_pre, comp_id: draw_engine(spec_simple(orig)),
+    "attractor": lambda orig, surr, get_pre, comp_id: plot_2d_attractor_comparison(
+        get_pre(), surr, comp_id
     ),
 }

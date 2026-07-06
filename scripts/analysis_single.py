@@ -212,7 +212,7 @@ def view_result(
     fig = DRAW_MAP[draw_ui["draw_func"].value](
         result["original_ds"],
         result["surr_ds"],
-        result["get_preprocessed"](target_comp_id),
+        lambda: result["get_preprocessed"](target_comp_id),
         target_comp_id,
     )
 
