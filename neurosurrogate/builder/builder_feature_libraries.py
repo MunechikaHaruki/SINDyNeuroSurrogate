@@ -17,27 +17,34 @@ class LibraryEntry:
 
 
 @dataclass(frozen=True)
+class SubLibrary:
+    """1 library_spec 単位。entries + 入力インデックス binding。"""
+
+    entries: list[LibraryEntry]
+    inputs: list[int]
+
+    def to_ps_library(self) -> ps.CustomLibrary:
+        return ps.CustomLibrary(
+            library_functions=[e.func for e in self.entries],
+            function_names=[e.name_func for e in self.entries],
+        )
+
+    def to_cost_dict(self, input_names: list[str]) -> dict[str, OpCost]:
+        bound = [input_names[i] for i in self.inputs]
+        return dict(e.to_cost_entry(bound) for e in self.entries)
+
+
+@dataclass(frozen=True)
 class FeatureLibrary:
+    sub_libraries: list[SubLibrary]
     library: ps.GeneralizedLibrary
-    _entries_with_inputs: list[tuple[list[LibraryEntry], list[int]]]
 
     def to_base_cost(self, input_names: list[str]) -> dict[str, OpCost]:
-        base_cost = {}
-        for entries, inputs_list in self._entries_with_inputs:
-            new_data = dict(
-                entry.to_cost_entry([input_names[i] for i in inputs_list])
-                for entry in entries
-            )
-            duplicates = base_cost.keys() & new_data.keys()
-            if duplicates:
-                raise KeyError(
-                    "辞書の結合中にキーの重複が発生しました。上書きを防止します:\n"
-                    + "\n".join(
-                        f"  - Key: {k}\n    Existing Value: {base_cost[k]}\n    New Value: {new_data[k]}"  # noqa: E501
-                        for k in duplicates
-                    )
-                )
-
+        base_cost: dict[str, OpCost] = {}
+        for sl in self.sub_libraries:
+            new_data = sl.to_cost_dict(input_names)
+            if dup := base_cost.keys() & new_data.keys():
+                raise KeyError(f"library間で feature名 重複: {sorted(dup)}")
             base_cost |= new_data
         return base_cost
 
@@ -45,31 +52,17 @@ class FeatureLibrary:
     def build(library_specs: list[dict]) -> "FeatureLibrary":
         from .registry_feature_libraries import LIB_BUILDER_REGISTRY
 
-        def _build_one(spec):
+        def _resolve(spec: dict) -> SubLibrary:
             builder = LIB_BUILDER_REGISTRY.get(spec["type"])
             if builder is None:
-                raise ValueError(f"未知のlibrary type: {spec['type']}")
+                raise ValueError(f"未知の library type: {spec['type']}")
             return builder(spec)
 
-        def _entries_to_library(entries: list[LibraryEntry]) -> ps.CustomLibrary:
-            return ps.CustomLibrary(
-                library_functions=[e.func for e in entries],
-                function_names=[e.name_func for e in entries],
-            )
-
-        libraries = []
-        inputs_per_library = []
-        entries_with_inputs = []
-
-        for s in library_specs:
-            new_entries: list[LibraryEntry] = _build_one(s)
-            libraries.append(_entries_to_library(new_entries))
-            inputs_per_library.append(s["inputs"])
-            entries_with_inputs.append((new_entries, s["inputs"]))
-
+        subs = [_resolve(s) for s in library_specs]
         return FeatureLibrary(
+            sub_libraries=subs,
             library=ps.GeneralizedLibrary(
-                libraries, inputs_per_library=inputs_per_library
+                [sl.to_ps_library() for sl in subs],
+                inputs_per_library=[sl.inputs for sl in subs],
             ),
-            _entries_with_inputs=entries_with_inputs,
         )

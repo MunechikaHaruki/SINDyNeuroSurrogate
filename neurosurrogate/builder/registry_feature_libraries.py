@@ -1,4 +1,4 @@
-from neurosurrogate.builder.builder_feature_libraries import LibraryEntry
+from neurosurrogate.builder.builder_feature_libraries import LibraryEntry, SubLibrary
 from neurosurrogate.model.registry_compartments import (
     HH_RATE_COST_MAP,
     alpha_h,
@@ -26,8 +26,10 @@ GATE_PAIR_REGISTRY = {
 }
 
 
-def make_gate_lib(func_names, is_product=False):
+def build_gate_sub(spec: dict) -> SubLibrary:
     """Gate 単体、または Gate * y のペア。"""
+    func_names = spec["funcs"]
+    is_product = spec.get("is_product", False)
     entries: list[LibraryEntry] = []
     for name in func_names:
         rate_cost = HH_RATE_COST_MAP[name]
@@ -42,13 +44,13 @@ def make_gate_lib(func_names, is_product=False):
             entries.append(
                 LibraryEntry(func=f, name_func=n, cost=rate_cost + OpCost(mul=1))
             )
-    return entries
+    return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def make_relaxation_1var_lib(gates_list):
+def build_relaxation1_sub(spec: dict) -> SubLibrary:
     """緩和ダイナミクスの駆動項: alpha_k(V)。inputs=[0] (V のみ)。"""
     entries: list[LibraryEntry] = []
-    for g in gates_list:
+    for g in spec["gates"]:
         alpha_f, _ = GATE_PAIR_REGISTRY[g]
         a_name = alpha_f.__name__
         entries.append(
@@ -58,13 +60,13 @@ def make_relaxation_1var_lib(gates_list):
                 cost=HH_RATE_COST_MAP[a_name],
             )
         )
-    return entries
+    return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def make_relaxation_2var_lib(gates_list):
+def build_relaxation2_sub(spec: dict) -> SubLibrary:
     """緩和ダイナミクスの減衰項: (alpha_k + beta_k)(V) * g0。inputs=[0, 1] (V, g0)。"""
     entries: list[LibraryEntry] = []
-    for g in gates_list:
+    for g in spec["gates"]:
         alpha_f, beta_f = GATE_PAIR_REGISTRY[g]
         a_name, b_name = alpha_f.__name__, beta_f.__name__
         # alpha_k(V) + beta_k(V) → pm 1, それを g0 と乗算 → mul 1
@@ -80,10 +82,10 @@ def make_relaxation_2var_lib(gates_list):
                 + compose_extra,
             )
         )
-    return entries
+    return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def make_volt_lib():
+def build_volt_sub(spec: dict) -> SubLibrary:
     """V^a * g0^b * (...) 系の多項式項 (legacy)。"""
     entries = [
         LibraryEntry(
@@ -108,11 +110,12 @@ def make_volt_lib():
             cost=OpCost(mul=3),
         ),
     ]
-    return entries
+    return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def make_gate_poly_volt_lib(max_power: int):
+def build_gate_poly_volt_sub(spec: dict) -> SubLibrary:
     """g^k と g^k * V (k=1..max_power) のペア。inputs 順は (V, g) で固定。"""
+    max_power = spec["max_power"]
     entries: list[LibraryEntry] = []
     for p in range(1, max_power + 1):
         # g^p
@@ -131,10 +134,10 @@ def make_gate_poly_volt_lib(max_power: int):
                 cost=OpCost(mul=max(0, p - 1) + 1),
             )
         )
-    return entries
+    return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def make_identity_lib():
+def build_identity_sub(spec: dict) -> SubLibrary:
     """variable をそのまま渡す。zero cost。1 spec = 1 入力。"""
     entries = [
         LibraryEntry(
@@ -143,10 +146,10 @@ def make_identity_lib():
             cost=OpCost(),
         )
     ]
-    return entries
+    return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
-def make_const_lib():
+def build_const_sub(spec: dict) -> SubLibrary:
     """定数項 1。zero cost。"""
     entries = [
         LibraryEntry(
@@ -155,18 +158,15 @@ def make_const_lib():
             cost=OpCost(),
         )
     ]
-    return entries
+    return SubLibrary(entries=entries, inputs=spec["inputs"])
 
 
 LIB_BUILDER_REGISTRY = {
-    "gate": lambda spec: make_gate_lib(
-        func_names=spec["funcs"],
-        is_product=spec.get("is_product", False),
-    ),
-    "volt": lambda spec: make_volt_lib(),
-    "gate_poly_volt": lambda spec: make_gate_poly_volt_lib(spec["max_power"]),
-    "identity": lambda spec: make_identity_lib(),
-    "const": lambda spec: make_const_lib(),
-    "relaxation1": lambda spec: make_relaxation_1var_lib(spec["gates"]),
-    "relaxation2": lambda spec: make_relaxation_2var_lib(spec["gates"]),
+    "gate": build_gate_sub,
+    "volt": build_volt_sub,
+    "gate_poly_volt": build_gate_poly_volt_sub,
+    "identity": build_identity_sub,
+    "const": build_const_sub,
+    "relaxation1": build_relaxation1_sub,
+    "relaxation2": build_relaxation2_sub,
 }
