@@ -35,7 +35,7 @@ def build_indices(net: NeuronGraph):
     nodes = net.nodes
     N = len(nodes)
     gate_offsets = np.full(N, -1, dtype=np.int32)
-    ids_list = {"hh": [], "passive": [], "surr": []}
+    ids_list: dict[str, list] = {"hh": [], "passive": [], "surr": [], "traub": []}
     acc = StateAccumulator()
 
     # [Pass 1] 電位変数の収集

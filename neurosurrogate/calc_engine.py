@@ -14,8 +14,10 @@ from .model.model_neurosindy import (
 )
 from .model.registry_compartments import (
     HHParams,
+    TraubParams,
     calc_hh_channel,
     calc_passive_channel,
+    calc_traub_channel,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,7 @@ class IndiceArgs:
     hh: np.ndarray  # shape (N_hh,)  dtype=int32
     passive: np.ndarray  # shape (N_p,)   dtype=int32
     surr: np.ndarray  # shape (N_s,)   dtype=int32
+    traub: np.ndarray  # shape (N_t,)   dtype=int32
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,7 @@ class ModelArgs:
     xi_matrix: np.ndarray  # shape (2, n_terms)  SINDy係数行列
     compute_theta: Callable  # (v, latent, i_t) -> jnp.ndarray
     gate_offsets: np.ndarray  # shape (N,)          dtype=int32
+    traub_params: TraubParams = TraubParams()
 
 
 def calc_universal_deriv(curr_x, u_t, model_args):
@@ -68,7 +72,16 @@ def calc_universal_deriv(curr_x, u_t, model_args):
     dvar = dvar.at[hh_idx].set(dv_hh)
     dvar = dvar.at[gate_idx.ravel()].set(dgate_hh.ravel())
 
-    # 4. SINDy: 潜在変数を一括抽出して vmap
+    # 4. Traub: 10状態変数を静的インデックスで vmap
+    t_idx = indice_args.traub
+    t_state_idx = model_args.gate_offsets[t_idx][:, None] + np.arange(10)  # (N_t, 10)
+    dv_t, dstate_t = jax.vmap(
+        lambda i_t, v, s: calc_traub_channel(model_args.traub_params, i_t, v, s)
+    )(I_internal[t_idx], v_vec[t_idx], curr_x[t_state_idx])
+    dvar = dvar.at[t_idx].set(dv_t)
+    dvar = dvar.at[t_state_idx.ravel()].set(dstate_t.ravel())
+
+    # 5. SINDy: 潜在変数を一括抽出して vmap
     surr_idx = indice_args.surr
     g_off_s = model_args.gate_offsets[surr_idx]
 

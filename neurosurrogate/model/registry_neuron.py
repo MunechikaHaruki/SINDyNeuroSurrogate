@@ -3,10 +3,16 @@ from .registry_compartments import COMPARTMENT_TEMPLATES
 
 _hh = COMPARTMENT_TEMPLATES["hh"]
 _passive = COMPARTMENT_TEMPLATES["passive"]
+_traub = COMPARTMENT_TEMPLATES["traub"]
 
 MCMODELS: dict[str, NeuronGraph] = {
     "hh": NeuronGraph(
         nodes=[_hh.with_name("soma")],
+        edges=[],
+        stim="soma",
+    ),
+    "traub": NeuronGraph(
+        nodes=[_traub.with_name("soma")],
         edges=[],
         stim="soma",
     ),
