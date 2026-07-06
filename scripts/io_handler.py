@@ -18,7 +18,7 @@ from matplotlib.figure import Figure
 from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate, make_surr_comp
 from neurosurrogate.model.registry_compartments import Compartment
-from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
+from neurosurrogate.profiler.profiler_model import SINDySummary
 from neurosurrogate.profiler.profiler_view import view_model
 
 TARGET_EXP = "test_static_params"
@@ -57,7 +57,7 @@ class RunInfo:
         )
 
 
-def log_surrogate_summary(summary: SINDyAnalyzer):
+def log_surrogate_summary(summary: SINDySummary):
     mlflow.log_metrics(summary.metrics)
     mlflow.log_params(summary.params)
     mlflow.log_dict(

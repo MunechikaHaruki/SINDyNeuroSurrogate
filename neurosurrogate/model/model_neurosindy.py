@@ -3,7 +3,6 @@ import logging
 import jax.numpy as jnp
 import numpy as np
 
-from ..profiler.profiler_model import SINDyResult
 from .registry_compartments import Compartment
 
 logger = logging.getLogger(__name__)
@@ -64,14 +63,15 @@ class SINDyNeuroSurrogate:
         self.sindy = initialized_sindy
         self.target_module = target_module
 
-    def fit(self, train_xr, target_comp_id) -> SINDyResult:
-        train_gate_data = get_gate_numpy(train_xr, target_comp_id)
-        self.preprocessor.fit(train_gate_data)
+    def fit(self, train_xr, target_comp_id) -> None:
+        self.train_gate_data = get_gate_numpy(train_xr, target_comp_id)
+        self.preprocessor.fit(self.train_gate_data)
         preprocessed_xr = transform_gate(
             self.preprocessor, train_xr, target_comp_id=target_comp_id
         )
         self._gate_inits: list = preprocessed_xr["vars"].to_numpy()[0][1:].tolist()
-        input_features = preprocessed_xr.variable.values.tolist() + ["u"]
+        self.target_names: list = preprocessed_xr.variable.values.tolist()
+        input_features = self.target_names + ["u"]
         self.sindy.fit(
             preprocessed_xr["vars"].sel(comp_id=target_comp_id).to_numpy(),
             u=preprocessed_xr["I_ext"].to_numpy(),
@@ -82,18 +82,6 @@ class SINDyNeuroSurrogate:
         self.source = self._build_source(self.sindy.get_feature_names(), input_features)
         logger.info(self.source)
         self.compute_theta = self._compile_source(self.source, self.target_module)
-
-        return SINDyResult(
-            preprocessor=self.preprocessor,
-            params=self.sindy.optimizer.get_params(),
-            train_gate_data=train_gate_data,
-            coef=self.sindy.optimizer.coef_,
-            target_names=preprocessed_xr.variable.values.tolist(),
-            equations="\n".join(self.sindy.equations(precision=3)),
-            source=self.source,
-            feature_names_in=self.sindy.feature_names,
-            feature_names=self.sindy.get_feature_names(),
-        )
 
     def make_surr_comp(self, name: str) -> Compartment:
         return make_surr_comp(name, self._gate_inits)

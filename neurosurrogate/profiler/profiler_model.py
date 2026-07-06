@@ -1,9 +1,12 @@
 import json
 from dataclasses import dataclass, fields
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 from sklearn.decomposition import PCA
+
+if TYPE_CHECKING:
+    from ..model.model_neurosindy import SINDyNeuroSurrogate
 
 
 @dataclass(frozen=True)
@@ -40,89 +43,96 @@ def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):
         }
 
     if isinstance(preprocessor, PCA):
-        preprocessor_metrics = _get_pca_metrics(preprocessor, train_gate_data)
-    else:
-        preprocessor_metrics = {}
-    return preprocessor_metrics
-
-
-@dataclass
-class SINDyResult:
-    preprocessor: Any
-    params: dict
-    train_gate_data: np.ndarray
-    coef: np.ndarray
-    target_names: list
-    equations: str
-    source: str
-    feature_names_in: list[str]
-    feature_names: list[str]
+        return _get_pca_metrics(preprocessor, train_gate_data)
+    return {}
 
 
 @dataclass(frozen=True)
-class SINDyAnalyzer:
-    result: SINDyResult
-    feature_cost_map: dict[str, OpCost]
-    original_cost: OpCost | None = None
+class SINDyResult:
+    coef: np.ndarray
+    feature_names: list[str]
+    equations: str
+    source: str
+    target_names: list[str]
+    params: dict
+    preprocessor_metrics: dict[str, float]
 
-    @property
-    def _active_features(self):
-        active_mask = np.any(self.result.coef != 0, axis=0)
-        return [f for i, f in enumerate(self.result.feature_names) if active_mask[i]]
 
-    @property
-    def surr_opcost(self):
-        nnz = np.count_nonzero(self.result.coef).item()
-        surr_op = OpCost(mul=nnz, pm=max(0, nnz - int(self.result.coef.shape[0])))
+@dataclass(frozen=True)
+class SINDySummary:
+    metrics: dict[str, float]
+    params: dict
+    view: dict
+    texts: dict[str, str]
 
-        for feature in self._active_features:
-            if feature not in self.feature_cost_map:
-                raise ValueError(f"Found Unknown base func: '{feature}'")
-            surr_op = surr_op + self.feature_cost_map[feature]
-        return surr_op
 
-    @property
-    def _stat_calc_cost(self):
-        assert self.original_cost is not None
-        surr_d = self.surr_opcost.to_dict()
-        orig_d = self.original_cost.to_dict()
-        return {
-            **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
-            **{f"cost/original/{k}": v for k, v in orig_d.items()},
-            **{f"cost/diff/{k}": surr_d[k] - orig_d[k] for k in orig_d},
-        }
+def _calc_surr_opcost(
+    coef: np.ndarray,
+    feature_names: list[str],
+    feature_cost_map: dict[str, OpCost],
+) -> OpCost:
+    active_mask = np.any(coef != 0, axis=0)
+    active_features = [f for i, f in enumerate(feature_names) if active_mask[i]]
+    nnz = np.count_nonzero(coef).item()
+    surr_opcost = OpCost(mul=nnz, pm=max(0, nnz - int(coef.shape[0])))
+    for feature in active_features:
+        if feature not in feature_cost_map:
+            raise ValueError(f"Found Unknown base func: '{feature}'")
+        surr_opcost = surr_opcost + feature_cost_map[feature]
+    return surr_opcost
 
-    @property
-    def metrics(self) -> dict[str, float]:
-        nonzero_term_num = np.count_nonzero(self.result.coef)
-        return {
-            "nonzero_term_num": int(nonzero_term_num),
-            "nonzero_term_ratio": float(nonzero_term_num / self.result.coef.size),
-            **self._stat_calc_cost,
-            **calc_preprocessor_metrics(
-                self.result.preprocessor, self.result.train_gate_data
-            ),
-        }
 
-    @property
-    def texts(self) -> dict[str, str]:
-        return {
-            "equations.txt": self.result.equations,
-            "coef.txt": np.array2string(self.result.coef, precision=3),
+def _calc_cost_stat(
+    surr_opcost: OpCost, original_cost: OpCost | None
+) -> dict[str, int]:
+    if original_cost is None:
+        return {}
+    surr_d = surr_opcost.to_dict()
+    orig_d = original_cost.to_dict()
+    return {
+        **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
+        **{f"cost/original/{k}": v for k, v in orig_d.items()},
+        **{f"cost/diff/{k}": surr_d[k] - orig_d[k] for k in orig_d},
+    }
+
+
+def sindy_analysis(
+    neurosindy: "SINDyNeuroSurrogate",
+    feature_cost_map: dict[str, OpCost],
+    original_cost: OpCost | None = None,
+) -> SINDySummary:
+    result = SINDyResult(
+        coef=neurosindy.sindy.coefficients(),
+        feature_names=neurosindy.sindy.get_feature_names(),
+        equations="\n".join(neurosindy.sindy.equations(precision=3)),
+        source=neurosindy.source,
+        target_names=neurosindy.target_names,
+        params=neurosindy.sindy.optimizer.get_params(),
+        preprocessor_metrics=calc_preprocessor_metrics(
+            neurosindy.preprocessor, neurosindy.train_gate_data
+        ),
+    )
+    surr_opcost = _calc_surr_opcost(result.coef, result.feature_names, feature_cost_map)
+    nonzero_term_num = np.count_nonzero(result.coef).item()
+    return SINDySummary(
+        metrics={
+            "nonzero_term_num": nonzero_term_num,
+            "nonzero_term_ratio": float(nonzero_term_num / result.coef.size),
+            **_calc_cost_stat(surr_opcost, original_cost),
+            **result.preprocessor_metrics,
+        },
+        params=result.params,
+        view={
+            "xi_matrix": result.coef.tolist(),
+            "feature_names": result.feature_names,
+            "target_names": result.target_names,
+        },
+        texts={
+            "equations.txt": result.equations,
+            "coef.txt": np.array2string(result.coef, precision=3),
             "features.json": json.dumps(
-                {k: v.to_dict() for k, v in self.feature_cost_map.items()}
+                {k: v.to_dict() for k, v in feature_cost_map.items()}
             ),
-            "misc/source.txt": self.result.source,
-        }
-
-    @property
-    def view(self):
-        return {
-            "xi_matrix": self.result.coef.tolist(),
-            "feature_names": self.result.feature_names,
-            "target_names": self.result.target_names,
-        }
-
-    @property
-    def params(self):
-        return self.result.params
+            "misc/source.txt": result.source,
+        },
+    )

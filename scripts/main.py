@@ -18,7 +18,7 @@ from neurosurrogate.model.model_dataset import DatasetConfig
 from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.model.registry_compartments import COMPARTMENT_TEMPLATES
 from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_model import SINDyAnalyzer
+from neurosurrogate.profiler.profiler_model import sindy_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +48,16 @@ def cli_flow(cfg_sindy):
         train_dataset_cfg = DatasetConfig.build_dataset(**cfg_sindy["datasets"])
 
         mlflow.log_dict(train_dataset_cfg.to_dict(), "dataset.yaml")
-        surrogate_result = surrogate.fit(
+        surrogate.fit(
             unified_simulator(train_dataset_cfg),
             MCMODELS[cfg_sindy["datasets"]["model_name"]].name_to_idx(
                 cfg_sindy["train_comp_identifier"]
             ),
         )
         log_surrogate_summary(
-            SINDyAnalyzer(
-                surrogate_result,
-                feature_lib.to_base_cost(surrogate_result.feature_names_in),
+            sindy_analysis(
+                surrogate,
+                feature_cost_map=feature_lib.to_base_cost(surrogate.sindy.feature_names),
                 original_cost=COMPARTMENT_TEMPLATES["hh"].OpCost,
             )
         )
