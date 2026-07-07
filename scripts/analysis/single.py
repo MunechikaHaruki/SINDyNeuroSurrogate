@@ -10,8 +10,8 @@ import pandas as pd
 from matplotlib.figure import Figure
 from mlflow_io import load_surrogate_model
 
-from neurosurrogate.dataset import CurrentConfig, DatasetConfig
-from neurosurrogate.engine import unified_simulator
+from neurosurrogate.core.network import CurrentConfig, DatasetConfig
+from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.metrics.wave import (
     DynamicMetrics,
     n_spikes,

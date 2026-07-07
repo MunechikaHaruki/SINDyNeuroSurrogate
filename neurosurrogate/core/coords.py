@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..dataset import NeuronGraph
+from .network import NeuronGraph
 
 
 @dataclass

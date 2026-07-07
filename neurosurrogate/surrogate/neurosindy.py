@@ -3,7 +3,7 @@ import logging
 import jax.numpy as jnp
 import numpy as np
 
-from ..dataset import Compartment
+from ..core.network import Compartment
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def get_gate_numpy(train_xr, target_comp_id):
 
 
 def transform_gate(preprocessor, xr_data, target_comp_id):
-    from ..features.coords import StateAccumulator, set_coords
+    from ..core.coords import StateAccumulator, set_coords
 
     transformed_gate = preprocessor.transform(get_gate_numpy(xr_data, target_comp_id))
     n_latent = transformed_gate.shape[1]

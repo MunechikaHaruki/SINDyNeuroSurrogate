@@ -1,4 +1,4 @@
-from ..dataset import Edge, NeuronGraph
+from ..core.network import Edge, NeuronGraph
 from .compartments import COMPARTMENT_TEMPLATES
 
 _hh = COMPARTMENT_TEMPLATES["hh"]

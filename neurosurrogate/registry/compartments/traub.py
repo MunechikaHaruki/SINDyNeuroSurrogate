@@ -5,7 +5,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ...dataset import Compartment
+from ...core.network import Compartment
 from ...opcost import OpCost
 from .common import lin_exp_form
 

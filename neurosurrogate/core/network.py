@@ -6,8 +6,8 @@ from functools import cached_property
 import hydra
 import numpy as np
 
-from .opcost import OpCost
-from .registry.current import FUNC_MAP
+from ..opcost import OpCost
+from ..registry.current import FUNC_MAP
 
 
 class Compartment:
@@ -42,7 +42,7 @@ class Compartment:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Compartment":
-        from .registry.compartments import COMPARTMENT_TEMPLATES
+        from ..registry.compartments import COMPARTMENT_TEMPLATES
 
         return COMPARTMENT_TEMPLATES[d["type"]].with_name(d["name"])
 
@@ -169,7 +169,7 @@ class NeuronGraph:
         ノード名は型の頭文字 + 0始まり連番で自動生成
         例: ["passive", "hh", "passive"] → ["p0", "h0", "p1"]
         """
-        from .registry.compartments import COMPARTMENT_TEMPLATES
+        from ..registry.compartments import COMPARTMENT_TEMPLATES
 
         assert len(weights) == len(node_types) - 1, (
             f"weights の長さは len(node_types) - 1 = {len(node_types) - 1} である必要があります"
@@ -239,7 +239,7 @@ class DatasetConfig:
         pipeline: dict,
     ) -> "DatasetConfig":
         """yamlとの境界"""
-        from .registry.neuron import MCMODELS
+        from ..registry.neuron import MCMODELS
 
         return DatasetConfig(
             model_name=model_name,

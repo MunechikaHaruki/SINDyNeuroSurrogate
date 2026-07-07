@@ -1,4 +1,3 @@
-from neurosurrogate.features.libraries import LibraryEntry, SubLibrary
 from neurosurrogate.opcost import OpCost
 from neurosurrogate.registry.compartments.hh import (
     HH_RATE_COST_MAP,
@@ -9,6 +8,7 @@ from neurosurrogate.registry.compartments.hh import (
     beta_m,
     beta_n,
 )
+from neurosurrogate.surrogate.libraries import LibraryEntry, SubLibrary
 
 FUNC_REGISTRY = {
     "alpha_m": alpha_m,

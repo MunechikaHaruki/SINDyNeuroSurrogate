@@ -15,7 +15,7 @@ import pandas as pd
 import yaml
 from matplotlib.figure import Figure
 
-from neurosurrogate.dataset import Compartment, DatasetConfig
+from neurosurrogate.core.network import Compartment, DatasetConfig
 from neurosurrogate.surrogate.analysis import SINDySummary
 from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate, make_surr_comp
 from neurosurrogate.view.plots import view_model
