@@ -143,7 +143,7 @@ def sinousoidal(frequency: float = 50):
         frequency=frequency,
         baseline=7.5,
         silence_duration=10,
-        duration=120,
+        duration=520,
     )
 
 

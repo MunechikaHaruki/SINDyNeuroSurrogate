@@ -13,7 +13,7 @@ def _():
     # 未登録 current は fallback (-5.0, 20.0, 10)
     SWEEP_DEFAULTS = {
         "lin&steady&pulse": (0, 20.0, 10),  # value [μA/cm²]
-        "periodic&sinousoidal": (1.0, 100.0, 10),  # frequency [Hz]
+        "periodic&sinousoidal": (0, 200.0, 10),  # frequency [Hz]
     }
 
     base_ui = analysis.make_base_ui()

@@ -1,0 +1,32 @@
+name: base
+preprocessor:
+  _target_: sklearn.decomposition.PCA
+  n_components: 1
+optimizer:
+  _target_: pysindy.optimizers.STLSQ
+  threshold: 0.01
+  normalize_columns: false
+  alpha: 2.0
+library_specs:
+  - type: gate
+    funcs: [alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n]
+    is_product: false
+    inputs: [0]
+  - type: gate
+    funcs: [alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n]
+    is_product: true
+    inputs: [0, 1]
+  - type: volt
+    inputs: [0, 1, 2]
+  - type: identity
+    inputs: [0]
+  - type: identity
+    inputs: [1]
+  - type: identity
+    inputs: [2]
+  - type: const
+    inputs: []
+datasets:
+  model_name: traub
+  pipeline:
+    _target_: neurosurrogate.builder.registry_current.train
