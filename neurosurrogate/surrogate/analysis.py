@@ -85,7 +85,7 @@ def eval_surrogate(bundle: SurrogateBundle) -> dict:
         bundle.target_names + ["u"]
     )
     surr_opcost = calc_surr_opcost(bundle.xi, bundle.feature_names, feature_cost_map)
-    original_cost = net.nodes[train_comp_id].OpCost
+    original_cost = net.nodes[train_comp_id].type.opcost
     nnz = int((bundle.xi != 0).sum())
     return {
         "nnz": nnz,

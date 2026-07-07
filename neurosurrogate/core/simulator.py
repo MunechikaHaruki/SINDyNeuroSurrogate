@@ -50,7 +50,7 @@ def _group_by_type(
     例: {"hh": [(1, hh_comp1), (3, hh_comp2)], "passive": [(0, p_comp)]}"""
     buckets: dict[str, list[tuple[int, Compartment]]] = {}
     for i, comp in enumerate(nodes):
-        buckets.setdefault(comp.type_name, []).append((i, comp))
+        buckets.setdefault(comp.type.name, []).append((i, comp))
     return buckets
 
 
@@ -62,7 +62,8 @@ def _make_group_spec(bucket: list[tuple[int, Compartment]]) -> GroupSpec:
         None
         if comp_type.param_cls is None
         else jax.tree.map(
-            lambda *xs: jnp.asarray(xs), *[c.resolved_params for c in comps]
+            lambda *xs: jnp.asarray(xs),
+            *[c.params if c.params is not None else comp_type.default_params for c in comps],
         )
     )
     return GroupSpec(

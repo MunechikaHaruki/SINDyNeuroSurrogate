@@ -26,6 +26,19 @@ class CompartmentType:
     v_init: float = -65
     opcost: "OpCost | None" = None
 
+    # --- 変数構造 (V + gates 組立)、type だけで決まる ---
+    @property
+    def vars(self) -> list[str]:
+        return ["V"] + self.gate_names
+
+    @property
+    def gate(self) -> list[bool]:
+        return [False] + [True] * len(self.gate_names)
+
+    @property
+    def init(self) -> list[float]:
+        return [self.v_init] + self.default_gate_inits
+
 
 class Compartment:
     """
@@ -48,9 +61,6 @@ class Compartment:
     def with_params(self, params: tuple) -> "Compartment":
         return Compartment(name=self.name, type=self.type, params=params)
 
-    def with_type(self, type: CompartmentType) -> "Compartment":
-        return Compartment(name=self.name, type=type, params=self._params)
-
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "type": self.type.name}
         if self._params is not None:
@@ -68,47 +78,9 @@ class Compartment:
             return comp.with_params(comp_type.param_cls(**d["params"]))
         return comp
 
-    # --- CompartmentType 経由の delegate プロパティ (直感的な短縮のみ残す) ---
-    @property
-    def type_name(self) -> str:
-        return self.type.name
-
-    @property
-    def gate_names(self) -> list[str]:
-        return self.type.gate_names
-
-    @property
-    def gate_inits(self) -> list[float]:
-        return self.type.default_gate_inits
-
-    @property
-    def v_init(self) -> float:
-        return self.type.v_init
-
-    @property
-    def OpCost(self):
-        return self.type.opcost
-
-    @property
-    def resolved_params(self):
-        return self._params if self._params is not None else self.type.default_params
-
     @property
     def params(self):
         return self._params
-
-    # --- 変数構造 (V + gates) ---
-    @property
-    def vars(self):
-        return ["V"] + self.type.gate_names
-
-    @property
-    def gate(self):
-        return [False] + [True] * len(self.type.gate_names)
-
-    @property
-    def init(self):
-        return [self.type.v_init] + self.type.default_gate_inits
 
 
 @dataclass

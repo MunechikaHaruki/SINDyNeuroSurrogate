@@ -27,7 +27,7 @@ def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
     """NeuronGraph をnetworkxで可視化する。ノード色はコンパートメント種別、赤枠はstimノード。"""
     G = nx.DiGraph()
     for c in net.nodes:
-        G.add_node(c.name, type=c.type_name)
+        G.add_node(c.name, type=c.type.name)
     for e in net.edges:
         G.add_edge(e.src, e.dst, weight=e.weight)
         G.add_edge(e.dst, e.src, weight=e.weight)
