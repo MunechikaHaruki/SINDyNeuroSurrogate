@@ -129,19 +129,6 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 # ---------------------------------------------------------------------------
 
 
-def _view_coef(loaded) -> Figure:
-    return view_model(loaded.xi, loaded.feature_names, loaded.target_names)
-
-
-def _get_model_info_figs(base_ui: mo.ui.dictionary) -> dict[str, Figure]:
-    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
-    return {rid[:8]: _view_coef(load_surrogate_model(rid)) for rid in run_ids}
-
-
-def _get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:
-    return view_neuron_graph(MCMODELS[str(base_ui["model_name"].value)])
-
-
 def _eval_df(loaded_list: list[LoadedSurrogate]) -> pd.DataFrame:
     rows = [
         {"run_name": x.run_name, "run_id": x.run_id[:8], **eval_surrogate(x)}
@@ -153,7 +140,7 @@ def _eval_df(loaded_list: list[LoadedSurrogate]) -> pd.DataFrame:
 def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
     run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
     loaded_list = [load_surrogate_model(rid) for rid in run_ids]
-    _model_name = str(base_ui["model_name"].value)
+    model_name = str(base_ui["model_name"].value)
     return mo.vstack(
         [
             mo.vstack(
@@ -162,7 +149,9 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
                         f"run_id:{loaded.run_id[:8]}.. &nbsp;&nbsp;　{loaded.run_name}"
                     ),
                     mo.md(f"{loaded.equations[:40]}"),
-                    mo.mpl.interactive(_view_coef(loaded)),
+                    mo.mpl.interactive(
+                        view_model(loaded.xi, loaded.feature_names, loaded.target_names)
+                    ),
                 ]
             )
             for loaded in loaded_list
@@ -170,8 +159,8 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
         + [
             mo.md("### 評価サマリ (preprocessor / OpCost)"),
             _eval_df(loaded_list),
-            mo.md(f"### NeuronGraph: `{_model_name}`"),
-            mo.mpl.interactive(_get_neurograph_fig(base_ui)),
+            mo.md(f"### NeuronGraph: `{model_name}`"),
+            mo.mpl.interactive(view_neuron_graph(MCMODELS[model_name])),
         ]
     )
 
@@ -230,16 +219,19 @@ def view(
     info = f"{targets}&eval:{eval_comp}"
     single_prefix = f"{model}({info})_{current}"
 
+    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
     entries: list[SaveEntry] = [
-        _entry("neurograph", _get_neurograph_fig(base_ui), model),
+        _entry("neurograph", view_neuron_graph(MCMODELS[str(model)]), model),
         _entry(
             "current",
             analysis_single.plot_current_preview(base_ui, setting_ui["sim"]),
             current,
         ),
     ]
-    for rid, fig in _get_model_info_figs(base_ui).items():
-        entries.append(_entry(f"model({rid})", fig, model))
+    for rid in run_ids:
+        loaded = load_surrogate_model(rid)
+        fig = view_model(loaded.xi, loaded.feature_names, loaded.target_names)
+        entries.append(_entry(f"model({rid[:8]})", fig, model))
 
     if res is None:
         return mo.md("(結果なし)"), entries
