@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 from matplotlib.figure import Figure
 
-from .profiler_view import PanelSpec, TraceSpec, draw_engine
+from .engine import PanelSpec, TraceSpec, draw_engine
 
 
 def spec_simple(ds: xr.Dataset) -> list[PanelSpec]:

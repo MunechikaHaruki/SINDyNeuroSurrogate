@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import pysindy as ps
 
-from neurosurrogate.profiler.profiler_model import OpCost
+from neurosurrogate.metrics.sindy import OpCost
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,7 @@ class FeatureLibrary:
 
     @staticmethod
     def build(library_specs: list[dict]) -> "FeatureLibrary":
-        from . import registry_feature_libraries as reg
+        from ..registry import feature_libraries as reg
 
         def _resolve(spec: dict) -> SubLibrary:
             builder = getattr(reg, spec["type"], None)

@@ -6,18 +6,18 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .builder.build_coords import build_indices, set_coords, set_i_internal
-from .model.model_dataset import DatasetConfig
-from .model.model_neurosindy import (
-    DUMMY_SINDY_ARGS,
-    SINDyNeuroSurrogate,
-)
-from .model.registry_compartments import (
+from .dataset import DatasetConfig
+from .features.coords import build_indices, set_coords, set_i_internal
+from .registry.compartments import (
     HHParams,
     TraubParams,
     calc_hh_channel,
     calc_passive_channel,
     calc_traub_channel,
+)
+from .surrogate.neurosindy import (
+    DUMMY_SINDY_ARGS,
+    SINDyNeuroSurrogate,
 )
 
 logger = logging.getLogger(__name__)

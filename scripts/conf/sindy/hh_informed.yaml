@@ -28,4 +28,4 @@ library_specs:
 datasets:
   model_name: hh
   pipeline:
-    _target_: neurosurrogate.builder.registry_current.train
+    _target_: neurosurrogate.registry.current.train

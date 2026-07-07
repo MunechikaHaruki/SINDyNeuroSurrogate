@@ -1,5 +1,6 @@
-from neurosurrogate.builder.builder_feature_libraries import LibraryEntry, SubLibrary
-from neurosurrogate.model.registry_compartments import (
+from neurosurrogate.features.libraries import LibraryEntry, SubLibrary
+from neurosurrogate.metrics.sindy import OpCost
+from neurosurrogate.registry.compartments import (
     HH_RATE_COST_MAP,
     alpha_h,
     alpha_m,
@@ -8,7 +9,6 @@ from neurosurrogate.model.registry_compartments import (
     beta_m,
     beta_n,
 )
-from neurosurrogate.profiler.profiler_model import OpCost
 
 FUNC_REGISTRY = {
     "alpha_m": alpha_m,

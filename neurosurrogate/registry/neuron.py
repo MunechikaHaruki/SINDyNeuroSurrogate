@@ -1,5 +1,5 @@
-from .model_dataset import Edge, NeuronGraph
-from .registry_compartments import COMPARTMENT_TEMPLATES
+from ..dataset import Edge, NeuronGraph
+from .compartments import COMPARTMENT_TEMPLATES
 
 _hh = COMPARTMENT_TEMPLATES["hh"]
 _passive = COMPARTMENT_TEMPLATES["passive"]

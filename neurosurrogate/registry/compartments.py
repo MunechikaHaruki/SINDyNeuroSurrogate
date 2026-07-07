@@ -2,8 +2,8 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ..profiler.profiler_model import OpCost
-from .model_dataset import Compartment
+from ..dataset import Compartment
+from ..metrics.sindy import OpCost
 
 
 def lin_exp_form(x):

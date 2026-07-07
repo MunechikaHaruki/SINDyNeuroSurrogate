@@ -3,17 +3,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
-import analysis_single
-import analysis_sweep
 import marimo as mo
 import matplotlib.pyplot as plt
 import pandas as pd
-from io_handler import RunInfo, get_runs_df, setup_mlflow
+from analysis import single as analysis_single
+from analysis import sweep as analysis_sweep
 from matplotlib.figure import Figure
+from mlflow_io import RunInfo, get_runs_df, setup_mlflow
 
-from neurosurrogate.builder.registry_current import FUNC_MAP
-from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_view import view_neuron_graph
+from neurosurrogate.registry.current import FUNC_MAP
+from neurosurrogate.registry.neuron import MCMODELS
+from neurosurrogate.view.engine import view_neuron_graph
 
 CurrentList: list = list(FUNC_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
@@ -21,7 +21,7 @@ MCNameList = list(MCMODELS.keys())
 
 setup_mlflow()
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULT_DIR = REPO_ROOT / "docs" / "slide" / "result"
 
 
@@ -58,7 +58,7 @@ def make_base_ui() -> mo.ui.dictionary:
 
 
 def setup_mpl(matplotlib_style: str):
-    style_dir = Path(__file__).resolve().parent / "conf" / "style"
+    style_dir = Path(__file__).resolve().parents[1] / "conf" / "style"
     plt.style.use(style_dir / "base.mplstyle")
     plt.style.use(style_dir / f"{matplotlib_style}.mplstyle")
 

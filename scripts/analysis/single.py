@@ -7,15 +7,12 @@ import marimo as mo
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from io_handler import load_surrogate_model
 from matplotlib.figure import Figure
+from mlflow_io import load_surrogate_model
 
-from neurosurrogate.builder.registry_current import FUNC_MAP
-from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_dataset import CurrentConfig, DatasetConfig
-from neurosurrogate.model.model_neurosindy import transform_gate
-from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_wave import (
+from neurosurrogate.dataset import CurrentConfig, DatasetConfig
+from neurosurrogate.engine import unified_simulator
+from neurosurrogate.metrics.wave import (
     DynamicMetrics,
     n_spikes,
     spike_features_df,
@@ -23,7 +20,10 @@ from neurosurrogate.profiler.profiler_wave import (
     waveform_summary,
     waveform_summary_df,
 )
-from neurosurrogate.profiler.registry_view import DRAW_MAP
+from neurosurrogate.registry.current import FUNC_MAP
+from neurosurrogate.registry.neuron import MCMODELS
+from neurosurrogate.surrogate.neurosindy import transform_gate
+from neurosurrogate.view.specs import DRAW_MAP
 
 DRAW_LIST = list(DRAW_MAP.keys())
 

@@ -4,21 +4,21 @@ import os
 import hydra
 import mlflow
 import pysindy as ps
-from io_handler import (
+from mlflow_io import (
     log_surrogate_model,
     log_surrogate_summary,
     setup_mlflow,
 )
 from omegaconf import DictConfig, OmegaConf
 
-from neurosurrogate.builder import registry_feature_libraries
-from neurosurrogate.builder.builder_feature_libraries import FeatureLibrary
-from neurosurrogate.calc_engine import unified_simulator
-from neurosurrogate.model.model_dataset import DatasetConfig
-from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate
-from neurosurrogate.model.registry_compartments import COMPARTMENT_TEMPLATES
-from neurosurrogate.model.registry_neuron import MCMODELS
-from neurosurrogate.profiler.profiler_model import sindy_analysis
+from neurosurrogate.dataset import DatasetConfig
+from neurosurrogate.engine import unified_simulator
+from neurosurrogate.features.libraries import FeatureLibrary
+from neurosurrogate.metrics.sindy import sindy_analysis
+from neurosurrogate.registry import feature_libraries as registry_feature_libraries
+from neurosurrogate.registry.compartments import COMPARTMENT_TEMPLATES
+from neurosurrogate.registry.neuron import MCMODELS
+from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,9 @@ def cli_flow(cfg_sindy):
         log_surrogate_summary(
             sindy_analysis(
                 surrogate,
-                feature_cost_map=feature_lib.to_base_cost(surrogate.sindy.feature_names),
+                feature_cost_map=feature_lib.to_base_cost(
+                    surrogate.sindy.feature_names
+                ),
                 original_cost=COMPARTMENT_TEMPLATES["hh"].OpCost,
             )
         )

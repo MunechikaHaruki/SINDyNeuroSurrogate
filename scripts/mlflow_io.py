@@ -15,11 +15,11 @@ import pandas as pd
 import yaml
 from matplotlib.figure import Figure
 
-from neurosurrogate.model.model_dataset import DatasetConfig
-from neurosurrogate.model.model_neurosindy import SINDyNeuroSurrogate, make_surr_comp
-from neurosurrogate.model.registry_compartments import Compartment
-from neurosurrogate.profiler.profiler_model import SINDySummary
-from neurosurrogate.profiler.profiler_view import view_model
+from neurosurrogate.dataset import DatasetConfig
+from neurosurrogate.metrics.sindy import SINDySummary
+from neurosurrogate.registry.compartments import Compartment
+from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate, make_surr_comp
+from neurosurrogate.view.engine import view_model
 
 TARGET_EXP = "test_static_params"
 

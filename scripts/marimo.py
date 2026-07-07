@@ -6,8 +6,8 @@ app = marimo.App(width="columns")
 
 @app.cell(column=0)
 def _():
-    import analysis
     import marimo as mo
+    from analysis import ui as analysis
 
     # current_type → (amp_start, amp_stop, amp_steps)
     # 未登録 current は fallback (-5.0, 20.0, 10)

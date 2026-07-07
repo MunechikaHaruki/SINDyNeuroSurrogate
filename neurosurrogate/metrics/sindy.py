@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 if TYPE_CHECKING:
-    from ..model.model_neurosindy import SINDyNeuroSurrogate
+    from ..surrogate.neurosindy import SINDyNeuroSurrogate
 
 
 @dataclass(frozen=True)
