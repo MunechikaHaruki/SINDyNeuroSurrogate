@@ -31,20 +31,14 @@ mypy は `strict` モードだが `scripts/` は除外。
 
 ## Architecture
 
-**Data flow**: Hydra conf → `DatasetConfig`/`NeuronGraph` → `unified_simulator()` (JAX Euler+lax.scan) → `SINDyNeuroSurrogate.fit()` (PCA→SINDy→exec動的コンパイル) → `SINDyAnalyzer` → MLflow
+**Data flow**: Hydra conf → `DatasetConfig`/`NeuronGraph` → `unified_simulator()` (JAX Euler+`lax.scan`) → `SINDyNeuroSurrogate.fit()` (前処理→PySINDy→`exec`動的コンパイル) → `SINDyAnalyzer` → MLflow。`neurosurrogate/__init__.py`で `jax_enable_x64` 強制ON（HHゲートexp数値安定化のため必須）。
 
-**neurosurrogate/model/**: `registry_compartments.py`(HH/passive動力学+`COMPARTMENT_TEMPLATES`) / `registry_neuron.py`(事前定義済み`MCMODELS`) / `model_dataset.py`(`Compartment`,`NeuronGraph`,`DatasetConfig`,`CurrentConfig`) / `model_neurosindy.py`(`SINDyNeuroSurrogate`) / `model_preprocessor.py`(`AutoEncoderPreprocessor`、PCA互換JAX-AE)
+**neurosurrogate/core/**: `network.py`(`Compartment`/`NeuronGraph`/`DatasetConfig`/`CurrentConfig`。`chain(...)` で`p0/h0/p1`等ノード自動命名・`with_surrogates(targets, make_surr)`でサロゲート置換グラフ生成) / `simulator.py`(`unified_simulator` + `calc_universal_deriv`がhh/passive/surrogate3種を`vmap`一括計算、`generic_euler_solver`が`lax.scan`。`IndiceArgs`で3種分離) / `coords.py`(xarray座標)
 
-**neurosurrogate/calc_engine.py**: `calc_universal_deriv`がhh/passive/surrogateの3種を`vmap`で一括計算、`generic_euler_solver`が`lax.scan`でタイムループ。`IndiceArgs`でノードを3種に分離する設計が重要。
+**neurosurrogate/registry/**: `compartments/{hh,traub,common}.py`(動力学+`COMPARTMENT_TEMPLATES`、HH/Traub/passive分割) / `neuron.py`(`MCMODELS`事前定義) / `current.py`(電流波形、`FUNC_MAP`) / `feature_libraries.py`(`LIB_BUILDER_REGISTRY`、type=`gate/volt/identity/const`)
 
-**neurosurrogate/builder/**: `registry_feature_libraries.py`(`LIB_BUILDER_REGISTRY`、type="gate"/"volt"/"identity"/"const") / `builder_feature_libraries.py`(`FeatureLibrary`) / `registry_current.py`(電流波形生成、`FUNC_MAP`) / `build_coords.py`(xarray座標構築)
+**neurosurrogate/surrogate/**: `neurosindy.py`(`SINDyNeuroSurrogate`。`_build_source`でPySINDy特徴名→JAX関数ソース生成→`exec`コンパイル、`^`→`**`変換) / `libraries.py`(`FeatureLibrary`) / `preprocessor.py`(`AutoEncoderPreprocessor`、PCA互換JAX-AE) / `analysis.py`(`SINDyAnalyzer`、`SINDyResult`)
 
-**neurosurrogate/profiler/**: `profiler_model.py`(`OpCost`代数、`SINDyResult`、`SINDyAnalyzer`) / `profiler_wave.py`(eFELスパイクメトリクス+RMSE/MAE) / `profiler_view.py`(`draw_engine`/`TraceSpec`/`PanelSpec`、波形描画エンジン) / `registry_view.py`(`DRAW_MAP`、可視化スペックレジストリ)
+**neurosurrogate/{metrics,view,opcost}**: `metrics/wave.py`(eFELスパイクメトリクス+RMSE/MAE) / `view/{engine,specs,plots}.py`(`draw_engine`/`TraceSpec`/`PanelSpec`、`DRAW_MAP`) / `opcost.py`(`OpCost`代数、`+`/`*`オーバーロードでコンパートメント演算コスト集計)
 
-**scripts/**: `main.py`(Hydraエントリポイント) / `io_handler.py`(MLflow I/O。`RunInfo`でrun情報読み込み、`SINDySurrogateMLflowModel`としてサロゲートをpyfunc形式で保存/復元) / `analysis.py`(marimo向け評価ロジック+UI定義。`calc_eval`がサロゲート置換後シミュレーション結果を返す) / `analysis_sweep.py`(振幅スイープ評価+plot) / `marimo.py`(marimoノートブック本体) / `conf/`(Hydra設定: `config.yaml` / `sindy/{base,hh_relaxation,hh_informed}.yaml`)
-
-**Key notes**:
-- `SINDyNeuroSurrogate._build_source`: PySINDy特徴量名からJAX関数ソースを生成し`exec`でコンパイル（`^`→`**`変換あり）
-- `OpCost`: `+`/`*`をオーバーロードしてコンパートメント全体のコストを代数的に集計（`registry_compartments.py`参照）
-- `NeuronGraph.chain(["passive","hh","passive"], weights)`: ノード名を自動生成（"p0","h0","p1"）して辺を接続
-- `NeuronGraph.with_surrogates(targets, make_surr)`: 指定ノードをサロゲートコンパートメントに置換した新グラフを返す
+**scripts/**: `main.py`(Hydraエントリ) / `mlflow_io.py`(MLflow I/O、`RunInfo`+`SINDySurrogateMLflowModel`でpyfunc保存/復元) / `analysis/{single,sweep,ui}.py`(marimo評価: 単発/振幅スイープ/UI定義。`calc_eval`がサロゲート置換後シミュ結果返却) / `marimo.py`(ノートブック本体) / `conf/`(`config.yaml` + `sindy/{base,base_traub,hh_relaxation,hh_informed}.yaml`)
