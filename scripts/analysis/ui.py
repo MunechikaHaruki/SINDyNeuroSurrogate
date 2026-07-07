@@ -9,11 +9,12 @@ import pandas as pd
 from analysis import single as analysis_single
 from analysis import sweep as analysis_sweep
 from matplotlib.figure import Figure
-from mlflow_io import RunInfo, get_runs_df, setup_mlflow
+from mlflow_io import LoadedSurrogate, get_runs_df, load_surrogate_model, setup_mlflow
 
 from neurosurrogate.registry.current import FUNC_MAP
 from neurosurrogate.registry.neuron import MCMODELS
-from neurosurrogate.view.plots import view_neuron_graph
+from neurosurrogate.surrogate.analysis import eval_surrogate
+from neurosurrogate.view.plots import view_model, view_neuron_graph
 
 CurrentList: list = list(FUNC_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
@@ -128,31 +129,47 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 # ---------------------------------------------------------------------------
 
 
+def _view_coef(loaded) -> Figure:
+    return view_model(loaded.xi, loaded.feature_names, loaded.target_names)
+
+
 def _get_model_info_figs(base_ui: mo.ui.dictionary) -> dict[str, Figure]:
     run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
-    return {rid[:8]: RunInfo.get_run_info(rid).sindy_coef for rid in run_ids}
+    return {rid[:8]: _view_coef(load_surrogate_model(rid)) for rid in run_ids}
 
 
 def _get_neurograph_fig(base_ui: mo.ui.dictionary) -> Figure:
     return view_neuron_graph(MCMODELS[str(base_ui["model_name"].value)])
 
 
+def _eval_df(loaded_list: list[LoadedSurrogate]) -> pd.DataFrame:
+    rows = [
+        {"run_name": x.run_name, "run_id": x.run_id[:8], **eval_surrogate(x)}
+        for x in loaded_list
+    ]
+    return pd.DataFrame(rows).set_index("run_name")
+
+
 def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
     run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
-    run_infos = [RunInfo.get_run_info(rid) for rid in run_ids]
+    loaded_list = [load_surrogate_model(rid) for rid in run_ids]
     _model_name = str(base_ui["model_name"].value)
     return mo.vstack(
         [
             mo.vstack(
                 [
-                    mo.md(f"run_id:{info.run_id[:8]}.. &nbsp;&nbsp;　{info.run_name}"),
-                    mo.md(f"{info.equations[:40]}"),
-                    mo.mpl.interactive(info.sindy_coef),
+                    mo.md(
+                        f"run_id:{loaded.run_id[:8]}.. &nbsp;&nbsp;　{loaded.run_name}"
+                    ),
+                    mo.md(f"{loaded.equations[:40]}"),
+                    mo.mpl.interactive(_view_coef(loaded)),
                 ]
             )
-            for info in run_infos
+            for loaded in loaded_list
         ]
         + [
+            mo.md("### 評価サマリ (preprocessor / OpCost)"),
+            _eval_df(loaded_list),
             mo.md(f"### NeuronGraph: `{_model_name}`"),
             mo.mpl.interactive(_get_neurograph_fig(base_ui)),
         ]

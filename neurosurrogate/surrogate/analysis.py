@@ -1,14 +1,15 @@
-import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Any, Protocol
 
 import numpy as np
 from sklearn.decomposition import PCA
 
+from ..core.network import DatasetConfig
+from ..core.simulator import unified_simulator
 from ..opcost import OpCost
-
-if TYPE_CHECKING:
-    from .neurosindy import SINDyNeuroSurrogate
+from ..registry.neuron import MCMODELS
+from .libraries import FeatureLibrary
+from .neurosindy import get_gate_numpy
 
 
 def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):
@@ -38,15 +39,7 @@ class SINDyResult:
     preprocessor_metrics: dict[str, float]
 
 
-@dataclass(frozen=True)
-class SINDySummary:
-    metrics: dict[str, float]
-    params: dict
-    view: dict
-    texts: dict[str, str]
-
-
-def _calc_surr_opcost(
+def calc_surr_opcost(
     coef: np.ndarray,
     feature_names: list[str],
     feature_cost_map: dict[str, OpCost],
@@ -62,9 +55,7 @@ def _calc_surr_opcost(
     return surr_opcost
 
 
-def _calc_cost_stat(
-    surr_opcost: OpCost, original_cost: OpCost | None
-) -> dict[str, int]:
+def calc_cost_stat(surr_opcost: OpCost, original_cost: OpCost | None) -> dict[str, int]:
     if original_cost is None:
         return {}
     surr_d = surr_opcost.to_dict()
@@ -76,43 +67,29 @@ def _calc_cost_stat(
     }
 
 
-def sindy_analysis(
-    neurosindy: "SINDyNeuroSurrogate",
-    feature_cost_map: dict[str, OpCost],
-    original_cost: OpCost | None = None,
-) -> SINDySummary:
-    result = SINDyResult(
-        coef=neurosindy.sindy.coefficients(),
-        feature_names=neurosindy.sindy.get_feature_names(),
-        equations="\n".join(neurosindy.sindy.equations(precision=3)),
-        source=neurosindy.source,
-        target_names=neurosindy.target_names,
-        params=neurosindy.sindy.optimizer.get_params(),
-        preprocessor_metrics=calc_preprocessor_metrics(
-            neurosindy.preprocessor, neurosindy.train_gate_data
-        ),
+class SurrogateBundle(Protocol):
+    xi: np.ndarray
+    preprocessor: Any
+    feature_names: list[str]
+    target_names: list[str]
+    library_specs: list[dict]
+    dataset: DatasetConfig
+    train_comp_identifier: str
+
+
+def eval_surrogate(bundle: SurrogateBundle) -> dict:
+    net = MCMODELS[bundle.dataset.model_name]
+    train_comp_id = net.name_to_idx(bundle.train_comp_identifier)
+    train_gate = get_gate_numpy(unified_simulator(bundle.dataset), train_comp_id)
+    feature_cost_map = FeatureLibrary.build(bundle.library_specs).to_base_cost(
+        bundle.target_names + ["u"]
     )
-    surr_opcost = _calc_surr_opcost(result.coef, result.feature_names, feature_cost_map)
-    nonzero_term_num = np.count_nonzero(result.coef).item()
-    return SINDySummary(
-        metrics={
-            "nonzero_term_num": nonzero_term_num,
-            "nonzero_term_ratio": float(nonzero_term_num / result.coef.size),
-            **_calc_cost_stat(surr_opcost, original_cost),
-            **result.preprocessor_metrics,
-        },
-        params=result.params,
-        view={
-            "xi_matrix": result.coef.tolist(),
-            "feature_names": result.feature_names,
-            "target_names": result.target_names,
-        },
-        texts={
-            "equations.txt": result.equations,
-            "coef.txt": np.array2string(result.coef, precision=3),
-            "features.json": json.dumps(
-                {k: v.to_dict() for k, v in feature_cost_map.items()}
-            ),
-            "misc/source.txt": result.source,
-        },
-    )
+    surr_opcost = calc_surr_opcost(bundle.xi, bundle.feature_names, feature_cost_map)
+    original_cost = net.nodes[train_comp_id].OpCost
+    nnz = int((bundle.xi != 0).sum())
+    return {
+        "nnz": nnz,
+        "nnz_ratio": nnz / bundle.xi.size,
+        **calc_preprocessor_metrics(bundle.preprocessor, train_gate),
+        **calc_cost_stat(surr_opcost, original_cost),
+    }
