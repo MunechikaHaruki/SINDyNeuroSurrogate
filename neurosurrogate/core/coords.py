@@ -1,10 +1,13 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+from ..registry.compartments import DEFAULT_PARAMS_BY_TYPE
 from .network import NeuronGraph
 
 
@@ -31,17 +34,32 @@ class StateAccumulator:
         return np.array(self.init, dtype=np.float64)
 
 
+def _stack_params_or_empty(items: list, type_name: str):
+    """ノード別 params を stack。空なら shape (0,) の空 batch を返す (vmap size-0 用)"""
+    default = DEFAULT_PARAMS_BY_TYPE[type_name]
+    if items:
+        return jax.tree.map(lambda *xs: jnp.asarray(xs), *items)
+    return jax.tree.map(lambda x: jnp.empty((0,), dtype=jnp.asarray(x).dtype), default)
+
+
 def build_indices(net: NeuronGraph):
     nodes = net.nodes
     N = len(nodes)
     gate_offsets = np.full(N, -1, dtype=np.int32)
     ids_list: dict[str, list] = {"hh": [], "passive": [], "surr": [], "traub": []}
+    params_list: dict[str, list] = {"hh": [], "passive": [], "traub": []}
     acc = StateAccumulator()
 
     # [Pass 1] 電位変数の収集
     for i, comp in enumerate(nodes):
         acc.add(i, [comp.vars[0]], [comp.gate[0]], [comp.init[0]])
         ids_list[comp.type_name].append(i)
+        if comp.type_name in params_list:
+            params_list[comp.type_name].append(
+                comp.params
+                if comp.params is not None
+                else DEFAULT_PARAMS_BY_TYPE[comp.type_name]
+            )
 
     # [Pass 2] ゲート変数の収集
     current_offset = N
@@ -56,11 +74,14 @@ def build_indices(net: NeuronGraph):
     for k, v in ids_list.items():
         ids[k] = np.array(v, dtype=np.int32)
 
+    params_batched = {k: _stack_params_or_empty(v, k) for k, v in params_list.items()}
+
     return {
         "gate_offsets": gate_offsets,
         "ids": ids,
         "init": acc.to_init(),
         "coords": acc.to_coords(),
+        "params": params_batched,
     }
 
 

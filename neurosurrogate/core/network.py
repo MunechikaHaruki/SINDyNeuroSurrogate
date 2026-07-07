@@ -19,6 +19,7 @@ class Compartment:
         name: str = "",
         v_init: float = -65,
         OpCost: "OpCost | None" = None,
+        params: "tuple | None" = None,
     ):
         self.name = name
         self.type_name = type_name
@@ -26,6 +27,7 @@ class Compartment:
         self.gate_inits = gate_inits
         self.gate_names = gate_names
         self._opcost = OpCost
+        self._params = params
 
     def with_name(self, name: str) -> "Compartment":
         return Compartment(
@@ -35,16 +37,34 @@ class Compartment:
             name=name,
             v_init=self.v_init,
             OpCost=self._opcost,
+            params=self._params,
+        )
+
+    def with_params(self, params: tuple) -> "Compartment":
+        return Compartment(
+            type_name=self.type_name,
+            gate_inits=self.gate_inits,
+            gate_names=self.gate_names,
+            name=self.name,
+            v_init=self.v_init,
+            OpCost=self._opcost,
+            params=params,
         )
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "type": self.type_name}
+        d: dict = {"name": self.name, "type": self.type_name}
+        if self._params is not None:
+            d["params"] = self._params._asdict()
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Compartment":
-        from ..registry.compartments import COMPARTMENT_TEMPLATES
+        from ..registry.compartments import COMPARTMENT_TEMPLATES, PARAM_CLS_BY_TYPE
 
-        return COMPARTMENT_TEMPLATES[d["type"]].with_name(d["name"])
+        tmpl = COMPARTMENT_TEMPLATES[d["type"]].with_name(d["name"])
+        if "params" in d:
+            return tmpl.with_params(PARAM_CLS_BY_TYPE[d["type"]](**d["params"]))
+        return tmpl
 
     @property
     def vars(self):
@@ -61,6 +81,10 @@ class Compartment:
     @property
     def OpCost(self):
         return self._opcost
+
+    @property
+    def params(self):
+        return self._params
 
 
 @dataclass

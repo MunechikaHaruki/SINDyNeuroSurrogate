@@ -34,13 +34,14 @@ class IndiceArgs:
 @dataclass(frozen=True)
 class ModelArgs:
     C_matrix: np.ndarray  # shape (N, N)       グラフラプラシアン
-    params: HHParams
+    hh_params: HHParams  # NamedTuple batched, prefix (N_hh,)
+    passive_params: HHParams  # NamedTuple batched, prefix (N_p,)
+    traub_params: TraubParams  # NamedTuple batched, prefix (N_t,)
     stim_idx: int
     indice_args: IndiceArgs
     xi_matrix: np.ndarray  # shape (2, n_terms)  SINDy係数行列
     compute_theta: Callable  # (v, latent, i_t) -> jnp.ndarray
     gate_offsets: np.ndarray  # shape (N,)          dtype=int32
-    traub_params: TraubParams = TraubParams()
 
 
 def calc_universal_deriv(curr_x, u_t, model_args):
@@ -55,29 +56,29 @@ def calc_universal_deriv(curr_x, u_t, model_args):
 
     dvar = jnp.zeros_like(curr_x)
 
-    # 2. Passive: vmap で一括処理
+    # 2. Passive: params もノード別 (in_axes=0)
     p_idx = indice_args.passive
     dvar = dvar.at[p_idx].set(
-        jax.vmap(lambda i_t, v: calc_passive_channel(model_args.params, i_t, v))(
-            I_internal[p_idx], v_vec[p_idx]
+        jax.vmap(calc_passive_channel, in_axes=(0, 0, 0))(
+            model_args.passive_params, I_internal[p_idx], v_vec[p_idx]
         )
     )
 
-    # 3. HH: ゲートインデックス行列 (N_hh, 3) を静的に計算して vmap
+    # 3. HH: ゲートインデックス行列 (N_hh, 3) を静的に計算して vmap (params も batch)
     hh_idx = indice_args.hh
     gate_idx = model_args.gate_offsets[hh_idx][:, None] + np.arange(3)  # (N_hh, 3)
-    dv_hh, dgate_hh = jax.vmap(
-        lambda i_t, v, g: calc_hh_channel(model_args.params, i_t, v, g)
-    )(I_internal[hh_idx], v_vec[hh_idx], curr_x[gate_idx])
+    dv_hh, dgate_hh = jax.vmap(calc_hh_channel, in_axes=(0, 0, 0, 0))(
+        model_args.hh_params, I_internal[hh_idx], v_vec[hh_idx], curr_x[gate_idx]
+    )
     dvar = dvar.at[hh_idx].set(dv_hh)
     dvar = dvar.at[gate_idx.ravel()].set(dgate_hh.ravel())
 
-    # 4. Traub: 10状態変数を静的インデックスで vmap
+    # 4. Traub: 10状態変数を静的インデックスで vmap (params も batch)
     t_idx = indice_args.traub
     t_state_idx = model_args.gate_offsets[t_idx][:, None] + np.arange(10)  # (N_t, 10)
-    dv_t, dstate_t = jax.vmap(
-        lambda i_t, v, s: calc_traub_channel(model_args.traub_params, i_t, v, s)
-    )(I_internal[t_idx], v_vec[t_idx], curr_x[t_state_idx])
+    dv_t, dstate_t = jax.vmap(calc_traub_channel, in_axes=(0, 0, 0, 0))(
+        model_args.traub_params, I_internal[t_idx], v_vec[t_idx], curr_x[t_state_idx]
+    )
     dvar = dvar.at[t_idx].set(dv_t)
     dvar = dvar.at[t_state_idx.ravel()].set(dstate_t.ravel())
 
@@ -122,7 +123,9 @@ def unified_simulator(
             u,
             dt,
             ModelArgs(
-                params=HHParams(),
+                hh_params=indice["params"]["hh"],
+                passive_params=indice["params"]["passive"],
+                traub_params=indice["params"]["traub"],
                 C_matrix=net.graph_laplacian,
                 stim_idx=net.stim_node_idx,
                 indice_args=IndiceArgs(**indice["ids"]),
