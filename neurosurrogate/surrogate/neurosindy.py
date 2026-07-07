@@ -3,7 +3,7 @@ import logging
 import jax.numpy as jnp
 import numpy as np
 
-from ..core.network import Compartment
+from ..core.network import Compartment, CompartmentType
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +17,36 @@ _dummy_xi = np.zeros((2, 1), dtype=np.float64)
 DUMMY_SINDY_ARGS = (_dummy_xi, _dummy_theta)
 
 
-def make_surr_comp(name: str, gate_inits: list) -> Compartment:
-    return Compartment(
-        type_name="surr",
-        gate_inits=gate_inits,
+def _make_surr_kernel(xi_matrix, compute_theta):
+    """統一 signature (params, i_t, v, state) -> (dv, dstate) の SINDy kernel closure"""
+
+    def surr_kernel(params, i_t, v, state):
+        # state: shape (n_latent,)、現状 n_latent=1
+        theta = compute_theta(v, state[0], i_t)
+        dv = xi_matrix[0] @ theta
+        dlat = xi_matrix[1] @ theta
+        return dv, jnp.stack([dlat])
+
+    return surr_kernel
+
+
+def make_surr_type(gate_inits, xi_matrix, compute_theta) -> CompartmentType:
+    return CompartmentType(
+        name="surr",
+        kernel=_make_surr_kernel(xi_matrix, compute_theta),
+        param_cls=None,
+        default_params=None,
         gate_names=[f"latent{i + 1}" for i in range(len(gate_inits))],
+        default_gate_inits=gate_inits,
+        v_init=-65,
+        opcost=None,
+    )
+
+
+def make_surr_comp(name: str, gate_inits: list, xi_matrix, compute_theta) -> Compartment:
+    return Compartment(
         name=name,
+        type=make_surr_type(gate_inits, xi_matrix, compute_theta),
     )
 
 
@@ -84,7 +108,8 @@ class SINDyNeuroSurrogate:
         self.compute_theta = self._compile_source(self.source, self.target_module)
 
     def make_surr_comp(self, name: str) -> Compartment:
-        return make_surr_comp(name, self._gate_inits)
+        xi, theta = self.sindy_args
+        return make_surr_comp(name, self._gate_inits, xi, theta)
 
     @property
     def sindy_args(self):

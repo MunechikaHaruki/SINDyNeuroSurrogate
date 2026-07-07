@@ -1,41 +1,35 @@
 from .hh import (
     HH_TEMPLATE,
+    HH_TYPE,
     PASSIVE_TEMPLATE,
+    PASSIVE_TYPE,
     HHParams,
-    calc_hh_channel,
-    calc_passive_channel,
+    PassiveParams,
 )
 from .traub import (
     TRAUB_TEMPLATE,
+    TRAUB_TYPE,
     TraubParams,
-    calc_traub_channel,
 )
 
+# CompartmentType (物理の型) を name で引く
+COMPARTMENT_TYPES = {
+    "hh": HH_TYPE,
+    "passive": PASSIVE_TYPE,
+    "traub": TRAUB_TYPE,
+}
+
+# 後方互換: 空 name の Compartment テンプレ
 COMPARTMENT_TEMPLATES = {
     "hh": HH_TEMPLATE,
     "passive": PASSIVE_TEMPLATE,
     "traub": TRAUB_TEMPLATE,
 }
 
-PARAM_CLS_BY_TYPE = {
-    "hh": HHParams,
-    "passive": HHParams,
-    "traub": TraubParams,
-}
-
-DEFAULT_PARAMS_BY_TYPE = {
-    "hh": HHParams(),
-    "passive": HHParams(),
-    "traub": TraubParams(),
-}
-
 __all__ = [
     "COMPARTMENT_TEMPLATES",
-    "DEFAULT_PARAMS_BY_TYPE",
-    "PARAM_CLS_BY_TYPE",
+    "COMPARTMENT_TYPES",
     "HHParams",
+    "PassiveParams",
     "TraubParams",
-    "calc_hh_channel",
-    "calc_passive_channel",
-    "calc_traub_channel",
 ]

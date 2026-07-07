@@ -1,101 +1,33 @@
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from ..registry.compartments import (
-    HHParams,
-    TraubParams,
-    calc_hh_channel,
-    calc_passive_channel,
-    calc_traub_channel,
-)
-from ..surrogate.neurosindy import (
-    DUMMY_SINDY_ARGS,
-    SINDyNeuroSurrogate,
-)
-from .coords import build_indices, set_coords, set_i_internal
+from .coords import GroupSpec, build_indices, set_coords, set_i_internal
 from .network import DatasetConfig
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class IndiceArgs:
-    hh: np.ndarray  # shape (N_hh,)  dtype=int32
-    passive: np.ndarray  # shape (N_p,)   dtype=int32
-    surr: np.ndarray  # shape (N_s,)   dtype=int32
-    traub: np.ndarray  # shape (N_t,)   dtype=int32
-
-
-@dataclass(frozen=True)
 class ModelArgs:
     C_matrix: np.ndarray  # shape (N, N)       グラフラプラシアン
-    hh_params: HHParams  # NamedTuple batched, prefix (N_hh,)
-    passive_params: HHParams  # NamedTuple batched, prefix (N_p,)
-    traub_params: TraubParams  # NamedTuple batched, prefix (N_t,)
     stim_idx: int
-    indice_args: IndiceArgs
-    xi_matrix: np.ndarray  # shape (2, n_terms)  SINDy係数行列
-    compute_theta: Callable  # (v, latent, i_t) -> jnp.ndarray
-    gate_offsets: np.ndarray  # shape (N,)          dtype=int32
+    gate_offsets: np.ndarray  # shape (N,)      dtype=int32
+    groups: dict[str, GroupSpec]  # type_name -> GroupSpec (kernel/idx/params/n_state)
 
 
-def calc_universal_deriv(curr_x, u_t, model_args):
-    """物理モデル用の汎用微分計算エンジン"""
-    indice_args = model_args.indice_args
-    N = model_args.C_matrix.shape[0]
-
-    # 1. 電位ベクトルの抽出と網内電流の計算 (グラフラプラシアン)
+def calc_universal_deriv(curr_x, u_t, ma):
+    """全 GroupSpec に自身を apply させるだけ。type別分岐なし。"""
+    N = ma.C_matrix.shape[0]
     v_vec = curr_x[:N]
-    I_internal = v_vec @ model_args.C_matrix
-    I_internal = I_internal.at[model_args.stim_idx].add(u_t)
+    I_internal = (v_vec @ ma.C_matrix).at[ma.stim_idx].add(u_t)
 
     dvar = jnp.zeros_like(curr_x)
-
-    # 2. Passive: params もノード別 (in_axes=0)
-    p_idx = indice_args.passive
-    dvar = dvar.at[p_idx].set(
-        jax.vmap(calc_passive_channel, in_axes=(0, 0, 0))(
-            model_args.passive_params, I_internal[p_idx], v_vec[p_idx]
-        )
-    )
-
-    # 3. HH: ゲートインデックス行列 (N_hh, 3) を静的に計算して vmap (params も batch)
-    hh_idx = indice_args.hh
-    gate_idx = model_args.gate_offsets[hh_idx][:, None] + np.arange(3)  # (N_hh, 3)
-    dv_hh, dgate_hh = jax.vmap(calc_hh_channel, in_axes=(0, 0, 0, 0))(
-        model_args.hh_params, I_internal[hh_idx], v_vec[hh_idx], curr_x[gate_idx]
-    )
-    dvar = dvar.at[hh_idx].set(dv_hh)
-    dvar = dvar.at[gate_idx.ravel()].set(dgate_hh.ravel())
-
-    # 4. Traub: 10状態変数を静的インデックスで vmap (params も batch)
-    t_idx = indice_args.traub
-    t_state_idx = model_args.gate_offsets[t_idx][:, None] + np.arange(10)  # (N_t, 10)
-    dv_t, dstate_t = jax.vmap(calc_traub_channel, in_axes=(0, 0, 0, 0))(
-        model_args.traub_params, I_internal[t_idx], v_vec[t_idx], curr_x[t_state_idx]
-    )
-    dvar = dvar.at[t_idx].set(dv_t)
-    dvar = dvar.at[t_state_idx.ravel()].set(dstate_t.ravel())
-
-    # 5. SINDy: 潜在変数を一括抽出して vmap
-    surr_idx = indice_args.surr
-    g_off_s = model_args.gate_offsets[surr_idx]
-
-    def surr_one(i_t, v, lat):
-        theta = model_args.compute_theta(v, lat, i_t)
-        return model_args.xi_matrix[0] @ theta, model_args.xi_matrix[1] @ theta
-
-    dv_s, dlat_s = jax.vmap(surr_one)(
-        I_internal[surr_idx], v_vec[surr_idx], curr_x[g_off_s]
-    )
-    dvar = dvar.at[surr_idx].set(dv_s)
-    dvar = dvar.at[g_off_s].set(dlat_s)
-
+    for spec in ma.groups.values():
+        dvar = spec.apply(dvar, curr_x, I_internal, v_vec, ma.gate_offsets)
     return dvar
 
 
@@ -108,30 +40,23 @@ def generic_euler_solver(init, u, dt, model_args):
     return np.array(jnp.concatenate([x_history_prefix, final_x[None]], axis=0))
 
 
-def unified_simulator(
-    cfg: DatasetConfig, surrogate_model: SINDyNeuroSurrogate | None = None
-):
-    sindy_args = surrogate_model.sindy_args if surrogate_model else DUMMY_SINDY_ARGS
+def unified_simulator(cfg: DatasetConfig):
+    """cfg.net の各 Compartment が kernel を保持している前提。surrogate も
+    make_surr_comp で kernel 埋込済み Compartment を with_surrogates で挿入する"""
     net = cfg.net
     dt = cfg.dt
     u = cfg.build_current()
     indice = build_indices(net)
-    logger.debug(f"surr_target_id:{indice['ids']['surr']}")
     dataset = set_coords(
         generic_euler_solver(
             indice["init"],
             u,
             dt,
             ModelArgs(
-                hh_params=indice["params"]["hh"],
-                passive_params=indice["params"]["passive"],
-                traub_params=indice["params"]["traub"],
                 C_matrix=net.graph_laplacian,
                 stim_idx=net.stim_node_idx,
-                indice_args=IndiceArgs(**indice["ids"]),
-                xi_matrix=sindy_args[0],
-                compute_theta=sindy_args[1],
                 gate_offsets=indice["gate_offsets"],
+                groups=indice["groups"],
             ),
         ),
         u,

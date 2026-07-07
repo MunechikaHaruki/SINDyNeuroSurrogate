@@ -2,7 +2,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ...core.network import Compartment
+from ...core.network import Compartment, CompartmentType
 from ...opcost import OpCost
 from .common import _gate_ode, _inf_ode, lin_exp_form
 
@@ -39,40 +39,7 @@ dhdt = _gate_ode(alpha_h, beta_h)
 dndt = _gate_ode(alpha_n, beta_n)
 
 
-def calc_ion_currents(v, curr_gate, p):
-    m, h, n = curr_gate[0], curr_gate[1], curr_gate[2]
-    i_na = p.G_NA * m**3 * h * (v - p.E_NA)
-    i_k = p.G_K * n**4 * (v - p.E_K)
-    return i_na + i_k
-
-
-def calc_i_leak(v, p):
-    return p.G_LEAK * (v - p.E_LEAK)
-
-
-def update_dvar_gate(v, gates):
-    return jnp.stack([dmdt(v, gates[0]), dhdt(v, gates[1]), dndt(v, gates[2])])
-
-
-def calc_hh_channel(p, u_t, v, curr_gate):
-    return (
-        (-calc_i_leak(v, p) - calc_ion_currents(v, curr_gate, p) + u_t) / p.C,
-        update_dvar_gate(v - p.E_REST, curr_gate),
-    )
-
-
-def calc_passive_channel(p, u_t, v):
-    return (-calc_i_leak(v, p) + u_t) / p.C
-
-
-HH_RATE_COST_MAP: dict[str, OpCost] = {
-    "alpha_m": OpCost(exp=1, div=1, pm=2, mul=2),
-    "beta_m": OpCost(exp=1, div=1, pm=1, mul=1),
-    "alpha_h": OpCost(exp=1, div=1, pm=1, mul=1),
-    "beta_h": OpCost(exp=1, div=1, pm=2, mul=1),
-    "alpha_n": OpCost(exp=1, div=1, pm=2, mul=2),
-    "beta_n": OpCost(exp=1, div=1, pm=1, mul=1),
-}
+# --- Params クラス (データのみ、NamedTuple) ---
 
 
 class HHParams(NamedTuple):
@@ -86,27 +53,86 @@ class HHParams(NamedTuple):
     E_K: float = -12.0 - 65.0
 
 
+class PassiveParams(NamedTuple):
+    C: float = 1.0
+    G_LEAK: float = 0.3
+    E_LEAK: float = 10.6 - 65.0
+
+
+# --- Kernel 関数 (物理式、モジュール関数) ---
+
+
+def calc_hh_channel(p: HHParams, u_t, v, curr_gate):
+    """HH: (dv, dgate) を返す"""
+    m, h, n = curr_gate[0], curr_gate[1], curr_gate[2]
+    i_na = p.G_NA * m**3 * h * (v - p.E_NA)
+    i_k = p.G_K * n**4 * (v - p.E_K)
+    i_leak = p.G_LEAK * (v - p.E_LEAK)
+    dv = (-i_leak - i_na - i_k + u_t) / p.C
+    v_rel = v - p.E_REST
+    dgate = jnp.stack([dmdt(v_rel, m), dhdt(v_rel, h), dndt(v_rel, n)])
+    return dv, dgate
+
+
+def calc_passive_channel(p: PassiveParams, u_t, v, state):
+    """Passive: (dv, state素通し)"""
+    dv = (-p.G_LEAK * (v - p.E_LEAK) + u_t) / p.C
+    return dv, state
+
+
+# --- OpCost ---
+
+
+HH_RATE_COST_MAP: dict[str, OpCost] = {
+    "alpha_m": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_m": OpCost(exp=1, div=1, pm=1, mul=1),
+    "alpha_h": OpCost(exp=1, div=1, pm=1, mul=1),
+    "beta_h": OpCost(exp=1, div=1, pm=2, mul=1),
+    "alpha_n": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_n": OpCost(exp=1, div=1, pm=1, mul=1),
+}
+
+_HH_OPCOST = (
+    sum(HH_RATE_COST_MAP.values(), OpCost())  # レート関数
+    + OpCost(pm=1)  # 反転電位
+    + OpCost(pm=3, mul=5) * 2  # Na,K電流
+    + OpCost(pm=1, mul=1)  # leak電流
+    + OpCost(pm=6, mul=6)  # dg/dt
+    + OpCost(pm=3, div=1)  # dv/dtの計算
+)
+
+
 V_REL = (-65) - (-65)  # V_INIT - E_REST
 
 
-HH_TEMPLATE = Compartment(
-    type_name="hh",
-    gate_inits=[float(m_inf(V_REL)), float(h_inf(V_REL)), float(n_inf(V_REL))],
+# --- CompartmentType (物理の型) ---
+
+
+HH_TYPE = CompartmentType(
+    name="hh",
+    kernel=calc_hh_channel,
+    param_cls=HHParams,
+    default_params=HHParams(),
     gate_names=["M", "H", "N"],
-    OpCost=(
-        sum(HH_RATE_COST_MAP.values(), OpCost())  # レート関数
-        + OpCost(pm=1)  # 反転電位
-        + OpCost(pm=3, mul=5) * 2  # Na,K電流
-        + OpCost(pm=1, mul=1)  # leak電流
-        + OpCost(pm=6, mul=6)  # dg/dt
-        + OpCost(pm=3, div=1)  # dv/dtの計算
-    ),
+    default_gate_inits=[float(m_inf(V_REL)), float(h_inf(V_REL)), float(n_inf(V_REL))],
+    v_init=-65,
+    opcost=_HH_OPCOST,
 )
 
 
-PASSIVE_TEMPLATE = Compartment(
-    type_name="passive",
-    gate_inits=[],
+PASSIVE_TYPE = CompartmentType(
+    name="passive",
+    kernel=calc_passive_channel,
+    param_cls=PassiveParams,
+    default_params=PassiveParams(),
     gate_names=[],
-    OpCost=OpCost(div=1, pm=2, mul=1),
+    default_gate_inits=[],
+    v_init=-65,
+    opcost=OpCost(div=1, pm=2, mul=1),
 )
+
+
+# --- 後方互換テンプレ (name="" の Compartment) ---
+
+HH_TEMPLATE = Compartment(name="", type=HH_TYPE)
+PASSIVE_TEMPLATE = Compartment(name="", type=PASSIVE_TYPE)

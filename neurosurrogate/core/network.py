@@ -10,81 +10,105 @@ from ..opcost import OpCost
 from ..registry.current import FUNC_MAP
 
 
+@dataclass(frozen=True)
+class CompartmentType:
+    """
+    「hh とは何か」を集約した物理的な型定義。kernel + params class + gate 構造 + opcost。
+    Compartment (グラフノードのインスタンス) はこの CompartmentType への参照を持つだけ。
+    """
+
+    name: str  # "hh", "passive", "traub", "surr"
+    kernel: Callable  # (params, u_t, v, state) -> (dv, dstate)
+    param_cls: "type | None"  # HHParams / PassiveParams / TraubParams / None (surr)
+    default_params: "tuple | None"  # デフォルト NamedTuple / None
+    gate_names: list[str]
+    default_gate_inits: list[float]
+    v_init: float = -65
+    opcost: "OpCost | None" = None
+
+
 class Compartment:
+    """
+    グラフ内の1ノード。物理型 (CompartmentType) への参照と、カスタム params だけを持つ。
+    """
+
     def __init__(
         self,
-        type_name: str,
-        gate_inits: list[float],
-        gate_names: list[str],
-        name: str = "",
-        v_init: float = -65,
-        OpCost: "OpCost | None" = None,
+        name: str,
+        type: CompartmentType,
         params: "tuple | None" = None,
     ):
         self.name = name
-        self.type_name = type_name
-        self.v_init = v_init
-        self.gate_inits = gate_inits
-        self.gate_names = gate_names
-        self._opcost = OpCost
+        self.type = type
         self._params = params
 
     def with_name(self, name: str) -> "Compartment":
-        return Compartment(
-            type_name=self.type_name,
-            gate_inits=self.gate_inits,
-            gate_names=self.gate_names,
-            name=name,
-            v_init=self.v_init,
-            OpCost=self._opcost,
-            params=self._params,
-        )
+        return Compartment(name=name, type=self.type, params=self._params)
 
     def with_params(self, params: tuple) -> "Compartment":
-        return Compartment(
-            type_name=self.type_name,
-            gate_inits=self.gate_inits,
-            gate_names=self.gate_names,
-            name=self.name,
-            v_init=self.v_init,
-            OpCost=self._opcost,
-            params=params,
-        )
+        return Compartment(name=self.name, type=self.type, params=params)
+
+    def with_type(self, type: CompartmentType) -> "Compartment":
+        return Compartment(name=self.name, type=type, params=self._params)
 
     def to_dict(self) -> dict:
-        d: dict = {"name": self.name, "type": self.type_name}
+        d: dict = {"name": self.name, "type": self.type.name}
         if self._params is not None:
             d["params"] = self._params._asdict()
         return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Compartment":
-        from ..registry.compartments import COMPARTMENT_TEMPLATES, PARAM_CLS_BY_TYPE
+        from ..registry.compartments import COMPARTMENT_TYPES
 
-        tmpl = COMPARTMENT_TEMPLATES[d["type"]].with_name(d["name"])
+        comp_type = COMPARTMENT_TYPES[d["type"]]
+        comp = Compartment(name=d["name"], type=comp_type)
         if "params" in d:
-            return tmpl.with_params(PARAM_CLS_BY_TYPE[d["type"]](**d["params"]))
-        return tmpl
+            assert comp_type.param_cls is not None
+            return comp.with_params(comp_type.param_cls(**d["params"]))
+        return comp
+
+    # --- CompartmentType 経由の delegate プロパティ (直感的な短縮のみ残す) ---
+    @property
+    def type_name(self) -> str:
+        return self.type.name
 
     @property
-    def vars(self):
-        return ["V"] + self.gate_names
+    def gate_names(self) -> list[str]:
+        return self.type.gate_names
 
     @property
-    def gate(self):
-        return [False] + [True] * len(self.gate_names)
+    def gate_inits(self) -> list[float]:
+        return self.type.default_gate_inits
 
     @property
-    def init(self):
-        return [self.v_init] + self.gate_inits
+    def v_init(self) -> float:
+        return self.type.v_init
 
     @property
     def OpCost(self):
-        return self._opcost
+        return self.type.opcost
+
+    @property
+    def resolved_params(self):
+        return self._params if self._params is not None else self.type.default_params
 
     @property
     def params(self):
         return self._params
+
+    # --- 変数構造 (V + gates) ---
+    @property
+    def vars(self):
+        return ["V"] + self.type.gate_names
+
+    @property
+    def gate(self):
+        return [False] + [True] * len(self.type.gate_names)
+
+    @property
+    def init(self):
+        return [self.type.v_init] + self.type.default_gate_inits
 
 
 @dataclass

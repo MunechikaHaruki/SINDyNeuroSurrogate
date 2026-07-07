@@ -1,5 +1,5 @@
-from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -7,8 +7,51 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..registry.compartments import DEFAULT_PARAMS_BY_TYPE
-from .network import NeuronGraph
+from .network import CompartmentType, NeuronGraph
+
+
+@dataclass(frozen=True)
+class GroupSpec:
+    """同一 CompartmentType を共有する compartment 群を vmap 並列実行する 1 単位。
+    型情報 (comp_type) と実行時データ (indices, params) を分けて保持。"""
+
+    comp_type: CompartmentType  # 「型」= kernel + gate構造 + param_cls
+    indices: np.ndarray  # shape (N_group,)
+    params: Any | None  # batched NamedTuple (prefix (N_group,))、param_cls=None なら None
+
+    @classmethod
+    def from_comps(cls, comps: list, indices: np.ndarray) -> "GroupSpec":
+        """同type Compartment 群 → 1つの GroupSpec に集約。
+        全 comp が同じ CompartmentType を共有する前提。"""
+        comp_type = comps[0].type
+        if comp_type.param_cls is None:
+            params = None
+        else:
+            params = jax.tree.map(
+                lambda *xs: jnp.asarray(xs), *[c.resolved_params for c in comps]
+            )
+        return cls(comp_type=comp_type, indices=indices, params=params)
+
+    def apply(
+        self,
+        dvar: jnp.ndarray,
+        curr_x: jnp.ndarray,
+        I_internal: jnp.ndarray,
+        v_vec: jnp.ndarray,
+        gate_offsets: np.ndarray,
+    ) -> jnp.ndarray:
+        """comp_type.kernel を vmap 展開して dvar を更新して返す"""
+        idx = self.indices
+        n_state = len(self.comp_type.gate_names)
+        state_idx = gate_offsets[idx][:, None] + np.arange(n_state)
+        in_axes = (None if self.params is None else 0, 0, 0, 0)
+        dv, dstate = jax.vmap(self.comp_type.kernel, in_axes=in_axes)(
+            self.params, I_internal[idx], v_vec[idx], curr_x[state_idx]
+        )
+        dvar = dvar.at[idx].set(dv)
+        if n_state > 0:
+            dvar = dvar.at[state_idx.ravel()].set(dstate.ravel())
+        return dvar
 
 
 @dataclass
@@ -34,34 +77,20 @@ class StateAccumulator:
         return np.array(self.init, dtype=np.float64)
 
 
-def _stack_params_or_empty(items: list, type_name: str):
-    """ノード別 params を stack。空なら shape (0,) の空 batch を返す (vmap size-0 用)"""
-    default = DEFAULT_PARAMS_BY_TYPE[type_name]
-    if items:
-        return jax.tree.map(lambda *xs: jnp.asarray(xs), *items)
-    return jax.tree.map(lambda x: jnp.empty((0,), dtype=jnp.asarray(x).dtype), default)
-
-
 def build_indices(net: NeuronGraph):
     nodes = net.nodes
     N = len(nodes)
     gate_offsets = np.full(N, -1, dtype=np.int32)
-    ids_list: dict[str, list] = {"hh": [], "passive": [], "surr": [], "traub": []}
-    params_list: dict[str, list] = {"hh": [], "passive": [], "traub": []}
+    # type_name で動的にグルーピング (ハードコード脱却)
+    grouped: dict[str, list[tuple[int, Any]]] = {}
     acc = StateAccumulator()
 
-    # [Pass 1] 電位変数の収集
+    # [Pass 1] 電位変数の収集 + type別グルーピング
     for i, comp in enumerate(nodes):
         acc.add(i, [comp.vars[0]], [comp.gate[0]], [comp.init[0]])
-        ids_list[comp.type_name].append(i)
-        if comp.type_name in params_list:
-            params_list[comp.type_name].append(
-                comp.params
-                if comp.params is not None
-                else DEFAULT_PARAMS_BY_TYPE[comp.type_name]
-            )
+        grouped.setdefault(comp.type_name, []).append((i, comp))
 
-    # [Pass 2] ゲート変数の収集
+    # [Pass 2] ゲート/状態変数の収集
     current_offset = N
     for i, comp in enumerate(nodes):
         gate_vars = comp.vars[1:]
@@ -70,18 +99,19 @@ def build_indices(net: NeuronGraph):
             acc.add(i, comp.vars[1:], comp.gate[1:], comp.init[1:])
             current_offset += len(gate_vars)
 
-    ids = defaultdict(lambda: np.array([], dtype=np.int32))
-    for k, v in ids_list.items():
-        ids[k] = np.array(v, dtype=np.int32)
-
-    params_batched = {k: _stack_params_or_empty(v, k) for k, v in params_list.items()}
+    groups: dict[str, GroupSpec] = {
+        type_name: GroupSpec.from_comps(
+            comps=[c for _, c in items],
+            indices=np.array([i for i, _ in items], dtype=np.int32),
+        )
+        for type_name, items in grouped.items()
+    }
 
     return {
         "gate_offsets": gate_offsets,
-        "ids": ids,
+        "groups": groups,
         "init": acc.to_init(),
         "coords": acc.to_coords(),
-        "params": params_batched,
     }
 
 

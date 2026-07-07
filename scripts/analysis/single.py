@@ -161,7 +161,6 @@ def calc_eval(
             targets=set(surrogate_targets),
             make_surr=surrogate_model.make_surr_comp,
         ),
-        surrogate_model=surrogate_model,
     )
 
     return {

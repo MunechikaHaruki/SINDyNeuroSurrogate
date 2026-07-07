@@ -55,7 +55,8 @@ class LoadedSurrogate:
     run_name: str
 
     def make_surr_comp(self, name: str) -> Compartment:
-        return make_surr_comp(name, self.gate_inits)
+        xi, theta = self.sindy_args
+        return make_surr_comp(name, self.gate_inits, xi, theta)
 
     @property
     def xi(self) -> np.ndarray:

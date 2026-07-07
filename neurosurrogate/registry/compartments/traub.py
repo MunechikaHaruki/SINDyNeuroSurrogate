@@ -5,7 +5,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ...core.network import Compartment
+from ...core.network import Compartment, CompartmentType
 from ...opcost import OpCost
 from .common import lin_exp_form
 
@@ -137,6 +137,33 @@ class TraubParams(NamedTuple):
     phi_area: float = 17402.0 * 3.320e-5  # phi * area
 
 
+def calc_traub_channel(p: TraubParams, u_t, v, states):
+    """Traub: (dv, dstates 10次元) を返す"""
+    M, S, N, C, A, H, R, B, Q, XI = [states[i] for i in range(10)]
+    i_leak = p.g_leak * (v - p.V_LEAK)
+    i_na = p.g_Na * M * M * H * (v - p.V_Na)
+    i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
+    i_kdr = p.g_K_DR * N * (v - p.V_K)
+    i_ka = p.g_K_A * A * B * (v - p.V_K)
+    i_kahp = p.g_K_AHP * Q * (v - p.V_K)
+    i_kc = p.g_K_C * C * jnp.minimum(1.0, XI / 250.0) * (v - p.V_K)
+    i_ion = i_leak + i_na + i_ca + i_kdr + i_ka + i_kahp + i_kc
+    dv = (-i_ion + u_t) / p.Cm
+
+    dM = _traub_dstate_v("M", v, M)
+    dS = _traub_dstate_v("S", v, S)
+    dN = _traub_dstate_v("N", v, N)
+    dC = _traub_dstate_v("C", v, C)
+    dA = _traub_dstate_v("A", v, A)
+    dH = _traub_dstate_v("H", v, H)
+    dR = _traub_dstate_v("R", v, R)
+    dB = _traub_dstate_v("B", v, B)
+    dQ = traub_alpha_q(XI) * (1.0 - Q) - traub_beta_q(XI) * Q
+    dXI = -p.phi_area * i_ca - p.Beta * XI
+
+    return dv, jnp.stack([dM, dS, dN, dC, dA, dH, dR, dB, dQ, dXI])
+
+
 # 状態順序: [M, S, N, C, A, H, R, B, Q, XI]
 TRAUB_STATE_NAMES = ["M", "S", "N", "C", "A", "H", "R", "B", "Q", "XI"]
 
@@ -158,49 +185,24 @@ def _traub_state_inits(p: TraubParams):
     return [m, s, n, c, a, h, r, b, q, xi]
 
 
-def calc_traub_ion_currents(p: TraubParams, v, states):
-    M, S, N, C, A, H, R, B, Q, XI = [states[i] for i in range(10)]
-    i_leak = p.g_leak * (v - p.V_LEAK)
-    i_na = p.g_Na * M * M * H * (v - p.V_Na)
-    i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
-    i_kdr = p.g_K_DR * N * (v - p.V_K)
-    i_ka = p.g_K_A * A * B * (v - p.V_K)
-    i_kahp = p.g_K_AHP * Q * (v - p.V_K)
-    i_kc = p.g_K_C * C * jnp.minimum(1.0, XI / 250.0) * (v - p.V_K)
-    return i_leak + i_na + i_ca + i_kdr + i_ka + i_kahp + i_kc, i_ca
-
-
 def _traub_dstate_v(name, v, x):
     a, b = _TRAUB_RATE_V[name]
     return a(v) * (1.0 - x) - b(v) * x
 
 
-def calc_traub_channel(p: TraubParams, u_t, v, states):
-    i_ion, i_ca = calc_traub_ion_currents(p, v, states)
-    dv = (-i_ion + u_t) / p.Cm
-
-    M, S, N, C, A, H, R, B, Q, XI = [states[i] for i in range(10)]
-    dM = _traub_dstate_v("M", v, M)
-    dS = _traub_dstate_v("S", v, S)
-    dN = _traub_dstate_v("N", v, N)
-    dC = _traub_dstate_v("C", v, C)
-    dA = _traub_dstate_v("A", v, A)
-    dH = _traub_dstate_v("H", v, H)
-    dR = _traub_dstate_v("R", v, R)
-    dB = _traub_dstate_v("B", v, B)
-    dQ = traub_alpha_q(XI) * (1.0 - Q) - traub_beta_q(XI) * Q
-    dXI = -p.phi_area * i_ca - p.Beta * XI
-
-    return dv, jnp.stack([dM, dS, dN, dC, dA, dH, dR, dB, dQ, dXI])
-
-
 _TRAUB_DEFAULT_PARAMS = TraubParams()
 
 
-TRAUB_TEMPLATE = Compartment(
-    type_name="traub",
-    gate_inits=_traub_state_inits(_TRAUB_DEFAULT_PARAMS),
+TRAUB_TYPE = CompartmentType(
+    name="traub",
+    kernel=calc_traub_channel,
+    param_cls=TraubParams,
+    default_params=_TRAUB_DEFAULT_PARAMS,
     gate_names=TRAUB_STATE_NAMES,
+    default_gate_inits=_traub_state_inits(_TRAUB_DEFAULT_PARAMS),
     v_init=TRAUB_V_INIT,
-    OpCost=OpCost(),  # TODO: 実測 or 積算
+    opcost=OpCost(),  # TODO: 実測 or 積算
 )
+
+
+TRAUB_TEMPLATE = Compartment(name="", type=TRAUB_TYPE)

@@ -111,7 +111,6 @@ def _iter_amp_datasets(
                     targets=set(target_comp_names),
                     make_surr=surrogate.make_surr_comp,
                 ),
-                surrogate_model=surrogate,
             )
             for rid, surrogate in surrogates.items()
         }
