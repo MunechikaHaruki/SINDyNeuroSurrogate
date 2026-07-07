@@ -13,7 +13,7 @@ from mlflow_io import RunInfo, get_runs_df, setup_mlflow
 
 from neurosurrogate.registry.current import FUNC_MAP
 from neurosurrogate.registry.neuron import MCMODELS
-from neurosurrogate.view.engine import view_neuron_graph
+from neurosurrogate.view.plots import view_neuron_graph
 
 CurrentList: list = list(FUNC_MAP.keys())
 MplStyle = Literal["paper", "presentation"]

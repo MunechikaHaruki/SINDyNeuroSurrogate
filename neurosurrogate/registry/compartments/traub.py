@@ -6,7 +6,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 
 from ...dataset import Compartment
-from ...metrics.sindy import OpCost
+from ...opcost import OpCost
 from .common import lin_exp_form
 
 TRAUB_V_LEAK = -60.0

@@ -1,34 +1,14 @@
 import json
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 from sklearn.decomposition import PCA
 
+from ..opcost import OpCost
+
 if TYPE_CHECKING:
-    from ..surrogate.neurosindy import SINDyNeuroSurrogate
-
-
-@dataclass(frozen=True)
-class OpCost:
-    exp: int = 0
-    div: int = 0
-    pm: int = 0
-    mul: int = 0
-
-    def __add__(self, other: "OpCost") -> "OpCost":
-        return OpCost(
-            **{
-                f.name: getattr(self, f.name) + getattr(other, f.name)
-                for f in fields(self)
-            }
-        )
-
-    def __mul__(self, n: int) -> "OpCost":
-        return OpCost(**{f.name: getattr(self, f.name) * n for f in fields(self)})
-
-    def to_dict(self) -> dict[str, int]:
-        return {f.name: getattr(self, f.name) for f in fields(self)}
+    from .neurosindy import SINDyNeuroSurrogate
 
 
 def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):

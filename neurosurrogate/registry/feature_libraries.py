@@ -1,5 +1,5 @@
 from neurosurrogate.features.libraries import LibraryEntry, SubLibrary
-from neurosurrogate.metrics.sindy import OpCost
+from neurosurrogate.opcost import OpCost
 from neurosurrogate.registry.compartments.hh import (
     HH_RATE_COST_MAP,
     alpha_h,

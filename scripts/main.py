@@ -14,7 +14,7 @@ from omegaconf import DictConfig, OmegaConf
 from neurosurrogate.dataset import DatasetConfig
 from neurosurrogate.engine import unified_simulator
 from neurosurrogate.features.libraries import FeatureLibrary
-from neurosurrogate.metrics.sindy import sindy_analysis
+from neurosurrogate.surrogate.analysis import sindy_analysis
 from neurosurrogate.registry import feature_libraries as registry_feature_libraries
 from neurosurrogate.registry.compartments import COMPARTMENT_TEMPLATES
 from neurosurrogate.registry.neuron import MCMODELS

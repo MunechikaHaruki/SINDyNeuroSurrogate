@@ -6,7 +6,7 @@ from functools import cached_property
 import hydra
 import numpy as np
 
-from .metrics.sindy import OpCost
+from .opcost import OpCost
 from .registry.current import FUNC_MAP
 
 

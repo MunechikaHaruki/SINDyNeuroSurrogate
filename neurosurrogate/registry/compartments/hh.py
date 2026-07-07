@@ -3,7 +3,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 
 from ...dataset import Compartment
-from ...metrics.sindy import OpCost
+from ...opcost import OpCost
 from .common import _gate_ode, _inf_ode, lin_exp_form
 
 

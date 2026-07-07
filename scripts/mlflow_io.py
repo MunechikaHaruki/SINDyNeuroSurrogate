@@ -16,9 +16,9 @@ import yaml
 from matplotlib.figure import Figure
 
 from neurosurrogate.dataset import Compartment, DatasetConfig
-from neurosurrogate.metrics.sindy import SINDySummary
+from neurosurrogate.surrogate.analysis import SINDySummary
 from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate, make_surr_comp
-from neurosurrogate.view.engine import view_model
+from neurosurrogate.view.plots import view_model
 
 TARGET_EXP = "test_static_params"
 
