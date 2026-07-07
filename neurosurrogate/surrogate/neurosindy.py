@@ -3,7 +3,7 @@ import logging
 import jax.numpy as jnp
 import numpy as np
 
-from ..registry.compartments import Compartment
+from ..dataset import Compartment
 
 logger = logging.getLogger(__name__)
 
