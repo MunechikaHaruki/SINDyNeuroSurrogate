@@ -13,15 +13,6 @@ _BUNDLE_FILE = "surrogate.joblib"
 logger = logging.getLogger(__name__)
 
 
-def _dummy_theta(v, latent, i_int):
-    return jnp.zeros(1, dtype=jnp.float64)
-
-
-_dummy_xi = np.zeros((2, 1), dtype=np.float64)
-
-DUMMY_SINDY_ARGS = (_dummy_xi, _dummy_theta)
-
-
 def _make_surr_kernel(xi_matrix, compute_theta):
     """統一 signature (params, i_t, v, state) -> (dv, dstate) の SINDy kernel closure"""
 
@@ -134,12 +125,7 @@ class SINDyNeuroSurrogate:
         self.equations: str = "\n".join(self.sindy.equations(precision=3))
 
     def make_surr_comp(self, name: str) -> Compartment:
-        xi, theta = self.sindy_args
-        return make_surr_comp(name, self._gate_inits, xi, theta)
-
-    @property
-    def sindy_args(self):
-        return (self.xi, self.compute_theta)
+        return make_surr_comp(name, self._gate_inits, self.xi, self.compute_theta)
 
     def save(self, dir: Path | str, extra: dict | None = None) -> None:
         """dir 直下に surrogate.joblib 1 ファイルを書き出し。extra は任意メタ。"""
