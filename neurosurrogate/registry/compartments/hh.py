@@ -4,6 +4,7 @@ import jax.numpy as jnp
 
 from ...core.network import Compartment, CompartmentType
 from ...opcost import OpCost
+from ...surrogate.libraries import LibraryEntry
 from .common import _gate_ode, _inf_ode, lin_exp_form
 
 
@@ -91,6 +92,40 @@ HH_RATE_COST_MAP: dict[str, OpCost] = {
     "alpha_n": OpCost(exp=1, div=1, pm=2, mul=2),
     "beta_n": OpCost(exp=1, div=1, pm=1, mul=1),
 }
+
+
+def _rate_entry(name: str, f, cost: OpCost) -> LibraryEntry:
+    """レート関数 f を f(x) 形式の 1入力 LibraryEntry に。"""
+    return LibraryEntry(
+        func=f,
+        name_func=(lambda nm: lambda x: f"{nm}({x})")(name),
+        cost=cost,
+    )
+
+
+ALPHA_M_ENTRY = _rate_entry("alpha_m", alpha_m, HH_RATE_COST_MAP["alpha_m"])
+BETA_M_ENTRY = _rate_entry("beta_m", beta_m, HH_RATE_COST_MAP["beta_m"])
+ALPHA_H_ENTRY = _rate_entry("alpha_h", alpha_h, HH_RATE_COST_MAP["alpha_h"])
+BETA_H_ENTRY = _rate_entry("beta_h", beta_h, HH_RATE_COST_MAP["beta_h"])
+ALPHA_N_ENTRY = _rate_entry("alpha_n", alpha_n, HH_RATE_COST_MAP["alpha_n"])
+BETA_N_ENTRY = _rate_entry("beta_n", beta_n, HH_RATE_COST_MAP["beta_n"])
+
+# 全 6 entry (alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n の順)
+HH_RATE_ENTRIES: list[LibraryEntry] = [
+    ALPHA_M_ENTRY,
+    BETA_M_ENTRY,
+    ALPHA_H_ENTRY,
+    BETA_H_ENTRY,
+    ALPHA_N_ENTRY,
+    BETA_N_ENTRY,
+]
+
+# ゲート pair (alpha, beta) × [m, h, n]
+HH_GATE_PAIRS: list[tuple[LibraryEntry, LibraryEntry]] = [
+    (ALPHA_M_ENTRY, BETA_M_ENTRY),
+    (ALPHA_H_ENTRY, BETA_H_ENTRY),
+    (ALPHA_N_ENTRY, BETA_N_ENTRY),
+]
 
 _HH_OPCOST = (
     sum(HH_RATE_COST_MAP.values(), OpCost())  # レート関数

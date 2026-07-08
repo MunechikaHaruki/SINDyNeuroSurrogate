@@ -1,79 +1,39 @@
 from collections.abc import Callable
+from typing import TypeAlias
 
 from neurosurrogate.opcost import OpCost
 from neurosurrogate.registry.compartments.hh import (
-    HH_RATE_COST_MAP,
-    alpha_h,
-    alpha_m,
-    alpha_n,
-    beta_h,
-    beta_m,
-    beta_n,
+    ALPHA_H_ENTRY,
+    ALPHA_M_ENTRY,
+    ALPHA_N_ENTRY,
+    HH_GATE_PAIRS,
+    HH_RATE_ENTRIES,
 )
 from neurosurrogate.surrogate.libraries import LibraryEntry
 
-FUNC_REGISTRY = {
-    "alpha_m": alpha_m,
-    "alpha_h": alpha_h,
-    "alpha_n": alpha_n,
-    "beta_m": beta_m,
-    "beta_h": beta_h,
-    "beta_n": beta_n,
-}
-
-GATE_PAIR_REGISTRY = {
-    "m": (alpha_m, beta_m),
-    "h": (alpha_h, beta_h),
-    "n": (alpha_n, beta_n),
-}
+GatePair: TypeAlias = tuple[LibraryEntry, LibraryEntry]  # (alpha_entry, beta_entry)
 
 
-def _build_gate(func_names: list[str], is_product: bool) -> list[LibraryEntry]:
-    entries: list[LibraryEntry] = []
-    for name in func_names:
-        rate_cost = HH_RATE_COST_MAP[name]
-        if not is_product:
-            f = FUNC_REGISTRY[name]
-            n = (lambda nm: lambda x: f"{nm}({x})")(name)
-            entries.append(LibraryEntry(func=f, name_func=n, cost=rate_cost))
-        else:
-            f = (lambda fn: lambda x, y: fn(x) * y)(FUNC_REGISTRY[name])
-            n = (lambda nm: lambda x, y: f"{nm}({x})*{y}")(name)
-            # alpha_k(V) を計算して g0 と乗算 → 内側関数 + mul 1 回
-            entries.append(
-                LibraryEntry(func=f, name_func=n, cost=rate_cost + OpCost(mul=1))
-            )
-    return entries
+def _to_product(entry: LibraryEntry) -> LibraryEntry:
+    """1入力 entry を (V, g) → f(V) * g の 2入力 entry に昇格。cost に mul 1 追加。"""
+    base_f, base_name = entry.func, entry.name_func
+    return LibraryEntry(
+        func=(lambda fn: lambda x, y: fn(x) * y)(base_f),
+        name_func=(lambda nfn: lambda x, y: f"{nfn(x)}*{y}")(base_name),
+        cost=entry.cost + OpCost(mul=1),
+    )
 
 
-def _build_relaxation(is_decay: bool) -> list[LibraryEntry]:
-    entries: list[LibraryEntry] = []
-    for g in ["m", "h", "n"]:
-        alpha_f, beta_f = GATE_PAIR_REGISTRY[g]
-        a_name, b_name = alpha_f.__name__, beta_f.__name__
-        if not is_decay:
-            entries.append(
-                LibraryEntry(
-                    func=(lambda af: lambda x: af(x))(alpha_f),
-                    name_func=(lambda an: lambda x: f"{an}({x})")(a_name),
-                    cost=HH_RATE_COST_MAP[a_name],
-                )
-            )
-        else:
-            # alpha_k(V) + beta_k(V) → pm 1, それを g0 と乗算 → mul 1
-            compose_extra = OpCost(pm=1, mul=1)
-            entries.append(
-                LibraryEntry(
-                    func=(lambda af, bf: lambda x, y: (af(x) + bf(x)) * y)(alpha_f, beta_f),
-                    name_func=(lambda an, bn: lambda x, y: f"({an}({x})+{bn}({x}))*{y}")(
-                        a_name, b_name
-                    ),
-                    cost=HH_RATE_COST_MAP[a_name]
-                    + HH_RATE_COST_MAP[b_name]
-                    + compose_extra,
-                )
-            )
-    return entries
+def _to_relaxation_decay(alpha_e: LibraryEntry, beta_e: LibraryEntry) -> LibraryEntry:
+    """(alpha_entry, beta_entry) → (alpha(V) + beta(V)) * g の 2入力 entry。"""
+    af, bf = alpha_e.func, beta_e.func
+    an, bn = alpha_e.name_func, beta_e.name_func
+    # alpha_k(V) + beta_k(V) → pm 1, それを g0 と乗算 → mul 1
+    return LibraryEntry(
+        func=(lambda af_, bf_: lambda x, y: (af_(x) + bf_(x)) * y)(af, bf),
+        name_func=(lambda an_, bn_: lambda x, y: f"({an_(x)}+{bn_(x)})*{y}")(an, bn),
+        cost=alpha_e.cost + beta_e.cost + OpCost(pm=1, mul=1),
+    )
 
 
 def _build_volt() -> list[LibraryEntry]:
@@ -163,17 +123,18 @@ def _build_basis(n: int) -> list[LibraryEntry]:
     return entries
 
 
-GATE_ALL = ["alpha_m", "beta_m", "alpha_h", "beta_h", "alpha_n", "beta_n"]
-GATE_FORWARD = ["alpha_m", "alpha_h", "alpha_n"]
+GATE_ALL: list[LibraryEntry] = HH_RATE_ENTRIES
+GATE_FORWARD: list[LibraryEntry] = [ALPHA_M_ENTRY, ALPHA_H_ENTRY, ALPHA_N_ENTRY]
+GATE_PAIRS: list[GatePair] = HH_GATE_PAIRS
 
 # (type, arity) → LibraryEntry list。import 時 1 回計算 → 以降は定数辞書 lookup。
 LIB_ENTRIES: dict[tuple[str, int], list[LibraryEntry]] = {
-    ("gate", 1): _build_gate(GATE_ALL, is_product=False),
-    ("gate", 2): _build_gate(GATE_ALL, is_product=True),
-    ("gate_forward", 1): _build_gate(GATE_FORWARD, is_product=False),
-    ("gate_forward", 2): _build_gate(GATE_FORWARD, is_product=True),
-    ("relaxation", 1): _build_relaxation(is_decay=False),
-    ("relaxation", 2): _build_relaxation(is_decay=True),
+    ("gate", 1): GATE_ALL,
+    ("gate", 2): [_to_product(e) for e in GATE_ALL],
+    ("gate_forward", 1): GATE_FORWARD,
+    ("gate_forward", 2): [_to_product(e) for e in GATE_FORWARD],
+    ("relaxation", 1): [a for a, _ in GATE_PAIRS],
+    ("relaxation", 2): [_to_relaxation_decay(a, b) for a, b in GATE_PAIRS],
     ("volt", 3): _build_volt(),
     ("gate_poly_volt", 2): _build_gate_poly_volt(),
     ("basis", 2): _build_basis(2),
