@@ -3,14 +3,12 @@ import os
 
 import hydra
 import mlflow
-import pysindy as ps
 from mlflow_io import log_surrogate_model, setup_mlflow
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.registry.neuron import MCMODELS
-from neurosurrogate.surrogate.libraries import FeatureLibrary
 from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate
 
 logger = logging.getLogger(__name__)
@@ -22,21 +20,12 @@ def _disable_proxy() -> None:
     os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 
-def _build_surrogate(cfg_sindy) -> SINDyNeuroSurrogate:
-    library_specs = cfg_sindy["library_specs"]
-    feature_lib = FeatureLibrary.build(library_specs)
-    return SINDyNeuroSurrogate(
-        preprocessor=hydra.utils.instantiate(cfg_sindy["preprocessor"]),
-        initialized_sindy=ps.SINDy(
-            feature_library=feature_lib.library,
-            optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
-        ),
-        library_specs=library_specs,
-    )
-
-
 def cli_flow(cfg_sindy):
-    surrogate = _build_surrogate(cfg_sindy)
+    surrogate = SINDyNeuroSurrogate(
+        preprocessor=hydra.utils.instantiate(cfg_sindy["preprocessor"]),
+        optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
+        library_specs=cfg_sindy["library_specs"],
+    )
     with mlflow.start_run(run_name=f"{cfg_sindy['name']}"):
         train_dataset_cfg = DatasetConfig.build_dataset(**cfg_sindy["datasets"])
         surrogate.fit(

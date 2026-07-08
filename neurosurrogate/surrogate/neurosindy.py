@@ -4,6 +4,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import joblib
 import numpy as np
+import pysindy as ps
 
 from ..core.network import Compartment, CompartmentType
 from .libraries import FeatureLibrary
@@ -96,10 +97,14 @@ def _build_compute_theta(feature_lib: FeatureLibrary):
 
 
 class SINDyNeuroSurrogate:
-    def __init__(self, preprocessor, initialized_sindy, library_specs: list[dict]):
+    def __init__(self, preprocessor, optimizer, library_specs: list[dict]):
         self.preprocessor = preprocessor
-        self.sindy = initialized_sindy
         self.library_specs = library_specs
+        self._feature_lib = FeatureLibrary.build(library_specs)
+        self.sindy = ps.SINDy(
+            feature_library=self._feature_lib.library,
+            optimizer=optimizer,
+        )
 
     def fit(self, train_xr, target_comp_id) -> None:
         self.train_comp_id: int = target_comp_id
@@ -117,10 +122,7 @@ class SINDyNeuroSurrogate:
             t=train_xr["time"].to_numpy(),
             feature_names=input_features,
         )
-        # FeatureLibrary から直接 compute_theta 構築 (exec なし)
-        feature_lib = FeatureLibrary.build(self.library_specs)
-        self.compute_theta = _build_compute_theta(feature_lib)
-        # save 用スナップショット (fit 後は self.sindy に触れない)
+        self.compute_theta = _build_compute_theta(self._feature_lib)
         self.xi: np.ndarray = self.sindy.coefficients()
         self.feature_names: list = self.sindy.get_feature_names()
         self.equations: str = "\n".join(self.sindy.equations(precision=3))
@@ -148,8 +150,8 @@ class SINDyNeuroSurrogate:
         self.preprocessor = bundle["preprocessor"]
         self.sindy = None
         self.library_specs = bundle["library_specs"]
-        feature_lib = FeatureLibrary.build(self.library_specs)
-        self.compute_theta = _build_compute_theta(feature_lib)
+        self._feature_lib = FeatureLibrary.build(self.library_specs)
+        self.compute_theta = _build_compute_theta(self._feature_lib)
         self.xi = bundle["xi"]
         self._gate_inits = bundle["gate_inits"]
         self.feature_names = bundle["feature_names"]
