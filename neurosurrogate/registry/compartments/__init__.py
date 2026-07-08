@@ -1,35 +1,9 @@
-from .hh import (
-    HH_TEMPLATE,
-    HH_TYPE,
-    PASSIVE_TEMPLATE,
-    PASSIVE_TYPE,
-    HHParams,
-    PassiveParams,
-)
-from .traub import (
-    TRAUB_TEMPLATE,
-    TRAUB_TYPE,
-    TraubParams,
-)
+from .hh import HH_TYPE, PASSIVE_TYPE
+from .traub import TRAUB_TYPE
 
-# CompartmentType (物理の型) を name で引く
+# type 名文字列 → CompartmentType の dispatch table (from_dict / chain 等で使用)
 COMPARTMENT_TYPES = {
     "hh": HH_TYPE,
     "passive": PASSIVE_TYPE,
     "traub": TRAUB_TYPE,
 }
-
-# 後方互換: 空 name の Compartment テンプレ
-COMPARTMENT_TEMPLATES = {
-    "hh": HH_TEMPLATE,
-    "passive": PASSIVE_TEMPLATE,
-    "traub": TRAUB_TEMPLATE,
-}
-
-__all__ = [
-    "COMPARTMENT_TEMPLATES",
-    "COMPARTMENT_TYPES",
-    "HHParams",
-    "PassiveParams",
-    "TraubParams",
-]

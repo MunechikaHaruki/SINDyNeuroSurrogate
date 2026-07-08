@@ -1,4 +1,3 @@
-from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
@@ -40,31 +39,20 @@ class CompartmentType:
         return [self.v_init] + self.default_gate_inits
 
 
+@dataclass(frozen=True)
 class Compartment:
     """
     グラフ内の1ノード。物理型 (CompartmentType) への参照と、カスタム params だけを持つ。
     """
 
-    def __init__(
-        self,
-        name: str,
-        type: CompartmentType,
-        params: "tuple | None" = None,
-    ):
-        self.name = name
-        self.type = type
-        self._params = params
-
-    def with_name(self, name: str) -> "Compartment":
-        return Compartment(name=name, type=self.type, params=self._params)
-
-    def with_params(self, params: tuple) -> "Compartment":
-        return Compartment(name=self.name, type=self.type, params=params)
+    name: str
+    type: CompartmentType
+    params: "tuple | None" = None
 
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "type": self.type.name}
-        if self._params is not None:
-            d["params"] = self._params._asdict()
+        if self.params is not None:
+            d["params"] = self.params._asdict()
         return d
 
     @classmethod
@@ -72,15 +60,8 @@ class Compartment:
         from ..registry.compartments import COMPARTMENT_TYPES
 
         comp_type = COMPARTMENT_TYPES[d["type"]]
-        comp = Compartment(name=d["name"], type=comp_type)
-        if "params" in d:
-            assert comp_type.param_cls is not None
-            return comp.with_params(comp_type.param_cls(**d["params"]))
-        return comp
-
-    @property
-    def params(self):
-        return self._params
+        params = comp_type.param_cls(**d["params"]) if "params" in d else None
+        return cls(name=d["name"], type=comp_type, params=params)
 
 
 @dataclass
@@ -184,38 +165,6 @@ class NeuronGraph:
     ) -> "NeuronGraph":
         nodes = [make_surr(n.name) if n.name in targets else n for n in self.nodes]
         return NeuronGraph(nodes=nodes, edges=self.edges, stim=self.stim)
-
-    @staticmethod
-    def chain(
-        node_types: list[str],
-        weights: list[float],
-        stim: int = 0,
-    ) -> "NeuronGraph":
-        """
-        ノード名は型の頭文字 + 0始まり連番で自動生成
-        例: ["passive", "hh", "passive"] → ["p0", "h0", "p1"]
-        """
-        from ..registry.compartments import COMPARTMENT_TEMPLATES
-
-        assert len(weights) == len(node_types) - 1, (
-            f"weights の長さは len(node_types) - 1 = {len(node_types) - 1} である必要があります"
-        )
-        counters: Counter = Counter()
-        nodes = []
-        for t in node_types:
-            prefix = t[0]  # "hh" → "h", "passive" → "p"
-            nodes.append(
-                COMPARTMENT_TEMPLATES[t].with_name(f"{prefix}{counters[prefix]}")
-            )
-            counters[prefix] += 1
-
-        return NeuronGraph(
-            nodes=nodes,
-            edges=[
-                Edge(nodes[i].name, nodes[i + 1].name, w) for i, w in enumerate(weights)
-            ],
-            stim=nodes[stim].name,
-        )
 
 
 @dataclass

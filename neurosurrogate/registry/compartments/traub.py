@@ -5,7 +5,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ...core.network import Compartment, CompartmentType
+from ...core.network import CompartmentType
 from ...opcost import OpCost
 from .common import lin_exp_form
 
@@ -207,6 +207,3 @@ TRAUB_TYPE = CompartmentType(
     v_init=TRAUB_V_INIT,
     opcost=OpCost(),  # TODO: 実測 or 積算
 )
-
-
-TRAUB_TEMPLATE = Compartment(name="", type=TRAUB_TYPE)

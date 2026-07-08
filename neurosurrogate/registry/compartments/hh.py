@@ -2,7 +2,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ...core.network import Compartment, CompartmentType
+from ...core.network import CompartmentType
 from ...opcost import OpCost
 from ...surrogate.libraries import LibraryEntry
 from .common import _gate_ode, _inf_ode, lin_exp_form
@@ -168,9 +168,3 @@ PASSIVE_TYPE = CompartmentType(
     v_init=-65,
     opcost=OpCost(div=1, pm=2, mul=1),
 )
-
-
-# --- 後方互換テンプレ (name="" の Compartment) ---
-
-HH_TEMPLATE = Compartment(name="", type=HH_TYPE)
-PASSIVE_TEMPLATE = Compartment(name="", type=PASSIVE_TYPE)

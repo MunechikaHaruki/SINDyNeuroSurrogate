@@ -1,10 +1,38 @@
-from ..core.network import Edge, NeuronGraph
-from .compartments import COMPARTMENT_TEMPLATES, HHParams, TraubParams
+from collections import Counter
+
+from ..core.network import Compartment, Edge, NeuronGraph
+from .compartments import COMPARTMENT_TYPES
+from .compartments.hh import HH_TYPE, PASSIVE_TYPE, HHParams
+from .compartments.traub import TRAUB_TYPE, TraubParams
 from .traub19 import build_traub19
 
-_hh = COMPARTMENT_TEMPLATES["hh"]
-_passive = COMPARTMENT_TEMPLATES["passive"]
-_traub = COMPARTMENT_TEMPLATES["traub"]
+
+def chain(
+    node_types: list[str],
+    weights: list[float],
+    stim: int = 0,
+) -> NeuronGraph:
+    """type 名リストから直鎖 NeuronGraph 構築。
+    ノード名は型の頭文字 + 0始まり連番。例: ["passive","hh","passive"] → ["p0","h0","p1"]"""
+    assert len(weights) == len(node_types) - 1, (
+        f"weights の長さは len(node_types) - 1 = {len(node_types) - 1} である必要があります"
+    )
+    counters: Counter = Counter()
+    nodes = []
+    for t in node_types:
+        prefix = t[0]
+        nodes.append(
+            Compartment(name=f"{prefix}{counters[prefix]}", type=COMPARTMENT_TYPES[t])
+        )
+        counters[prefix] += 1
+    return NeuronGraph(
+        nodes=nodes,
+        edges=[
+            Edge(nodes[i].name, nodes[i + 1].name, w) for i, w in enumerate(weights)
+        ],
+        stim=nodes[stim].name,
+    )
+
 
 # per-compartment パラメータ例
 # soma: デフォルト (高 G_NA)、dendrite: G_NA/G_K 低減で発火閾値↑
@@ -15,41 +43,35 @@ _TRAUB_DENDRITE_PARAMS = TraubParams(g_Na=5.0, g_K_DR=10.0, g_K_A=1.0)
 
 MCMODELS: dict[str, NeuronGraph] = {
     "hh": NeuronGraph(
-        nodes=[_hh.with_name("soma")],
+        nodes=[Compartment(name="soma", type=HH_TYPE)],
         edges=[],
         stim="soma",
     ),
     "traub": NeuronGraph(
-        nodes=[_traub.with_name("soma")],
+        nodes=[Compartment(name="soma", type=TRAUB_TYPE)],
         edges=[],
         stim="soma",
     ),
-    "php": NeuronGraph.chain(["passive", "hh", "passive"], [1.0, 0.7]),
-    "hhp": NeuronGraph.chain(["hh", "hh", "passive"], [1.0, 0.7]),
-    "pph": NeuronGraph.chain(["passive", "hh", "hh"], [1.0, 0.7]),
-    "phhpp": NeuronGraph.chain(
-        ["passive", "hh", "hh", "passive", "passive"], [1.0, 0.7, 0.7, 0.5]
-    ),
-    "pphhp": NeuronGraph.chain(
-        ["passive", "passive", "hh", "hh", "passive"], [1.0, 0.7, 0.7, 0.5]
-    ),
-    "phhhp": NeuronGraph.chain(
-        ["passive", "hh", "hh", "hh", "passive"], [1.0, 0.7, 0.7, 0.5]
-    ),
+    "php": chain(["passive", "hh", "passive"], [1.0, 0.7]),
+    "hhp": chain(["hh", "hh", "passive"], [1.0, 0.7]),
+    "pph": chain(["passive", "hh", "hh"], [1.0, 0.7]),
+    "phhpp": chain(["passive", "hh", "hh", "passive", "passive"], [1.0, 0.7, 0.7, 0.5]),
+    "pphhp": chain(["passive", "passive", "hh", "hh", "passive"], [1.0, 0.7, 0.7, 0.5]),
+    "phhhp": chain(["passive", "hh", "hh", "hh", "passive"], [1.0, 0.7, 0.7, 0.5]),
     "hh_multi": NeuronGraph(
         nodes=[
-            _hh.with_name("soma"),
-            _hh.with_name("d1").with_params(_HH_DENDRITE_PARAMS),
-            _hh.with_name("d2").with_params(_HH_DENDRITE_PARAMS),
+            Compartment(name="soma", type=HH_TYPE),
+            Compartment(name="d1", type=HH_TYPE, params=_HH_DENDRITE_PARAMS),
+            Compartment(name="d2", type=HH_TYPE, params=_HH_DENDRITE_PARAMS),
         ],
         edges=[Edge("soma", "d1", 1.0), Edge("d1", "d2", 0.7)],
         stim="soma",
     ),
     "traub_multi": NeuronGraph(
         nodes=[
-            _traub.with_name("soma"),
-            _traub.with_name("d1").with_params(_TRAUB_DENDRITE_PARAMS),
-            _traub.with_name("d2").with_params(_TRAUB_DENDRITE_PARAMS),
+            Compartment(name="soma", type=TRAUB_TYPE),
+            Compartment(name="d1", type=TRAUB_TYPE, params=_TRAUB_DENDRITE_PARAMS),
+            Compartment(name="d2", type=TRAUB_TYPE, params=_TRAUB_DENDRITE_PARAMS),
         ],
         edges=[Edge("soma", "d1", 1.0), Edge("d1", "d2", 0.7)],
         stim="soma",
@@ -57,13 +79,13 @@ MCMODELS: dict[str, NeuronGraph] = {
     "traub19": build_traub19(),
     "hh7": NeuronGraph(
         nodes=[
-            _passive.with_name("p1"),
-            _hh.with_name("h1"),
-            _hh.with_name("h2"),
-            _hh.with_name("h3"),
-            _hh.with_name("h4"),
-            _passive.with_name("p2"),
-            _passive.with_name("p3"),
+            Compartment(name="p1", type=PASSIVE_TYPE),
+            Compartment(name="h1", type=HH_TYPE),
+            Compartment(name="h2", type=HH_TYPE),
+            Compartment(name="h3", type=HH_TYPE),
+            Compartment(name="h4", type=HH_TYPE),
+            Compartment(name="p2", type=PASSIVE_TYPE),
+            Compartment(name="p3", type=PASSIVE_TYPE),
         ],
         edges=[
             Edge("p1", "h1", 1.0),
