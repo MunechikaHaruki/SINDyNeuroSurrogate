@@ -9,7 +9,6 @@ from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.registry.compartments import hh as hh_rate_module
 from neurosurrogate.registry.neuron import MCMODELS
 from neurosurrogate.surrogate.libraries import FeatureLibrary
 from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate
@@ -24,14 +23,15 @@ def _disable_proxy() -> None:
 
 
 def _build_surrogate(cfg_sindy) -> SINDyNeuroSurrogate:
-    feature_lib = FeatureLibrary.build(cfg_sindy["library_specs"])
+    library_specs = cfg_sindy["library_specs"]
+    feature_lib = FeatureLibrary.build(library_specs)
     return SINDyNeuroSurrogate(
-        hydra.utils.instantiate(cfg_sindy["preprocessor"]),
-        ps.SINDy(
+        preprocessor=hydra.utils.instantiate(cfg_sindy["preprocessor"]),
+        initialized_sindy=ps.SINDy(
             feature_library=feature_lib.library,
             optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
         ),
-        hh_rate_module,
+        library_specs=library_specs,
     )
 
 
@@ -48,7 +48,6 @@ def cli_flow(cfg_sindy):
         log_surrogate_model(
             surrogate,
             train_dataset_cfg,
-            library_specs=cfg_sindy["library_specs"],
             train_comp_identifier=cfg_sindy["train_comp_identifier"],
         )
 

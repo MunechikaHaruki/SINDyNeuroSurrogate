@@ -1,24 +1,18 @@
-import importlib
-import json
 import logging
 import os
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
-import joblib
 import mlflow
 import mlflow.artifacts
-import numpy as np
 import pandas as pd
 import yaml
 
-from neurosurrogate.core.network import Compartment, DatasetConfig
-from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate, make_surr_comp
+from neurosurrogate.core.network import DatasetConfig
+from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate
 
 TARGET_EXP = "test_static_params"
-
 
 logger = logging.getLogger(__name__)
 
@@ -32,63 +26,27 @@ def setup_mlflow() -> None:
 
 
 SURR_ARTIFACT_DIR = "surrogate"
-_XI_FILE = "xi.npy"
-_GATE_INITS_FILE = "gate_inits.npy"
-_SOURCE_FILE = "source.py"
-_PREPROCESSOR_FILE = "preprocessor.joblib"
-_MANIFEST_FILE = "manifest.json"
 _DATASET_FILE = "dataset.yaml"
-
-
-@dataclass(frozen=True)
-class LoadedSurrogate:
-    sindy_args: tuple
-    preprocessor: Any
-    gate_inits: list
-    feature_names: list[str]
-    target_names: list[str]
-    equations: str
-    dataset: DatasetConfig
-    library_specs: list[dict]
-    train_comp_identifier: str
-    run_id: str
-    run_name: str
-
-    def make_surr_comp(self, name: str) -> Compartment:
-        xi, theta = self.sindy_args
-        return make_surr_comp(name, self.gate_inits, xi, theta)
-
-    @property
-    def xi(self) -> np.ndarray:
-        return self.sindy_args[0]
 
 
 def log_surrogate_model(
     surrogate: SINDyNeuroSurrogate,
     dataset_cfg: DatasetConfig,
-    library_specs: list[dict],
     train_comp_identifier: str,
 ) -> None:
-    manifest = {
-        "target_module": surrogate.target_module.__name__,
-        "feature_names": surrogate.sindy.get_feature_names(),
-        "target_names": surrogate.target_names,
-        "equations": "\n".join(surrogate.sindy.equations(precision=3)),
-        "library_specs": library_specs,
-        "train_comp_identifier": train_comp_identifier,
-    }
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
-        np.save(tmp / _XI_FILE, surrogate.sindy.coefficients())
-        np.save(tmp / _GATE_INITS_FILE, np.array(surrogate._gate_inits))
-        (tmp / _SOURCE_FILE).write_text(surrogate.source)
-        joblib.dump(surrogate.preprocessor, tmp / _PREPROCESSOR_FILE)
-        (tmp / _MANIFEST_FILE).write_text(json.dumps(manifest))
+        surrogate.save(
+            tmp,
+            extra={"train_comp_identifier": train_comp_identifier},
+        )
         (tmp / _DATASET_FILE).write_text(yaml.safe_dump(dataset_cfg.to_dict()))
         mlflow.log_artifacts(str(tmp), artifact_path=SURR_ARTIFACT_DIR)
 
 
-def load_surrogate_model(run_id: str) -> LoadedSurrogate:
+def load_surrogate_model(run_id: str) -> SINDyNeuroSurrogate:
+    """MLflow run から surrogate 復元。dataset/run_id/run_name/library_specs/
+    train_comp_identifier は SINDyNeuroSurrogate の instance attr として attach。"""
     logger.info(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
@@ -96,27 +54,18 @@ def load_surrogate_model(run_id: str) -> LoadedSurrogate:
                 f"runs:/{run_id}/{SURR_ARTIFACT_DIR}", dst_path=tmp_str
             )
         )
-        manifest = json.loads((local / _MANIFEST_FILE).read_text())
-        target_module = importlib.import_module(manifest["target_module"])
-        source = (local / _SOURCE_FILE).read_text()
-        dataset_dict = yaml.safe_load((local / _DATASET_FILE).read_text())
-        run_name = mlflow.MlflowClient().get_run(run_id).data.tags["mlflow.runName"]
-        return LoadedSurrogate(
-            sindy_args=(
-                np.load(local / _XI_FILE),
-                SINDyNeuroSurrogate._compile_source(source, target_module),
-            ),
-            preprocessor=joblib.load(local / _PREPROCESSOR_FILE),
-            gate_inits=np.load(local / _GATE_INITS_FILE).tolist(),
-            feature_names=manifest["feature_names"],
-            target_names=manifest["target_names"],
-            equations=manifest["equations"],
-            dataset=DatasetConfig.from_dict(dataset_dict),
-            library_specs=manifest["library_specs"],
-            train_comp_identifier=manifest["train_comp_identifier"],
-            run_id=run_id,
-            run_name=run_name,
+        surrogate = SINDyNeuroSurrogate.load(local)
+        surrogate.dataset = DatasetConfig.from_dict(
+            yaml.safe_load((local / _DATASET_FILE).read_text())
         )
+        surrogate.run_id = run_id
+        surrogate.run_name = (
+            mlflow.MlflowClient().get_run(run_id).data.tags["mlflow.runName"]
+        )
+        surrogate.train_comp_identifier = surrogate.manifest_extra[
+            "train_comp_identifier"
+        ]
+    return surrogate
 
 
 def get_runs_df():

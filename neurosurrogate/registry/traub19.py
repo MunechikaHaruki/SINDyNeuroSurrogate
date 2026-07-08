@@ -57,7 +57,9 @@ def _g_axial(i: int) -> float:
 
 def build_traub19() -> NeuronGraph:
     template: Compartment = COMPARTMENT_TEMPLATES["traub"]
-    nodes = [template.with_name(f"c{i:02d}").with_params(_params_at(i)) for i in range(NC)]
+    nodes = [
+        template.with_name(f"c{i:02d}").with_params(_params_at(i)) for i in range(NC)
+    ]
     edges = [Edge(f"c{i:02d}", f"c{i + 1:02d}", _g_axial(i)) for i in range(NC - 1)]
     # 外部電流を密度 [μA/cm^2] → 絶対 [μA] に変換 (kernel 内で /area して密度に戻す)
     return NeuronGraph(

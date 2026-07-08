@@ -9,11 +9,12 @@ import pandas as pd
 from analysis import single as analysis_single
 from analysis import sweep as analysis_sweep
 from matplotlib.figure import Figure
-from mlflow_io import LoadedSurrogate, get_runs_df, load_surrogate_model, setup_mlflow
+from mlflow_io import get_runs_df, load_surrogate_model, setup_mlflow
 
 from neurosurrogate.registry.current import FUNC_MAP
 from neurosurrogate.registry.neuron import MCMODELS
 from neurosurrogate.surrogate.analysis import eval_surrogate
+from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.view.plots import view_model, view_neuron_graph
 
 CurrentList: list = list(FUNC_MAP.keys())
@@ -129,7 +130,7 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 # ---------------------------------------------------------------------------
 
 
-def _eval_df(loaded_list: list[LoadedSurrogate]) -> pd.DataFrame:
+def _eval_df(loaded_list: list[SINDyNeuroSurrogate]) -> pd.DataFrame:
     rows = [
         {"run_name": x.run_name, "run_id": x.run_id[:8], **eval_surrogate(x)}
         for x in loaded_list

@@ -67,7 +67,9 @@ class FeatureLibrary:
                 return SubLibrary(
                     entries=VARIADIC_LIB_ENTRIES[t](len(inputs)), inputs=inputs
                 )
-            known = sorted(list(FIXED_LIB_ENTRIES.keys()) + list(VARIADIC_LIB_ENTRIES.keys()))
+            known = sorted(
+                list(FIXED_LIB_ENTRIES.keys()) + list(VARIADIC_LIB_ENTRIES.keys())
+            )
             raise ValueError(f"未知 library type: {t!r}。対応 type: {known}")
 
         subs = [_resolve(s) for s in library_specs]

@@ -1,9 +1,14 @@
 import logging
+from pathlib import Path
 
 import jax.numpy as jnp
+import joblib
 import numpy as np
 
 from ..core.network import Compartment, CompartmentType
+from .libraries import FeatureLibrary
+
+_BUNDLE_FILE = "surrogate.joblib"
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +48,9 @@ def make_surr_type(gate_inits, xi_matrix, compute_theta) -> CompartmentType:
     )
 
 
-def make_surr_comp(name: str, gate_inits: list, xi_matrix, compute_theta) -> Compartment:
+def make_surr_comp(
+    name: str, gate_inits: list, xi_matrix, compute_theta
+) -> Compartment:
     return Compartment(
         name=name,
         type=make_surr_type(gate_inits, xi_matrix, compute_theta),
@@ -81,11 +88,27 @@ def transform_gate(preprocessor, xr_data, target_comp_id):
     )
 
 
+def _build_compute_theta(feature_lib: FeatureLibrary):
+    """FeatureLibrary の sub_libraries から compute_theta 関数を直接構築。
+    LibraryEntry.func を直接呼び出す → exec / target_module 依存なし。"""
+    subs = feature_lib.sub_libraries
+
+    def compute_theta(*inputs):
+        values = []
+        for sub in subs:
+            bound = [inputs[i] for i in sub.inputs]
+            for entry in sub.entries:
+                values.append(entry.func(*bound))
+        return jnp.array(values, dtype=jnp.float64)
+
+    return compute_theta
+
+
 class SINDyNeuroSurrogate:
-    def __init__(self, preprocessor, initialized_sindy, target_module):
+    def __init__(self, preprocessor, initialized_sindy, library_specs: list[dict]):
         self.preprocessor = preprocessor
         self.sindy = initialized_sindy
-        self.target_module = target_module
+        self.library_specs = library_specs
 
     def fit(self, train_xr, target_comp_id) -> None:
         self.train_gate_data = get_gate_numpy(train_xr, target_comp_id)
@@ -102,10 +125,13 @@ class SINDyNeuroSurrogate:
             t=train_xr["time"].to_numpy(),
             feature_names=input_features,
         )
-        # 関数のビルド
-        self.source = self._build_source(self.sindy.get_feature_names(), input_features)
-        logger.info(self.source)
-        self.compute_theta = self._compile_source(self.source, self.target_module)
+        # FeatureLibrary から直接 compute_theta 構築 (exec なし)
+        feature_lib = FeatureLibrary.build(self.library_specs)
+        self.compute_theta = _build_compute_theta(feature_lib)
+        # save 用スナップショット (fit 後は self.sindy に触れない)
+        self.xi: np.ndarray = self.sindy.coefficients()
+        self.feature_names: list = self.sindy.get_feature_names()
+        self.equations: str = "\n".join(self.sindy.equations(precision=3))
 
     def make_surr_comp(self, name: str) -> Compartment:
         xi, theta = self.sindy_args
@@ -113,25 +139,39 @@ class SINDyNeuroSurrogate:
 
     @property
     def sindy_args(self):
-        return (self.sindy.coefficients(), self.compute_theta)
+        return (self.xi, self.compute_theta)
 
-    @staticmethod
-    def _compile_source(source, module):
-        local_vars = {}
-        exec(source, {**vars(module), "jnp": jnp}, local_vars)
-        return local_vars["dynamic_compute_theta"]
+    def save(self, dir: Path | str, extra: dict | None = None) -> None:
+        """dir 直下に surrogate.joblib 1 ファイルを書き出し。extra は任意メタ。"""
+        bundle = {
+            "preprocessor": self.preprocessor,
+            "xi": self.xi,
+            "gate_inits": self._gate_inits,
+            "library_specs": self.library_specs,
+            "feature_names": self.feature_names,
+            "target_names": self.target_names,
+            "equations": self.equations,
+            "extra": extra or {},
+        }
+        joblib.dump(bundle, Path(dir) / _BUNDLE_FILE)
 
-    @staticmethod
-    def _build_source(feature_names: list, input_features: list):
-        expressions = []
-        for name in feature_names:
-            # '1' という文字列は明示的に浮動小数点にする
-            safe_name = "1.0" if name == "1" else name
-            # SINDyの出力する '^'（べき乗）を Python の '**' に置換
-            safe_name = safe_name.replace("^", "**")
-            expressions.append(safe_name)
-        expr_list = ", ".join(expressions)
-        return f"""def dynamic_compute_theta({",".join(input_features)}):
-    import jax.numpy as jnp
-    return jnp.array([{expr_list}], dtype=jnp.float64)
-        """
+    @classmethod
+    def load(cls, dir: Path | str) -> "SINDyNeuroSurrogate":
+        """dir/surrogate.joblib から SINDyNeuroSurrogate 復元。
+        pysindy 学習オブジェクト (self.sindy) は復元不要 → None。
+        compute_theta は library_specs から FeatureLibrary 再構築 → 直接構築。
+        extra メタは self.manifest_extra に保持。"""
+        bundle = joblib.load(Path(dir) / _BUNDLE_FILE)
+        self = cls.__new__(cls)
+        self.preprocessor = bundle["preprocessor"]
+        self.sindy = None
+        self.library_specs = bundle["library_specs"]
+        feature_lib = FeatureLibrary.build(self.library_specs)
+        self.compute_theta = _build_compute_theta(feature_lib)
+        self.xi = bundle["xi"]
+        self._gate_inits = bundle["gate_inits"]
+        self.feature_names = bundle["feature_names"]
+        self.target_names = bundle["target_names"]
+        self.equations = bundle["equations"]
+        self.manifest_extra = bundle["extra"]
+        return self

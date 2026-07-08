@@ -19,7 +19,9 @@ class GroupSpec:
 
     comp_type: CompartmentType  # 「型」= kernel + gate構造 + param_cls
     indices: np.ndarray  # shape (N_group,)
-    params: Any | None  # batched NamedTuple (prefix (N_group,))、param_cls=None なら None
+    params: (
+        Any | None
+    )  # batched NamedTuple (prefix (N_group,))、param_cls=None なら None
 
     def apply(
         self,
@@ -63,7 +65,10 @@ def _make_group_spec(bucket: list[tuple[int, Compartment]]) -> GroupSpec:
         if comp_type.param_cls is None
         else jax.tree.map(
             lambda *xs: jnp.asarray(xs),
-            *[c.params if c.params is not None else comp_type.default_params for c in comps],
+            *[
+                c.params if c.params is not None else comp_type.default_params
+                for c in comps
+            ],
         )
     )
     return GroupSpec(
