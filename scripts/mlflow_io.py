@@ -32,21 +32,15 @@ _DATASET_FILE = "dataset.yaml"
 def log_surrogate_model(
     surrogate: SINDyNeuroSurrogate,
     dataset_cfg: DatasetConfig,
-    train_comp_identifier: str,
 ) -> None:
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
-        surrogate.save(
-            tmp,
-            extra={"train_comp_identifier": train_comp_identifier},
-        )
+        surrogate.save(tmp)
         (tmp / _DATASET_FILE).write_text(yaml.safe_dump(dataset_cfg.to_dict()))
         mlflow.log_artifacts(str(tmp), artifact_path=SURR_ARTIFACT_DIR)
 
 
 def load_surrogate_model(run_id: str) -> SINDyNeuroSurrogate:
-    """MLflow run から surrogate 復元。dataset/run_id/run_name/library_specs/
-    train_comp_identifier は SINDyNeuroSurrogate の instance attr として attach。"""
     logger.info(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
@@ -62,9 +56,6 @@ def load_surrogate_model(run_id: str) -> SINDyNeuroSurrogate:
         surrogate.run_name = (
             mlflow.MlflowClient().get_run(run_id).data.tags["mlflow.runName"]
         )
-        surrogate.train_comp_identifier = surrogate.manifest_extra[
-            "train_comp_identifier"
-        ]
     return surrogate
 
 

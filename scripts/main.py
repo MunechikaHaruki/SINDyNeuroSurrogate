@@ -45,11 +45,7 @@ def cli_flow(cfg_sindy):
                 cfg_sindy["train_comp_identifier"]
             ),
         )
-        log_surrogate_model(
-            surrogate,
-            train_dataset_cfg,
-            train_comp_identifier=cfg_sindy["train_comp_identifier"],
-        )
+        log_surrogate_model(surrogate, train_dataset_cfg)
 
 
 @hydra.main(config_path="conf", config_name="config")

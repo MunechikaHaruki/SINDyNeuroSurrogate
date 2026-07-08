@@ -74,18 +74,17 @@ class SurrogateBundle(Protocol):
     target_names: list[str]
     library_specs: list[dict]
     dataset: DatasetConfig
-    train_comp_identifier: str
+    train_comp_id: int
 
 
 def eval_surrogate(bundle: SurrogateBundle) -> dict:
     net = MCMODELS[bundle.dataset.model_name]
-    train_comp_id = net.name_to_idx(bundle.train_comp_identifier)
-    train_gate = get_gate_numpy(unified_simulator(bundle.dataset), train_comp_id)
+    train_gate = get_gate_numpy(unified_simulator(bundle.dataset), bundle.train_comp_id)
     feature_cost_map = FeatureLibrary.build(bundle.library_specs).to_base_cost(
         bundle.target_names + ["u"]
     )
     surr_opcost = calc_surr_opcost(bundle.xi, bundle.feature_names, feature_cost_map)
-    original_cost = net.nodes[train_comp_id].type.opcost
+    original_cost = net.nodes[bundle.train_comp_id].type.opcost
     nnz = int((bundle.xi != 0).sum())
     return {
         "nnz": nnz,

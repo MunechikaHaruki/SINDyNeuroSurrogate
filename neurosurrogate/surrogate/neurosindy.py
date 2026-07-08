@@ -102,6 +102,7 @@ class SINDyNeuroSurrogate:
         self.library_specs = library_specs
 
     def fit(self, train_xr, target_comp_id) -> None:
+        self.train_comp_id: int = target_comp_id
         self.train_gate_data = get_gate_numpy(train_xr, target_comp_id)
         self.preprocessor.fit(self.train_gate_data)
         preprocessed_xr = transform_gate(
@@ -127,8 +128,7 @@ class SINDyNeuroSurrogate:
     def make_surr_comp(self, name: str) -> Compartment:
         return make_surr_comp(name, self._gate_inits, self.xi, self.compute_theta)
 
-    def save(self, dir: Path | str, extra: dict | None = None) -> None:
-        """dir 直下に surrogate.joblib 1 ファイルを書き出し。extra は任意メタ。"""
+    def save(self, dir: Path | str) -> None:
         bundle = {
             "preprocessor": self.preprocessor,
             "xi": self.xi,
@@ -137,16 +137,12 @@ class SINDyNeuroSurrogate:
             "feature_names": self.feature_names,
             "target_names": self.target_names,
             "equations": self.equations,
-            "extra": extra or {},
+            "train_comp_id": self.train_comp_id,
         }
         joblib.dump(bundle, Path(dir) / _BUNDLE_FILE)
 
     @classmethod
     def load(cls, dir: Path | str) -> "SINDyNeuroSurrogate":
-        """dir/surrogate.joblib から SINDyNeuroSurrogate 復元。
-        pysindy 学習オブジェクト (self.sindy) は復元不要 → None。
-        compute_theta は library_specs から FeatureLibrary 再構築 → 直接構築。
-        extra メタは self.manifest_extra に保持。"""
         bundle = joblib.load(Path(dir) / _BUNDLE_FILE)
         self = cls.__new__(cls)
         self.preprocessor = bundle["preprocessor"]
@@ -159,5 +155,5 @@ class SINDyNeuroSurrogate:
         self.feature_names = bundle["feature_names"]
         self.target_names = bundle["target_names"]
         self.equations = bundle["equations"]
-        self.manifest_extra = bundle["extra"]
+        self.train_comp_id: int = bundle["train_comp_id"]
         return self
