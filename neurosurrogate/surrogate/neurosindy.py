@@ -14,41 +14,6 @@ _BUNDLE_FILE = "surrogate.joblib"
 logger = logging.getLogger(__name__)
 
 
-def _make_surr_kernel(xi_matrix, compute_theta):
-    """統一 signature (params, i_t, v, state) -> (dv, dstate) の SINDy kernel closure"""
-
-    def surr_kernel(params, i_t, v, state):
-        # state: shape (n_latent,)、現状 n_latent=1
-        theta = compute_theta(v, state[0], i_t)
-        dv = xi_matrix[0] @ theta
-        dlat = xi_matrix[1] @ theta
-        return dv, jnp.stack([dlat])
-
-    return surr_kernel
-
-
-def make_surr_type(gate_inits, xi_matrix, compute_theta) -> CompartmentType:
-    return CompartmentType(
-        name="surr",
-        kernel=_make_surr_kernel(xi_matrix, compute_theta),
-        param_cls=None,
-        default_params=None,
-        gate_names=[f"latent{i + 1}" for i in range(len(gate_inits))],
-        default_gate_inits=gate_inits,
-        v_init=-65,
-        opcost=None,
-    )
-
-
-def make_surr_comp(
-    name: str, gate_inits: list, xi_matrix, compute_theta
-) -> Compartment:
-    return Compartment(
-        name=name,
-        type=make_surr_type(gate_inits, xi_matrix, compute_theta),
-    )
-
-
 def get_gate_numpy(train_xr, target_comp_id):
     return train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
 
@@ -128,7 +93,26 @@ class SINDyNeuroSurrogate:
         self.equations: str = "\n".join(self.sindy.equations(precision=3))
 
     def make_surr_comp(self, name: str) -> Compartment:
-        return make_surr_comp(name, self._gate_inits, self.xi, self.compute_theta)
+        xi = self.xi
+        compute_theta = self.compute_theta
+
+        def surr_kernel(params, i_t, v, state):
+            theta = compute_theta(v, state[0], i_t)
+            return xi[0] @ theta, jnp.stack([xi[1] @ theta])
+
+        return Compartment(
+            name=name,
+            type=CompartmentType(
+                name="surr",
+                kernel=surr_kernel,
+                param_cls=None,
+                default_params=None,
+                gate_names=[f"latent{i + 1}" for i in range(len(self._gate_inits))],
+                default_gate_inits=self._gate_inits,
+                v_init=-65,
+                opcost=None,
+            ),
+        )
 
     def save(self, dir: Path | str) -> None:
         bundle = {
