@@ -9,23 +9,16 @@ optimizer:
   alpha: 2.0
 library_specs:
   - type: gate_poly_volt
-    max_power: 4
     inputs: [0, 1]
-  - type: identity
-    inputs: [0]
-  - type: identity
-    inputs: [2]
-  - type: const
-    inputs: []
+  - type: basis
+    inputs: [0, 2]
   # --- dg0/dt 用 (relaxation形式) ---
-  # alpha_k(V): 1変数 → inputs[0] = [0] (Vのみ)
-  # (alpha_k+beta_k)(V)*g0: 2変数 → inputs[1] = [0, 1] (V, g0)
-  - type: relaxation1
-    gates: [m, h, n]
+  # inputs=[0]    → 駆動 alpha_k(V)
+  # inputs=[0, 1] → 減衰 (alpha_k+beta_k)(V)*g0
+  - type: relaxation
     inputs: [0]
-  - type: relaxation2
-    gates: [m, h, n]
-    inputs: [0,1]
+  - type: relaxation
+    inputs: [0, 1]
 datasets:
   model_name: hh
   pipeline:

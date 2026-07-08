@@ -50,13 +50,18 @@ class FeatureLibrary:
 
     @staticmethod
     def build(library_specs: list[dict]) -> "FeatureLibrary":
-        from ..registry import feature_libraries as reg
+        from ..registry.feature_libraries import LIB_ENTRIES
 
         def _resolve(spec: dict) -> SubLibrary:
-            builder = getattr(reg, spec["type"], None)
-            if builder is None:
-                raise ValueError(f"未知の library type: {spec['type']}")
-            return builder(spec)
+            inputs = spec["inputs"]
+            key = (spec["type"], len(inputs))
+            entries = LIB_ENTRIES.get(key)
+            if entries is None:
+                raise ValueError(
+                    f"未対応 library spec: type={key[0]!r}, arity={key[1]}。"
+                    f"対応キー: {sorted(LIB_ENTRIES.keys())}"
+                )
+            return SubLibrary(entries=entries, inputs=inputs)
 
         subs = [_resolve(s) for s in library_specs]
         return FeatureLibrary(
