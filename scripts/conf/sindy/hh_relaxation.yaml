@@ -13,11 +13,9 @@ library_specs:
   - type: basis
     inputs: [0, 2]
   # --- dg0/dt 用 (relaxation形式) ---
-  # inputs=[0]    → 駆動 alpha_k(V)
-  # inputs=[0, 1] → 減衰 (alpha_k+beta_k)(V)*g0
-  - type: relaxation
+  - type: hh_relaxation_driver
     inputs: [0]
-  - type: relaxation
+  - type: hh_relaxation_decay
     inputs: [0, 1]
 datasets:
   model_name: hh

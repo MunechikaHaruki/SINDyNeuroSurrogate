@@ -8,9 +8,9 @@ optimizer:
   normalize_columns: false
   alpha: 2.0
 library_specs:
-  - type: gate
+  - type: hh_gate
     inputs: [0]
-  - type: gate
+  - type: hh_gate_product
     inputs: [0, 1]
   - type: volt
     inputs: [0, 1, 2]

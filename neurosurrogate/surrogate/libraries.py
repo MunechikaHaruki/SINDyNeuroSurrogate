@@ -50,18 +50,25 @@ class FeatureLibrary:
 
     @staticmethod
     def build(library_specs: list[dict]) -> "FeatureLibrary":
-        from ..registry.feature_libraries import LIB_ENTRIES
+        from ..registry.feature_libraries import FIXED_LIB_ENTRIES, VARIADIC_LIB_ENTRIES
 
         def _resolve(spec: dict) -> SubLibrary:
+            t = spec["type"]
             inputs = spec["inputs"]
-            key = (spec["type"], len(inputs))
-            entries = LIB_ENTRIES.get(key)
-            if entries is None:
-                raise ValueError(
-                    f"未対応 library spec: type={key[0]!r}, arity={key[1]}。"
-                    f"対応キー: {sorted(LIB_ENTRIES.keys())}"
+            if t in FIXED_LIB_ENTRIES:
+                entries = FIXED_LIB_ENTRIES[t]
+                expected = entries[0].func.__code__.co_argcount
+                if len(inputs) != expected:
+                    raise ValueError(
+                        f"type={t!r} は arity={expected} を要求、inputs={inputs} (arity={len(inputs)})"
+                    )
+                return SubLibrary(entries=entries, inputs=inputs)
+            if t in VARIADIC_LIB_ENTRIES:
+                return SubLibrary(
+                    entries=VARIADIC_LIB_ENTRIES[t](len(inputs)), inputs=inputs
                 )
-            return SubLibrary(entries=entries, inputs=inputs)
+            known = sorted(list(FIXED_LIB_ENTRIES.keys()) + list(VARIADIC_LIB_ENTRIES.keys()))
+            raise ValueError(f"未知 library type: {t!r}。対応 type: {known}")
 
         subs = [_resolve(s) for s in library_specs]
         return FeatureLibrary(

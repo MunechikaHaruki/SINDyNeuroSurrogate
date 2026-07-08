@@ -127,6 +127,9 @@ HH_GATE_PAIRS: list[tuple[LibraryEntry, LibraryEntry]] = [
     (ALPHA_N_ENTRY, BETA_N_ENTRY),
 ]
 
+# alpha 系のみ (順方向遷移率、3個)
+HH_GATE_FORWARD: list[LibraryEntry] = [ALPHA_M_ENTRY, ALPHA_H_ENTRY, ALPHA_N_ENTRY]
+
 _HH_OPCOST = (
     sum(HH_RATE_COST_MAP.values(), OpCost())  # レート関数
     + OpCost(pm=1)  # 反転電位

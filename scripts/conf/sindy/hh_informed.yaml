@@ -10,9 +10,9 @@ optimizer:
 library_specs:
   - type: gate_poly_volt
     inputs: [0, 1]
-  - type: gate_forward
+  - type: hh_gate_forward
     inputs: [0]
-  - type: gate
+  - type: hh_gate_product
     inputs: [0, 1]
   - type: basis
     inputs: [0, 2]
