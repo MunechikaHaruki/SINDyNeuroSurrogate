@@ -1,15 +1,11 @@
-from dataclasses import dataclass
-from typing import Any, Protocol
-
 import numpy as np
 from sklearn.decomposition import PCA
 
-from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
 from ..opcost import OpCost
 from ..registry.neuron import MCMODELS
 from .libraries import FeatureLibrary
-from .neurosindy import get_gate_numpy
+from .neurosindy import SINDyNeuroSurrogate, get_gate_numpy
 
 
 def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):
@@ -26,17 +22,6 @@ def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):
     if isinstance(preprocessor, PCA):
         return _get_pca_metrics(preprocessor, train_gate_data)
     return {}
-
-
-@dataclass(frozen=True)
-class SINDyResult:
-    coef: np.ndarray
-    feature_names: list[str]
-    equations: str
-    source: str
-    target_names: list[str]
-    params: dict
-    preprocessor_metrics: dict[str, float]
 
 
 def calc_surr_opcost(
@@ -67,28 +52,16 @@ def calc_cost_stat(surr_opcost: OpCost, original_cost: OpCost | None) -> dict[st
     }
 
 
-class SurrogateBundle(Protocol):
-    xi: np.ndarray
-    preprocessor: Any
-    feature_names: list[str]
-    target_names: list[str]
-    library_specs: list[dict]
-    dataset: DatasetConfig
-    train_comp_id: int
-
-
-def eval_surrogate(bundle: SurrogateBundle) -> dict:
-    net = MCMODELS[bundle.dataset.model_name]
-    train_gate = get_gate_numpy(unified_simulator(bundle.dataset), bundle.train_comp_id)
-    feature_cost_map = FeatureLibrary.build(bundle.library_specs).to_base_cost(
-        bundle.target_names + ["u"]
-    )
-    surr_opcost = calc_surr_opcost(bundle.xi, bundle.feature_names, feature_cost_map)
-    original_cost = net.nodes[bundle.train_comp_id].type.opcost
-    nnz = int((bundle.xi != 0).sum())
+def eval_surrogate(surrogate: SINDyNeuroSurrogate) -> dict:
+    net = MCMODELS[surrogate.dataset.model_name]
+    train_gate = get_gate_numpy(unified_simulator(surrogate.dataset), surrogate.train_comp_id)
+    feature_cost_map = surrogate._feature_lib.to_base_cost(surrogate.target_names + ["u"])
+    surr_opcost = calc_surr_opcost(surrogate.xi, surrogate.feature_names, feature_cost_map)
+    original_cost = net.nodes[surrogate.train_comp_id].type.opcost
+    nnz = int((surrogate.xi != 0).sum())
     return {
         "nnz": nnz,
-        "nnz_ratio": nnz / bundle.xi.size,
-        **calc_preprocessor_metrics(bundle.preprocessor, train_gate),
+        "nnz_ratio": nnz / surrogate.xi.size,
+        **calc_preprocessor_metrics(surrogate.preprocessor, train_gate),
         **calc_cost_stat(surr_opcost, original_cost),
     }
