@@ -9,7 +9,10 @@ from omegaconf import DictConfig, OmegaConf
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.registry.neuron import MCMODELS
-from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate
+from neurosurrogate.surrogate.neurosindy import (
+    HybridSINDyNeuroSurrogate,
+    SINDyNeuroSurrogate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +24,12 @@ def _disable_proxy() -> None:
 
 
 def cli_flow(cfg_sindy):
-    surrogate = SINDyNeuroSurrogate(
+    surr_cls = (
+        HybridSINDyNeuroSurrogate
+        if cfg_sindy.get("hybrid", False)
+        else SINDyNeuroSurrogate
+    )
+    surrogate = surr_cls(
         preprocessor=hydra.utils.instantiate(cfg_sindy["preprocessor"]),
         optimizer=hydra.utils.instantiate(cfg_sindy["optimizer"]),
         library_specs=cfg_sindy["library_specs"],

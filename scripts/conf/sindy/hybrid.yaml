@@ -1,0 +1,26 @@
+name: hybrid
+hybrid: true
+preprocessor:
+  _target_: sklearn.decomposition.PCA
+  n_components: 3
+optimizer:
+  _target_: pysindy.optimizers.STLSQ
+  threshold: 0.01
+  normalize_columns: false
+  alpha: 2.0
+library_specs:
+  # SINDy 入力順: 0=latent1, 1=latent2, 2=latent3, 3=V
+  - type: hh_gate            # α(V), β(V) 6個
+    inputs: [3]
+  - type: hh_gate_product    # α(V)·latent1
+    inputs: [3, 0]
+  - type: hh_gate_product    # α(V)·latent2
+    inputs: [3, 1]
+  - type: hh_gate_product    # α(V)·latent3
+    inputs: [3, 2]
+  - type: basis              # latent1, latent2, latent3, V, 1
+    inputs: [0, 1, 2, 3]
+datasets:
+  model_name: hh
+  pipeline:
+    _target_: neurosurrogate.registry.current.train

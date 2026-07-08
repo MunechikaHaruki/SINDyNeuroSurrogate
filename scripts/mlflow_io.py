@@ -9,8 +9,13 @@ import mlflow.artifacts
 import pandas as pd
 import yaml
 
+import joblib
+
 from neurosurrogate.core.network import DatasetConfig
-from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate
+from neurosurrogate.surrogate.neurosindy import (
+    HybridSINDyNeuroSurrogate,
+    SINDyNeuroSurrogate,
+)
 
 TARGET_EXP = "test_static_params"
 
@@ -40,7 +45,9 @@ def log_surrogate_model(
         mlflow.log_artifacts(str(tmp), artifact_path=SURR_ARTIFACT_DIR)
 
 
-def load_surrogate_model(run_id: str) -> SINDyNeuroSurrogate:
+def load_surrogate_model(
+    run_id: str,
+) -> SINDyNeuroSurrogate | HybridSINDyNeuroSurrogate:
     logger.info(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
@@ -48,7 +55,13 @@ def load_surrogate_model(run_id: str) -> SINDyNeuroSurrogate:
                 f"runs:/{run_id}/{SURR_ARTIFACT_DIR}", dst_path=tmp_str
             )
         )
-        surrogate = SINDyNeuroSurrogate.load(local)
+        bundle_keys = set(joblib.load(local / "surrogate.joblib").keys())
+        cls = (
+            HybridSINDyNeuroSurrogate
+            if "pca_components" in bundle_keys
+            else SINDyNeuroSurrogate
+        )
+        surrogate = cls.load(local)
         surrogate.dataset = DatasetConfig.from_dict(
             yaml.safe_load((local / _DATASET_FILE).read_text())
         )
