@@ -1,5 +1,6 @@
 from ..core.network import Edge, NeuronGraph
 from .compartments import COMPARTMENT_TEMPLATES, HHParams, TraubParams
+from .traub19 import build_traub19
 
 _hh = COMPARTMENT_TEMPLATES["hh"]
 _passive = COMPARTMENT_TEMPLATES["passive"]
@@ -53,6 +54,7 @@ MCMODELS: dict[str, NeuronGraph] = {
         edges=[Edge("soma", "d1", 1.0), Edge("d1", "d2", 0.7)],
         stim="soma",
     ),
+    "traub19": build_traub19(),
     "hh7": NeuronGraph(
         nodes=[
             _passive.with_name("p1"),

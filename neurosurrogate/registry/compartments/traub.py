@@ -135,6 +135,9 @@ class TraubParams(NamedTuple):
     g_K_AHP: float = 0.8
     g_K_C: float = 10.0
     phi_area: float = 17402.0 * 3.320e-5  # phi * area
+    # 表面積 [cm^2]。u_t (絶対電流 [μA]) を密度 [μA/cm^2] に変換する除数。
+    # default 1.0 → 単一 comp 用 (u_t を密度スケールで渡す既存挙動維持)
+    area: float = 1.0
 
 
 def calc_traub_channel(p: TraubParams, u_t, v, states):
@@ -148,7 +151,8 @@ def calc_traub_channel(p: TraubParams, u_t, v, states):
     i_kahp = p.g_K_AHP * Q * (v - p.V_K)
     i_kc = p.g_K_C * C * jnp.minimum(1.0, XI / 250.0) * (v - p.V_K)
     i_ion = i_leak + i_na + i_ca + i_kdr + i_ka + i_kahp + i_kc
-    dv = (-i_ion + u_t) / p.Cm
+    # u_t は絶対電流 [μA] スケール (coupling: g_axial · dV, ext: μA)。密度化に /area。
+    dv = (-i_ion + u_t / p.area) / p.Cm
 
     dM = _traub_dstate_v("M", v, M)
     dS = _traub_dstate_v("S", v, S)

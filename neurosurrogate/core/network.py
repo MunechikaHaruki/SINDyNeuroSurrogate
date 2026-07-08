@@ -117,6 +117,10 @@ class NeuronGraph:
     nodes: list[Compartment]
     edges: list[Edge]
     stim: str  # node name
+    # 外部電流 u_ext を stim ノードに注入する前に乗じるスケール。
+    # 密度 [μA/cm^2] スケールの u_ext を絶対 [μA] に変換する用途 (traub19 等)。
+    # default 1.0 → 既存モデル (単位規約: 密度) 不変。
+    stim_area_scale: float = 1.0
 
     @cached_property
     def _name_to_idx(self) -> dict:
@@ -147,6 +151,7 @@ class NeuronGraph:
                 {"src": e.src, "dst": e.dst, "weight": e.weight} for e in self.edges
             ],
             "stim": self.stim,
+            "stim_area_scale": self.stim_area_scale,
         }
 
     @classmethod
@@ -155,6 +160,7 @@ class NeuronGraph:
             nodes=[Compartment.from_dict(n) for n in d["nodes"]],
             edges=[Edge(**e) for e in d["edges"]],
             stim=d["stim"],
+            stim_area_scale=d.get("stim_area_scale", 1.0),
         )
 
     @property

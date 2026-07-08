@@ -93,13 +93,14 @@ class ModelArgs:
     stim_idx: int
     gate_offsets: np.ndarray  # shape (N,)      dtype=int32
     groups: dict[str, GroupSpec]  # type_name -> GroupSpec
+    stim_area_scale: float = 1.0  # u_ext を coupling と同スケールに揃える乗数
 
 
 def calc_universal_deriv(curr_x, u_t, ma):
     """全 GroupSpec に自身を apply させるだけ。type別分岐なし。"""
     N = ma.C_matrix.shape[0]
     v_vec = curr_x[:N]
-    I_internal = (v_vec @ ma.C_matrix).at[ma.stim_idx].add(u_t)
+    I_internal = (v_vec @ ma.C_matrix).at[ma.stim_idx].add(u_t * ma.stim_area_scale)
 
     dvar = jnp.zeros_like(curr_x)
     for spec in ma.groups.values():
@@ -133,11 +134,14 @@ def unified_simulator(cfg: DatasetConfig):
                 stim_idx=net.stim_node_idx,
                 gate_offsets=state["gate_offsets"],
                 groups=state["groups"],
+                stim_area_scale=net.stim_area_scale,
             ),
         ),
         u,
         state["coords"],
         dt,
     )
-    set_i_internal(dataset, net.graph_laplacian, net.stim_node_idx, u)
+    set_i_internal(
+        dataset, net.graph_laplacian, net.stim_node_idx, u, net.stim_area_scale
+    )
     return dataset

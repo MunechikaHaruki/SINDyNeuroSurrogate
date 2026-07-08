@@ -73,10 +73,10 @@ def set_coords(raw, u, coords, dt):
     )
 
 
-def set_i_internal(dataset, C_matrix, stim_idx, u):
+def set_i_internal(dataset, C_matrix, stim_idx, u, stim_area_scale: float = 1.0):
     N = C_matrix.shape[0]
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
-    I_ext_2d[:, stim_idx] = u  # 指定されたコンパートメントにだけ u を流し込む
+    I_ext_2d[:, stim_idx] = u * stim_area_scale  # 密度→絶対変換 (traub19 等)
 
     V_data = dataset["vars"].sel(gate=False).sortby("comp_id").values  # 形状: (time, N)
     I_internal_np = V_data @ C_matrix + I_ext_2d
