@@ -1,5 +1,5 @@
 name: hybrid
-hybrid: true
+type: hybrid
 init:
   datasets:
     model_name: hh
