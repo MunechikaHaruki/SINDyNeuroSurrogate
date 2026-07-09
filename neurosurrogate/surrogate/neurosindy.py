@@ -72,41 +72,40 @@ def _instantiate_if_dict(obj):
 
 class SINDyNeuroSurrogate:
     def __init__(self, datasets: dict, train_comp_identifier: str):
-        self.dataset = DatasetConfig.build_dataset(**datasets)
-        self._target_comp_id: int = self.dataset.net.name_to_idx(train_comp_identifier)
-        self._train_xr = unified_simulator(self.dataset)
+        self._dataset = DatasetConfig.build_dataset(**datasets)
+        self._target_comp_id: int = self._dataset.net.name_to_idx(train_comp_identifier)
+        self._train_xr = unified_simulator(self._dataset)
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         self.preprocessor = _instantiate_if_dict(preprocessor)
         self.library_specs = library_specs
-        self._feature_lib = FeatureLibrary.build(library_specs)
-        self.sindy = ps.SINDy(
-            feature_library=self._feature_lib.library,
+        feature_lib = FeatureLibrary.build(library_specs)
+        self._sindy = ps.SINDy(
+            feature_library=feature_lib.library,
             optimizer=_instantiate_if_dict(optimizer),
         )
         self.train_comp_id: int = self._target_comp_id
-        self.train_gate_data = get_gate_numpy(self._train_xr, self._target_comp_id)
-        self.preprocessor.fit(self.train_gate_data)
+        self._train_gate_data = get_gate_numpy(self._train_xr, self._target_comp_id)
+        self.preprocessor.fit(self._train_gate_data)
         preprocessed_xr = transform_gate(
             self.preprocessor, self._train_xr, target_comp_id=self._target_comp_id
         )
-        self._gate_inits: list = preprocessed_xr["vars"].to_numpy()[0][1:].tolist()
+        self.gate_inits: list = preprocessed_xr["vars"].to_numpy()[0][1:].tolist()
         self.target_names: list = preprocessed_xr.variable.values.tolist()
         input_features = self.target_names + ["u"]
-        self.sindy.fit(
+        self._sindy.fit(
             preprocessed_xr["vars"].sel(comp_id=self._target_comp_id).to_numpy(),
             u=preprocessed_xr["I_ext"].to_numpy(),
             t=self._train_xr["time"].to_numpy(),
             feature_names=input_features,
         )
-        self.compute_theta = _build_compute_theta(self._feature_lib)
-        self.xi: np.ndarray = self.sindy.coefficients()
-        self.feature_names: list = self.sindy.get_feature_names()
-        self.equations: str = "\n".join(self.sindy.equations(precision=3))
+        self.xi: np.ndarray = self._sindy.coefficients()
+        self.feature_names: list = self._sindy.get_feature_names()
+        self.equations: str = "\n".join(self._sindy.equations(precision=3))
 
     def make_surr_comp(self, name: str) -> Compartment:
         xi = self.xi
-        compute_theta = self.compute_theta
+        compute_theta = _build_compute_theta(FeatureLibrary.build(self.library_specs))
 
         def surr_kernel(params, i_t, v, state):
             theta = compute_theta(v, state[0], i_t)
@@ -119,42 +118,21 @@ class SINDyNeuroSurrogate:
                 kernel=surr_kernel,
                 param_cls=None,
                 default_params=None,
-                gate_names=[f"latent{i + 1}" for i in range(len(self._gate_inits))],
-                default_gate_inits=self._gate_inits,
+                gate_names=[f"latent{i + 1}" for i in range(len(self.gate_inits))],
+                default_gate_inits=self.gate_inits,
                 v_init=-65,
                 opcost=None,
             ),
         )
 
     def save(self, dir: Path | str) -> None:
-        bundle = {
-            "preprocessor": self.preprocessor,
-            "xi": self.xi,
-            "gate_inits": self._gate_inits,
-            "library_specs": self.library_specs,
-            "feature_names": self.feature_names,
-            "target_names": self.target_names,
-            "equations": self.equations,
-            "train_comp_id": self.train_comp_id,
-        }
+        bundle = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
         joblib.dump(bundle, Path(dir) / _BUNDLE_FILE)
 
     @classmethod
     def load(cls, dir: Path | str) -> "SINDyNeuroSurrogate":
-        bundle = joblib.load(Path(dir) / _BUNDLE_FILE)
         self = cls.__new__(cls)
-        self.preprocessor = bundle["preprocessor"]
-        self.sindy = None
-        self.library_specs = bundle["library_specs"]
-        self._feature_lib = FeatureLibrary.build(self.library_specs)
-        self.compute_theta = _build_compute_theta(self._feature_lib)
-        self.xi = bundle["xi"]
-        self._gate_inits = bundle["gate_inits"]
-        self.feature_names = bundle["feature_names"]
-        self.target_names = bundle["target_names"]
-        self.equations = bundle["equations"]
-        self.train_comp_id = bundle["train_comp_id"]
-        self.dataset = None
+        self.__dict__.update(joblib.load(Path(dir) / _BUNDLE_FILE))
         return self
 
 
@@ -168,16 +146,16 @@ class HybridSINDyNeuroSurrogate:
     """
 
     def __init__(self, datasets: dict, train_comp_identifier: str):
-        self.dataset = DatasetConfig.build_dataset(**datasets)
-        self._target_comp_id: int = self.dataset.net.name_to_idx(train_comp_identifier)
-        self._train_xr = unified_simulator(self.dataset)
+        self._dataset = DatasetConfig.build_dataset(**datasets)
+        self._target_comp_id: int = self._dataset.net.name_to_idx(train_comp_identifier)
+        self._train_xr = unified_simulator(self._dataset)
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         self.preprocessor = _instantiate_if_dict(preprocessor)
         self.library_specs = library_specs
-        self._feature_lib = FeatureLibrary.build(library_specs)
-        self.sindy = ps.SINDy(
-            feature_library=self._feature_lib.library,
+        feature_lib = FeatureLibrary.build(library_specs)
+        self._sindy = ps.SINDy(
+            feature_library=feature_lib.library,
             optimizer=_instantiate_if_dict(optimizer),
         )
         self.train_comp_id: int = self._target_comp_id
@@ -187,27 +165,26 @@ class HybridSINDyNeuroSurrogate:
         v = self._train_xr["vars"].sel(gate=False, comp_id=self._target_comp_id).to_numpy()
         n_latent = latent.shape[1]
         latent_names = [f"latent{i + 1}" for i in range(n_latent)]
-        self.sindy.fit(
+        self._sindy.fit(
             latent,
             u=v,
             t=self._train_xr["time"].to_numpy(),
             feature_names=latent_names + ["V"],
         )
-        self.compute_theta = _build_compute_theta(self._feature_lib)
-        self.xi: np.ndarray = self.sindy.coefficients()
+        self.xi: np.ndarray = self._sindy.coefficients()
         self.pca_components: np.ndarray = np.asarray(self.preprocessor.components_)
         self.pca_mean: np.ndarray = np.asarray(self.preprocessor.mean_)
-        self._gate_inits: list = latent[0].tolist()
+        self.gate_inits: list = latent[0].tolist()
         self.target_names: list = latent_names + ["V"]
-        self.feature_names: list = self.sindy.get_feature_names()
-        self.equations: str = "\n".join(self.sindy.equations(precision=3))
+        self.feature_names: list = self._sindy.get_feature_names()
+        self.equations: str = "\n".join(self._sindy.equations(precision=3))
 
     def make_surr_comp(self, name: str, params: HHParams | None = None) -> Compartment:
         xi = jnp.asarray(self.xi)
         pca_components = jnp.asarray(self.pca_components)
         pca_mean = jnp.asarray(self.pca_mean)
-        compute_theta = self.compute_theta
-        n_latent = len(self._gate_inits)
+        compute_theta = _build_compute_theta(FeatureLibrary.build(self.library_specs))
+        n_latent = len(self.gate_inits)
 
         def hybrid_kernel(p: HHParams, u_t, v, state):
             gates = state @ pca_components + pca_mean
@@ -229,7 +206,7 @@ class HybridSINDyNeuroSurrogate:
                 param_cls=HHParams,
                 default_params=HHParams(),
                 gate_names=[f"latent{i + 1}" for i in range(n_latent)],
-                default_gate_inits=self._gate_inits,
+                default_gate_inits=self.gate_inits,
                 v_init=-65,
                 opcost=None,
             ),
@@ -237,36 +214,11 @@ class HybridSINDyNeuroSurrogate:
         )
 
     def save(self, dir: Path | str) -> None:
-        bundle = {
-            "preprocessor": self.preprocessor,
-            "xi": self.xi,
-            "pca_components": self.pca_components,
-            "pca_mean": self.pca_mean,
-            "gate_inits": self._gate_inits,
-            "library_specs": self.library_specs,
-            "feature_names": self.feature_names,
-            "target_names": self.target_names,
-            "equations": self.equations,
-            "train_comp_id": self.train_comp_id,
-        }
+        bundle = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
         joblib.dump(bundle, Path(dir) / _BUNDLE_FILE)
 
     @classmethod
     def load(cls, dir: Path | str) -> "HybridSINDyNeuroSurrogate":
-        bundle = joblib.load(Path(dir) / _BUNDLE_FILE)
         self = cls.__new__(cls)
-        self.preprocessor = bundle["preprocessor"]
-        self.sindy = None
-        self.library_specs = bundle["library_specs"]
-        self._feature_lib = FeatureLibrary.build(self.library_specs)
-        self.compute_theta = _build_compute_theta(self._feature_lib)
-        self.xi = bundle["xi"]
-        self.pca_components = bundle["pca_components"]
-        self.pca_mean = bundle["pca_mean"]
-        self._gate_inits = bundle["gate_inits"]
-        self.feature_names = bundle["feature_names"]
-        self.target_names = bundle["target_names"]
-        self.equations = bundle["equations"]
-        self.train_comp_id = bundle["train_comp_id"]
-        self.dataset = None
+        self.__dict__.update(joblib.load(Path(dir) / _BUNDLE_FILE))
         return self

@@ -61,7 +61,7 @@ def load_surrogate_model(
             else SINDyNeuroSurrogate
         )
         surrogate = cls.load(local)
-        surrogate.dataset = DatasetConfig.from_dict(
+        surrogate._dataset = DatasetConfig.from_dict(
             yaml.safe_load((local / _DATASET_FILE).read_text())
         )
         surrogate.run_id = run_id
