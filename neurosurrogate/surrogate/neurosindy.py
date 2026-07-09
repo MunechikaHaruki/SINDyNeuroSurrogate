@@ -1,5 +1,7 @@
 import logging
+from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Self
 
 import jax.numpy as jnp
 import joblib
@@ -70,12 +72,30 @@ def _instantiate_if_dict(obj):
     return obj
 
 
-class SINDyNeuroSurrogate:
+class NeuroSurrogateBase(ABC):
     def __init__(self, datasets: dict, train_comp_identifier: str):
         self._dataset = DatasetConfig.build_dataset(**datasets)
         self._target_comp_id: int = self._dataset.net.name_to_idx(train_comp_identifier)
         self._train_xr = unified_simulator(self._dataset)
 
+    @abstractmethod
+    def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None: ...
+
+    @abstractmethod
+    def make_surr_comp(self, name: str, **kwargs) -> Compartment: ...
+
+    def save(self, dir: Path | str) -> None:
+        bundle = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
+        joblib.dump(bundle, Path(dir) / _BUNDLE_FILE)
+
+    @classmethod
+    def load(cls, dir: Path | str) -> Self:
+        self = cls.__new__(cls)
+        self.__dict__.update(joblib.load(Path(dir) / _BUNDLE_FILE))
+        return self
+
+
+class SINDyNeuroSurrogate(NeuroSurrogateBase):
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         self.preprocessor = _instantiate_if_dict(preprocessor)
         self.library_specs = library_specs
@@ -103,7 +123,7 @@ class SINDyNeuroSurrogate:
         self.feature_names: list = self._sindy.get_feature_names()
         self.equations: str = "\n".join(self._sindy.equations(precision=3))
 
-    def make_surr_comp(self, name: str) -> Compartment:
+    def make_surr_comp(self, name: str, **kwargs) -> Compartment:
         xi = self.xi
         compute_theta = _build_compute_theta(FeatureLibrary.build(self.library_specs))
 
@@ -125,18 +145,8 @@ class SINDyNeuroSurrogate:
             ),
         )
 
-    def save(self, dir: Path | str) -> None:
-        bundle = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
-        joblib.dump(bundle, Path(dir) / _BUNDLE_FILE)
 
-    @classmethod
-    def load(cls, dir: Path | str) -> "SINDyNeuroSurrogate":
-        self = cls.__new__(cls)
-        self.__dict__.update(joblib.load(Path(dir) / _BUNDLE_FILE))
-        return self
-
-
-class HybridSINDyNeuroSurrogate:
+class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
     """
     Hybrid: 物理HH回路方程式 (HHParams 陽) + 学習ゲート dynamics。
       dV/dt   = HH 物理式 (E_LEAK, G_*, E_*, C, gates)
@@ -144,11 +154,6 @@ class HybridSINDyNeuroSurrogate:
       d(latent)/dt = f(V, latent) via SINDy
     SINDy 入力順: (latent_1, ..., V) → library_specs は index 0=latent, 末尾=V。
     """
-
-    def __init__(self, datasets: dict, train_comp_identifier: str):
-        self._dataset = DatasetConfig.build_dataset(**datasets)
-        self._target_comp_id: int = self._dataset.net.name_to_idx(train_comp_identifier)
-        self._train_xr = unified_simulator(self._dataset)
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         self.preprocessor = _instantiate_if_dict(preprocessor)
@@ -179,7 +184,7 @@ class HybridSINDyNeuroSurrogate:
         self.feature_names: list = self._sindy.get_feature_names()
         self.equations: str = "\n".join(self._sindy.equations(precision=3))
 
-    def make_surr_comp(self, name: str, params: HHParams | None = None) -> Compartment:
+    def make_surr_comp(self, name: str, params: HHParams | None = None, **kwargs) -> Compartment:
         xi = jnp.asarray(self.xi)
         pca_components = jnp.asarray(self.pca_components)
         pca_mean = jnp.asarray(self.pca_mean)
@@ -212,13 +217,3 @@ class HybridSINDyNeuroSurrogate:
             ),
             params=params if params is not None else HHParams(),
         )
-
-    def save(self, dir: Path | str) -> None:
-        bundle = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
-        joblib.dump(bundle, Path(dir) / _BUNDLE_FILE)
-
-    @classmethod
-    def load(cls, dir: Path | str) -> "HybridSINDyNeuroSurrogate":
-        self = cls.__new__(cls)
-        self.__dict__.update(joblib.load(Path(dir) / _BUNDLE_FILE))
-        return self

@@ -13,6 +13,7 @@ import yaml
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.surrogate.neurosindy import (
     HybridSINDyNeuroSurrogate,
+    NeuroSurrogateBase,
     SINDyNeuroSurrogate,
 )
 
@@ -34,7 +35,7 @@ _DATASET_FILE = "dataset.yaml"
 
 
 def log_surrogate_model(
-    surrogate: SINDyNeuroSurrogate,
+    surrogate: NeuroSurrogateBase,
     dataset_cfg: DatasetConfig,
 ) -> None:
     with tempfile.TemporaryDirectory() as tmp_str:
@@ -46,7 +47,7 @@ def log_surrogate_model(
 
 def load_surrogate_model(
     run_id: str,
-) -> SINDyNeuroSurrogate | HybridSINDyNeuroSurrogate:
+) -> NeuroSurrogateBase:
     logger.info(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(

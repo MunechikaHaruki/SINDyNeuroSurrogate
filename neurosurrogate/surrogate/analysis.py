@@ -5,7 +5,7 @@ from ..core.simulator import unified_simulator
 from ..opcost import OpCost
 from ..registry.neuron import MCMODELS
 from .libraries import FeatureLibrary
-from .neurosindy import SINDyNeuroSurrogate, get_gate_numpy
+from .neurosindy import NeuroSurrogateBase, get_gate_numpy
 
 
 def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):
@@ -52,7 +52,7 @@ def calc_cost_stat(surr_opcost: OpCost, original_cost: OpCost | None) -> dict[st
     }
 
 
-def eval_surrogate(surrogate: SINDyNeuroSurrogate) -> dict:
+def eval_surrogate(surrogate: NeuroSurrogateBase) -> dict:
     assert surrogate._dataset is not None, "dataset を attach してから呼び出すこと"
     net = MCMODELS[surrogate._dataset.model_name]
     sim = unified_simulator(surrogate._dataset)
