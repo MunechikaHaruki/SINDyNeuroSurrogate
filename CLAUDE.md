@@ -35,7 +35,7 @@ mypy は `strict` モードだが `scripts/` は除外。
 
 **neurosurrogate/core/**: `network.py`(`Compartment`/`CompartmentType`/`NeuronGraph`/`DatasetConfig`/`CurrentConfig`。`chain(...)`でノード自動命名・`with_surrogates(targets, make_surr)`でサロゲート置換グラフ生成) / `simulator.py`(`unified_simulator` + `calc_universal_deriv`がtype名dispatchで`vmap`一括計算、`generic_euler_solver`が`lax.scan`、`IndiceArgs`でtype分離) / `coords.py`(xarray座標)
 
-**neurosurrogate/registry/**: `compartments/{hh,traub,common}.py`(動力学+`COMPARTMENT_TEMPLATES`、HH/Traub/passive分割。`hh.py`に`HH_RATE_ENTRIES`/`HH_GATE_PAIRS`/`HH_GATE_FORWARD`集約) / `traub19.py`(19-comp Traub事前定義、traub.c代数的等価) / `neuron.py`(`MCMODELS`) / `current.py`(電流波形、`FUNC_MAP`) / `feature_libraries.py`(`FIXED_LIB_ENTRIES`={hh_gate,hh_gate_product,hh_gate_forward,hh_gate_forward_product,hh_relaxation_driver,hh_relaxation_decay,volt,gate_poly_volt} + `VARIADIC_LIB_ENTRIES`={basis})
+**neurosurrogate/registry/**: `compartments/{hh,traub,common}.py`(動力学+`COMPARTMENT_TEMPLATES`、HH/Traub/passive分割。`hh.py`に`HH_RATE_ENTRIES`/`HH_GATE_PAIRS`/`HH_GATE_FORWARD`集約) / `traub19.py`(19-comp Traub事前定義、traub.c代数的等価) / `neuron.py`(`MCMODELS`) / `current.py`(電流波形、`CURRENT_MAP`) / `feature_libraries.py`(`FIXED_LIB_ENTRIES`={hh_gate,hh_gate_product,hh_gate_forward,hh_gate_forward_product,hh_relaxation_driver,hh_relaxation_decay,volt,gate_poly_volt} + `VARIADIC_LIB_ENTRIES`={basis})
 
 **neurosurrogate/surrogate/**: `neurosindy.py`(`SINDyNeuroSurrogate`。`_build_compute_theta`が`LibraryEntry.func`直接呼び出しでexec不使用。save/load は`surrogate.joblib`単一ファイル、load時sindy=None) / `libraries.py`(`FeatureLibrary`/`SubLibrary`/`LibraryEntry`、`FeatureLibrary.build(specs)`で構築) / `preprocessor.py`(`AutoEncoderPreprocessor`、PCA互換JAX-AE) / `analysis.py`(`SINDyAnalyzer`、`SINDyResult`)
 

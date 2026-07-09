@@ -11,13 +11,13 @@ from analysis import sweep as analysis_sweep
 from matplotlib.figure import Figure
 from mlflow_io import get_runs_df, load_surrogate_model, setup_mlflow
 
-from neurosurrogate.registry.current import FUNC_MAP
+from neurosurrogate.registry.current import CURRENT_MAP
 from neurosurrogate.registry.neuron import MCMODELS
 from neurosurrogate.surrogate.analysis import eval_surrogate
 from neurosurrogate.surrogate.neurosindy import SINDyNeuroSurrogate
 from neurosurrogate.view.plots import view_model, view_neuron_graph
 
-CurrentList: list = list(FUNC_MAP.keys())
+CurrentList: list = list(CURRENT_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
 

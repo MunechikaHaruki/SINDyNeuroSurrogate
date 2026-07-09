@@ -286,7 +286,7 @@ OTHER_FUNC = {
 }
 
 
-FUNC_MAP = {
+CURRENT_MAP = {
     **OTHER_FUNC,
     **LINEAR_FUNC,
     **RANDOM_FUNC,

@@ -2,8 +2,9 @@ name: base
 init:
   datasets:
     model_name: hh
-    pipeline:
-      _target_: neurosurrogate.registry.current.train
+    current:
+      type: train
+      params: {}
 fit:
   preprocessor:
     _target_: sklearn.decomposition.PCA

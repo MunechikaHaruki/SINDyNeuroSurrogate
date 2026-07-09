@@ -10,7 +10,7 @@ import pandas as pd
 from matplotlib.figure import Figure
 from mlflow_io import load_surrogate_model
 
-from neurosurrogate.core.network import CurrentConfig, DatasetConfig
+from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.metrics.wave import (
     DynamicMetrics,
@@ -20,7 +20,7 @@ from neurosurrogate.metrics.wave import (
     waveform_summary,
     waveform_summary_df,
 )
-from neurosurrogate.registry.current import FUNC_MAP
+from neurosurrogate.registry.current import CURRENT_MAP
 from neurosurrogate.registry.neuron import MCMODELS
 from neurosurrogate.surrogate.neurosindy import transform_gate
 from neurosurrogate.view.specs import DRAW_MAP
@@ -77,7 +77,7 @@ def make_sim_ui(current_type: str) -> mo.ui.dictionary:
                 0 if param.default is inspect.Parameter.empty else param.default,
             )
             for name, param in inspect.signature(
-                FUNC_MAP[current_type]
+                CURRENT_MAP[current_type]
             ).parameters.items()
         }
     )
@@ -96,9 +96,7 @@ def plot_current_preview(base_ui: mo.ui.dictionary, sim_ui: mo.ui.dictionary) ->
     dt = float(base_ui["dt"].value)
     params = sim_ui["current_params"].value or {}
     try:
-        i_ext = CurrentConfig(
-            pipeline=CurrentConfig.build_pipeline(current_type, params)
-        ).build(dt)
+        i_ext = CURRENT_MAP[current_type](**params)(dt)
     except Exception as e:  # noqa: BLE001
         fig, ax = plt.subplots(figsize=(6, 1.5))
         ax.text(0.5, 0.5, f"build失敗: {e}", ha="center", va="center", fontsize=8)
@@ -142,7 +140,7 @@ def _parse_eval_button(
     dataset_cfg = DatasetConfig.build_dataset(
         model_name=str(base_ui["model_name"].value),
         dt=float(base_ui["dt"].value),
-        pipeline=CurrentConfig.build_pipeline(current_type, current_params),
+        current={"type": current_type, "params": current_params},
     )
     return dataset_cfg, str(run_ids[0])
 

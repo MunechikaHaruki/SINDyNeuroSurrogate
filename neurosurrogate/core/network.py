@@ -2,11 +2,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
 
-import hydra
 import numpy as np
 
 from ..opcost import OpCost
-from ..registry.current import FUNC_MAP
+from ..registry.current import CURRENT_MAP
 
 
 @dataclass(frozen=True)
@@ -67,29 +66,6 @@ class Compartment:
         else:
             params = None
         return cls(name=d["name"], type=comp_type, params=params)
-
-
-@dataclass
-class CurrentConfig:
-    pipeline: dict
-
-    def build(self, dt: float) -> np.ndarray:
-        return hydra.utils.instantiate(self.pipeline)(dt)  # type: ignore[no-any-return]
-
-    @staticmethod
-    def build_pipeline(current_type: str, kw: dict) -> dict:
-        func_name = FUNC_MAP[current_type].__name__
-        return {
-            "_target_": f"neurosurrogate.registry.current.{func_name}",
-            **kw,
-        }
-
-    def to_dict(self) -> dict:
-        return {"pipeline": self.pipeline}
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "CurrentConfig":
-        return cls(pipeline=d["pipeline"])
 
 
 @dataclass
@@ -177,14 +153,14 @@ class NeuronGraph:
 class DatasetConfig:
     model_name: str
     dt: float
-    current: CurrentConfig
+    current: dict  # {"type": str, "params": dict}
     net: NeuronGraph
 
     def to_dict(self) -> dict:
         return {
             "model_name": self.model_name,
             "dt": self.dt,
-            "current": self.current.to_dict(),
+            "current": self.current,
             "net": self.net.to_dict(),
         }
 
@@ -193,12 +169,14 @@ class DatasetConfig:
         return cls(
             model_name=d["model_name"],
             dt=d["dt"],
-            current=CurrentConfig.from_dict(d["current"]),
+            current=d["current"],
             net=NeuronGraph.from_dict(d["net"]),
         )
 
     def build_current(self) -> np.ndarray:
-        return self.current.build(self.dt)
+        return CURRENT_MAP[self.current["type"]](**self.current.get("params", {}))(
+            self.dt
+        )
 
     def with_surrogates(
         self,
@@ -217,7 +195,7 @@ class DatasetConfig:
         cls,
         dt: float,
         model_name: str,
-        pipeline: dict,
+        current: dict,
     ) -> "DatasetConfig":
         """yamlとの境界"""
         from ..registry.neuron import MCMODELS
@@ -225,6 +203,6 @@ class DatasetConfig:
         return DatasetConfig(
             model_name=model_name,
             dt=dt,
-            current=CurrentConfig(pipeline=pipeline),
+            current=current,
             net=MCMODELS[model_name],
         )

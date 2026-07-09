@@ -11,7 +11,7 @@ import pandas as pd
 from matplotlib.figure import Figure
 from mlflow_io import load_surrogate_model
 
-from neurosurrogate.core.network import CurrentConfig, DatasetConfig
+from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.metrics.wave import (
     DF_ROW_METRICS,
@@ -19,7 +19,7 @@ from neurosurrogate.metrics.wave import (
     DynamicMetrics,
     extract_metric,
 )
-from neurosurrogate.registry.current import FUNC_MAP
+from neurosurrogate.registry.current import CURRENT_MAP
 from neurosurrogate.registry.neuron import MCMODELS
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ from neurosurrogate.registry.neuron import MCMODELS
 def _sweep_param_of(current_type: str) -> str | None:
     keys = [
         n
-        for n, p in inspect.signature(FUNC_MAP[current_type]).parameters.items()
+        for n, p in inspect.signature(CURRENT_MAP[current_type]).parameters.items()
         if p.annotation in (int, float)
     ]
     return keys[0] if len(keys) == 1 else None
@@ -95,7 +95,7 @@ class SweepConfig:
 
 def _iter_amp_datasets(
     surrogates: dict,
-    current_configs: dict[float, CurrentConfig],
+    current_configs: dict[float, dict],
     model_name: str,
     dt: float,
     target_comp_names: list[str],
@@ -128,10 +128,8 @@ def _run_sweep(
     cfg: SweepConfig,
 ) -> tuple[list[tuple[float, Any, dict[str, Any]]], dict[str, str]]:
     """純粋計算層: raw amp_datasets と run_label dict を返す。plot しない。"""
-    current_configs: dict[float, CurrentConfig] = {
-        amp: CurrentConfig(
-            pipeline=CurrentConfig.build_pipeline(current_type, {sweep_param: amp})
-        )
+    current_configs: dict[float, dict] = {
+        amp: {"type": current_type, "params": {sweep_param: amp}}
         for amp in cfg.amp_values
     }
     surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
