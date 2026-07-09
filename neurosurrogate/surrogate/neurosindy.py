@@ -7,6 +7,7 @@ import numpy as np
 import pysindy as ps
 
 from ..core.network import Compartment, CompartmentType, DatasetConfig
+from ..core.simulator import unified_simulator
 from ..registry.compartments.hh import HHParams
 from .libraries import FeatureLibrary
 
@@ -62,31 +63,40 @@ def _build_compute_theta(feature_lib: FeatureLibrary):
     return compute_theta
 
 
+def _instantiate_if_dict(obj):
+    if isinstance(obj, dict):
+        import hydra
+        return hydra.utils.instantiate(obj)
+    return obj
+
+
 class SINDyNeuroSurrogate:
-    def __init__(self, preprocessor, optimizer, library_specs: list[dict]):
-        self.preprocessor = preprocessor
+    def __init__(self, datasets: dict, train_comp_identifier: str):
+        self.dataset = DatasetConfig.build_dataset(**datasets)
+        self._target_comp_id: int = self.dataset.net.name_to_idx(train_comp_identifier)
+        self._train_xr = unified_simulator(self.dataset)
+
+    def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
+        self.preprocessor = _instantiate_if_dict(preprocessor)
         self.library_specs = library_specs
         self._feature_lib = FeatureLibrary.build(library_specs)
         self.sindy = ps.SINDy(
             feature_library=self._feature_lib.library,
-            optimizer=optimizer,
+            optimizer=_instantiate_if_dict(optimizer),
         )
-        self.dataset: DatasetConfig | None = None
-
-    def fit(self, train_xr, target_comp_id) -> None:
-        self.train_comp_id: int = target_comp_id
-        self.train_gate_data = get_gate_numpy(train_xr, target_comp_id)
+        self.train_comp_id: int = self._target_comp_id
+        self.train_gate_data = get_gate_numpy(self._train_xr, self._target_comp_id)
         self.preprocessor.fit(self.train_gate_data)
         preprocessed_xr = transform_gate(
-            self.preprocessor, train_xr, target_comp_id=target_comp_id
+            self.preprocessor, self._train_xr, target_comp_id=self._target_comp_id
         )
         self._gate_inits: list = preprocessed_xr["vars"].to_numpy()[0][1:].tolist()
         self.target_names: list = preprocessed_xr.variable.values.tolist()
         input_features = self.target_names + ["u"]
         self.sindy.fit(
-            preprocessed_xr["vars"].sel(comp_id=target_comp_id).to_numpy(),
+            preprocessed_xr["vars"].sel(comp_id=self._target_comp_id).to_numpy(),
             u=preprocessed_xr["I_ext"].to_numpy(),
-            t=train_xr["time"].to_numpy(),
+            t=self._train_xr["time"].to_numpy(),
             feature_names=input_features,
         )
         self.compute_theta = _build_compute_theta(self._feature_lib)
@@ -157,28 +167,30 @@ class HybridSINDyNeuroSurrogate:
     SINDy 入力順: (latent_1, ..., V) → library_specs は index 0=latent, 末尾=V。
     """
 
-    def __init__(self, preprocessor, optimizer, library_specs: list[dict]):
-        self.preprocessor = preprocessor
+    def __init__(self, datasets: dict, train_comp_identifier: str):
+        self.dataset = DatasetConfig.build_dataset(**datasets)
+        self._target_comp_id: int = self.dataset.net.name_to_idx(train_comp_identifier)
+        self._train_xr = unified_simulator(self.dataset)
+
+    def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
+        self.preprocessor = _instantiate_if_dict(preprocessor)
         self.library_specs = library_specs
         self._feature_lib = FeatureLibrary.build(library_specs)
         self.sindy = ps.SINDy(
             feature_library=self._feature_lib.library,
-            optimizer=optimizer,
+            optimizer=_instantiate_if_dict(optimizer),
         )
-        self.dataset: DatasetConfig | None = None
-
-    def fit(self, train_xr, target_comp_id) -> None:
-        self.train_comp_id: int = target_comp_id
-        gate_data = get_gate_numpy(train_xr, target_comp_id)
+        self.train_comp_id: int = self._target_comp_id
+        gate_data = get_gate_numpy(self._train_xr, self._target_comp_id)
         self.preprocessor.fit(gate_data)
         latent = self.preprocessor.transform(gate_data)
-        v = train_xr["vars"].sel(gate=False, comp_id=target_comp_id).to_numpy()
+        v = self._train_xr["vars"].sel(gate=False, comp_id=self._target_comp_id).to_numpy()
         n_latent = latent.shape[1]
         latent_names = [f"latent{i + 1}" for i in range(n_latent)]
         self.sindy.fit(
             latent,
             u=v,
-            t=train_xr["time"].to_numpy(),
+            t=self._train_xr["time"].to_numpy(),
             feature_names=latent_names + ["V"],
         )
         self.compute_theta = _build_compute_theta(self._feature_lib)

@@ -1,22 +1,24 @@
 name: base
-preprocessor:
-  _target_: sklearn.decomposition.PCA
-  n_components: 1
-optimizer:
-  _target_: pysindy.optimizers.STLSQ
-  threshold: 0.01
-  normalize_columns: false
-  alpha: 2.0
-library_specs:
-  - type: hh_gate
-    inputs: [0]
-  - type: hh_gate_product
-    inputs: [0, 1]
-  - type: volt
-    inputs: [0, 1, 2]
-  - type: basis
-    inputs: [0, 1, 2]
-datasets:
-  model_name: hh
-  pipeline:
-    _target_: neurosurrogate.registry.current.train
+init:
+  datasets:
+    model_name: hh
+    pipeline:
+      _target_: neurosurrogate.registry.current.train
+fit:
+  preprocessor:
+    _target_: sklearn.decomposition.PCA
+    n_components: 1
+  optimizer:
+    _target_: pysindy.optimizers.STLSQ
+    threshold: 0.01
+    normalize_columns: false
+    alpha: 2.0
+  library_specs:
+    - type: hh_gate
+      inputs: [0]
+    - type: hh_gate_product
+      inputs: [0, 1]
+    - type: volt
+      inputs: [0, 1, 2]
+    - type: basis
+      inputs: [0, 1, 2]

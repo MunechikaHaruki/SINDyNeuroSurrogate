@@ -4,9 +4,10 @@ defaults:
 
 
 sindy:
-  datasets:
-    dt: 0.01
-  train_comp_identifier: soma
+  init:
+    datasets:
+      dt: 0.01
+    train_comp_identifier: soma
 
 hydra:
   run:
@@ -15,4 +16,4 @@ hydra:
     dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
   sweeper:
     params:
-      sindy.optimizer.alpha: 0.01, 0.05, 0.1, 0.5, 1.0
+      sindy.fit.optimizer.alpha: 0.01, 0.05, 0.1, 0.5, 1.0
