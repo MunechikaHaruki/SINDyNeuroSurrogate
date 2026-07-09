@@ -7,19 +7,21 @@ from ..registry.neurosindy import NeuroSurrogateBase, get_gate_numpy
 from .opcost import OpCost
 
 
-def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):
-    def _get_pca_metrics(pca: PCA, train_gate_data):
-        reconstructed = pca.inverse_transform(pca.transform(train_gate_data))
-        mse = np.mean((train_gate_data - reconstructed) ** 2)
+def calc_preprocessor_metrics(preprocessor, dataset_cfg: DatasetConfig, train_comp_id: int) -> dict:
+    train_gate = get_gate_numpy(unified_simulator(dataset_cfg), train_comp_id)
+
+    def _get_pca_metrics(pca: PCA) -> dict:
+        reconstructed = pca.inverse_transform(pca.transform(train_gate))
+        mse = np.mean((train_gate - reconstructed) ** 2)
         return {
             "pca/explained_variance_ratio": float(pca.explained_variance_ratio_[0]),
             "pca/explained_variance": float(pca.explained_variance_[0]),
             "pca/reconstruction_mse": float(mse),
-            "pca/reconstruction_mse_ratio": float(mse / np.var(train_gate_data)),
+            "pca/reconstruction_mse_ratio": float(mse / np.var(train_gate)),
         }
 
     if isinstance(preprocessor, PCA):
-        return _get_pca_metrics(preprocessor, train_gate_data)
+        return _get_pca_metrics(preprocessor)
     return {}
 
 
@@ -35,13 +37,14 @@ def calc_cost_stat(surr_opcost: OpCost, original_cost: OpCost | None) -> dict[st
     }
 
 
+def calc_xi_metrics(xi: np.ndarray) -> dict[str, float]:
+    nnz = int((xi != 0).sum())
+    return {"nnz": nnz, "nnz_ratio": nnz / xi.size}
+
+
 def eval_surrogate(surrogate: NeuroSurrogateBase, dataset_cfg: DatasetConfig) -> dict:
-    sim = unified_simulator(dataset_cfg)
-    train_gate = get_gate_numpy(sim, surrogate.train_comp_id)
-    nnz = int((surrogate.xi != 0).sum())
     return {
-        "nnz": nnz,
-        "nnz_ratio": nnz / surrogate.xi.size,
-        **calc_preprocessor_metrics(surrogate.preprocessor, train_gate),
+        **calc_xi_metrics(surrogate.xi),
+        **calc_preprocessor_metrics(surrogate.preprocessor, dataset_cfg, surrogate.train_comp_id),
         **calc_cost_stat(surrogate.opcost, surrogate.original_opcost),
     }
