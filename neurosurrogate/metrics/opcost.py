@@ -2,7 +2,7 @@ from dataclasses import dataclass, fields
 
 import numpy as np
 
-from .sindy_result import SINDyResult
+from .result_bundle import SINDyBundle
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,7 @@ class OpCost:
 
 
 def calc_sindy_opcost(
-    result: SINDyResult,
+    result: SINDyBundle,
     feature_cost_map: dict[str, "OpCost"],
 ) -> "OpCost":
     active_mask = np.any(result.xi != 0, axis=0)

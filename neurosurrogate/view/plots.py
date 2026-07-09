@@ -10,7 +10,7 @@ import seaborn as sns
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
-from ..metrics.sindy_result import SINDyResult
+from ..metrics.result_bundle import SINDyBundle
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
@@ -82,7 +82,7 @@ def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
     return fig
 
 
-def view_model(result: SINDyResult, figsize=(15, 3)):
+def view_model(result: SINDyBundle, figsize=(15, 3)):
     xi_matrix = np.asarray(result.xi)
     fig, ax = plt.subplots(figsize=figsize)
 
