@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -63,7 +64,7 @@ def spec_diff(
     surrogate: xr.Dataset,
     surr_id: int,
 ) -> list[PanelSpec]:
-    v_sel = {"comp_id": surr_id, "variable": "V"}
+    v_sel: dict[str, Any] = {"comp_id": surr_id, "variable": "V"}
     latent_vars = [v for v in preprocessed.coords["variable"].values if v != "V"]
     gate_data = original["vars"].sel(comp_id=surr_id, gate=True)
 

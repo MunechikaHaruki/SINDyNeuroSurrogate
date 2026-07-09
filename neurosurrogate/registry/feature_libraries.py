@@ -82,7 +82,7 @@ def _make_projector(i: int, n: int) -> Callable:
     src = f"def _p({args}): return x{i}\n"
     ns: dict = {}
     exec(src, ns)
-    return ns["_p"]
+    return ns["_p"]  # type: ignore[no-any-return]
 
 
 def _make_constant(n: int) -> Callable:
@@ -91,7 +91,7 @@ def _make_constant(n: int) -> Callable:
     src = f"def _c({args}): return 1\n"
     ns: dict = {}
     exec(src, ns)
-    return ns["_c"]
+    return ns["_c"]  # type: ignore[no-any-return]
 
 
 def _build_basis(n: int) -> list[LibraryEntry]:

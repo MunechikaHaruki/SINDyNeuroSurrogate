@@ -57,9 +57,9 @@ class AutoEncoderPreprocessor:
         self.n_components = n_components
         self.epochs = epochs
         self.lr = lr
-        self._params = None
-        self._mean = None
-        self._std = None
+        self._params: dict | None = None
+        self._mean: np.ndarray | None = None
+        self._std: np.ndarray | None = None
 
     def _init_params(self, input_dim, key):
         k1, k2, k3, k4, k5, k6, k7, k8 = jax.random.split(key, 8)
@@ -128,4 +128,4 @@ class AutoEncoderPreprocessor:
         if self._params is None or self._mean is None or self._std is None:
             raise RuntimeError("fit()を先に呼んでください。")
         x_hat = decoder(self._params["dec"], jnp.array(np.asarray(Z, dtype=np.float32)))
-        return np.array(x_hat) * self._std + self._mean
+        return np.array(x_hat) * self._std + self._mean  # type: ignore[no-any-return]

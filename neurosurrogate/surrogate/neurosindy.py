@@ -6,7 +6,7 @@ import joblib
 import numpy as np
 import pysindy as ps
 
-from ..core.network import Compartment, CompartmentType
+from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..registry.compartments.hh import HHParams
 from .libraries import FeatureLibrary
 
@@ -71,6 +71,7 @@ class SINDyNeuroSurrogate:
             feature_library=self._feature_lib.library,
             optimizer=optimizer,
         )
+        self.dataset: DatasetConfig | None = None
 
     def fit(self, train_xr, target_comp_id) -> None:
         self.train_comp_id: int = target_comp_id
@@ -142,7 +143,8 @@ class SINDyNeuroSurrogate:
         self.feature_names = bundle["feature_names"]
         self.target_names = bundle["target_names"]
         self.equations = bundle["equations"]
-        self.train_comp_id: int = bundle["train_comp_id"]
+        self.train_comp_id = bundle["train_comp_id"]
+        self.dataset = None
         return self
 
 
@@ -163,6 +165,7 @@ class HybridSINDyNeuroSurrogate:
             feature_library=self._feature_lib.library,
             optimizer=optimizer,
         )
+        self.dataset: DatasetConfig | None = None
 
     def fit(self, train_xr, target_comp_id) -> None:
         self.train_comp_id: int = target_comp_id
@@ -252,5 +255,6 @@ class HybridSINDyNeuroSurrogate:
         self.feature_names = bundle["feature_names"]
         self.target_names = bundle["target_names"]
         self.equations = bundle["equations"]
-        self.train_comp_id: int = bundle["train_comp_id"]
+        self.train_comp_id = bundle["train_comp_id"]
+        self.dataset = None
         return self

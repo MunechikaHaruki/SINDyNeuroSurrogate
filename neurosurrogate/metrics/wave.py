@@ -1,11 +1,15 @@
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any
+from typing import Any, TypeVar
 
 import efel
 import numpy as np
 import pandas as pd
+
+T = TypeVar("T")
+R = TypeVar("R")
 
 _MEDIAN_FEATURES: list[str] = [
     # --- 電位の絶対値・相対値 [mV] ---
@@ -67,7 +71,7 @@ def _corr_or_nan(a, b) -> float:
     return float(np.corrcoef(a, b)[0, 1])
 
 
-def _pair(fn, pair: tuple):
+def _pair(fn: Callable[[T], R], pair: tuple[T, T]) -> tuple[R, R]:
     """(orig, surr) ペアに fn を適用して (fn(orig), fn(surr)) を返す。"""
     return fn(pair[0]), fn(pair[1])
 
@@ -121,7 +125,7 @@ class DynamicMetrics:
             warnings.filterwarnings(
                 "ignore", category=RuntimeWarning, module=r"efel\.*"
             )
-            orig_feat, surr_feat = efel.get_feature_values(  # type: ignore[reportCallIssue]
+            orig_feat, surr_feat = efel.get_feature_values(
                 [_to_trace(orig_v), _to_trace(surr_v)],
                 _EFEL_FEATURES,
             )
@@ -240,6 +244,9 @@ def extract_metric(dm: DynamicMetrics, metric_key: str) -> tuple[float | None, f
     """指定 metric の (orig, surr) を返す。スカラー metric の orig は None。"""
     if metric_key in DF_ROW_METRICS:
         df = waveform_summary_df(dm)
-        return float(df.loc[metric_key, "orig"]), float(df.loc[metric_key, "surr"])
+        return (
+            float(df.loc[metric_key, "orig"]),  # type: ignore[arg-type]
+            float(df.loc[metric_key, "surr"]),  # type: ignore[arg-type]
+        )
     scalars = {**waveform_summary(dm), **spike_shape_corr(dm)}
     return None, float(scalars.get(metric_key, _NAN))

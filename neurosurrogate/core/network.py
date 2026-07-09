@@ -53,7 +53,7 @@ class Compartment:
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "type": self.type.name}
         if self.params is not None:
-            d["params"] = self.params._asdict()
+            d["params"] = self.params._asdict()  # type: ignore[attr-defined]
         return d
 
     @classmethod
@@ -61,7 +61,11 @@ class Compartment:
         from ..registry.compartments import COMPARTMENT_TYPES
 
         comp_type = COMPARTMENT_TYPES[d["type"]]
-        params = comp_type.param_cls(**d["params"]) if "params" in d else None
+        if "params" in d:
+            assert comp_type.param_cls is not None
+            params = comp_type.param_cls(**d["params"])
+        else:
+            params = None
         return cls(name=d["name"], type=comp_type, params=params)
 
 
@@ -70,7 +74,7 @@ class CurrentConfig:
     pipeline: dict
 
     def build(self, dt: float) -> np.ndarray:
-        return hydra.utils.instantiate(self.pipeline)(dt)
+        return hydra.utils.instantiate(self.pipeline)(dt)  # type: ignore[no-any-return]
 
     @staticmethod
     def build_pipeline(current_type: str, kw: dict) -> dict:
@@ -106,7 +110,7 @@ class NeuronGraph:
     stim_area_scale: float = 1.0
 
     @cached_property
-    def _name_to_idx(self) -> dict:
+    def _name_to_idx(self) -> dict[str, int]:
         return {c.name: i for i, c in enumerate(self.nodes)}
 
     @property

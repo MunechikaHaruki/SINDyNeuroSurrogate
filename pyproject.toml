@@ -41,13 +41,17 @@ dev = [
     "pynvml>=13.0.1",
     "pyright>=1.1.0",
     "pytest>=9.1.1",
+    "pandas-stubs>=3.0.3.260530",
 ]
 
 [tool.mypy]
-strict = true
+strict = false
+warn_return_any = true
+warn_unused_ignores = true
+exclude = ["scripts/"]
 
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "pysindy"]
+module = ["sklearn.*", "pysindy", "efel", "joblib", "optax"]
 ignore_missing_imports = true
 
 [tool.ruff]

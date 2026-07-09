@@ -52,6 +52,7 @@ def calc_cost_stat(surr_opcost: OpCost, original_cost: OpCost | None) -> dict[st
 
 
 def eval_surrogate(surrogate: SINDyNeuroSurrogate) -> dict:
+    assert surrogate.dataset is not None, "dataset を attach してから呼び出すこと"
     net = MCMODELS[surrogate.dataset.model_name]
     sim = unified_simulator(surrogate.dataset)
     train_gate = get_gate_numpy(sim, surrogate.train_comp_id)

@@ -32,7 +32,7 @@ def current_generator(fn: Callable) -> Callable:
         return build
 
     orig_params = list(inspect.signature(fn).parameters.values())
-    wrapper.__signature__ = inspect.signature(fn).replace(
+    wrapper.__signature__ = inspect.signature(fn).replace(  # type: ignore[attr-defined]
         parameters=orig_params
         + [
             inspect.Parameter(
