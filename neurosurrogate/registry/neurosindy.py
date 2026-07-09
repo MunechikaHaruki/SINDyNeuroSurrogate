@@ -8,11 +8,11 @@ import joblib
 import numpy as np
 import pysindy as ps
 
+from ..core.libraries import FeatureLibrary
 from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..core.simulator import unified_simulator
-from ..opcost import OpCost, calc_surr_opcost
-from ..registry.compartments.hh import HH_DV_COST, HHParams
-from .libraries import FeatureLibrary
+from ..metrics.opcost import OpCost, calc_surr_opcost
+from .compartments.hh import HH_DV_COST, HHParams
 
 _BUNDLE_FILE = "surrogate.joblib"
 

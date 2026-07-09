@@ -10,8 +10,8 @@ C reference: tmp/dataset_utils/traub/traub.c と代数的等価。
 
 import math
 
-from ..core.network import Compartment, Edge, NeuronGraph
-from .compartments.traub import TRAUB_TYPE, TraubParams
+from ...core.network import Compartment, Edge, NeuronGraph
+from ..compartments.traub import TRAUB_TYPE, TraubParams
 
 # --- traub.c の per-compartment 定数 (19要素) ---
 

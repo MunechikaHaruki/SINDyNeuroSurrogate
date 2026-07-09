@@ -4,7 +4,7 @@ from functools import cached_property
 
 import numpy as np
 
-from ..opcost import OpCost
+from ..metrics.opcost import OpCost
 from ..registry.current import CURRENT_MAP
 
 

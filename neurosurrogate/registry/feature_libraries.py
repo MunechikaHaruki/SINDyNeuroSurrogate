@@ -1,12 +1,12 @@
 from collections.abc import Callable
 
-from neurosurrogate.opcost import OpCost
+from neurosurrogate.core.libraries import LibraryEntry
+from neurosurrogate.metrics.opcost import OpCost
 from neurosurrogate.registry.compartments.hh import (
     HH_GATE_FORWARD,
     HH_GATE_PAIRS,
     HH_RATE_ENTRIES,
 )
-from neurosurrogate.surrogate.libraries import LibraryEntry
 
 
 def _to_product(entry: LibraryEntry) -> LibraryEntry:

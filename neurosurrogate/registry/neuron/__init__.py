@@ -1,9 +1,9 @@
 from collections import Counter
 
-from ..core.network import Compartment, Edge, NeuronGraph
-from .compartments import COMPARTMENT_TYPES
-from .compartments.hh import HH_TYPE, PASSIVE_TYPE, HHParams
-from .compartments.traub import TRAUB_TYPE, TraubParams
+from ...core.network import Compartment, Edge, NeuronGraph
+from ..compartments import COMPARTMENT_TYPES
+from ..compartments.hh import HH_TYPE, PASSIVE_TYPE, HHParams
+from ..compartments.traub import TRAUB_TYPE, TraubParams
 from .traub19 import build_traub19
 
 

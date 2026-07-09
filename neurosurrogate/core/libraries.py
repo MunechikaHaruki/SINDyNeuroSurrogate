@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import pysindy as ps
 
-from neurosurrogate.opcost import OpCost
+from neurosurrogate.metrics.opcost import OpCost
 
 
 @dataclass(frozen=True)

@@ -3,8 +3,8 @@ from sklearn.decomposition import PCA
 
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
-from ..opcost import OpCost
-from .neurosindy import NeuroSurrogateBase, get_gate_numpy
+from ..registry.neurosindy import NeuroSurrogateBase, get_gate_numpy
+from .opcost import OpCost
 
 
 def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):

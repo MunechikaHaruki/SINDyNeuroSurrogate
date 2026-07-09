@@ -11,7 +11,7 @@ import pandas as pd
 import yaml
 
 from neurosurrogate.core.network import DatasetConfig
-from neurosurrogate.surrogate.neurosindy import (
+from neurosurrogate.registry.neurosindy import (
     HybridSINDyNeuroSurrogate,
     NeuroSurrogateBase,
     SINDyNeuroSurrogate,

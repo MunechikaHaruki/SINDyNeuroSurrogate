@@ -22,7 +22,7 @@ from neurosurrogate.metrics.wave import (
 )
 from neurosurrogate.registry.current import CURRENT_MAP
 from neurosurrogate.registry.neuron import MCMODELS
-from neurosurrogate.surrogate.neurosindy import transform_gate
+from neurosurrogate.registry.neurosindy import transform_gate
 from neurosurrogate.view.specs import DRAW_MAP
 
 DRAW_LIST = list(DRAW_MAP.keys())

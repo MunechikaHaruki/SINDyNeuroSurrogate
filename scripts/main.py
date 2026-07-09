@@ -6,7 +6,7 @@ import mlflow
 from mlflow_io import log_surrogate_model, setup_mlflow
 from omegaconf import DictConfig, OmegaConf
 
-from neurosurrogate.surrogate.neurosindy import (
+from neurosurrogate.registry.neurosindy import (
     HybridSINDyNeuroSurrogate,
     SINDyNeuroSurrogate,
 )
