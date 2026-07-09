@@ -7,7 +7,9 @@ from ..registry.neurosindy import NeuroSurrogateBase, get_gate_numpy
 from .opcost import OpCost
 
 
-def calc_preprocessor_metrics(preprocessor, dataset_cfg: DatasetConfig, train_comp_id: int) -> dict:
+def calc_preprocessor_metrics(
+    preprocessor, dataset_cfg: DatasetConfig, train_comp_id: int
+) -> dict:
     train_gate = get_gate_numpy(unified_simulator(dataset_cfg), train_comp_id)
 
     def _get_pca_metrics(pca: PCA) -> dict:
@@ -44,7 +46,9 @@ def calc_xi_metrics(xi: np.ndarray) -> dict[str, float]:
 
 def eval_surrogate(surrogate: NeuroSurrogateBase, dataset_cfg: DatasetConfig) -> dict:
     return {
-        **calc_xi_metrics(surrogate.xi),
-        **calc_preprocessor_metrics(surrogate.preprocessor, dataset_cfg, surrogate.train_comp_id),
+        **calc_xi_metrics(surrogate.result.xi),
+        **calc_preprocessor_metrics(
+            surrogate.preprocessor, dataset_cfg, surrogate.train_comp_id
+        ),
         **calc_cost_stat(surrogate.opcost, surrogate.original_opcost),
     }

@@ -11,7 +11,8 @@ import pysindy as ps
 from ..core.libraries import FeatureLibrary
 from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..core.simulator import unified_simulator
-from ..metrics.opcost import OpCost, calc_surr_opcost
+from ..metrics.opcost import OpCost, calc_sindy_opcost
+from ..metrics.sindy_result import SINDyResult
 from .compartments.hh import HH_DV_COST, HHParams
 
 _BUNDLE_FILE = "surrogate.joblib"
@@ -69,6 +70,7 @@ def _build_compute_theta(feature_lib: FeatureLibrary):
 def _instantiate_if_dict(obj):
     if isinstance(obj, dict):
         import hydra
+
         return hydra.utils.instantiate(obj)
     return obj
 
@@ -77,6 +79,7 @@ class NeuroSurrogateBase(ABC):
     def __init__(self, datasets: dict, train_comp_identifier: str):
         self._dataset = DatasetConfig.build_dataset(**datasets)
         self._target_comp_id: int = self._dataset.net.name_to_idx(train_comp_identifier)
+        self.train_comp_id: int = self._target_comp_id
         self._train_xr = unified_simulator(self._dataset)
 
     @abstractmethod
@@ -84,6 +87,10 @@ class NeuroSurrogateBase(ABC):
 
     @abstractmethod
     def make_surr_comp(self, name: str, **kwargs) -> Compartment: ...
+
+    @property
+    @abstractmethod
+    def result(self) -> SINDyResult: ...
 
     @property
     @abstractmethod
@@ -109,28 +116,30 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             feature_library=feature_lib.library,
             optimizer=_instantiate_if_dict(optimizer),
         )
-        self.train_comp_id: int = self._target_comp_id
         self._train_gate_data = get_gate_numpy(self._train_xr, self._target_comp_id)
         self.preprocessor.fit(self._train_gate_data)
         preprocessed_xr = transform_gate(
             self.preprocessor, self._train_xr, target_comp_id=self._target_comp_id
         )
         self.gate_inits: list = preprocessed_xr["vars"].to_numpy()[0][1:].tolist()
-        self.target_names: list = preprocessed_xr.variable.values.tolist()
-        input_features = self.target_names + ["u"]
+        target_names = preprocessed_xr.variable.values.tolist()
         self._sindy.fit(
             preprocessed_xr["vars"].sel(comp_id=self._target_comp_id).to_numpy(),
             u=preprocessed_xr["I_ext"].to_numpy(),
             t=self._train_xr["time"].to_numpy(),
-            feature_names=input_features,
+            feature_names=target_names + ["u"],
         )
-        self.xi: np.ndarray = self._sindy.coefficients()
-        self.feature_names: list = self._sindy.get_feature_names()
-        self.equations: str = "\n".join(self._sindy.equations(precision=3))
-        self.original_opcost: OpCost | None = self._dataset.net.nodes[self._target_comp_id].type.opcost
+        self.sindy_result = SINDyResult.from_sindy(self._sindy, target_names)
+        self.original_opcost: OpCost | None = self._dataset.net.nodes[
+            self._target_comp_id
+        ].type.opcost
+
+    @property
+    def result(self) -> SINDyResult:
+        return self.sindy_result
 
     def make_surr_comp(self, name: str, **kwargs) -> Compartment:
-        xi = self.xi
+        xi = self.sindy_result.xi
         compute_theta = _build_compute_theta(FeatureLibrary.build(self.library_specs))
 
         def surr_kernel(params, i_t, v, state):
@@ -153,8 +162,10 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
 
     @property
     def opcost(self) -> OpCost:
-        cost_map = FeatureLibrary.build(self.library_specs).to_base_cost(self.target_names + ["u"])
-        return calc_surr_opcost(self.xi, self.feature_names, cost_map)
+        cost_map = FeatureLibrary.build(self.library_specs).to_base_cost(
+            self.sindy_result.target_names + ["u"]
+        )
+        return calc_sindy_opcost(self.sindy_result, cost_map)
 
 
 class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
@@ -174,11 +185,14 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             feature_library=feature_lib.library,
             optimizer=_instantiate_if_dict(optimizer),
         )
-        self.train_comp_id: int = self._target_comp_id
         gate_data = get_gate_numpy(self._train_xr, self._target_comp_id)
         self.preprocessor.fit(gate_data)
         latent = self.preprocessor.transform(gate_data)
-        v = self._train_xr["vars"].sel(gate=False, comp_id=self._target_comp_id).to_numpy()
+        v = (
+            self._train_xr["vars"]
+            .sel(gate=False, comp_id=self._target_comp_id)
+            .to_numpy()
+        )
         n_latent = latent.shape[1]
         latent_names = [f"latent{i + 1}" for i in range(n_latent)]
         self._sindy.fit(
@@ -187,17 +201,22 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             t=self._train_xr["time"].to_numpy(),
             feature_names=latent_names + ["V"],
         )
-        self.xi: np.ndarray = self._sindy.coefficients()
+        self.sindy_result = SINDyResult.from_sindy(self._sindy, latent_names + ["V"])
         self.pca_components: np.ndarray = np.asarray(self.preprocessor.components_)
         self.pca_mean: np.ndarray = np.asarray(self.preprocessor.mean_)
         self.gate_inits: list = latent[0].tolist()
-        self.target_names: list = latent_names + ["V"]
-        self.feature_names: list = self._sindy.get_feature_names()
-        self.equations: str = "\n".join(self._sindy.equations(precision=3))
-        self.original_opcost: OpCost | None = self._dataset.net.nodes[self._target_comp_id].type.opcost
+        self.original_opcost: OpCost | None = self._dataset.net.nodes[
+            self._target_comp_id
+        ].type.opcost
 
-    def make_surr_comp(self, name: str, params: HHParams | None = None, **kwargs) -> Compartment:
-        xi = jnp.asarray(self.xi)
+    @property
+    def result(self) -> SINDyResult:
+        return self.sindy_result
+
+    def make_surr_comp(
+        self, name: str, params: HHParams | None = None, **kwargs
+    ) -> Compartment:
+        xi = jnp.asarray(self.sindy_result.xi)
         pca_components = jnp.asarray(self.pca_components)
         pca_mean = jnp.asarray(self.pca_mean)
         compute_theta = _build_compute_theta(FeatureLibrary.build(self.library_specs))
@@ -232,5 +251,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
 
     @property
     def opcost(self) -> OpCost:
-        cost_map = FeatureLibrary.build(self.library_specs).to_base_cost(self.target_names + ["u"])
-        return calc_surr_opcost(self.xi, self.feature_names, cost_map) + HH_DV_COST
+        cost_map = FeatureLibrary.build(self.library_specs).to_base_cost(
+            self.sindy_result.target_names + ["u"]
+        )
+        return calc_sindy_opcost(self.sindy_result, cost_map) + HH_DV_COST

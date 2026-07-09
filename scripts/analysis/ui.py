@@ -132,7 +132,11 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
 def _eval_df(loaded_list: list[SINDyNeuroSurrogate]) -> pd.DataFrame:
     rows = [
-        {"run_name": x.run_name, "run_id": x.run_id[:8], **eval_surrogate(x, x._dataset)}
+        {
+            "run_name": x.run_name,
+            "run_id": x.run_id[:8],
+            **eval_surrogate(x, x._dataset),
+        }
         for x in loaded_list
     ]
     return pd.DataFrame(rows).set_index("run_name")
@@ -149,10 +153,8 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
                     mo.md(
                         f"run_id:{loaded.run_id[:8]}.. &nbsp;&nbsp;　{loaded.run_name}"
                     ),
-                    mo.md(f"{loaded.equations[:40]}"),
-                    mo.mpl.interactive(
-                        view_model(loaded.xi, loaded.feature_names, loaded.target_names)
-                    ),
+                    mo.md(f"{loaded.sindy_result.equations[:40]}"),
+                    mo.mpl.interactive(view_model(loaded.sindy_result)),
                 ]
             )
             for loaded in loaded_list
@@ -231,7 +233,7 @@ def view(
     ]
     for rid in run_ids:
         loaded = load_surrogate_model(rid)
-        fig = view_model(loaded.xi, loaded.feature_names, loaded.target_names)
+        fig = view_model(loaded.sindy_result)
         entries.append(_entry(f"model({rid[:8]})", fig, model))
 
     if res is None:

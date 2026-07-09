@@ -10,6 +10,8 @@ import seaborn as sns
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
+from ..metrics.sindy_result import SINDyResult
+
 _NODE_COLORS = {
     "hh": "#4C9BE8",
     "passive": "#A8D5A2",
@@ -80,23 +82,19 @@ def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
     return fig
 
 
-def view_model(xi_matrix, feature_names=None, target_names=None, figsize=(15, 3)):
-    xi_matrix = np.asarray(xi_matrix)
+def view_model(result: SINDyResult, figsize=(15, 3)):
+    xi_matrix = np.asarray(result.xi)
     fig, ax = plt.subplots(figsize=figsize)
 
-    # 係数の最大・最小値からカラーマップの範囲を決定
     vmin = np.min(xi_matrix)
     vmax = np.max(xi_matrix)
 
-    # 全て0の場合はエラーを避けるためのフォールバック
     if vmin == 0 and vmax == 0:
         vmin, vmax = -1.0, 1.0
 
-    # 対称対数スケールの設定
-    # linthresh=1.0 により、-1.0から1.0の微小な係数は線形スケールとして扱う
+    # linthresh=1.0: -1.0〜1.0 の微小係数は線形スケール
     norm = SymLogNorm(linthresh=1.0, vmin=vmin, vmax=vmax, base=10)
 
-    # center=0 に設定することで、係数が0（スパース化により消去された項）が白になる
     sns.heatmap(
         xi_matrix,
         cmap="coolwarm",
@@ -105,21 +103,19 @@ def view_model(xi_matrix, feature_names=None, target_names=None, figsize=(15, 3)
         ax=ax,
         linewidths=0.5,
         linecolor="gray",
-        annot=False,  # 桁数が大きいため、文字入れはデフォルトでオフ
+        annot=False,
     )
 
     ax.set_title("SINDy Coefficients (SymLog Scale)")
 
-    # Y軸のラベル設定（予測ターゲット）
-    if target_names is not None and len(target_names) == xi_matrix.shape[0]:
-        ax.set_yticks(np.arange(len(target_names)) + 0.5)
-        ax.set_yticklabels(target_names, rotation=0)
+    if len(result.target_names) == xi_matrix.shape[0]:
+        ax.set_yticks(np.arange(len(result.target_names)) + 0.5)
+        ax.set_yticklabels(result.target_names, rotation=0)
         ax.set_ylabel("Target Variables")
 
-    # X軸のラベル設定（ライブラリの項）
-    if feature_names is not None and len(feature_names) == xi_matrix.shape[1]:
-        ax.set_xticks(np.arange(len(feature_names)) + 0.5)
-        ax.set_xticklabels(feature_names, rotation=45, ha="right", fontsize=8)
+    if len(result.feature_names) == xi_matrix.shape[1]:
+        ax.set_xticks(np.arange(len(result.feature_names)) + 0.5)
+        ax.set_xticklabels(result.feature_names, rotation=45, ha="right", fontsize=8)
         ax.set_xlabel("Library Features")
 
     fig.tight_layout()

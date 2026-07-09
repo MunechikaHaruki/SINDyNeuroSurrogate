@@ -131,7 +131,7 @@ HH_GATE_PAIRS: list[tuple[LibraryEntry, LibraryEntry]] = [
 HH_GATE_FORWARD: list[LibraryEntry] = [ALPHA_M_ENTRY, ALPHA_H_ENTRY, ALPHA_N_ENTRY]
 
 HH_DV_COST = (
-    OpCost(pm=1)           # 反転電位
+    OpCost(pm=1)  # 反転電位
     + OpCost(pm=3, mul=5) * 2  # Na,K電流
     + OpCost(pm=1, mul=1)  # leak電流
     + OpCost(pm=3, div=1)  # dv/dt
