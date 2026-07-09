@@ -169,11 +169,7 @@ class HybridSINDyNeuroSurrogate:
         gate_data = get_gate_numpy(train_xr, target_comp_id)
         self.preprocessor.fit(gate_data)
         latent = self.preprocessor.transform(gate_data)
-        v = (
-            train_xr["vars"]
-            .sel(gate=False, comp_id=target_comp_id)
-            .to_numpy()
-        )
+        v = train_xr["vars"].sel(gate=False, comp_id=target_comp_id).to_numpy()
         n_latent = latent.shape[1]
         latent_names = [f"latent{i + 1}" for i in range(n_latent)]
         self.sindy.fit(
@@ -191,9 +187,7 @@ class HybridSINDyNeuroSurrogate:
         self.feature_names: list = self.sindy.get_feature_names()
         self.equations: str = "\n".join(self.sindy.equations(precision=3))
 
-    def make_surr_comp(
-        self, name: str, params: HHParams | None = None
-    ) -> Compartment:
+    def make_surr_comp(self, name: str, params: HHParams | None = None) -> Compartment:
         xi = jnp.asarray(self.xi)
         pca_components = jnp.asarray(self.pca_components)
         pca_mean = jnp.asarray(self.pca_mean)

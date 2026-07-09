@@ -11,8 +11,9 @@ from ..registry.current import FUNC_MAP
 
 @dataclass(frozen=True)
 class CompartmentType:
-    """
-    「hh とは何か」を集約した物理的な型定義。kernel + params class + gate 構造 + opcost。
+    """「hh とは何か」を集約した物理的な型定義。
+
+    kernel + params class + gate 構造 + opcost を持つ。
     Compartment (グラフノードのインスタンス) はこの CompartmentType への参照を持つだけ。
     """
 
@@ -73,8 +74,9 @@ class CurrentConfig:
 
     @staticmethod
     def build_pipeline(current_type: str, kw: dict) -> dict:
+        func_name = FUNC_MAP[current_type].__name__
         return {
-            "_target_": f"neurosurrogate.registry.current.{FUNC_MAP[current_type].__name__}",
+            "_target_": f"neurosurrogate.registry.current.{func_name}",
             **kw,
         }
 

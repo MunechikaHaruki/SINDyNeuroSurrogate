@@ -60,7 +60,8 @@ class FeatureLibrary:
                 expected = entries[0].func.__code__.co_argcount
                 if len(inputs) != expected:
                     raise ValueError(
-                        f"type={t!r} は arity={expected} を要求、inputs={inputs} (arity={len(inputs)})"
+                        f"type={t!r} は arity={expected} 要求、"
+                        f"inputs={inputs} (arity={len(inputs)})"
                     )
                 return SubLibrary(entries=entries, inputs=inputs)
             if t in VARIADIC_LIB_ENTRIES:

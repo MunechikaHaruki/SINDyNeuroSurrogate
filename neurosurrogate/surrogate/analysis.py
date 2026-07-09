@@ -4,7 +4,6 @@ from sklearn.decomposition import PCA
 from ..core.simulator import unified_simulator
 from ..opcost import OpCost
 from ..registry.neuron import MCMODELS
-from .libraries import FeatureLibrary
 from .neurosindy import SINDyNeuroSurrogate, get_gate_numpy
 
 
@@ -54,9 +53,10 @@ def calc_cost_stat(surr_opcost: OpCost, original_cost: OpCost | None) -> dict[st
 
 def eval_surrogate(surrogate: SINDyNeuroSurrogate) -> dict:
     net = MCMODELS[surrogate.dataset.model_name]
-    train_gate = get_gate_numpy(unified_simulator(surrogate.dataset), surrogate.train_comp_id)
-    feature_cost_map = surrogate._feature_lib.to_base_cost(surrogate.target_names + ["u"])
-    surr_opcost = calc_surr_opcost(surrogate.xi, surrogate.feature_names, feature_cost_map)
+    sim = unified_simulator(surrogate.dataset)
+    train_gate = get_gate_numpy(sim, surrogate.train_comp_id)
+    cost_map = surrogate._feature_lib.to_base_cost(surrogate.target_names + ["u"])
+    surr_opcost = calc_surr_opcost(surrogate.xi, surrogate.feature_names, cost_map)
     original_cost = net.nodes[surrogate.train_comp_id].type.opcost
     nnz = int((surrogate.xi != 0).sum())
     return {

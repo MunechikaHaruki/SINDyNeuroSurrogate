@@ -13,9 +13,13 @@ def chain(
     stim: int = 0,
 ) -> NeuronGraph:
     """type 名リストから直鎖 NeuronGraph 構築。
-    ノード名は型の頭文字 + 0始まり連番。例: ["passive","hh","passive"] → ["p0","h0","p1"]"""
-    assert len(weights) == len(node_types) - 1, (
-        f"weights の長さは len(node_types) - 1 = {len(node_types) - 1} である必要があります"
+
+    ノード名は型の頭文字 + 0始まり連番。
+    例: ["passive","hh","passive"] → ["p0","h0","p1"]
+    """
+    expected = len(node_types) - 1
+    assert len(weights) == expected, (
+        f"weights の長さは len(node_types) - 1 = {expected} 必要"
     )
     counters: Counter = Counter()
     nodes = []

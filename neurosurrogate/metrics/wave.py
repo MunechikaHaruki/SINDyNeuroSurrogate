@@ -10,7 +10,8 @@ import pandas as pd
 _MEDIAN_FEATURES: list[str] = [
     # --- 電位の絶対値・相対値 [mV] ---
     "peak_voltage",  # 各 AP のピーク時の電位（V[peak_indices]）
-    "AP_amplitude",  # AP 振幅: peak_voltage - V[AP_begin_indices]（spike onset からの相対高）
+    # AP 振幅: peak_voltage - V[AP_begin_indices]（spike onset からの相対高）
+    "AP_amplitude",
     "AP_begin_voltage",  # spike start 時点の電位。spike start は dV/dt > 10 V/s が
     # 5 点以上続く最初の時点として定義される（実質的な閾値電位）
     # --- 電位変化速度 [V/s]（= mV/ms）---
@@ -116,7 +117,7 @@ class DynamicMetrics:
             }
 
         with warnings.catch_warnings():
-            # スパイクなし時に eFEL が RuntimeWarning を出すが、nan に変換するため問題ない
+            # スパイクなし時に eFEL が RuntimeWarning、nan 変換で無害
             warnings.filterwarnings(
                 "ignore", category=RuntimeWarning, module=r"efel\.*"
             )

@@ -4,12 +4,11 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
+import joblib
 import mlflow
 import mlflow.artifacts
 import pandas as pd
 import yaml
-
-import joblib
 
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.surrogate.neurosindy import (

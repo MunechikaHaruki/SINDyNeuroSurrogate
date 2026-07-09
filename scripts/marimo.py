@@ -17,7 +17,7 @@ def _():
     }
 
     base_ui = analysis.make_base_ui()
-    base_ui
+    base_ui  # noqa: B018
     return SWEEP_DEFAULTS, analysis, base_ui, mo
 
 
@@ -25,14 +25,14 @@ def _():
 def _(SWEEP_DEFAULTS, analysis, base_ui):
     analysis.setup_mpl(base_ui["plt_style"].value)
     setting_ui = analysis.make_setting_ui(base_ui, SWEEP_DEFAULTS)
-    setting_ui
+    setting_ui  # noqa: B018
     return (setting_ui,)
 
 
 @app.cell
 def _(analysis, base_ui):
     draw_ui = analysis.make_draw_ui(base_ui)
-    draw_ui
+    draw_ui  # noqa: B018
     return (draw_ui,)
 
 
@@ -84,7 +84,7 @@ def _(analysis, base_ui, set_res, setting_ui):
 @app.cell
 def _(analysis, base_ui, draw_ui, res, setting_ui):
     html_view, save_items = analysis.view(base_ui, setting_ui, res, draw_ui)
-    html_view
+    html_view  # noqa: B018
     return (save_items,)
 
 

@@ -45,7 +45,7 @@ def draw_engine(
     if n_rows == 1:
         axs = [axs]
 
-    for ax, p in zip(axs, panels):
+    for ax, p in zip(axs, panels, strict=False):
         for tr in p.traces:
             x, y = tr.xy()
             ax.plot(x, y, label=tr.label, color=tr.color, linestyle=tr.style)

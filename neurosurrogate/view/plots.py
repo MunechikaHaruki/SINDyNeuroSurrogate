@@ -24,7 +24,7 @@ _STIM_LINEWIDTH = 3.0
 
 
 def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
-    """NeuronGraph をnetworkxで可視化する。ノード色はコンパートメント種別、赤枠はstimノード。"""
+    """NeuronGraph を networkx で可視化。ノード色=種別、赤枠=stim ノード。"""
     G = nx.DiGraph()
     for c in net.nodes:
         G.add_node(c.name, type=c.type.name)
@@ -126,12 +126,10 @@ def view_model(xi_matrix, feature_names=None, target_names=None, figsize=(15, 3)
     return fig
 
 
-def plot_2d_attractor_comparison(
-    orig_ds, surr_ds, comp_id, state_vars=["V", "latent1"]
-):
-    """
-    オリジナルとサロゲートのアトラクタ（相平面）を重ねて描画し、ダイナミクスの一致度を可視化する。
-    """
+def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None):
+    """相平面重ね描き。orig と surr のダイナミクス一致度可視化。"""
+    if state_vars is None:
+        state_vars = ["V", "latent1"]
     fig = Figure()
     ax = fig.subplots()
 
@@ -188,7 +186,7 @@ def plot_2d_attractor_comparison(
     ax.grid(True, linestyle=":", alpha=0.5)
     ax.legend(loc="upper right", frameon=True)
 
-    # アスペクト比を自動調整（電位と潜在変数のスケールが違う場合が多いため 'equal' は避ける）
+    # アスペクト比自動調整 (電位と潜在変数のスケール差多数 → 'equal' 回避)
     fig.tight_layout()
 
     return fig
