@@ -10,7 +10,8 @@ import pysindy as ps
 
 from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..core.simulator import unified_simulator
-from ..registry.compartments.hh import HHParams
+from ..opcost import OpCost, calc_surr_opcost
+from ..registry.compartments.hh import HH_DV_COST, HHParams
 from .libraries import FeatureLibrary
 
 _BUNDLE_FILE = "surrogate.joblib"
@@ -84,6 +85,10 @@ class NeuroSurrogateBase(ABC):
     @abstractmethod
     def make_surr_comp(self, name: str, **kwargs) -> Compartment: ...
 
+    @property
+    @abstractmethod
+    def opcost(self) -> OpCost: ...
+
     def save(self, dir: Path | str) -> None:
         bundle = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
         joblib.dump(bundle, Path(dir) / _BUNDLE_FILE)
@@ -122,6 +127,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
         self.xi: np.ndarray = self._sindy.coefficients()
         self.feature_names: list = self._sindy.get_feature_names()
         self.equations: str = "\n".join(self._sindy.equations(precision=3))
+        self.original_opcost: OpCost | None = self._dataset.net.nodes[self._target_comp_id].type.opcost
 
     def make_surr_comp(self, name: str, **kwargs) -> Compartment:
         xi = self.xi
@@ -144,6 +150,11 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
                 opcost=None,
             ),
         )
+
+    @property
+    def opcost(self) -> OpCost:
+        cost_map = FeatureLibrary.build(self.library_specs).to_base_cost(self.target_names + ["u"])
+        return calc_surr_opcost(self.xi, self.feature_names, cost_map)
 
 
 class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
@@ -183,6 +194,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         self.target_names: list = latent_names + ["V"]
         self.feature_names: list = self._sindy.get_feature_names()
         self.equations: str = "\n".join(self._sindy.equations(precision=3))
+        self.original_opcost: OpCost | None = self._dataset.net.nodes[self._target_comp_id].type.opcost
 
     def make_surr_comp(self, name: str, params: HHParams | None = None, **kwargs) -> Compartment:
         xi = jnp.asarray(self.xi)
@@ -217,3 +229,8 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             ),
             params=params if params is not None else HHParams(),
         )
+
+    @property
+    def opcost(self) -> OpCost:
+        cost_map = FeatureLibrary.build(self.library_specs).to_base_cost(self.target_names + ["u"])
+        return calc_surr_opcost(self.xi, self.feature_names, cost_map) + HH_DV_COST

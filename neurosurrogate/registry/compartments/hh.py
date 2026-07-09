@@ -130,13 +130,17 @@ HH_GATE_PAIRS: list[tuple[LibraryEntry, LibraryEntry]] = [
 # alpha 系のみ (順方向遷移率、3個)
 HH_GATE_FORWARD: list[LibraryEntry] = [ALPHA_M_ENTRY, ALPHA_H_ENTRY, ALPHA_N_ENTRY]
 
-_HH_OPCOST = (
-    sum(HH_RATE_COST_MAP.values(), OpCost())  # レート関数
-    + OpCost(pm=1)  # 反転電位
+HH_DV_COST = (
+    OpCost(pm=1)           # 反転電位
     + OpCost(pm=3, mul=5) * 2  # Na,K電流
     + OpCost(pm=1, mul=1)  # leak電流
+    + OpCost(pm=3, div=1)  # dv/dt
+)
+
+_HH_OPCOST = (
+    sum(HH_RATE_COST_MAP.values(), OpCost())  # レート関数
+    + HH_DV_COST
     + OpCost(pm=6, mul=6)  # dg/dt
-    + OpCost(pm=3, div=1)  # dv/dtの計算
 )
 
 

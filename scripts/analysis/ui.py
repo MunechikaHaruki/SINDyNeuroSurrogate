@@ -132,7 +132,7 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
 def _eval_df(loaded_list: list[SINDyNeuroSurrogate]) -> pd.DataFrame:
     rows = [
-        {"run_name": x.run_name, "run_id": x.run_id[:8], **eval_surrogate(x)}
+        {"run_name": x.run_name, "run_id": x.run_id[:8], **eval_surrogate(x, x._dataset)}
         for x in loaded_list
     ]
     return pd.DataFrame(rows).set_index("run_name")

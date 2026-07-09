@@ -1,10 +1,9 @@
 import numpy as np
 from sklearn.decomposition import PCA
 
+from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
 from ..opcost import OpCost
-from ..registry.neuron import MCMODELS
-from .libraries import FeatureLibrary
 from .neurosindy import NeuroSurrogateBase, get_gate_numpy
 
 
@@ -24,22 +23,6 @@ def calc_preprocessor_metrics(preprocessor, train_gate_data: np.ndarray):
     return {}
 
 
-def calc_surr_opcost(
-    coef: np.ndarray,
-    feature_names: list[str],
-    feature_cost_map: dict[str, OpCost],
-) -> OpCost:
-    active_mask = np.any(coef != 0, axis=0)
-    active_features = [f for i, f in enumerate(feature_names) if active_mask[i]]
-    nnz = np.count_nonzero(coef).item()
-    surr_opcost = OpCost(mul=nnz, pm=max(0, nnz - int(coef.shape[0])))
-    for feature in active_features:
-        if feature not in feature_cost_map:
-            raise ValueError(f"Found Unknown base func: '{feature}'")
-        surr_opcost = surr_opcost + feature_cost_map[feature]
-    return surr_opcost
-
-
 def calc_cost_stat(surr_opcost: OpCost, original_cost: OpCost | None) -> dict[str, int]:
     if original_cost is None:
         return {}
@@ -52,18 +35,13 @@ def calc_cost_stat(surr_opcost: OpCost, original_cost: OpCost | None) -> dict[st
     }
 
 
-def eval_surrogate(surrogate: NeuroSurrogateBase) -> dict:
-    assert surrogate._dataset is not None, "dataset を attach してから呼び出すこと"
-    net = MCMODELS[surrogate._dataset.model_name]
-    sim = unified_simulator(surrogate._dataset)
+def eval_surrogate(surrogate: NeuroSurrogateBase, dataset_cfg: DatasetConfig) -> dict:
+    sim = unified_simulator(dataset_cfg)
     train_gate = get_gate_numpy(sim, surrogate.train_comp_id)
-    cost_map = FeatureLibrary.build(surrogate.library_specs).to_base_cost(surrogate.target_names + ["u"])
-    surr_opcost = calc_surr_opcost(surrogate.xi, surrogate.feature_names, cost_map)
-    original_cost = net.nodes[surrogate.train_comp_id].type.opcost
     nnz = int((surrogate.xi != 0).sum())
     return {
         "nnz": nnz,
         "nnz_ratio": nnz / surrogate.xi.size,
         **calc_preprocessor_metrics(surrogate.preprocessor, train_gate),
-        **calc_cost_stat(surr_opcost, original_cost),
+        **calc_cost_stat(surrogate.opcost, surrogate.original_opcost),
     }
