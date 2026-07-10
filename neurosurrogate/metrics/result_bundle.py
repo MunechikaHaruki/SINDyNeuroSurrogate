@@ -5,6 +5,19 @@ import pysindy as ps
 
 
 @dataclass
+class PCABundle:
+    components: np.ndarray
+    mean: np.ndarray
+
+    @classmethod
+    def from_preprocessor(cls, preprocessor) -> "PCABundle":
+        return cls(
+            components=np.asarray(preprocessor.components_),
+            mean=np.asarray(preprocessor.mean_),
+        )
+
+
+@dataclass
 class SINDyBundle:
     xi: np.ndarray
     feature_names: list[str]

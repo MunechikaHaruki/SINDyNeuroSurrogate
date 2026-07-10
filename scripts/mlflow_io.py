@@ -58,7 +58,7 @@ def load_surrogate_model(
         bundle_keys = set(joblib.load(local / "surrogate.joblib").keys())
         cls = (
             HybridSINDyNeuroSurrogate
-            if "pca_components" in bundle_keys
+            if "pca_bundle" in bundle_keys
             else SINDyNeuroSurrogate
         )
         surrogate = cls.load(local)

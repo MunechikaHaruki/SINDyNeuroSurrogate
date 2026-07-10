@@ -12,7 +12,7 @@ from ..core.libraries import FeatureLibrary
 from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..core.simulator import unified_simulator
 from ..metrics.opcost import OpCost, calc_sindy_opcost
-from ..metrics.result_bundle import SINDyBundle
+from ..metrics.result_bundle import PCABundle, SINDyBundle
 from .compartments.hh import HH_DV_COST, HHParams
 
 _BUNDLE_FILE = "surrogate.joblib"
@@ -206,8 +206,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         self.sindy_result = SINDyBundle.from_sindy(
             self._sindy, latent_names + ["V"], library_specs
         )
-        self.pca_components: np.ndarray = np.asarray(self.preprocessor.components_)
-        self.pca_mean: np.ndarray = np.asarray(self.preprocessor.mean_)
+        self.pca_bundle = PCABundle.from_preprocessor(self.preprocessor)
         self.gate_inits: list = latent[0].tolist()
         self.original_opcost: OpCost | None = self._dataset.net.nodes[
             self._target_comp_id
@@ -221,8 +220,8 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         self, name: str, params: HHParams | None = None, **kwargs
     ) -> Compartment:
         xi = jnp.asarray(self.sindy_result.xi)
-        pca_components = jnp.asarray(self.pca_components)
-        pca_mean = jnp.asarray(self.pca_mean)
+        pca_components = jnp.asarray(self.pca_bundle.components)
+        pca_mean = jnp.asarray(self.pca_bundle.mean)
         compute_theta = _build_compute_theta(
             FeatureLibrary.build(self.sindy_result.library_specs)
         )
