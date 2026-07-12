@@ -6,8 +6,8 @@ import numpy as np
 import pysindy as ps
 from sklearn.decomposition import PCA
 
+from ..core.opcost import OpCost
 from ..registry.preprocessor import AutoEncoderPreprocessor
-from .opcost import OpCost
 
 if TYPE_CHECKING:
     from collections.abc import Callable

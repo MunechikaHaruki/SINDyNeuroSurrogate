@@ -4,8 +4,8 @@ from functools import cached_property
 
 import numpy as np
 
-from ..metrics.opcost import OpCost
 from ..registry.current import CURRENT_MAP
+from .opcost import OpCost
 
 
 @dataclass(frozen=True)

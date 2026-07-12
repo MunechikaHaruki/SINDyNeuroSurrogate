@@ -1,7 +1,7 @@
 from collections.abc import Callable
 
 from neurosurrogate.core.libraries import LibraryEntry
-from neurosurrogate.metrics.opcost import OpCost
+from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.registry.compartments.hh import (
     HH_GATE_FORWARD,
     HH_GATE_PAIRS,

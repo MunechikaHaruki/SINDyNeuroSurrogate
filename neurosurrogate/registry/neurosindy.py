@@ -7,8 +7,8 @@ import joblib
 import numpy as np
 
 from ..core.network import Compartment, CompartmentType, DatasetConfig
+from ..core.opcost import OpCost
 from ..core.simulator import unified_simulator
-from ..metrics.opcost import OpCost
 from ..metrics.result_bundle import PreprocessorBundle, SINDyBundle
 from .compartments.hh import HH_DV_COST, HHParams
 

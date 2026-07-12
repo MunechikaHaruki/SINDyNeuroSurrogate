@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 from ...core.libraries import LibraryEntry
 from ...core.network import CompartmentType
-from ...metrics.opcost import OpCost
+from ...core.opcost import OpCost
 from .common import _gate_ode, _inf_ode, lin_exp_form
 
 
