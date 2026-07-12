@@ -1,4 +1,3 @@
-import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Self
@@ -16,8 +15,6 @@ from ..metrics.result_bundle import PCABundle, PreprocessorBundle, SINDyBundle
 from .compartments.hh import HH_DV_COST, HHParams
 
 _BUNDLE_FILE = "surrogate.joblib"
-
-logger = logging.getLogger(__name__)
 
 
 def get_gate_numpy(train_xr, target_comp_id):
@@ -78,8 +75,7 @@ def _instantiate_if_dict(obj):
 class NeuroSurrogateBase(ABC):
     def __init__(self, datasets: dict, train_comp_identifier: str):
         self._dataset = DatasetConfig.build_dataset(**datasets)
-        self._target_comp_id: int = self._dataset.net.name_to_idx(train_comp_identifier)
-        self.train_comp_id: int = self._target_comp_id
+        self.train_comp_id: int = self._dataset.net.name_to_idx(train_comp_identifier)
         self._train_xr = unified_simulator(self._dataset)
 
     @abstractmethod
@@ -115,10 +111,9 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             feature_library=feature_lib.library,
             optimizer=_instantiate_if_dict(optimizer),
         )
-        self._train_gate_data = get_gate_numpy(self._train_xr, self._target_comp_id)
-        self.preprocessor.fit(self._train_gate_data)
+        self.preprocessor.fit(get_gate_numpy(self._train_xr, self.train_comp_id))
         preprocessed_xr = transform_gate(
-            self.preprocessor, self._train_xr, target_comp_id=self._target_comp_id
+            self.preprocessor, self._train_xr, target_comp_id=self.train_comp_id
         )
         self.preprocessor_bundle = PreprocessorBundle(
             bundle=None,
@@ -126,7 +121,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
         )
         target_names = preprocessed_xr.variable.values.tolist()
         self._sindy.fit(
-            preprocessed_xr["vars"].sel(comp_id=self._target_comp_id).to_numpy(),
+            preprocessed_xr["vars"].sel(comp_id=self.train_comp_id).to_numpy(),
             u=preprocessed_xr["I_ext"].to_numpy(),
             t=self._train_xr["time"].to_numpy(),
             feature_names=target_names + ["u"],
@@ -135,7 +130,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             self._sindy, target_names, library_specs
         )
         self.original_opcost: OpCost | None = self._dataset.net.nodes[
-            self._target_comp_id
+            self.train_comp_id
         ].type.opcost
 
     @property
@@ -193,12 +188,12 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             feature_library=feature_lib.library,
             optimizer=_instantiate_if_dict(optimizer),
         )
-        gate_data = get_gate_numpy(self._train_xr, self._target_comp_id)
+        gate_data = get_gate_numpy(self._train_xr, self.train_comp_id)
         self.preprocessor.fit(gate_data)
         latent = self.preprocessor.transform(gate_data)
         v = (
             self._train_xr["vars"]
-            .sel(gate=False, comp_id=self._target_comp_id)
+            .sel(gate=False, comp_id=self.train_comp_id)
             .to_numpy()
         )
         n_latent = latent.shape[1]
@@ -217,7 +212,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             gate_inits=latent[0].tolist(),
         )
         self.original_opcost: OpCost | None = self._dataset.net.nodes[
-            self._target_comp_id
+            self.train_comp_id
         ].type.opcost
 
     @property
@@ -260,7 +255,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
                 v_init=-65,
                 opcost=None,
             ),
-            params=params if params is not None else HHParams(),
+            params=params or HHParams(),
         )
 
     @property
