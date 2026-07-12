@@ -18,6 +18,12 @@ class PCABundle:
 
 
 @dataclass
+class PreprocessorBundle:
+    bundle: PCABundle | None
+    gate_inits: list
+
+
+@dataclass
 class SINDyBundle:
     xi: np.ndarray
     feature_names: list[str]

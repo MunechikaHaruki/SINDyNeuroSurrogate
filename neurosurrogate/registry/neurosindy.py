@@ -12,7 +12,7 @@ from ..core.libraries import FeatureLibrary
 from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..core.simulator import unified_simulator
 from ..metrics.opcost import OpCost, calc_sindy_opcost
-from ..metrics.result_bundle import PCABundle, SINDyBundle
+from ..metrics.result_bundle import PCABundle, PreprocessorBundle, SINDyBundle
 from .compartments.hh import HH_DV_COST, HHParams
 
 _BUNDLE_FILE = "surrogate.joblib"
@@ -120,7 +120,10 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
         preprocessed_xr = transform_gate(
             self.preprocessor, self._train_xr, target_comp_id=self._target_comp_id
         )
-        self.gate_inits: list = preprocessed_xr["vars"].to_numpy()[0][1:].tolist()
+        self.preprocessor_bundle = PreprocessorBundle(
+            bundle=None,
+            gate_inits=preprocessed_xr["vars"].to_numpy()[0][1:].tolist(),
+        )
         target_names = preprocessed_xr.variable.values.tolist()
         self._sindy.fit(
             preprocessed_xr["vars"].sel(comp_id=self._target_comp_id).to_numpy(),
@@ -156,8 +159,11 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
                 kernel=surr_kernel,
                 param_cls=None,
                 default_params=None,
-                gate_names=[f"latent{i + 1}" for i in range(len(self.gate_inits))],
-                default_gate_inits=self.gate_inits,
+                gate_names=[
+                    f"latent{i + 1}"
+                    for i in range(len(self.preprocessor_bundle.gate_inits))
+                ],
+                default_gate_inits=self.preprocessor_bundle.gate_inits,
                 v_init=-65,
                 opcost=None,
             ),
@@ -206,8 +212,10 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         self.sindy_result = SINDyBundle.from_sindy(
             self._sindy, latent_names + ["V"], library_specs
         )
-        self.pca_bundle = PCABundle.from_preprocessor(self.preprocessor)
-        self.gate_inits: list = latent[0].tolist()
+        self.preprocessor_bundle = PreprocessorBundle(
+            bundle=PCABundle.from_preprocessor(self.preprocessor),
+            gate_inits=latent[0].tolist(),
+        )
         self.original_opcost: OpCost | None = self._dataset.net.nodes[
             self._target_comp_id
         ].type.opcost
@@ -220,12 +228,13 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         self, name: str, params: HHParams | None = None, **kwargs
     ) -> Compartment:
         xi = jnp.asarray(self.sindy_result.xi)
-        pca_components = jnp.asarray(self.pca_bundle.components)
-        pca_mean = jnp.asarray(self.pca_bundle.mean)
+        assert self.preprocessor_bundle.bundle is not None
+        pca_components = jnp.asarray(self.preprocessor_bundle.bundle.components)
+        pca_mean = jnp.asarray(self.preprocessor_bundle.bundle.mean)
         compute_theta = _build_compute_theta(
             FeatureLibrary.build(self.sindy_result.library_specs)
         )
-        n_latent = len(self.gate_inits)
+        n_latent = len(self.preprocessor_bundle.gate_inits)
 
         def hybrid_kernel(p: HHParams, u_t, v, state):
             gates = state @ pca_components + pca_mean
@@ -247,7 +256,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
                 param_cls=HHParams,
                 default_params=HHParams(),
                 gate_names=[f"latent{i + 1}" for i in range(n_latent)],
-                default_gate_inits=self.gate_inits,
+                default_gate_inits=self.preprocessor_bundle.gate_inits,
                 v_init=-65,
                 opcost=None,
             ),

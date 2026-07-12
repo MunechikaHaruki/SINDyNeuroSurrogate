@@ -55,10 +55,11 @@ def load_surrogate_model(
                 f"runs:/{run_id}/{SURR_ARTIFACT_DIR}", dst_path=tmp_str
             )
         )
-        bundle_keys = set(joblib.load(local / "surrogate.joblib").keys())
+        loaded_bundle = joblib.load(local / "surrogate.joblib")
+        pb = loaded_bundle.get("preprocessor_bundle")
         cls = (
             HybridSINDyNeuroSurrogate
-            if "pca_bundle" in bundle_keys
+            if pb is not None and pb.bundle is not None
             else SINDyNeuroSurrogate
         )
         surrogate = cls.load(local)
