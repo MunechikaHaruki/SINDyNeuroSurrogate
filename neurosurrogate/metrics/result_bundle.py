@@ -64,8 +64,22 @@ class SINDyBundle:
 
     @classmethod
     def from_sindy(
-        cls, sindy: ps.SINDy, target_names: list[str], library_specs: list[dict]
+        cls,
+        library_specs: list[dict],
+        optimizer,
+        x: np.ndarray,
+        u: np.ndarray,
+        t: np.ndarray,
+        target_names: list[str],
+        input_names: list[str],
     ) -> "SINDyBundle":
+        from ..core.libraries import FeatureLibrary
+
+        sindy = ps.SINDy(
+            feature_library=FeatureLibrary.build(library_specs).library,
+            optimizer=optimizer,
+        )
+        sindy.fit(x, u=u, t=t, feature_names=target_names + input_names)
         return cls(
             xi=sindy.coefficients(),
             feature_names=sindy.get_feature_names(),

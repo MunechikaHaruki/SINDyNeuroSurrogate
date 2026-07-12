@@ -5,10 +5,8 @@ from typing import Self
 import jax.numpy as jnp
 import joblib
 import numpy as np
-import pysindy as ps
 from sklearn.decomposition import PCA
 
-from ..core.libraries import FeatureLibrary
 from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..core.simulator import unified_simulator
 from ..metrics.opcost import OpCost
@@ -122,26 +120,21 @@ class NeuroSurrogateBase(ABC):
 class SINDyNeuroSurrogate(NeuroSurrogateBase):
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         preprocessor = _instantiate_if_dict(preprocessor)
-        feature_lib = FeatureLibrary.build(library_specs)
-        self._sindy = ps.SINDy(
-            feature_library=feature_lib.library,
-            optimizer=_instantiate_if_dict(optimizer),
-        )
         train_gate = get_gate_numpy(self._train_xr, self.train_comp_id)
         preprocessor.fit(train_gate)
         preprocessed_xr = transform_gate(
             preprocessor, self._train_xr, target_comp_id=self.train_comp_id
         )
         target_names = preprocessed_xr.variable.values.tolist()
-        self._sindy.fit(
-            preprocessed_xr["vars"].sel(comp_id=self.train_comp_id).to_numpy(),
-            u=preprocessed_xr["I_ext"].to_numpy(),
-            t=self._train_xr["time"].to_numpy(),
-            feature_names=target_names + ["u"],
-        )
         self._set_bundles(
             sindy_bundle=SINDyBundle.from_sindy(
-                self._sindy, target_names, library_specs
+                library_specs=library_specs,
+                optimizer=_instantiate_if_dict(optimizer),
+                x=preprocessed_xr["vars"].sel(comp_id=self.train_comp_id).to_numpy(),
+                u=preprocessed_xr["I_ext"].to_numpy(),
+                t=self._train_xr["time"].to_numpy(),
+                target_names=target_names,
+                input_names=["u"],
             ),
             preprocessor_bundle=PreprocessorBundle(
                 preprocessor=preprocessor,
@@ -193,11 +186,6 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         preprocessor = _instantiate_if_dict(preprocessor)
-        feature_lib = FeatureLibrary.build(library_specs)
-        self._sindy = ps.SINDy(
-            feature_library=feature_lib.library,
-            optimizer=_instantiate_if_dict(optimizer),
-        )
         gate_data = get_gate_numpy(self._train_xr, self.train_comp_id)
         preprocessor.fit(gate_data)
         latent = preprocessor.transform(gate_data)
@@ -206,17 +194,16 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             .sel(gate=False, comp_id=self.train_comp_id)
             .to_numpy()
         )
-        n_latent = latent.shape[1]
-        latent_names = [f"latent{i + 1}" for i in range(n_latent)]
-        self._sindy.fit(
-            latent,
-            u=v,
-            t=self._train_xr["time"].to_numpy(),
-            feature_names=latent_names + ["V"],
-        )
+        latent_names = [f"latent{i + 1}" for i in range(latent.shape[1])]
         self._set_bundles(
             sindy_bundle=SINDyBundle.from_sindy(
-                self._sindy, latent_names + ["V"], library_specs
+                library_specs=library_specs,
+                optimizer=_instantiate_if_dict(optimizer),
+                x=latent,
+                u=v,
+                t=self._train_xr["time"].to_numpy(),
+                target_names=latent_names,
+                input_names=["V"],
             ),
             preprocessor_bundle=PreprocessorBundle(
                 preprocessor=preprocessor,
