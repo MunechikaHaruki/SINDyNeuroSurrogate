@@ -1,9 +1,5 @@
 from dataclasses import dataclass, fields
 
-import numpy as np
-
-from .result_bundle import SINDyBundle
-
 
 @dataclass(frozen=True)
 class OpCost:
@@ -25,18 +21,3 @@ class OpCost:
 
     def to_dict(self) -> dict[str, int]:
         return {f.name: getattr(self, f.name) for f in fields(self)}
-
-
-def calc_sindy_opcost(
-    result: SINDyBundle,
-    feature_cost_map: dict[str, "OpCost"],
-) -> "OpCost":
-    active_mask = np.any(result.xi != 0, axis=0)
-    active_features = [f for i, f in enumerate(result.feature_names) if active_mask[i]]
-    nnz = np.count_nonzero(result.xi).item()
-    surr_opcost = OpCost(mul=nnz, pm=max(0, nnz - int(result.xi.shape[0])))
-    for feature in active_features:
-        if feature not in feature_cost_map:
-            raise ValueError(f"Found Unknown base func: '{feature}'")
-        surr_opcost = surr_opcost + feature_cost_map[feature]
-    return surr_opcost
