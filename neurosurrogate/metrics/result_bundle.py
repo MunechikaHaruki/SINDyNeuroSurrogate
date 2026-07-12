@@ -4,11 +4,27 @@ from typing import TYPE_CHECKING, Any
 import jax.numpy as jnp
 import numpy as np
 import pysindy as ps
+from sklearn.decomposition import PCA
 
+from ..registry.preprocessor import AutoEncoderPreprocessor
 from .opcost import OpCost
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+PREPROCESSOR_CLS: dict[str, type] = {
+    "pca": PCA,
+    "autoencoder": AutoEncoderPreprocessor,
+}
+
+OPTIMIZER_CLS: dict[str, type] = {
+    "stlsq": ps.optimizers.STLSQ,
+}
+
+
+def _instantiate(spec: dict, registry: dict[str, type]):
+    spec = dict(spec)
+    return registry[spec.pop("type")](**spec)
 
 
 @dataclass
@@ -50,6 +66,18 @@ class PreprocessorBundle:
     bundle: PCABundle | None
     gate_inits: list
 
+    @classmethod
+    def from_spec(cls, spec: dict, train_gate: np.ndarray) -> "PreprocessorBundle":
+        preprocessor = _instantiate(spec, PREPROCESSOR_CLS)
+        preprocessor.fit(train_gate)
+        return cls(
+            preprocessor=preprocessor,
+            bundle=PCABundle.from_preprocessor(preprocessor, train_gate)
+            if isinstance(preprocessor, PCA)
+            else None,
+            gate_inits=preprocessor.transform(train_gate)[0].tolist(),
+        )
+
     def metrics(self) -> dict:
         return self.bundle.metrics() if self.bundle is not None else {}
 
@@ -66,7 +94,7 @@ class SINDyBundle:
     def from_sindy(
         cls,
         library_specs: list[dict],
-        optimizer,
+        optimizer_spec: dict,
         x: np.ndarray,
         u: np.ndarray,
         t: np.ndarray,
@@ -77,7 +105,7 @@ class SINDyBundle:
 
         sindy = ps.SINDy(
             feature_library=FeatureLibrary.build(library_specs).library,
-            optimizer=optimizer,
+            optimizer=_instantiate(optimizer_spec, OPTIMIZER_CLS),
         )
         sindy.fit(x, u=u, t=t, feature_names=target_names + input_names)
         return cls(

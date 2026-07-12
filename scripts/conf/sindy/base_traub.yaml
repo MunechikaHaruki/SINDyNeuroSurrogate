@@ -7,10 +7,10 @@ init:
       params: {}
 fit:
   preprocessor:
-    _target_: sklearn.decomposition.PCA
+    type: pca
     n_components: 1
   optimizer:
-    _target_: pysindy.optimizers.STLSQ
+    type: stlsq
     threshold: 0.01
     normalize_columns: false
     alpha: 2.0

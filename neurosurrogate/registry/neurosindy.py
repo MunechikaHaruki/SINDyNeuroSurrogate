@@ -5,12 +5,11 @@ from typing import Self
 import jax.numpy as jnp
 import joblib
 import numpy as np
-from sklearn.decomposition import PCA
 
 from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..core.simulator import unified_simulator
 from ..metrics.opcost import OpCost
-from ..metrics.result_bundle import PCABundle, PreprocessorBundle, SINDyBundle
+from ..metrics.result_bundle import PreprocessorBundle, SINDyBundle
 from .compartments.hh import HH_DV_COST, HHParams
 
 _BUNDLE_FILE = "surrogate.joblib"
@@ -45,14 +44,6 @@ def transform_gate(preprocessor, xr_data, target_comp_id):
         ).to_coords(),
         dt=float(xr_data.time[1] - xr_data.time[0]),
     )
-
-
-def _instantiate_if_dict(obj):
-    if isinstance(obj, dict):
-        import hydra
-
-        return hydra.utils.instantiate(obj)
-    return obj
 
 
 class NeuroSurrogateBase(ABC):
@@ -119,30 +110,25 @@ class NeuroSurrogateBase(ABC):
 
 class SINDyNeuroSurrogate(NeuroSurrogateBase):
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
-        preprocessor = _instantiate_if_dict(preprocessor)
         train_gate = get_gate_numpy(self._train_xr, self.train_comp_id)
-        preprocessor.fit(train_gate)
+        preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, train_gate)
         preprocessed_xr = transform_gate(
-            preprocessor, self._train_xr, target_comp_id=self.train_comp_id
+            preprocessor_bundle.preprocessor,
+            self._train_xr,
+            target_comp_id=self.train_comp_id,
         )
         target_names = preprocessed_xr.variable.values.tolist()
         self._set_bundles(
             sindy_bundle=SINDyBundle.from_sindy(
                 library_specs=library_specs,
-                optimizer=_instantiate_if_dict(optimizer),
+                optimizer_spec=optimizer,
                 x=preprocessed_xr["vars"].sel(comp_id=self.train_comp_id).to_numpy(),
                 u=preprocessed_xr["I_ext"].to_numpy(),
                 t=self._train_xr["time"].to_numpy(),
                 target_names=target_names,
                 input_names=["u"],
             ),
-            preprocessor_bundle=PreprocessorBundle(
-                preprocessor=preprocessor,
-                bundle=PCABundle.from_preprocessor(preprocessor, train_gate)
-                if isinstance(preprocessor, PCA)
-                else None,
-                gate_inits=preprocessed_xr["vars"].to_numpy()[0][1:].tolist(),
-            ),
+            preprocessor_bundle=preprocessor_bundle,
         )
 
     def make_surr_comp(self, name: str, **kwargs) -> Compartment:
@@ -185,10 +171,9 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
     """
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
-        preprocessor = _instantiate_if_dict(preprocessor)
         gate_data = get_gate_numpy(self._train_xr, self.train_comp_id)
-        preprocessor.fit(gate_data)
-        latent = preprocessor.transform(gate_data)
+        preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, gate_data)
+        latent = preprocessor_bundle.preprocessor.transform(gate_data)
         v = (
             self._train_xr["vars"]
             .sel(gate=False, comp_id=self.train_comp_id)
@@ -198,18 +183,14 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         self._set_bundles(
             sindy_bundle=SINDyBundle.from_sindy(
                 library_specs=library_specs,
-                optimizer=_instantiate_if_dict(optimizer),
+                optimizer_spec=optimizer,
                 x=latent,
                 u=v,
                 t=self._train_xr["time"].to_numpy(),
                 target_names=latent_names,
                 input_names=["V"],
             ),
-            preprocessor_bundle=PreprocessorBundle(
-                preprocessor=preprocessor,
-                bundle=PCABundle.from_preprocessor(preprocessor, gate_data),
-                gate_inits=latent[0].tolist(),
-            ),
+            preprocessor_bundle=preprocessor_bundle,
         )
 
     def make_surr_comp(
