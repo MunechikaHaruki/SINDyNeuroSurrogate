@@ -115,11 +115,7 @@ class AutoEncoderPreprocessor:
         if self._params is None or self._mean is None or self._std is None:
             raise RuntimeError("fit()を先に呼んでください。")
         X_norm = jnp.array((np.asarray(X, dtype=np.float32) - self._mean) / self._std)
-
-        z = np.array(encoder(self._params["enc"], X_norm))
-        # 標準化して分散を1に揃える
-        z = (z - z.mean(axis=0)) / (z.std(axis=0) + 1e-8)
-        return z
+        return np.array(encoder(self._params["enc"], X_norm))
 
     def fit_transform(self, X: np.ndarray) -> np.ndarray:
         return self.fit(X).transform(X)

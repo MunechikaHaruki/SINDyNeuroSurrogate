@@ -7,7 +7,7 @@ import pysindy as ps
 from sklearn.decomposition import PCA
 
 from ..core.opcost import OpCost
-from ..registry.preprocessor import AutoEncoderPreprocessor
+from ..registry.preprocessor import AutoEncoderPreprocessor, decoder
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -27,6 +27,12 @@ def _instantiate(spec: dict, registry: dict[str, type]):
     return registry[spec.pop("type")](**spec)
 
 
+def _reconstruction_mse(preprocessor, train_gate: np.ndarray) -> tuple[float, float]:
+    reconstructed = preprocessor.inverse_transform(preprocessor.transform(train_gate))
+    mse = float(np.mean((train_gate - reconstructed) ** 2))
+    return mse, mse / float(np.var(train_gate))
+
+
 @dataclass
 class PCABundle:
     components: np.ndarray
@@ -38,17 +44,14 @@ class PCABundle:
 
     @classmethod
     def from_preprocessor(cls, preprocessor, train_gate: np.ndarray) -> "PCABundle":
-        reconstructed = preprocessor.inverse_transform(
-            preprocessor.transform(train_gate)
-        )
-        mse = float(np.mean((train_gate - reconstructed) ** 2))
+        mse, ratio = _reconstruction_mse(preprocessor, train_gate)
         return cls(
             components=np.asarray(preprocessor.components_),
             mean=np.asarray(preprocessor.mean_),
             explained_variance=np.asarray(preprocessor.explained_variance_),
             explained_variance_ratio=np.asarray(preprocessor.explained_variance_ratio_),
             reconstruction_mse=mse,
-            reconstruction_mse_ratio=mse / float(np.var(train_gate)),
+            reconstruction_mse_ratio=ratio,
         )
 
     def metrics(self) -> dict:
@@ -59,11 +62,66 @@ class PCABundle:
             "pca/reconstruction_mse_ratio": self.reconstruction_mse_ratio,
         }
 
+    def decode(self, state: jnp.ndarray) -> jnp.ndarray:
+        return state @ jnp.asarray(self.components) + jnp.asarray(self.mean)
+
+
+@dataclass
+class AutoEncoderBundle:
+    n_components: int
+    epochs: int
+    lr: float
+    reconstruction_mse: float
+    reconstruction_mse_ratio: float
+    dec_params: dict[str, np.ndarray]
+    x_mean: np.ndarray
+    x_std: np.ndarray
+
+    @classmethod
+    def from_preprocessor(
+        cls, preprocessor: AutoEncoderPreprocessor, train_gate: np.ndarray
+    ) -> "AutoEncoderBundle":
+        assert preprocessor._params is not None
+        assert preprocessor._mean is not None
+        assert preprocessor._std is not None
+        mse, ratio = _reconstruction_mse(preprocessor, train_gate)
+        return cls(
+            n_components=preprocessor.n_components,
+            epochs=preprocessor.epochs,
+            lr=preprocessor.lr,
+            reconstruction_mse=mse,
+            reconstruction_mse_ratio=ratio,
+            dec_params={
+                k: np.asarray(v) for k, v in preprocessor._params["dec"].items()
+            },
+            x_mean=np.asarray(preprocessor._mean),
+            x_std=np.asarray(preprocessor._std),
+        )
+
+    def metrics(self) -> dict:
+        return {
+            "ae/reconstruction_mse": self.reconstruction_mse,
+            "ae/reconstruction_mse_ratio": self.reconstruction_mse_ratio,
+        }
+
+    def decode(self, state: jnp.ndarray) -> jnp.ndarray:
+        jax_params = {k: jnp.asarray(v) for k, v in self.dec_params.items()}
+        x_hat = decoder(jax_params, state)
+        return jnp.asarray(x_hat * jnp.asarray(self.x_std) + jnp.asarray(self.x_mean))
+
+
+def _build_bundle(preprocessor, train_gate: np.ndarray):
+    if isinstance(preprocessor, PCA):
+        return PCABundle.from_preprocessor(preprocessor, train_gate)
+    if isinstance(preprocessor, AutoEncoderPreprocessor):
+        return AutoEncoderBundle.from_preprocessor(preprocessor, train_gate)
+    return None
+
 
 @dataclass
 class PreprocessorBundle:
     preprocessor: Any
-    bundle: PCABundle | None
+    bundle: PCABundle | AutoEncoderBundle | None
     gate_inits: list
 
     @classmethod
@@ -72,9 +130,7 @@ class PreprocessorBundle:
         preprocessor.fit(train_gate)
         return cls(
             preprocessor=preprocessor,
-            bundle=PCABundle.from_preprocessor(preprocessor, train_gate)
-            if isinstance(preprocessor, PCA)
-            else None,
+            bundle=_build_bundle(preprocessor, train_gate),
             gate_inits=preprocessor.transform(train_gate)[0].tolist(),
         )
 
@@ -87,6 +143,7 @@ class SINDyBundle:
     xi: np.ndarray
     feature_names: list[str]
     target_names: list[str]
+    input_names: list[str]
     equations: str
     library_specs: list[dict]
 
@@ -112,6 +169,7 @@ class SINDyBundle:
             xi=sindy.coefficients(),
             feature_names=sindy.get_feature_names(),
             target_names=target_names,
+            input_names=input_names,
             equations="\n".join(sindy.equations(precision=3)),
             library_specs=library_specs,
         )
@@ -139,7 +197,7 @@ class SINDyBundle:
         from ..core.libraries import FeatureLibrary
 
         cost_map = FeatureLibrary.build(self.library_specs).to_base_cost(
-            self.target_names + ["u"]
+            self.target_names + self.input_names
         )
         active_mask = np.any(self.xi != 0, axis=0)
         active_features = [

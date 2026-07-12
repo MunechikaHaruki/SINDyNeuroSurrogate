@@ -21,7 +21,9 @@ def _disable_proxy() -> None:
 def _make_run_name() -> str:
     hc = HydraConfig.get()
     yaml_name = hc.runtime.choices["sindy"]
-    extra = [o for o in hc.overrides.task if not o.startswith("sindy=")]
+    extra = [
+        o.rsplit(".", 1)[-1] for o in hc.overrides.task if not o.startswith("sindy=")
+    ]
     return " ".join([yaml_name, *extra])
 
 

@@ -197,14 +197,14 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         self, name: str, params: HHParams | None = None, **kwargs
     ) -> Compartment:
         xi = jnp.asarray(self.sindy_bundle.xi)
-        assert self.preprocessor_bundle.bundle is not None
-        pca_components = jnp.asarray(self.preprocessor_bundle.bundle.components)
-        pca_mean = jnp.asarray(self.preprocessor_bundle.bundle.mean)
+        bundle = self.preprocessor_bundle.bundle
+        assert bundle is not None
+        decode = bundle.decode
         compute_theta = self.sindy_bundle.compute_theta()
         n_latent = len(self.preprocessor_bundle.gate_inits)
 
         def hybrid_kernel(p: HHParams, u_t, v, state):
-            gates = state @ pca_components + pca_mean
+            gates = decode(state)
             m, h, n = gates[0], gates[1], gates[2]
             i_na = p.G_NA * m**3 * h * (v - p.E_NA)
             i_k = p.G_K * n**4 * (v - p.E_K)
