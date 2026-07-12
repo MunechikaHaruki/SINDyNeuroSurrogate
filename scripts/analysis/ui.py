@@ -11,7 +11,6 @@ from analysis import sweep as analysis_sweep
 from matplotlib.figure import Figure
 from mlflow_io import get_runs_df, load_surrogate_model, setup_mlflow
 
-from neurosurrogate.metrics.analysis import eval_surrogate
 from neurosurrogate.registry.current import CURRENT_MAP
 from neurosurrogate.registry.neuron import MCMODELS
 from neurosurrogate.registry.neurosindy import SINDyNeuroSurrogate
@@ -135,7 +134,7 @@ def _eval_df(loaded_list: list[SINDyNeuroSurrogate]) -> pd.DataFrame:
         {
             "run_name": x.run_name,
             "run_id": x.run_id[:8],
-            **eval_surrogate(x),
+            **x.metrics(),
         }
         for x in loaded_list
     ]

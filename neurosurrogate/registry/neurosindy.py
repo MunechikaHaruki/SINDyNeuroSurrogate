@@ -74,19 +74,34 @@ class NeuroSurrogateBase(ABC):
 
     @property
     @abstractmethod
-    def sindy_bundle(self) -> SINDyBundle: ...
-
-    @property
-    @abstractmethod
-    def preprocessor_bundle(self) -> PreprocessorBundle: ...
-
-    @property
-    @abstractmethod
     def opcost(self) -> OpCost: ...
+
+    @property
+    def sindy_bundle(self) -> SINDyBundle:
+        return self._sindy_bundle
+
+    @property
+    def preprocessor_bundle(self) -> PreprocessorBundle:
+        return self._preprocessor_bundle
+
+    def _set_bundles(
+        self,
+        sindy_bundle: SINDyBundle,
+        preprocessor_bundle: PreprocessorBundle,
+    ) -> None:
+        self._sindy_bundle = sindy_bundle
+        self._preprocessor_bundle = preprocessor_bundle
 
     @property
     def original_opcost(self) -> OpCost | None:
         return self._dataset.net.nodes[self.train_comp_id].type.opcost
+
+    def metrics(self) -> dict:
+        return {
+            **self.sindy_bundle.xi_metrics(),
+            **self.preprocessor_bundle.metrics(),
+            **self.opcost.diff_dict(self.original_opcost),
+        }
 
     def save(self, dir: Path | str) -> None:
         joblib.dump(
@@ -100,9 +115,7 @@ class NeuroSurrogateBase(ABC):
     @classmethod
     def load(cls, dir: Path | str) -> Self:
         self = cls.__new__(cls)
-        loaded = joblib.load(Path(dir) / _BUNDLE_FILE)
-        self._sindy_bundle = loaded["sindy_bundle"]
-        self._preprocessor_bundle = loaded["preprocessor_bundle"]
+        self._set_bundles(**joblib.load(Path(dir) / _BUNDLE_FILE))
         return self
 
 
@@ -119,13 +132,6 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
         preprocessed_xr = transform_gate(
             preprocessor, self._train_xr, target_comp_id=self.train_comp_id
         )
-        self._preprocessor_bundle = PreprocessorBundle(
-            preprocessor=preprocessor,
-            bundle=PCABundle.from_preprocessor(preprocessor, train_gate)
-            if isinstance(preprocessor, PCA)
-            else None,
-            gate_inits=preprocessed_xr["vars"].to_numpy()[0][1:].tolist(),
-        )
         target_names = preprocessed_xr.variable.values.tolist()
         self._sindy.fit(
             preprocessed_xr["vars"].sel(comp_id=self.train_comp_id).to_numpy(),
@@ -133,17 +139,18 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             t=self._train_xr["time"].to_numpy(),
             feature_names=target_names + ["u"],
         )
-        self._sindy_bundle = SINDyBundle.from_sindy(
-            self._sindy, target_names, library_specs
+        self._set_bundles(
+            sindy_bundle=SINDyBundle.from_sindy(
+                self._sindy, target_names, library_specs
+            ),
+            preprocessor_bundle=PreprocessorBundle(
+                preprocessor=preprocessor,
+                bundle=PCABundle.from_preprocessor(preprocessor, train_gate)
+                if isinstance(preprocessor, PCA)
+                else None,
+                gate_inits=preprocessed_xr["vars"].to_numpy()[0][1:].tolist(),
+            ),
         )
-
-    @property
-    def sindy_bundle(self) -> SINDyBundle:
-        return self._sindy_bundle
-
-    @property
-    def preprocessor_bundle(self) -> PreprocessorBundle:
-        return self._preprocessor_bundle
 
     def make_surr_comp(self, name: str, **kwargs) -> Compartment:
         xi = self.sindy_bundle.xi
@@ -207,22 +214,16 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             t=self._train_xr["time"].to_numpy(),
             feature_names=latent_names + ["V"],
         )
-        self._sindy_bundle = SINDyBundle.from_sindy(
-            self._sindy, latent_names + ["V"], library_specs
+        self._set_bundles(
+            sindy_bundle=SINDyBundle.from_sindy(
+                self._sindy, latent_names + ["V"], library_specs
+            ),
+            preprocessor_bundle=PreprocessorBundle(
+                preprocessor=preprocessor,
+                bundle=PCABundle.from_preprocessor(preprocessor, gate_data),
+                gate_inits=latent[0].tolist(),
+            ),
         )
-        self._preprocessor_bundle = PreprocessorBundle(
-            preprocessor=preprocessor,
-            bundle=PCABundle.from_preprocessor(preprocessor, gate_data),
-            gate_inits=latent[0].tolist(),
-        )
-
-    @property
-    def sindy_bundle(self) -> SINDyBundle:
-        return self._sindy_bundle
-
-    @property
-    def preprocessor_bundle(self) -> PreprocessorBundle:
-        return self._preprocessor_bundle
 
     def make_surr_comp(
         self, name: str, params: HHParams | None = None, **kwargs
