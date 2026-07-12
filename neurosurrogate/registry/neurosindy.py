@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import joblib
 import numpy as np
 import pysindy as ps
+from sklearn.decomposition import PCA
 
 from ..core.libraries import FeatureLibrary
 from ..core.network import Compartment, CompartmentType, DatasetConfig
@@ -73,6 +74,9 @@ def _instantiate_if_dict(obj):
 
 
 class NeuroSurrogateBase(ABC):
+    _sindy_bundle: SINDyBundle
+    _preprocessor_bundle: PreprocessorBundle
+
     def __init__(self, datasets: dict, train_comp_identifier: str):
         self._dataset = DatasetConfig.build_dataset(**datasets)
         self.train_comp_id: int = self._dataset.net.name_to_idx(train_comp_identifier)
@@ -86,37 +90,56 @@ class NeuroSurrogateBase(ABC):
 
     @property
     @abstractmethod
-    def result(self) -> SINDyBundle: ...
+    def sindy_bundle(self) -> SINDyBundle: ...
+
+    @property
+    @abstractmethod
+    def preprocessor_bundle(self) -> PreprocessorBundle: ...
 
     @property
     @abstractmethod
     def opcost(self) -> OpCost: ...
 
+    @property
+    def original_opcost(self) -> OpCost | None:
+        return self._dataset.net.nodes[self.train_comp_id].type.opcost
+
     def save(self, dir: Path | str) -> None:
-        bundle = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
-        joblib.dump(bundle, Path(dir) / _BUNDLE_FILE)
+        joblib.dump(
+            {
+                "sindy_bundle": self.sindy_bundle,
+                "preprocessor_bundle": self.preprocessor_bundle,
+            },
+            Path(dir) / _BUNDLE_FILE,
+        )
 
     @classmethod
     def load(cls, dir: Path | str) -> Self:
         self = cls.__new__(cls)
-        self.__dict__.update(joblib.load(Path(dir) / _BUNDLE_FILE))
+        loaded = joblib.load(Path(dir) / _BUNDLE_FILE)
+        self._sindy_bundle = loaded["sindy_bundle"]
+        self._preprocessor_bundle = loaded["preprocessor_bundle"]
         return self
 
 
 class SINDyNeuroSurrogate(NeuroSurrogateBase):
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
-        self.preprocessor = _instantiate_if_dict(preprocessor)
+        preprocessor = _instantiate_if_dict(preprocessor)
         feature_lib = FeatureLibrary.build(library_specs)
         self._sindy = ps.SINDy(
             feature_library=feature_lib.library,
             optimizer=_instantiate_if_dict(optimizer),
         )
-        self.preprocessor.fit(get_gate_numpy(self._train_xr, self.train_comp_id))
+        train_gate = get_gate_numpy(self._train_xr, self.train_comp_id)
+        preprocessor.fit(train_gate)
         preprocessed_xr = transform_gate(
-            self.preprocessor, self._train_xr, target_comp_id=self.train_comp_id
+            preprocessor, self._train_xr, target_comp_id=self.train_comp_id
         )
-        self.preprocessor_bundle = PreprocessorBundle(
-            bundle=None,
+        self._preprocessor_bundle = PreprocessorBundle(
+            preprocessor=preprocessor,
+            bundle=PCABundle.from_preprocessor(preprocessor, train_gate)
+            if isinstance(preprocessor, PCA)
+            else None,
             gate_inits=preprocessed_xr["vars"].to_numpy()[0][1:].tolist(),
         )
         target_names = preprocessed_xr.variable.values.tolist()
@@ -126,21 +149,22 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             t=self._train_xr["time"].to_numpy(),
             feature_names=target_names + ["u"],
         )
-        self.sindy_result = SINDyBundle.from_sindy(
+        self._sindy_bundle = SINDyBundle.from_sindy(
             self._sindy, target_names, library_specs
         )
-        self.original_opcost: OpCost | None = self._dataset.net.nodes[
-            self.train_comp_id
-        ].type.opcost
 
     @property
-    def result(self) -> SINDyBundle:
-        return self.sindy_result
+    def sindy_bundle(self) -> SINDyBundle:
+        return self._sindy_bundle
+
+    @property
+    def preprocessor_bundle(self) -> PreprocessorBundle:
+        return self._preprocessor_bundle
 
     def make_surr_comp(self, name: str, **kwargs) -> Compartment:
-        xi = self.sindy_result.xi
+        xi = self.sindy_bundle.xi
         compute_theta = _build_compute_theta(
-            FeatureLibrary.build(self.sindy_result.library_specs)
+            FeatureLibrary.build(self.sindy_bundle.library_specs)
         )
 
         def surr_kernel(params, i_t, v, state):
@@ -166,10 +190,10 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
 
     @property
     def opcost(self) -> OpCost:
-        cost_map = FeatureLibrary.build(self.sindy_result.library_specs).to_base_cost(
-            self.sindy_result.target_names + ["u"]
+        cost_map = FeatureLibrary.build(self.sindy_bundle.library_specs).to_base_cost(
+            self.sindy_bundle.target_names + ["u"]
         )
-        return calc_sindy_opcost(self.sindy_result, cost_map)
+        return calc_sindy_opcost(self.sindy_bundle, cost_map)
 
 
 class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
@@ -182,15 +206,15 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
     """
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
-        self.preprocessor = _instantiate_if_dict(preprocessor)
+        preprocessor = _instantiate_if_dict(preprocessor)
         feature_lib = FeatureLibrary.build(library_specs)
         self._sindy = ps.SINDy(
             feature_library=feature_lib.library,
             optimizer=_instantiate_if_dict(optimizer),
         )
         gate_data = get_gate_numpy(self._train_xr, self.train_comp_id)
-        self.preprocessor.fit(gate_data)
-        latent = self.preprocessor.transform(gate_data)
+        preprocessor.fit(gate_data)
+        latent = preprocessor.transform(gate_data)
         v = (
             self._train_xr["vars"]
             .sel(gate=False, comp_id=self.train_comp_id)
@@ -204,30 +228,32 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             t=self._train_xr["time"].to_numpy(),
             feature_names=latent_names + ["V"],
         )
-        self.sindy_result = SINDyBundle.from_sindy(
+        self._sindy_bundle = SINDyBundle.from_sindy(
             self._sindy, latent_names + ["V"], library_specs
         )
-        self.preprocessor_bundle = PreprocessorBundle(
-            bundle=PCABundle.from_preprocessor(self.preprocessor),
+        self._preprocessor_bundle = PreprocessorBundle(
+            preprocessor=preprocessor,
+            bundle=PCABundle.from_preprocessor(preprocessor, gate_data),
             gate_inits=latent[0].tolist(),
         )
-        self.original_opcost: OpCost | None = self._dataset.net.nodes[
-            self.train_comp_id
-        ].type.opcost
 
     @property
-    def result(self) -> SINDyBundle:
-        return self.sindy_result
+    def sindy_bundle(self) -> SINDyBundle:
+        return self._sindy_bundle
+
+    @property
+    def preprocessor_bundle(self) -> PreprocessorBundle:
+        return self._preprocessor_bundle
 
     def make_surr_comp(
         self, name: str, params: HHParams | None = None, **kwargs
     ) -> Compartment:
-        xi = jnp.asarray(self.sindy_result.xi)
+        xi = jnp.asarray(self.sindy_bundle.xi)
         assert self.preprocessor_bundle.bundle is not None
         pca_components = jnp.asarray(self.preprocessor_bundle.bundle.components)
         pca_mean = jnp.asarray(self.preprocessor_bundle.bundle.mean)
         compute_theta = _build_compute_theta(
-            FeatureLibrary.build(self.sindy_result.library_specs)
+            FeatureLibrary.build(self.sindy_bundle.library_specs)
         )
         n_latent = len(self.preprocessor_bundle.gate_inits)
 
@@ -260,7 +286,13 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
 
     @property
     def opcost(self) -> OpCost:
-        cost_map = FeatureLibrary.build(self.sindy_result.library_specs).to_base_cost(
-            self.sindy_result.target_names + ["u"]
+        cost_map = FeatureLibrary.build(self.sindy_bundle.library_specs).to_base_cost(
+            self.sindy_bundle.target_names + ["u"]
         )
-        return calc_sindy_opcost(self.sindy_result, cost_map) + HH_DV_COST
+        return calc_sindy_opcost(self.sindy_bundle, cost_map) + HH_DV_COST
+
+
+SURR_CLS: dict[str, type[NeuroSurrogateBase]] = {
+    "sindy": SINDyNeuroSurrogate,
+    "hybrid": HybridSINDyNeuroSurrogate,
+}

@@ -4,18 +4,13 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
-import joblib
 import mlflow
 import mlflow.artifacts
 import pandas as pd
 import yaml
 
 from neurosurrogate.core.network import DatasetConfig
-from neurosurrogate.registry.neurosindy import (
-    HybridSINDyNeuroSurrogate,
-    NeuroSurrogateBase,
-    SINDyNeuroSurrogate,
-)
+from neurosurrogate.registry.neurosindy import SURR_CLS, NeuroSurrogateBase
 
 TARGET_EXP = "test_static_params"
 
@@ -31,17 +26,23 @@ def setup_mlflow() -> None:
 
 
 SURR_ARTIFACT_DIR = "surrogate"
-_DATASET_FILE = "dataset.yaml"
+_META_FILE = "meta.yaml"
 
 
-def log_surrogate_model(
-    surrogate: NeuroSurrogateBase,
-    dataset_cfg: DatasetConfig,
-) -> None:
+def log_surrogate_model(surrogate: NeuroSurrogateBase) -> None:
+    surrogate_type = next(k for k, v in SURR_CLS.items() if type(surrogate) is v)
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
         surrogate.save(tmp)
-        (tmp / _DATASET_FILE).write_text(yaml.safe_dump(dataset_cfg.to_dict()))
+        (tmp / _META_FILE).write_text(
+            yaml.safe_dump(
+                {
+                    "surrogate_type": surrogate_type,
+                    "dataset": surrogate._dataset.to_dict(),
+                    "train_comp_id": surrogate.train_comp_id,
+                }
+            )
+        )
         mlflow.log_artifacts(str(tmp), artifact_path=SURR_ARTIFACT_DIR)
 
 
@@ -55,17 +56,10 @@ def load_surrogate_model(
                 f"runs:/{run_id}/{SURR_ARTIFACT_DIR}", dst_path=tmp_str
             )
         )
-        loaded_bundle = joblib.load(local / "surrogate.joblib")
-        pb = loaded_bundle.get("preprocessor_bundle")
-        cls = (
-            HybridSINDyNeuroSurrogate
-            if pb is not None and pb.bundle is not None
-            else SINDyNeuroSurrogate
-        )
-        surrogate = cls.load(local)
-        surrogate._dataset = DatasetConfig.from_dict(
-            yaml.safe_load((local / _DATASET_FILE).read_text())
-        )
+        meta = yaml.safe_load((local / _META_FILE).read_text())
+        surrogate = SURR_CLS[meta["surrogate_type"]].load(local)
+        surrogate._dataset = DatasetConfig.from_dict(meta["dataset"])
+        surrogate.train_comp_id = meta["train_comp_id"]
         surrogate.run_id = run_id
         surrogate.run_name = (
             mlflow.MlflowClient().get_run(run_id).data.tags["mlflow.runName"]

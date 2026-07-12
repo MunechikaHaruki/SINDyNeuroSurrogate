@@ -135,7 +135,7 @@ def _eval_df(loaded_list: list[SINDyNeuroSurrogate]) -> pd.DataFrame:
         {
             "run_name": x.run_name,
             "run_id": x.run_id[:8],
-            **eval_surrogate(x, x._dataset),
+            **eval_surrogate(x),
         }
         for x in loaded_list
     ]
@@ -153,8 +153,8 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
                     mo.md(
                         f"run_id:{loaded.run_id[:8]}.. &nbsp;&nbsp;　{loaded.run_name}"
                     ),
-                    mo.md(f"{loaded.sindy_result.equations[:40]}"),
-                    mo.mpl.interactive(view_model(loaded.sindy_result)),
+                    mo.md(f"{loaded.sindy_bundle.equations[:40]}"),
+                    mo.mpl.interactive(view_model(loaded.sindy_bundle)),
                 ]
             )
             for loaded in loaded_list
@@ -233,7 +233,7 @@ def view(
     ]
     for rid in run_ids:
         loaded = load_surrogate_model(rid)
-        fig = view_model(loaded.sindy_result)
+        fig = view_model(loaded.sindy_bundle)
         entries.append(_entry(f"model({rid[:8]})", fig, model))
 
     if res is None:

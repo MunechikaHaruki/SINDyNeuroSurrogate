@@ -166,7 +166,9 @@ def calc_eval(
         "surr_ds": surr_ds,
         "dt": dataset_cfg.dt,
         "get_preprocessed": partial(
-            transform_gate, surrogate_model.preprocessor, original_ds
+            transform_gate,
+            surrogate_model.preprocessor_bundle.preprocessor,
+            original_ds,
         ),
         "name_to_idx": MCMODELS[dataset_cfg.model_name].name_to_idx,
         "make_dm": lambda comp_id: DynamicMetrics(
