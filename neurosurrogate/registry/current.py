@@ -90,7 +90,7 @@ def ramp(amplitude: float = 20, direction: Literal["up", "down"] = "up"):
     return _generate_ramp(amplitude, direction, silence_duration=0, duration=100)
 
 
-LINEAR_FUNC = {
+LINEAR_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     "lin&steady": steady,
     "lin&steady&pulse": single_pulse,
     "lin&ramp": ramp,
@@ -147,7 +147,7 @@ def sinousoidal(frequency: float = 50):
     )
 
 
-PERIODIC_FUNC = {
+PERIODIC_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     "periodic&sinousoidal": sinousoidal,
     "periodic&chirp": generate_chirp,
 }
@@ -229,7 +229,7 @@ def generate_poisson_synapse(
     return apply
 
 
-RANDOM_FUNC = {
+RANDOM_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     "random": generate_rand_pulse,
     "random&discretized": generate_discretized,
     "random&poisson_synapse": generate_poisson_synapse,
@@ -279,14 +279,14 @@ def train():
     )
 
 
-OTHER_FUNC = {
+OTHER_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     "train": train,
     "step": generate_step,
     "noise": add_white_noise,
 }
 
 
-CURRENT_MAP = {
+CURRENT_MAP: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     **OTHER_FUNC,
     **LINEAR_FUNC,
     **RANDOM_FUNC,
