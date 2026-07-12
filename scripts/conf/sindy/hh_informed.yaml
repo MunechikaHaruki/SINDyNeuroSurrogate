@@ -1,4 +1,3 @@
-name: informed
 init:
   datasets:
     model_name: hh

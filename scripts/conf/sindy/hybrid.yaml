@@ -1,4 +1,3 @@
-name: hybrid
 type: hybrid
 init:
   datasets:
