@@ -33,7 +33,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             preprocessor_bundle=preprocessor_bundle,
         )
 
-    def make_surr_comp(self, name: str, **kwargs) -> Compartment:
+    def make_surr_comp(self, comp: Compartment, **kwargs) -> Compartment:
         xi = self.sindy_bundle.xi
         compute_theta = self.sindy_bundle.compute_theta()
 
@@ -42,7 +42,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             return xi[0] @ theta, jnp.stack([xi[1] @ theta])
 
         return Compartment(
-            name=name,
+            name=comp.name,
             type=CompartmentType(
                 name="surr",
                 kernel=surr_kernel,

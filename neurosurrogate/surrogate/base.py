@@ -7,7 +7,7 @@ import joblib
 import numpy as np
 
 from ..core.coords import StateAccumulator, set_coords
-from ..core.network import Compartment, DatasetConfig
+from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..core.opcost import OpCost
 from ..core.simulator import unified_simulator
 from .bundle import PreprocessorBundle, SINDyBundle
@@ -100,8 +100,13 @@ class NeuroSurrogateBase(ABC):
     @abstractmethod
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None: ...
 
+    @property
+    def surr_type(self) -> CompartmentType:
+        """置換対象を導出する物理型 (学習元 CompartmentType)。"""
+        return self.meta.train_comp.type
+
     @abstractmethod
-    def make_surr_comp(self, name: str, **kwargs) -> Compartment: ...
+    def make_surr_comp(self, comp: Compartment, **kwargs) -> Compartment: ...
 
     @property
     @abstractmethod

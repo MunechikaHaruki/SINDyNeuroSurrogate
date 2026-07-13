@@ -139,12 +139,16 @@ class NeuronGraph:
             np.sum(G_matrix, axis=1)
         )  # 流入を正とするグラフラプラシアンの符号反転
 
-    def with_surrogates(
+    def with_surrogate(
         self,
-        targets: set[str],
-        make_surr: Callable[[str], "Compartment"],
+        make_surr: Callable[["Compartment"], "Compartment"],
+        surr_type: CompartmentType,
     ) -> "NeuronGraph":
-        nodes = [make_surr(n.name) if n.name in targets else n for n in self.nodes]
+        """surr_type と一致する type の全ノードを surrogate に置換 (型ベース全置換)。
+
+        置換対象は「どの物理型を学習したか」で一意に決まる。手動指定不要。
+        """
+        nodes = [make_surr(n) if n.type == surr_type else n for n in self.nodes]
         return NeuronGraph(nodes=nodes, edges=self.edges, stim=self.stim)
 
 
@@ -179,16 +183,16 @@ class DatasetConfig:
             self.dt
         )
 
-    def with_surrogates(
+    def with_surrogate(
         self,
-        targets: set[str],
-        make_surr: Callable[[str], "Compartment"],
+        make_surr: Callable[["Compartment"], "Compartment"],
+        surr_type: CompartmentType,
     ) -> "DatasetConfig":
         return DatasetConfig(
             model_name=self.model_name,
             dt=self.dt,
             current=self.current,
-            net=self.net.with_surrogates(targets, make_surr),
+            net=self.net.with_surrogate(make_surr, surr_type),
         )
 
     @classmethod

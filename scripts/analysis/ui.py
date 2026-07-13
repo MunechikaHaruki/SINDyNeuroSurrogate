@@ -64,20 +64,13 @@ def setup_mpl(matplotlib_style: str):
     plt.style.use(style_dir / f"{matplotlib_style}.mplstyle")
 
 
-def _make_surrogate_targets_ui(base_ui: mo.ui.dictionary) -> mo.ui.multiselect:
-    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
-    return mo.ui.multiselect(
-        options=comp_names, value=[comp_names[0]], label="surrogate targets"
-    )
-
-
 def make_setting_ui(
     base_ui: mo.ui.dictionary,
     sweep_defaults: analysis_sweep.SweepDefaults,
 ) -> mo.ui.dictionary:
     current_type = str(base_ui["sim_current_type"].value)
+    # 置換対象は surrogate の学習元 type で自動導出 → targets 選択 UI は不要
     d: dict = {
-        "surrogate_targets": _make_surrogate_targets_ui(base_ui),
         "sim": analysis_single.make_sim_ui(current_type),
         "run_sim": mo.ui.run_button(label="single 実行"),
     }
@@ -97,11 +90,10 @@ def calc(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
 ) -> dict | None:
-    targets = setting_ui["surrogate_targets"].value
     if setting_ui["run_sim"].value:
-        return analysis_single.calc_eval(base_ui, setting_ui["sim"], targets)
+        return analysis_single.calc_eval(base_ui, setting_ui["sim"])
     if "run_sweep" in setting_ui and setting_ui["run_sweep"].value:
-        return analysis_sweep.calc_sweep(base_ui, setting_ui["sweep"], targets)
+        return analysis_sweep.calc_sweep(base_ui, setting_ui["sweep"])
     return None
 
 
@@ -210,11 +202,6 @@ def _fmt_sweep(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
     )
 
 
-def _fmt_targets(setting_ui: mo.ui.dictionary) -> str:
-    targets = setting_ui["surrogate_targets"].value or []
-    return "surr:" + ("-".join(targets) if targets else "none")
-
-
 def view(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
@@ -223,9 +210,8 @@ def view(
 ) -> tuple[mo.Html, list[SaveEntry]]:
     model = base_ui["model_name"].value
     current = _fmt_current(base_ui, setting_ui)
-    targets = _fmt_targets(setting_ui)
     eval_comp = str(draw_ui["eval_comp"].value)
-    info = f"{targets}&eval:{eval_comp}"
+    info = f"eval:{eval_comp}"
     single_prefix = f"{model}({info})_{current}"
 
     run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()

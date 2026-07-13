@@ -40,9 +40,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             preprocessor_bundle=preprocessor_bundle,
         )
 
-    def make_surr_comp(
-        self, name: str, params: HHParams | None = None, **kwargs
-    ) -> Compartment:
+    def make_surr_comp(self, comp: Compartment, **kwargs) -> Compartment:
         xi = jnp.asarray(self.sindy_bundle.xi)
         bundle = self.preprocessor_bundle.bundle
         assert bundle is not None
@@ -63,7 +61,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             return dv, dlatent
 
         return Compartment(
-            name=name,
+            name=comp.name,
             type=CompartmentType(
                 name="hybrid_surr",
                 kernel=hybrid_kernel,
@@ -74,7 +72,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
                 v_init=-65,
                 opcost=None,
             ),
-            params=params or HHParams(),
+            params=comp.params or HHParams(),
         )
 
     @property

@@ -148,16 +148,15 @@ def _parse_eval_button(
 def calc_eval(
     base_ui: mo.ui.dictionary,
     sim_ui: mo.ui.dictionary,
-    surrogate_targets: list[str],
 ) -> dict:
     dataset_cfg, run_id = _parse_eval_button(base_ui, sim_ui)
 
     surrogate_model = load_surrogate_model(run_id)
     original_ds = unified_simulator(dataset_cfg)
     surr_ds = unified_simulator(
-        dataset_cfg.with_surrogates(
-            targets=set(surrogate_targets),
-            make_surr=surrogate_model.make_surr_comp,
+        dataset_cfg.with_surrogate(
+            surrogate_model.make_surr_comp,
+            surrogate_model.surr_type,
         ),
     )
 

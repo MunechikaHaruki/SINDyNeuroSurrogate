@@ -98,7 +98,6 @@ def _iter_amp_datasets(
     current_configs: dict[float, dict],
     model_name: str,
     dt: float,
-    target_comp_names: list[str],
 ) -> Iterator[tuple[float, Any, dict[str, Any]]]:
     """各 amp で (amp, orig_ds, {rid: surr_ds}) を yield。eval_comp 不要。"""
     net = MCMODELS[model_name]
@@ -107,9 +106,9 @@ def _iter_amp_datasets(
         orig_ds = unified_simulator(dset_cfg)
         surr_datasets: dict[str, Any] = {
             rid: unified_simulator(
-                dset_cfg.with_surrogates(
-                    targets=set(target_comp_names),
-                    make_surr=surrogate.make_surr_comp,
+                dset_cfg.with_surrogate(
+                    surrogate.make_surr_comp,
+                    surrogate.surr_type,
                 ),
             )
             for rid, surrogate in surrogates.items()
@@ -122,7 +121,6 @@ def _run_sweep(
     run_ids: list[str],
     model_name: str,
     dt: float,
-    target_comp_names: list[str],
     current_type: str,
     sweep_param: str,
     cfg: SweepConfig,
@@ -143,7 +141,6 @@ def _run_sweep(
             current_configs=current_configs,
             model_name=model_name,
             dt=dt,
-            target_comp_names=target_comp_names,
         )
     )
     return amp_datasets, run_labels
@@ -152,7 +149,6 @@ def _run_sweep(
 def calc_sweep(
     base_button: mo.ui.dictionary,
     sweep_ui: mo.ui.dictionary,
-    surrogate_targets: list[str],
 ) -> dict:
     """純粋実行層: draw_ui 不要。raw sim データを返す。"""
     model_name = base_button["model_name"].value
@@ -169,7 +165,6 @@ def calc_sweep(
         run_ids=run_ids,
         model_name=model_name,
         dt=dt,
-        target_comp_names=surrogate_targets,
         current_type=current_type,
         sweep_param=sweep_param,
         cfg=sweep_cfg,
