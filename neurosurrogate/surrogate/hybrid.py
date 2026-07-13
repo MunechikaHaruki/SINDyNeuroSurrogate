@@ -18,12 +18,12 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
     SURROGATE_TYPE = "hybrid"
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
-        gate_data = get_gate_numpy(self._train_xr, self.train_comp_id)
+        gate_data = get_gate_numpy(self._train_xr, self._meta.train_comp_id)
         preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, gate_data)
         latent = preprocessor_bundle.preprocessor.transform(gate_data)
         v = (
             self._train_xr["vars"]
-            .sel(gate=False, comp_id=self.train_comp_id)
+            .sel(gate=False, comp_id=self._meta.train_comp_id)
             .to_numpy()
         )
         latent_names = [f"latent{i + 1}" for i in range(latent.shape[1])]

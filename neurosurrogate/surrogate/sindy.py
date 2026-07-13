@@ -10,19 +10,21 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
     SURROGATE_TYPE = "sindy"
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
-        train_gate = get_gate_numpy(self._train_xr, self.train_comp_id)
+        train_gate = get_gate_numpy(self._train_xr, self._meta.train_comp_id)
         preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, train_gate)
         preprocessed_xr = transform_gate(
             preprocessor_bundle.preprocessor,
             self._train_xr,
-            target_comp_id=self.train_comp_id,
+            target_comp_id=self._meta.train_comp_id,
         )
         target_names = preprocessed_xr.variable.values.tolist()
         self._set_bundles(
             sindy_bundle=SINDyBundle.from_sindy(
                 library_specs=library_specs,
                 optimizer_spec=optimizer,
-                x=preprocessed_xr["vars"].sel(comp_id=self.train_comp_id).to_numpy(),
+                x=preprocessed_xr["vars"]
+                .sel(comp_id=self._meta.train_comp_id)
+                .to_numpy(),
                 u=preprocessed_xr["I_ext"].to_numpy(),
                 t=self._train_xr["time"].to_numpy(),
                 target_names=target_names,

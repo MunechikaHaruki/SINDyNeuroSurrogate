@@ -7,9 +7,8 @@ from typing import cast
 import mlflow
 import mlflow.artifacts
 import pandas as pd
-import yaml
 
-from neurosurrogate.surrogate import SURR_CLS, NeuroSurrogateBase, SurrogateMeta
+from neurosurrogate.surrogate import NeuroSurrogateBase, load_surrogate
 
 TARGET_EXP = "test_static_params"
 
@@ -25,20 +24,15 @@ def setup_mlflow() -> None:
 
 
 SURR_ARTIFACT_DIR = "surrogate"
-_META_FILE = "meta.yaml"
 
 
-def log_surrogate_model(surrogate: NeuroSurrogateBase, meta: SurrogateMeta) -> None:
+def log_surrogate_model(surrogate: NeuroSurrogateBase) -> None:
     with tempfile.TemporaryDirectory() as tmp_str:
-        tmp = Path(tmp_str)
-        surrogate.save(tmp)
-        (tmp / _META_FILE).write_text(yaml.safe_dump(meta.to_dict()))
-        mlflow.log_artifacts(str(tmp), artifact_path=SURR_ARTIFACT_DIR)
+        surrogate.save(tmp_str)
+        mlflow.log_artifacts(tmp_str, artifact_path=SURR_ARTIFACT_DIR)
 
 
-def load_surrogate_model(
-    run_id: str,
-) -> tuple[NeuroSurrogateBase, SurrogateMeta]:
+def load_surrogate_model(run_id: str) -> NeuroSurrogateBase:
     logger.info(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
@@ -46,9 +40,7 @@ def load_surrogate_model(
                 f"runs:/{run_id}/{SURR_ARTIFACT_DIR}", dst_path=tmp_str
             )
         )
-        meta = SurrogateMeta.from_dict(yaml.safe_load((local / _META_FILE).read_text()))
-        surrogate = SURR_CLS[meta.surrogate_type].load(local)
-    return surrogate, meta
+        return load_surrogate(local)
 
 
 def get_runs_df():

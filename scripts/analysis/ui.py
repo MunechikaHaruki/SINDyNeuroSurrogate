@@ -13,7 +13,7 @@ from mlflow_io import get_runs_df, load_surrogate_model, setup_mlflow
 
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate import SINDyNeuroSurrogate, SurrogateMeta
+from neurosurrogate.surrogate import SINDyNeuroSurrogate
 from neurosurrogate.view.plots import view_model, view_neuron_graph
 
 CurrentList: list = list(CURRENT_MAP.keys())
@@ -130,23 +130,23 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
 
 def _eval_df(
-    entries: list[tuple[str, str, SINDyNeuroSurrogate, SurrogateMeta]],
+    entries: list[tuple[str, str, SINDyNeuroSurrogate]],
 ) -> pd.DataFrame:
     rows = [
         {
             "run_name": run_name,
             "run_id": rid[:8],
-            **surrogate.metrics(meta),
+            **surrogate.metrics(),
         }
-        for rid, run_name, surrogate, meta in entries
+        for rid, run_name, surrogate in entries
     ]
     return pd.DataFrame(rows).set_index("run_name")
 
 
 def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
     selected = cast(pd.DataFrame, base_ui["run_selector"].value)
-    entries: list[tuple[str, str, SINDyNeuroSurrogate, SurrogateMeta]] = [
-        (rid, run_name, *load_surrogate_model(rid))
+    entries: list[tuple[str, str, SINDyNeuroSurrogate]] = [
+        (rid, run_name, load_surrogate_model(rid))
         for rid, run_name in zip(
             selected["run_id"].tolist(),
             selected["tags.mlflow.runName"].tolist(),
@@ -163,7 +163,7 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
                     mo.mpl.interactive(view_model(surrogate.sindy_bundle)),
                 ]
             )
-            for rid, run_name, surrogate, _ in entries
+            for rid, run_name, surrogate in entries
         ]
         + [
             mo.md("### 評価サマリ (preprocessor / OpCost)"),
@@ -238,7 +238,7 @@ def view(
         ),
     ]
     for rid in run_ids:
-        surrogate, _ = load_surrogate_model(rid)
+        surrogate = load_surrogate_model(rid)
         fig = view_model(surrogate.sindy_bundle)
         entries.append(_entry(f"model({rid[:8]})", fig, model))
 
