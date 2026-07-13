@@ -7,13 +7,8 @@ init:
       params: {}
 fit:
   preprocessor:
-    type: autoencoder
+    type: ae
     n_components: 2
-  optimizer:
-    type: stlsq
-    threshold: 0.01
-    normalize_columns: false
-    alpha: 2.0
   library_specs:
     # SINDy 入力順: 0=latent1, 1=latent2, 2=V
     - type: hh_gate            # α(V), β(V) 6個

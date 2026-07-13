@@ -8,11 +8,6 @@ fit:
   preprocessor:
     type: pca
     n_components: 1
-  optimizer:
-    type: stlsq
-    threshold: 0.01
-    normalize_columns: false
-    alpha: 2.0
   library_specs:
     - type: hh_gate
       inputs: [0]

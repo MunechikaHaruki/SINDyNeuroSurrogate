@@ -8,6 +8,12 @@ sindy:
     datasets:
       dt: 0.01
     train_comp_identifier: soma
+  fit:
+    optimizer:
+      type: stlsq
+      threshold: 0.01
+      normalize_columns: false
+      alpha: 2.0
 
 hydra:
   run:

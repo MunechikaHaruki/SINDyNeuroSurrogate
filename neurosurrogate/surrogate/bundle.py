@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 PREPROCESSOR_CLS: dict[str, type] = {
     "pca": PCA,
-    "autoencoder": AutoEncoderPreprocessor,
+    "ae": AutoEncoderPreprocessor,
 }
 
 OPTIMIZER_CLS: dict[str, type] = {
