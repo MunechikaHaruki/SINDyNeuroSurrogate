@@ -7,6 +7,7 @@ from typing import cast
 import mlflow
 import mlflow.artifacts
 import pandas as pd
+from tqdm import tqdm
 
 from neurosurrogate.surrogate import NeuroSurrogateBase, load_surrogate
 
@@ -21,6 +22,8 @@ def setup_mlflow() -> None:
     mlflow.enable_system_metrics_logging()
     mlflow.set_experiment(TARGET_EXP)
     os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
+    # 全 run の meta 読込で artifact DL 進捗バーが大量出力 → 抑制
+    os.environ["MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR"] = "false"
 
 
 SURR_ARTIFACT_DIR = "surrogate"
@@ -33,7 +36,7 @@ def log_surrogate_model(surrogate: NeuroSurrogateBase) -> None:
 
 
 def load_surrogate_model(run_id: str) -> NeuroSurrogateBase:
-    logger.info(f"Loading surrogate from run {run_id}")
+    logger.debug(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
             mlflow.artifacts.download_artifacts(
@@ -62,9 +65,16 @@ def get_runs_df():
         + [c for c in runs_df.columns if "metrics" in c or "params" in c]
     ]
     # サロゲートの学習元 MC モデルを純粋な dataframe 列として付与
-    # (mlflow params に依存せず meta から直接読む)。
+    # (mlflow params に依存せず meta から直接読む)。個別 DL バーは
+    # 抑制し、読込ループ全体を 1 本の進捗バーに集約。
     # 旧形式など読込不可の run は選択対象から除外。
-    runs_df["train_model"] = runs_df["run_id"].map(_safe_train_model)
+    runs_df["train_model"] = [
+        _safe_train_model(rid)
+        for rid in tqdm(runs_df["run_id"], desc="surrogate meta 読込")
+    ]
+    excluded = int(runs_df["train_model"].isna().sum())
+    if excluded:
+        logger.info(f"surrogate 読込不可の {excluded} 件を選択対象外")
     return runs_df[runs_df["train_model"].notna()].reset_index(drop=True)
 
 
@@ -72,7 +82,6 @@ def _safe_train_model(run_id: str) -> str | None:
     try:
         return load_surrogate_model(run_id).meta.dataset.model_name
     except Exception:
-        logger.warning(f"run {run_id}: surrogate 読込不可 → 選択対象外")
         return None
 
 
