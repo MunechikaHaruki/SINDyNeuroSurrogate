@@ -16,7 +16,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-uv run scripts/main.py                                            # 実行（変更後は必ず確認）
+uv sync                                                           # 初期セットアップ（依存導入）
+uv run scripts/main.py                                            # 実行（変更後は必ず確認。テストスイート無し→これが唯一の smoke check）
 uv run scripts/main.py sindy=hh_relaxation                        # Hydraプリセット切替 (base/base_traub/hh_informed/hh_relaxation/hybrid/hybrid_n2)
 uv run scripts/main.py --multirun sindy.fit.optimizer.alpha=0.01,0.1  # スイープ
 just format && just lint   # ruff fix+format / ruff+mypy (strict、scripts/ 除外)
