@@ -4,7 +4,6 @@ from functools import cached_property
 
 import numpy as np
 
-from ..registry.current import CURRENT_MAP
 from .opcost import OpCost
 
 
@@ -57,7 +56,7 @@ class Compartment:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Compartment":
-        from ..registry.compartments import COMPARTMENT_TYPES
+        from ..compartments import COMPARTMENT_TYPES
 
         comp_type = COMPARTMENT_TYPES[d["type"]]
         if "params" in d:
@@ -174,6 +173,8 @@ class DatasetConfig:
         )
 
     def build_current(self) -> np.ndarray:
+        from ..currents import CURRENT_MAP
+
         return CURRENT_MAP[self.current["type"]](**self.current.get("params", {}))(
             self.dt
         )
@@ -198,7 +199,7 @@ class DatasetConfig:
         current: dict,
     ) -> "DatasetConfig":
         """yamlとの境界"""
-        from ..registry.neuron import MCMODELS
+        from ..models import MCMODELS
 
         return DatasetConfig(
             model_name=model_name,

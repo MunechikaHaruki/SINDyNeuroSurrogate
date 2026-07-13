@@ -13,14 +13,14 @@ from mlflow_io import load_surrogate_model
 
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
+from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.wave import (
     DF_ROW_METRICS,
     SCALAR_METRICS,
     DynamicMetrics,
     extract_metric,
 )
-from neurosurrogate.registry.current import CURRENT_MAP
-from neurosurrogate.registry.neuron import MCMODELS
+from neurosurrogate.models import MCMODELS
 
 # ---------------------------------------------------------------------------
 # Sweep UI

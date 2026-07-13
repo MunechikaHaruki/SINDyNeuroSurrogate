@@ -12,6 +12,7 @@ from mlflow_io import load_surrogate_model
 
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
+from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.wave import (
     DynamicMetrics,
     n_spikes,
@@ -20,9 +21,8 @@ from neurosurrogate.metrics.wave import (
     waveform_summary,
     waveform_summary_df,
 )
-from neurosurrogate.registry.current import CURRENT_MAP
-from neurosurrogate.registry.neuron import MCMODELS
-from neurosurrogate.registry.neurosindy import transform_gate
+from neurosurrogate.models import MCMODELS
+from neurosurrogate.surrogate import transform_gate
 from neurosurrogate.view.specs import DRAW_MAP
 
 DRAW_LIST = list(DRAW_MAP.keys())

@@ -5,8 +5,8 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ...core.network import CompartmentType
-from ...core.opcost import OpCost
+from ..core.network import CompartmentType
+from ..core.opcost import OpCost
 from .common import lin_exp_form
 
 TRAUB_V_LEAK = -60.0

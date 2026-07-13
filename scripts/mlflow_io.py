@@ -10,7 +10,7 @@ import pandas as pd
 import yaml
 
 from neurosurrogate.core.network import DatasetConfig
-from neurosurrogate.registry.neurosindy import SURR_CLS, NeuroSurrogateBase
+from neurosurrogate.surrogate import SURR_CLS, NeuroSurrogateBase
 
 TARGET_EXP = "test_static_params"
 

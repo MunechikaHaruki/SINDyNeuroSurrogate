@@ -7,7 +7,7 @@ import pysindy as ps
 from sklearn.decomposition import PCA
 
 from ..core.opcost import OpCost
-from ..registry.preprocessor import AutoEncoderPreprocessor, decoder
+from .autoencoder import AutoEncoderPreprocessor, decoder
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -158,7 +158,7 @@ class SINDyBundle:
         target_names: list[str],
         input_names: list[str],
     ) -> "SINDyBundle":
-        from ..core.libraries import FeatureLibrary
+        from .libraries import FeatureLibrary
 
         sindy = ps.SINDy(
             feature_library=FeatureLibrary.build(library_specs).library,
@@ -179,7 +179,7 @@ class SINDyBundle:
         return {"nnz": nnz, "nnz_ratio": nnz / self.xi.size}
 
     def compute_theta(self) -> "Callable":
-        from ..core.libraries import FeatureLibrary
+        from .libraries import FeatureLibrary
 
         subs = FeatureLibrary.build(self.library_specs).sub_libraries
 
@@ -194,7 +194,7 @@ class SINDyBundle:
         return compute_theta
 
     def opcost(self) -> OpCost:
-        from ..core.libraries import FeatureLibrary
+        from .libraries import FeatureLibrary
 
         cost_map = FeatureLibrary.build(self.library_specs).to_base_cost(
             self.target_names + self.input_names

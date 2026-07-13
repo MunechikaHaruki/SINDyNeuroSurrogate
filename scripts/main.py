@@ -7,7 +7,7 @@ from hydra.core.hydra_config import HydraConfig
 from mlflow_io import log_surrogate_model, setup_mlflow
 from omegaconf import DictConfig, OmegaConf
 
-from neurosurrogate.registry.neurosindy import SURR_CLS
+from neurosurrogate.surrogate import SURR_CLS
 
 logger = logging.getLogger(__name__)
 

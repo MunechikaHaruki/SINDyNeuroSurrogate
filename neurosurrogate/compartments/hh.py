@@ -2,9 +2,8 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ...core.libraries import LibraryEntry
-from ...core.network import CompartmentType
-from ...core.opcost import OpCost
+from ..core.network import CompartmentType
+from ..core.opcost import OpCost
 from .common import _gate_ode, _inf_ode, lin_exp_form
 
 
@@ -93,42 +92,6 @@ HH_RATE_COST_MAP: dict[str, OpCost] = {
     "beta_n": OpCost(exp=1, div=1, pm=1, mul=1),
 }
 
-
-def _rate_entry(name: str, f, cost: OpCost) -> LibraryEntry:
-    """レート関数 f を f(x) 形式の 1入力 LibraryEntry に。"""
-    return LibraryEntry(
-        func=f,
-        name_func=(lambda nm: lambda x: f"{nm}({x})")(name),
-        cost=cost,
-    )
-
-
-ALPHA_M_ENTRY = _rate_entry("alpha_m", alpha_m, HH_RATE_COST_MAP["alpha_m"])
-BETA_M_ENTRY = _rate_entry("beta_m", beta_m, HH_RATE_COST_MAP["beta_m"])
-ALPHA_H_ENTRY = _rate_entry("alpha_h", alpha_h, HH_RATE_COST_MAP["alpha_h"])
-BETA_H_ENTRY = _rate_entry("beta_h", beta_h, HH_RATE_COST_MAP["beta_h"])
-ALPHA_N_ENTRY = _rate_entry("alpha_n", alpha_n, HH_RATE_COST_MAP["alpha_n"])
-BETA_N_ENTRY = _rate_entry("beta_n", beta_n, HH_RATE_COST_MAP["beta_n"])
-
-# 全 6 entry (alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n の順)
-HH_RATE_ENTRIES: list[LibraryEntry] = [
-    ALPHA_M_ENTRY,
-    BETA_M_ENTRY,
-    ALPHA_H_ENTRY,
-    BETA_H_ENTRY,
-    ALPHA_N_ENTRY,
-    BETA_N_ENTRY,
-]
-
-# ゲート pair (alpha, beta) × [m, h, n]
-HH_GATE_PAIRS: list[tuple[LibraryEntry, LibraryEntry]] = [
-    (ALPHA_M_ENTRY, BETA_M_ENTRY),
-    (ALPHA_H_ENTRY, BETA_H_ENTRY),
-    (ALPHA_N_ENTRY, BETA_N_ENTRY),
-]
-
-# alpha 系のみ (順方向遷移率、3個)
-HH_GATE_FORWARD: list[LibraryEntry] = [ALPHA_M_ENTRY, ALPHA_H_ENTRY, ALPHA_N_ENTRY]
 
 HH_DV_COST = (
     OpCost(pm=1)  # 反転電位

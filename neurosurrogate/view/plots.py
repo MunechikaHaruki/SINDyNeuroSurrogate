@@ -10,7 +10,7 @@ import seaborn as sns
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
-from ..metrics.result_bundle import SINDyBundle
+from ..surrogate.bundle import SINDyBundle
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
