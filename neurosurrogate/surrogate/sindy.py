@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-from ..core.network import Compartment, CompartmentType
+from ..core.network import CompartmentType
 from ..core.opcost import OpCost
 from .base import NeuroSurrogateBase, get_gate_numpy, transform_gate
 from .bundle import PreprocessorBundle, SINDyBundle
@@ -33,7 +33,8 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             preprocessor_bundle=preprocessor_bundle,
         )
 
-    def make_surr_comp(self, comp: Compartment, **kwargs) -> Compartment:
+    @property
+    def surr_comp_type(self) -> CompartmentType:
         xi = self.sindy_bundle.xi
         compute_theta = self.sindy_bundle.compute_theta()
 
@@ -41,21 +42,18 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             theta = compute_theta(v, state[0], i_t)
             return xi[0] @ theta, jnp.stack([xi[1] @ theta])
 
-        return Compartment(
-            name=comp.name,
-            type=CompartmentType(
-                name="surr",
-                kernel=surr_kernel,
-                param_cls=None,
-                default_params=None,
-                gate_names=[
-                    f"latent{i + 1}"
-                    for i in range(len(self.preprocessor_bundle.gate_inits))
-                ],
-                default_gate_inits=self.preprocessor_bundle.gate_inits,
-                v_init=-65,
-                opcost=None,
-            ),
+        return CompartmentType(
+            name="surr",
+            kernel=surr_kernel,
+            param_cls=None,
+            default_params=None,
+            gate_names=[
+                f"latent{i + 1}"
+                for i in range(len(self.preprocessor_bundle.gate_inits))
+            ],
+            default_gate_inits=self.preprocessor_bundle.gate_inits,
+            v_init=-65,
+            opcost=None,
         )
 
     @property

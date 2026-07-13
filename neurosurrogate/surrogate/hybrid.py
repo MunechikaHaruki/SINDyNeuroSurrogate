@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 
 from ..compartments.hh import HH_DV_COST, HHParams
-from ..core.network import Compartment, CompartmentType
+from ..core.network import CompartmentType
 from ..core.opcost import OpCost
 from .base import NeuroSurrogateBase, get_gate_numpy
 from .bundle import PreprocessorBundle, SINDyBundle
@@ -40,7 +40,8 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             preprocessor_bundle=preprocessor_bundle,
         )
 
-    def make_surr_comp(self, comp: Compartment, **kwargs) -> Compartment:
+    @property
+    def surr_comp_type(self) -> CompartmentType:
         xi = jnp.asarray(self.sindy_bundle.xi)
         bundle = self.preprocessor_bundle.bundle
         assert bundle is not None
@@ -60,19 +61,15 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             dlatent = xi @ theta
             return dv, dlatent
 
-        return Compartment(
-            name=comp.name,
-            type=CompartmentType(
-                name="hybrid_surr",
-                kernel=hybrid_kernel,
-                param_cls=HHParams,
-                default_params=HHParams(),
-                gate_names=[f"latent{i + 1}" for i in range(n_latent)],
-                default_gate_inits=self.preprocessor_bundle.gate_inits,
-                v_init=-65,
-                opcost=None,
-            ),
-            params=comp.params or HHParams(),
+        return CompartmentType(
+            name="hybrid_surr",
+            kernel=hybrid_kernel,
+            param_cls=HHParams,
+            default_params=HHParams(),
+            gate_names=[f"latent{i + 1}" for i in range(n_latent)],
+            default_gate_inits=self.preprocessor_bundle.gate_inits,
+            v_init=-65,
+            opcost=None,
         )
 
     @property

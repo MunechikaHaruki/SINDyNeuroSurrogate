@@ -107,8 +107,8 @@ def _iter_amp_datasets(
         surr_datasets: dict[str, Any] = {
             rid: unified_simulator(
                 dset_cfg.with_surrogate(
-                    surrogate.make_surr_comp,
-                    surrogate.surr_type,
+                    surrogate.surr_comp_type,
+                    surrogate.meta.train_comp_type,
                 ),
             )
             for rid, surrogate in surrogates.items()

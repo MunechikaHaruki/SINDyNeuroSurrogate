@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 
 import numpy as np
@@ -141,14 +141,18 @@ class NeuronGraph:
 
     def with_surrogate(
         self,
-        make_surr: Callable[["Compartment"], "Compartment"],
-        surr_type: CompartmentType,
+        new_type: CompartmentType,
+        target_type: CompartmentType,
     ) -> "NeuronGraph":
-        """surr_type と一致する type の全ノードを surrogate に置換 (型ベース全置換)。
+        """target_type と一致する type の全ノードを new_type に置換 (型ベース全置換)。
 
         置換対象は「どの物理型を学習したか」で一意に決まる。手動指定不要。
+        各ノードの name/params は保持し type だけ差し替える。
         """
-        nodes = [make_surr(n) if n.type == surr_type else n for n in self.nodes]
+        nodes = [
+            replace(n, type=new_type) if n.type == target_type else n
+            for n in self.nodes
+        ]
         return NeuronGraph(nodes=nodes, edges=self.edges, stim=self.stim)
 
 
@@ -185,14 +189,14 @@ class DatasetConfig:
 
     def with_surrogate(
         self,
-        make_surr: Callable[["Compartment"], "Compartment"],
-        surr_type: CompartmentType,
+        new_type: CompartmentType,
+        target_type: CompartmentType,
     ) -> "DatasetConfig":
         return DatasetConfig(
             model_name=self.model_name,
             dt=self.dt,
             current=self.current,
-            net=self.net.with_surrogate(make_surr, surr_type),
+            net=self.net.with_surrogate(new_type, target_type),
         )
 
     @classmethod

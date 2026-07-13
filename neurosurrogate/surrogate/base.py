@@ -37,6 +37,11 @@ class SurrogateMeta:
         return self.dataset.net.nodes[self.train_comp_id]
 
     @property
+    def train_comp_type(self) -> CompartmentType:
+        """学習元コンパートメントの物理型 (= 置換対象)。"""
+        return self.train_comp.type
+
+    @property
     def original_opcost(self) -> OpCost | None:
         return self.train_comp.type.opcost
 
@@ -101,12 +106,10 @@ class NeuroSurrogateBase(ABC):
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None: ...
 
     @property
-    def surr_type(self) -> CompartmentType:
-        """置換対象を導出する物理型 (学習元 CompartmentType)。"""
-        return self.meta.train_comp.type
-
     @abstractmethod
-    def make_surr_comp(self, comp: Compartment, **kwargs) -> Compartment: ...
+    def surr_comp_type(self) -> CompartmentType:
+        """置換後の surrogate CompartmentType (学習結果から構築)。"""
+        ...
 
     @property
     @abstractmethod

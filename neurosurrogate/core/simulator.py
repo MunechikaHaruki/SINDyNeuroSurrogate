@@ -124,7 +124,7 @@ def generic_euler_solver(init, u, dt, model_args):
 
 def unified_simulator(cfg: DatasetConfig):
     """cfg.net の各 Compartment が kernel を保持している前提。surrogate も
-    make_surr_comp で kernel 埋込済み Compartment を with_surrogate で挿入する"""
+    surr_comp_type で kernel 埋込済み CompartmentType を with_surrogate で挿入する"""
     net = cfg.net
     dt = cfg.dt
     u = cfg.build_current()

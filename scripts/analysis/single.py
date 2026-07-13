@@ -155,8 +155,8 @@ def calc_eval(
     original_ds = unified_simulator(dataset_cfg)
     surr_ds = unified_simulator(
         dataset_cfg.with_surrogate(
-            surrogate_model.make_surr_comp,
-            surrogate_model.surr_type,
+            surrogate_model.surr_comp_type,
+            surrogate_model.meta.train_comp_type,
         ),
     )
 
