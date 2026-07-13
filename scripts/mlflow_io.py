@@ -9,8 +9,7 @@ import mlflow.artifacts
 import pandas as pd
 import yaml
 
-from neurosurrogate.core.network import DatasetConfig
-from neurosurrogate.surrogate import SURR_CLS, NeuroSurrogateBase
+from neurosurrogate.surrogate import SURR_CLS, NeuroSurrogateBase, SurrogateMeta
 
 TARGET_EXP = "test_static_params"
 
@@ -29,26 +28,17 @@ SURR_ARTIFACT_DIR = "surrogate"
 _META_FILE = "meta.yaml"
 
 
-def log_surrogate_model(surrogate: NeuroSurrogateBase) -> None:
-    surrogate_type = next(k for k, v in SURR_CLS.items() if type(surrogate) is v)
+def log_surrogate_model(surrogate: NeuroSurrogateBase, meta: SurrogateMeta) -> None:
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
         surrogate.save(tmp)
-        (tmp / _META_FILE).write_text(
-            yaml.safe_dump(
-                {
-                    "surrogate_type": surrogate_type,
-                    "dataset": surrogate._dataset.to_dict(),
-                    "train_comp_id": surrogate.train_comp_id,
-                }
-            )
-        )
+        (tmp / _META_FILE).write_text(yaml.safe_dump(meta.to_dict()))
         mlflow.log_artifacts(str(tmp), artifact_path=SURR_ARTIFACT_DIR)
 
 
 def load_surrogate_model(
     run_id: str,
-) -> NeuroSurrogateBase:
+) -> tuple[NeuroSurrogateBase, SurrogateMeta]:
     logger.info(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
@@ -56,15 +46,9 @@ def load_surrogate_model(
                 f"runs:/{run_id}/{SURR_ARTIFACT_DIR}", dst_path=tmp_str
             )
         )
-        meta = yaml.safe_load((local / _META_FILE).read_text())
-        surrogate = SURR_CLS[meta["surrogate_type"]].load(local)
-        surrogate._dataset = DatasetConfig.from_dict(meta["dataset"])
-        surrogate.train_comp_id = meta["train_comp_id"]
-        surrogate.run_id = run_id
-        surrogate.run_name = (
-            mlflow.MlflowClient().get_run(run_id).data.tags["mlflow.runName"]
-        )
-    return surrogate
+        meta = SurrogateMeta.from_dict(yaml.safe_load((local / _META_FILE).read_text()))
+        surrogate = SURR_CLS[meta.surrogate_type].load(local)
+    return surrogate, meta
 
 
 def get_runs_df():

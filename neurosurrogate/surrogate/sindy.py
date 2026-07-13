@@ -7,6 +7,8 @@ from .bundle import PreprocessorBundle, SINDyBundle
 
 
 class SINDyNeuroSurrogate(NeuroSurrogateBase):
+    SURROGATE_TYPE = "sindy"
+
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         train_gate = get_gate_numpy(self._train_xr, self.train_comp_id)
         preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, train_gate)

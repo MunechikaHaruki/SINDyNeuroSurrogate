@@ -132,7 +132,7 @@ def _run_sweep(
         amp: {"type": current_type, "params": {sweep_param: amp}}
         for amp in cfg.amp_values
     }
-    surrogates = {rid: load_surrogate_model(rid) for rid in run_ids}
+    surrogates = {rid: load_surrogate_model(rid)[0] for rid in run_ids}
     run_labels = {
         rid: mlflow.MlflowClient().get_run(rid).data.tags.get("mlflow.runName", rid[:6])
         for rid in run_ids

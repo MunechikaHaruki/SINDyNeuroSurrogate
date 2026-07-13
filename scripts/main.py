@@ -37,7 +37,7 @@ def main(cfg: DictConfig) -> None:
     surrogate = SURR_CLS[cfg_sindy.get("type", "sindy")](**cfg_sindy["init"])
     with mlflow.start_run(run_name=_make_run_name()):
         surrogate.fit(**cfg_sindy["fit"])
-        log_surrogate_model(surrogate)
+        log_surrogate_model(surrogate, surrogate.fetch_meta())
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ from mlflow_io import get_runs_df, load_surrogate_model, setup_mlflow
 
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate import SINDyNeuroSurrogate
+from neurosurrogate.surrogate import SINDyNeuroSurrogate, SurrogateMeta
 from neurosurrogate.view.plots import view_model, view_neuron_graph
 
 CurrentList: list = list(CURRENT_MAP.keys())
@@ -129,38 +129,45 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 # ---------------------------------------------------------------------------
 
 
-def _eval_df(loaded_list: list[SINDyNeuroSurrogate]) -> pd.DataFrame:
+def _eval_df(
+    entries: list[tuple[str, str, SINDyNeuroSurrogate, SurrogateMeta]],
+) -> pd.DataFrame:
     rows = [
         {
-            "run_name": x.run_name,
-            "run_id": x.run_id[:8],
-            **x.metrics(),
+            "run_name": run_name,
+            "run_id": rid[:8],
+            **surrogate.metrics(meta),
         }
-        for x in loaded_list
+        for rid, run_name, surrogate, meta in entries
     ]
     return pd.DataFrame(rows).set_index("run_name")
 
 
 def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
-    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
-    loaded_list = [load_surrogate_model(rid) for rid in run_ids]
+    selected = cast(pd.DataFrame, base_ui["run_selector"].value)
+    entries: list[tuple[str, str, SINDyNeuroSurrogate, SurrogateMeta]] = [
+        (rid, run_name, *load_surrogate_model(rid))
+        for rid, run_name in zip(
+            selected["run_id"].tolist(),
+            selected["tags.mlflow.runName"].tolist(),
+            strict=True,
+        )
+    ]
     model_name = str(base_ui["model_name"].value)
     return mo.vstack(
         [
             mo.vstack(
                 [
-                    mo.md(
-                        f"run_id:{loaded.run_id[:8]}.. &nbsp;&nbsp;　{loaded.run_name}"
-                    ),
-                    mo.md(f"{loaded.sindy_bundle.equations[:40]}"),
-                    mo.mpl.interactive(view_model(loaded.sindy_bundle)),
+                    mo.md(f"run_id:{rid[:8]}.. &nbsp;&nbsp;　{run_name}"),
+                    mo.md(f"{surrogate.sindy_bundle.equations[:40]}"),
+                    mo.mpl.interactive(view_model(surrogate.sindy_bundle)),
                 ]
             )
-            for loaded in loaded_list
+            for rid, run_name, surrogate, _ in entries
         ]
         + [
             mo.md("### 評価サマリ (preprocessor / OpCost)"),
-            _eval_df(loaded_list),
+            _eval_df(entries),
             mo.md(f"### NeuronGraph: `{model_name}`"),
             mo.mpl.interactive(view_neuron_graph(MCMODELS[model_name])),
         ]
@@ -231,8 +238,8 @@ def view(
         ),
     ]
     for rid in run_ids:
-        loaded = load_surrogate_model(rid)
-        fig = view_model(loaded.sindy_bundle)
+        surrogate, _ = load_surrogate_model(rid)
+        fig = view_model(surrogate.sindy_bundle)
         entries.append(_entry(f"model({rid[:8]})", fig, model))
 
     if res is None:

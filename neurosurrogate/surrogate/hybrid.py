@@ -15,6 +15,8 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
     SINDy 入力順: (latent_1, ..., V) → library_specs は index 0=latent, 末尾=V。
     """
 
+    SURROGATE_TYPE = "hybrid"
+
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         gate_data = get_gate_numpy(self._train_xr, self.train_comp_id)
         preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, gate_data)

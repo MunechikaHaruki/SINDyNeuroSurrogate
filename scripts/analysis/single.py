@@ -152,7 +152,7 @@ def calc_eval(
 ) -> dict:
     dataset_cfg, run_id = _parse_eval_button(base_ui, sim_ui)
 
-    surrogate_model = load_surrogate_model(run_id)
+    surrogate_model, _ = load_surrogate_model(run_id)
     original_ds = unified_simulator(dataset_cfg)
     surr_ds = unified_simulator(
         dataset_cfg.with_surrogates(
