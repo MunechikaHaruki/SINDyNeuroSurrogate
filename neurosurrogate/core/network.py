@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from functools import cached_property
 
 import numpy as np
@@ -139,19 +139,6 @@ class NeuronGraph:
             np.sum(G_matrix, axis=1)
         )  # 流入を正とするグラフラプラシアンの符号反転
 
-    def with_surrogate(
-        self,
-        new_type: CompartmentType,
-        accept: Callable[["Compartment"], bool],
-    ) -> "NeuronGraph":
-        """accept が真のノードを new_type に置換 (妥当性ベース全置換)。
-
-        置換可否の判定 (学習ドメイン照合) は呼び出し側 (surrogate) の責務。
-        各ノードの name/params は保持し type だけ差し替える。
-        """
-        nodes = [replace(n, type=new_type) if accept(n) else n for n in self.nodes]
-        return NeuronGraph(nodes=nodes, edges=self.edges, stim=self.stim)
-
 
 @dataclass
 class DatasetConfig:
@@ -182,18 +169,6 @@ class DatasetConfig:
 
         return CURRENT_MAP[self.current["type"]](**self.current.get("params", {}))(
             self.dt
-        )
-
-    def with_surrogate(
-        self,
-        new_type: CompartmentType,
-        accept: Callable[["Compartment"], bool],
-    ) -> "DatasetConfig":
-        return DatasetConfig(
-            model_name=self.model_name,
-            dt=self.dt,
-            current=self.current,
-            net=self.net.with_surrogate(new_type, accept),
         )
 
     @classmethod

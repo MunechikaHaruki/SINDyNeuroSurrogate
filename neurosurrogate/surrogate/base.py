@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum, auto
 from pathlib import Path
 from typing import ClassVar
 
@@ -12,14 +11,6 @@ from ..core.simulator import unified_simulator
 from .bundle import PreprocessorBundle, SINDyBundle
 
 BUNDLE_FILE = "surrogate.joblib"
-
-
-class Verdict(Enum):
-    """サロゲート置換の妥当性判定 (学習ドメインとの照合結果)。"""
-
-    REPLACE = auto()  # 型一致 かつ params 一致 → 置換
-    MISMATCH = auto()  # 型一致 だが params 不一致 → 疑わしい (置換不可)
-    SKIP = auto()  # 型不一致 → 無関係 (対象外)
 
 
 @dataclass(frozen=True)
@@ -47,46 +38,6 @@ class SurrogateMeta:
     def train_comp_type(self) -> CompartmentType:
         """学習元コンパートメントの物理型 (= 置換対象)。"""
         return self.train_comp.type
-
-    def verdict(self, comp: Compartment) -> Verdict:
-        """comp が学習ドメイン (train_comp の type+params) に属すか判定。
-
-        型が違えば無関係 (SKIP)、型は同じだが params が違えば疑わしい
-        (MISMATCH)、両方一致で置換可 (REPLACE)。
-        """
-        train = self.train_comp
-        if comp.type != train.type:
-            return Verdict.SKIP
-        if comp.params != train.params:
-            return Verdict.MISMATCH
-        return Verdict.REPLACE
-
-    def replaceables(self, dataset: DatasetConfig) -> set[str]:
-        """dataset 内の置換対象ノード名を返す (fail first)。
-
-        - 型一致・params 不一致 (MISMATCH) が1つでもあれば即エラー
-        - 置換対象 (REPLACE) が皆無なら即エラー (モデルとデータが噛み合わず)
-        """
-        verdicts = {n.name: self.verdict(n) for n in dataset.net.nodes}
-        train = self.train_comp
-
-        mismatched = [
-            n for n in dataset.net.nodes if verdicts[n.name] is Verdict.MISMATCH
-        ]
-        if mismatched:
-            raise ValueError(
-                f"型 {train.type.name!r} 一致だが params 不一致のノード "
-                f"{[n.name for n in mismatched]}: サロゲートは学習 params 専用。\n"
-                f"  train({train.name}): {train.params}\n"
-                + "\n".join(f"  node({n.name}): {n.params}" for n in mismatched)
-            )
-        targets = {name for name, v in verdicts.items() if v is Verdict.REPLACE}
-        if not targets:
-            raise ValueError(
-                f"学習型 {train.type.name!r} のノードが dataset "
-                f"{dataset.model_name!r} に存在しない → 置換対象ゼロ。適用不可"
-            )
-        return targets
 
     @property
     def original_opcost(self) -> OpCost | None:
@@ -130,11 +81,10 @@ class NeuroSurrogateBase(ABC):
         ...
 
     def apply(self, dataset: DatasetConfig) -> DatasetConfig:
-        """学習ドメインに属す全ノードを surrogate に置換 (検証は meta が担う)。"""
-        targets = self.meta.replaceables(dataset)
-        return dataset.with_surrogate(
-            self.surr_comp_type, accept=lambda n: n.name in targets
-        )
+        """学習ドメイン内ノードを surrogate 置換 (判定/適用は replace)。"""
+        from .replace import apply as apply_surrogate
+
+        return apply_surrogate(self.meta, self.surr_comp_type, dataset)
 
     @property
     @abstractmethod

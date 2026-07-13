@@ -8,8 +8,8 @@ from .base import (
     BUNDLE_FILE,
     NeuroSurrogateBase,
     SurrogateMeta,
-    Verdict,
 )
+from .replace import Verdict, verdict
 
 
 def get_gate_numpy(train_xr, target_comp_id):
@@ -74,4 +74,5 @@ __all__ = [
     "get_gate_numpy",
     "load_surrogate",
     "transform_gate",
+    "verdict",
 ]

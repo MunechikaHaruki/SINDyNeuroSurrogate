@@ -21,7 +21,7 @@ from neurosurrogate.metrics.wave import (
     waveform_summary_df,
 )
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate import Verdict, transform_gate
+from neurosurrogate.surrogate import Verdict, transform_gate, verdict
 from neurosurrogate.view.specs import DRAW_MAP
 
 DRAW_LIST = list(DRAW_MAP.keys())
@@ -157,7 +157,7 @@ def calc_eval(
 
     def get_preprocessed(comp_id: int):
         comp = dataset_cfg.net.nodes[comp_id]
-        if (v := surrogate_model.meta.verdict(comp)) is not Verdict.REPLACE:
+        if (v := verdict(surrogate_model.meta, comp)) is not Verdict.REPLACE:
             raise ValueError(
                 f"comp {comp.name!r} は学習ドメイン外 ({v.name}) → latent 比較不可 "
                 f"(学習型 {surrogate_model.meta.train_comp_type.name!r})"
