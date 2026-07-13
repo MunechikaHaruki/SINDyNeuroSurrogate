@@ -1,5 +1,3 @@
-# mypy: ignore-errors
-
 from __future__ import annotations
 
 import matplotlib.patches as mpatches
@@ -129,11 +127,6 @@ def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None):
     fig = Figure()
     ax = fig.subplots()
 
-    print(orig_ds["vars"].coords["variable"].values)
-    print(orig_ds["vars"].sel(gate=True).coords["variable"].values)
-    print(orig_ds["vars"].dims)
-    print(orig_ds.coords)
-
     def extract_trajectory(ds):
         coords = []
         for var in state_vars:
@@ -182,7 +175,6 @@ def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None):
     ax.grid(True, linestyle=":", alpha=0.5)
     ax.legend(loc="upper right", frameon=True)
 
-    # アスペクト比自動調整 (電位と潜在変数のスケール差多数 → 'equal' 回避)
     fig.tight_layout()
 
     return fig

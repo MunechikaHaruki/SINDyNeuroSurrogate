@@ -51,7 +51,7 @@ warn_unused_ignores = true
 exclude = ["scripts/"]
 
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "pysindy", "efel", "joblib", "optax"]
+module = ["sklearn.*", "pysindy", "efel", "joblib", "optax", "networkx", "seaborn"]
 ignore_missing_imports = true
 
 [tool.ruff]
