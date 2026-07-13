@@ -2,7 +2,8 @@ import jax.numpy as jnp
 
 from ..core.network import CompartmentType
 from ..core.opcost import OpCost
-from .base import NeuroSurrogateBase, get_gate_numpy, transform_gate
+from . import get_gate_numpy, transform_gate
+from .base import NeuroSurrogateBase
 from .bundle import PreprocessorBundle, SINDyBundle
 
 

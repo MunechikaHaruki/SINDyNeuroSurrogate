@@ -105,12 +105,7 @@ def _iter_amp_datasets(
         dset_cfg = DatasetConfig(model_name=model_name, dt=dt, current=current, net=net)
         orig_ds = unified_simulator(dset_cfg)
         surr_datasets: dict[str, Any] = {
-            rid: unified_simulator(
-                dset_cfg.with_surrogate(
-                    surrogate.surr_comp_type,
-                    surrogate.meta.train_comp_type,
-                ),
-            )
+            rid: unified_simulator(surrogate.apply(dset_cfg))
             for rid, surrogate in surrogates.items()
         }
         yield amp, orig_ds, surr_datasets

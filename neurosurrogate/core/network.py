@@ -142,17 +142,14 @@ class NeuronGraph:
     def with_surrogate(
         self,
         new_type: CompartmentType,
-        target_type: CompartmentType,
+        accept: Callable[["Compartment"], bool],
     ) -> "NeuronGraph":
-        """target_type と一致する type の全ノードを new_type に置換 (型ベース全置換)。
+        """accept が真のノードを new_type に置換 (妥当性ベース全置換)。
 
-        置換対象は「どの物理型を学習したか」で一意に決まる。手動指定不要。
+        置換可否の判定 (学習ドメイン照合) は呼び出し側 (surrogate) の責務。
         各ノードの name/params は保持し type だけ差し替える。
         """
-        nodes = [
-            replace(n, type=new_type) if n.type == target_type else n
-            for n in self.nodes
-        ]
+        nodes = [replace(n, type=new_type) if accept(n) else n for n in self.nodes]
         return NeuronGraph(nodes=nodes, edges=self.edges, stim=self.stim)
 
 
@@ -190,13 +187,13 @@ class DatasetConfig:
     def with_surrogate(
         self,
         new_type: CompartmentType,
-        target_type: CompartmentType,
+        accept: Callable[["Compartment"], bool],
     ) -> "DatasetConfig":
         return DatasetConfig(
             model_name=self.model_name,
             dt=self.dt,
             current=self.current,
-            net=self.net.with_surrogate(new_type, target_type),
+            net=self.net.with_surrogate(new_type, accept),
         )
 
     @classmethod

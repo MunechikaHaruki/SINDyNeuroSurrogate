@@ -1,6 +1,5 @@
 import inspect
 import typing
-from functools import partial
 from typing import Literal, cast
 
 import marimo as mo
@@ -22,7 +21,7 @@ from neurosurrogate.metrics.wave import (
     waveform_summary_df,
 )
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate import transform_gate
+from neurosurrogate.surrogate import Verdict, transform_gate
 from neurosurrogate.view.specs import DRAW_MAP
 
 DRAW_LIST = list(DRAW_MAP.keys())
@@ -153,22 +152,24 @@ def calc_eval(
 
     surrogate_model = load_surrogate_model(run_id)
     original_ds = unified_simulator(dataset_cfg)
-    surr_ds = unified_simulator(
-        dataset_cfg.with_surrogate(
-            surrogate_model.surr_comp_type,
-            surrogate_model.meta.train_comp_type,
-        ),
-    )
+    surr_ds = unified_simulator(surrogate_model.apply(dataset_cfg))
+
+    def get_preprocessed(comp_id: int):
+        comp = dataset_cfg.net.nodes[comp_id]
+        if (v := surrogate_model.meta.verdict(comp)) is not Verdict.REPLACE:
+            raise ValueError(
+                f"comp {comp.name!r} は学習ドメイン外 ({v.name}) → latent 比較不可 "
+                f"(学習型 {surrogate_model.meta.train_comp_type.name!r})"
+            )
+        return transform_gate(
+            surrogate_model.preprocessor_bundle.preprocessor, original_ds, comp_id
+        )
 
     return {
         "original_ds": original_ds,
         "surr_ds": surr_ds,
         "dt": dataset_cfg.dt,
-        "get_preprocessed": partial(
-            transform_gate,
-            surrogate_model.preprocessor_bundle.preprocessor,
-            original_ds,
-        ),
+        "get_preprocessed": get_preprocessed,
         "name_to_idx": MCMODELS[dataset_cfg.model_name].name_to_idx,
         "make_dm": lambda comp_id: DynamicMetrics(
             original_ds, surr_ds, comp_id, dataset_cfg.dt

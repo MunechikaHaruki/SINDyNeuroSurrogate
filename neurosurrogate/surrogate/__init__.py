@@ -1,16 +1,50 @@
 from pathlib import Path
 
 import joblib
+import numpy as np
 
+from ..core.coords import StateAccumulator, set_coords
 from .base import (
     BUNDLE_FILE,
     NeuroSurrogateBase,
     SurrogateMeta,
-    get_gate_numpy,
-    transform_gate,
+    Verdict,
 )
-from .hybrid import HybridSINDyNeuroSurrogate
-from .sindy import SINDyNeuroSurrogate
+
+
+def get_gate_numpy(train_xr, target_comp_id):
+    return train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
+
+
+def transform_gate(preprocessor, xr_data, target_comp_id):
+    transformed_gate = preprocessor.transform(get_gate_numpy(xr_data, target_comp_id))
+    n_latent = transformed_gate.shape[1]
+
+    return set_coords(
+        raw=np.concatenate(
+            (
+                xr_data["vars"]
+                .sel(gate=False, comp_id=target_comp_id)
+                .to_numpy()
+                .reshape(-1, 1),
+                transformed_gate,
+            ),
+            axis=1,
+        ),
+        u=xr_data["I_internal"].sel(node_id=target_comp_id).to_numpy(),
+        coords=StateAccumulator(
+            comp_id=[target_comp_id] * (n_latent + 1),
+            variable=["V"] + [f"latent{i + 1}" for i in range(n_latent)],
+            gate=[False] + [True] * n_latent,
+        ).to_coords(),
+        dt=float(xr_data.time[1] - xr_data.time[0]),
+    )
+
+
+# get_gate_numpy/transform_gate は hybrid/sindy が使うため、
+# それらの import より前に定義しておく (親 __init__ 経由の循環回避)
+from .hybrid import HybridSINDyNeuroSurrogate  # noqa: E402
+from .sindy import SINDyNeuroSurrogate  # noqa: E402
 
 SURR_CLS: dict[str, type[NeuroSurrogateBase]] = {
     cls.SURROGATE_TYPE: cls for cls in (SINDyNeuroSurrogate, HybridSINDyNeuroSurrogate)
@@ -36,6 +70,7 @@ __all__ = [
     "NeuroSurrogateBase",
     "SINDyNeuroSurrogate",
     "SurrogateMeta",
+    "Verdict",
     "get_gate_numpy",
     "load_surrogate",
     "transform_gate",
