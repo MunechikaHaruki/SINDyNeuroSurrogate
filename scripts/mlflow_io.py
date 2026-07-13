@@ -19,9 +19,7 @@ logger = logging.getLogger(__name__)
 def setup_mlflow() -> None:
     project_root = Path(__file__).parent.parent
     mlflow.set_tracking_uri(f"sqlite:///{project_root}/mlflow.db")
-    mlflow.enable_system_metrics_logging()
     mlflow.set_experiment(TARGET_EXP)
-    os.environ["MLFLOW_SYSTEM_METRICS_SAMPLING_INTERVAL"] = "1"
     # 全 run の meta 読込で artifact DL 進捗バーが大量出力 → 抑制
     os.environ["MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR"] = "false"
 
