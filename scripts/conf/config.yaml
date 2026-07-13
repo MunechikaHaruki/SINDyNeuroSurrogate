@@ -1,9 +1,10 @@
 defaults:
+  - _self_ # inline は default 扱い、preset で上書き可能に
   - sindy: base
-  - _self_ # ショートカット定義は最後に設定
 
 
 sindy:
+  type: sindy
   init:
     datasets:
       dt: 0.01

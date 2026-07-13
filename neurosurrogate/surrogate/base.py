@@ -21,6 +21,28 @@ class SurrogateMeta:
     dataset: DatasetConfig
     train_comp_id: int
 
+    @classmethod
+    def build(
+        cls, surrogate_type: str, datasets: dict, train_comp_identifier: str
+    ) -> "SurrogateMeta":
+        dataset = DatasetConfig.build_dataset(**datasets)
+        return cls(
+            surrogate_type=surrogate_type,
+            dataset=dataset,
+            train_comp_id=dataset.net.name_to_idx(train_comp_identifier),
+        )
+
+    @property
+    def train_comp(self) -> Compartment:
+        return self.dataset.net.nodes[self.train_comp_id]
+
+    @property
+    def original_opcost(self) -> OpCost | None:
+        return self.train_comp.type.opcost
+
+    def simulate(self):
+        return unified_simulator(self.dataset)
+
 
 def get_gate_numpy(train_xr, target_comp_id):
     return train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
@@ -58,13 +80,18 @@ class NeuroSurrogateBase(ABC):
     _preprocessor_bundle: PreprocessorBundle
 
     def __init__(self, datasets: dict, train_comp_identifier: str):
-        dataset = DatasetConfig.build_dataset(**datasets)
-        self._meta = SurrogateMeta(
+        self._meta = SurrogateMeta.build(
             surrogate_type=self.SURROGATE_TYPE,
-            dataset=dataset,
-            train_comp_id=dataset.net.name_to_idx(train_comp_identifier),
+            datasets=datasets,
+            train_comp_identifier=train_comp_identifier,
         )
-        self._train_xr = unified_simulator(dataset)
+        self._train_xr = self._meta.simulate()
+
+    @classmethod
+    def build(cls, type: str, init: dict) -> "NeuroSurrogateBase":
+        from . import SURR_CLS
+
+        return SURR_CLS[type](**init)
 
     @property
     def meta(self) -> SurrogateMeta:
@@ -97,13 +124,10 @@ class NeuroSurrogateBase(ABC):
         self._preprocessor_bundle = preprocessor_bundle
 
     def metrics(self) -> dict:
-        original_opcost = self._meta.dataset.net.nodes[
-            self._meta.train_comp_id
-        ].type.opcost
         return {
             **self.sindy_bundle.xi_metrics(),
             **self.preprocessor_bundle.metrics(),
-            **self.opcost.diff_dict(original_opcost),
+            **self.opcost.diff_dict(self._meta.original_opcost),
         }
 
     def save(self, dir: Path | str) -> None:

@@ -7,7 +7,7 @@ from hydra.core.hydra_config import HydraConfig
 from mlflow_io import log_surrogate_model, setup_mlflow
 from omegaconf import DictConfig, OmegaConf
 
-from neurosurrogate.surrogate import SURR_CLS
+from neurosurrogate.surrogate import NeuroSurrogateBase
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
     cfg_sindy = OmegaConf.to_container(cfg, resolve=True)["sindy"]
     assert isinstance(cfg_sindy, dict)
-    surrogate = SURR_CLS[cfg_sindy.get("type", "sindy")](**cfg_sindy["init"])
+    surrogate = NeuroSurrogateBase.build(type=cfg_sindy["type"], init=cfg_sindy["init"])
     with mlflow.start_run(run_name=_make_run_name()):
         surrogate.fit(**cfg_sindy["fit"])
         log_surrogate_model(surrogate)
