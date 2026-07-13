@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
-from mlflow_io import load_surrogate_model
+from mlflow_io import load_surrogate_model, sole_target_model
 
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
@@ -129,7 +129,8 @@ def _parse_eval_button(
     base_ui: mo.ui.dictionary,
     sim_ui: mo.ui.dictionary,
 ) -> tuple[DatasetConfig, str]:
-    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
+    selected = cast(pd.DataFrame, base_ui["run_selector"].value)
+    run_ids = selected["run_id"].tolist()
     if len(run_ids) != 1:
         raise ValueError(
             f"single モードでは Run を 1 件だけ選択。現在: {len(run_ids)} 件"
@@ -137,7 +138,7 @@ def _parse_eval_button(
     current_type = str(base_ui["sim_current_type"].value)
     current_params = sim_ui["current_params"].value or {}
     dataset_cfg = DatasetConfig.build_dataset(
-        model_name=str(base_ui["model_name"].value),
+        model_name=sole_target_model(selected),
         dt=float(base_ui["dt"].value),
         current={"type": current_type, "params": current_params},
     )

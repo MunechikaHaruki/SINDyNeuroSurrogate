@@ -61,4 +61,26 @@ def get_runs_df():
         ["tags.mlflow.runName", "run_id", "start_time"]
         + [c for c in runs_df.columns if "metrics" in c or "params" in c]
     ]
-    return runs_df
+    # サロゲートの学習元 MC モデルを純粋な dataframe 列として付与
+    # (mlflow params に依存せず meta から直接読む)。
+    # 旧形式など読込不可の run は選択対象から除外。
+    runs_df["train_model"] = runs_df["run_id"].map(_safe_train_model)
+    return runs_df[runs_df["train_model"].notna()].reset_index(drop=True)
+
+
+def _safe_train_model(run_id: str) -> str | None:
+    try:
+        return load_surrogate_model(run_id).meta.dataset.model_name
+    except Exception:
+        logger.warning(f"run {run_id}: surrogate 読込不可 → 選択対象外")
+        return None
+
+
+def sole_target_model(selected: pd.DataFrame) -> str:
+    """選択行 target_model (適用先MC) が一意ならその値。空/不一致は fail first。"""
+    if selected.empty:
+        raise ValueError("run が未選択です")
+    models = selected["target_model"].unique()
+    if len(models) != 1:
+        raise ValueError(f"選択行の target_model が一意でない: {list(models)}")
+    return str(models[0])

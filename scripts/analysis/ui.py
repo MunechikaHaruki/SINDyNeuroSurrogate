@@ -9,7 +9,12 @@ import pandas as pd
 from analysis import single as analysis_single
 from analysis import sweep as analysis_sweep
 from matplotlib.figure import Figure
-from mlflow_io import get_runs_df, load_surrogate_model, setup_mlflow
+from mlflow_io import (
+    get_runs_df,
+    load_surrogate_model,
+    setup_mlflow,
+    sole_target_model,
+)
 
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.models import MCMODELS
@@ -31,21 +36,27 @@ RESULT_DIR = REPO_ROOT / "docs" / "slide" / "result"
 # ---------------------------------------------------------------------------
 
 
-def make_base_ui() -> mo.ui.dictionary:
+def make_base_ui(target_model: dict[str, list[str]]) -> mo.ui.dictionary:
     runs_df = get_runs_df()
+    # train_model → 適用候補 target_model を展開 (候補ごとに行を複製)。
+    # 未登録 train_model は自身のみを候補とする。
+    runs_df["target_model"] = runs_df["train_model"].map(
+        lambda m: target_model.get(m, [m])
+    )
+    runs_df = runs_df.explode("target_model", ignore_index=True)
     plt_options = list(typing.get_args(MplStyle))
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[1]),
             "sim_current_type": mo.ui.dropdown(CurrentList, value="lin&steady&pulse"),
-            "model_name": mo.ui.dropdown(
-                options=list(MCMODELS.keys()),
-                value="hh",
-            ),
             "dt": mo.ui.number(value=0.01, step=0.001),
             "run_selector": mo.ui.table(
-                pd.DataFrame(runs_df[["tags.mlflow.runName", "run_id"]]),
-                label="Run 選択 (single: 1件のみ / sweep: 複数可)",
+                pd.DataFrame(
+                    runs_df[
+                        ["tags.mlflow.runName", "run_id", "train_model", "target_model"]
+                    ]
+                ),
+                label="サロゲート選択 (target=適用先MC / train=学習元)",
                 selection="multi",
                 initial_selection=[0],
             ),
@@ -103,7 +114,8 @@ def calc(
 
 
 def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_names = MCMODELS[str(base_ui["model_name"].value)].names
+    model_name = sole_target_model(cast(pd.DataFrame, base_ui["run_selector"].value))
+    comp_names = MCMODELS[model_name].names
     d: dict = {
         "eval_comp": mo.ui.dropdown(
             options=comp_names, value=comp_names[0], label="評価対象comp"
@@ -145,7 +157,7 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
             strict=True,
         )
     ]
-    model_name = str(base_ui["model_name"].value)
+    model_name = sole_target_model(selected)
     return mo.vstack(
         [
             mo.vstack(
@@ -208,7 +220,7 @@ def view(
     res: dict | None,
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
-    model = base_ui["model_name"].value
+    model = sole_target_model(cast(pd.DataFrame, base_ui["run_selector"].value))
     current = _fmt_current(base_ui, setting_ui)
     eval_comp = str(draw_ui["eval_comp"].value)
     info = f"eval:{eval_comp}"

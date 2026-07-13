@@ -16,7 +16,9 @@ def _():
         "periodic&sinousoidal": (0, 200.0, 10),  # frequency [Hz]
     }
 
-    base_ui = analysis.make_base_ui()
+    TARGET_MODEL = {"hh": ["hh", "phhhp"]}
+
+    base_ui = analysis.make_base_ui(TARGET_MODEL)
     base_ui  # noqa: B018
     return SWEEP_DEFAULTS, analysis, base_ui, mo
 

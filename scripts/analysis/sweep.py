@@ -9,7 +9,7 @@ import mlflow
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
-from mlflow_io import load_surrogate_model
+from mlflow_io import load_surrogate_model, sole_target_model
 
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
@@ -146,8 +146,8 @@ def calc_sweep(
     sweep_ui: mo.ui.dictionary,
 ) -> dict:
     """純粋実行層: draw_ui 不要。raw sim データを返す。"""
-    model_name = base_button["model_name"].value
     run_ids = base_button["run_selector"].value["run_id"].tolist()
+    model_name = sole_target_model(base_button["run_selector"].value)
     current_type = base_button["sim_current_type"].value
     sweep_param = _sweep_param_of(current_type)
     sweep_cfg = SweepConfig(
