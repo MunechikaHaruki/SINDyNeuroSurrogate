@@ -91,3 +91,13 @@ def sole_target_model(selected: pd.DataFrame) -> str:
     if len(models) != 1:
         raise ValueError(f"選択行の target_model が一意でない: {list(models)}")
     return str(models[0])
+
+
+def sole_run_name(selected: pd.DataFrame) -> str:
+    """選択行 runName が一意ならその値。空/不一致は fail first。"""
+    if selected.empty:
+        raise ValueError("run が未選択です")
+    names = selected["tags.mlflow.runName"].unique()
+    if len(names) != 1:
+        raise ValueError(f"選択行の runName が一意でない: {list(names)}")
+    return str(names[0])

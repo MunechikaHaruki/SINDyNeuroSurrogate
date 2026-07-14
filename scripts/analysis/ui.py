@@ -15,6 +15,7 @@ from mlflow_io import (
     get_runs_df,
     load_surrogate_model,
     setup_mlflow,
+    sole_run_name,
     sole_target_model,
 )
 
@@ -174,7 +175,7 @@ def render_model_info(
     blocks: list[mo.Html] = []
     for rid, run_name, surrogate in loaded:
         fig = view_model(surrogate.sindy_bundle)
-        save_items.append(_entry(f"model({rid[:8]})", fig, model_name))
+        save_items.append(_entry(f"model({rid[:8]})", fig, f"{run_name}({model_name})"))
         blocks.append(
             mo.vstack(
                 [
@@ -243,9 +244,10 @@ def view_single(
 ) -> tuple[mo.Html, list[SaveEntry]]:
     if res is None:
         return mo.md("(single結果なし)"), []
-    model = sole_target_model(cast(pd.DataFrame, base_ui["run_selector"].value))
+    selected = cast(pd.DataFrame, base_ui["run_selector"].value)
+    model_tag = f"{sole_run_name(selected)}({sole_target_model(selected)})"
     eval_comp = str(draw_ui["eval_comp"].value)
-    single_prefix = f"{model}(eval:{eval_comp})_{_fmt_current(base_ui, setting_ui)}"
+    single_prefix = f"{model_tag}(eval:{eval_comp})_{_fmt_current(base_ui, setting_ui)}"
 
     html, figs, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
     entries = [_entry(name, fig, single_prefix) for name, fig in figs.items()]
@@ -262,7 +264,8 @@ def view_sweep(
 ) -> tuple[mo.Html, list[SaveEntry]]:
     if res is None or "sweep" not in draw_ui:
         return mo.md("(sweep結果なし)"), []
-    model = sole_target_model(cast(pd.DataFrame, base_ui["run_selector"].value))
+    selected = cast(pd.DataFrame, base_ui["run_selector"].value)
+    model_tag = f"{sole_run_name(selected)}({sole_target_model(selected)})"
     eval_comp = str(draw_ui["eval_comp"].value)
 
     ylim_ui = draw_ui["sweep"]["ylim"]
@@ -277,7 +280,7 @@ def view_sweep(
         metric_key=draw_ui["sweep"]["metric"].value,
         ylim=ylim,
     )
-    prefix = f"{model}(eval:{eval_comp})_{_fmt_sweep(base_ui, setting_ui)}"
+    prefix = f"{model_tag}(eval:{eval_comp})_{_fmt_sweep(base_ui, setting_ui)}"
     return html, [_entry("sweep", fig, prefix)]
 
 
