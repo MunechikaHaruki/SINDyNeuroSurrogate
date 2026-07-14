@@ -7,6 +7,7 @@ from ..core.opcost import OpCost
 from . import get_gate_numpy
 from .base import NeuroSurrogateBase
 from .bundle import PreprocessorBundle, SINDyBundle
+from .replace import resolved_params
 
 
 class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
@@ -44,8 +45,8 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         # 学習ノードの E_REST を暗黙に焼込む (rate は v_rel=v-E_REST 依存) →
         # E_REST のみ一致必須。
         return bool(
-            self.meta.train_comp.resolved_params.E_REST  # type: ignore[union-attr]
-            == comp.resolved_params.E_REST  # type: ignore[union-attr]
+            resolved_params(self.meta.train_comp).E_REST  # type: ignore[union-attr]
+            == resolved_params(comp).E_REST  # type: ignore[union-attr]
         )
 
     @property
@@ -73,7 +74,6 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             name="hybrid_surr",
             kernel=hybrid_kernel,
             param_cls=HHParams,
-            default_params=HHParams(),
             gate_names=[f"latent{i + 1}" for i in range(n_latent)],
             default_gate_inits=self.preprocessor_bundle.gate_inits,
             v_init=-65,

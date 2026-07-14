@@ -12,6 +12,7 @@ from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
 from ..models import MCMODELS
 from ..surrogate import NeuroSurrogateBase
+from ..surrogate.replace import apply_surrogate
 from .wave import DynamicMetrics, extract_metric
 
 
@@ -76,7 +77,7 @@ def evaluate_sweep(
             model_name=model_name, dt=dt, current=cfg.current_at(float(amp)), net=net
         )
         surr_datasets = {
-            rid: unified_simulator(surrogate.apply(dset))
+            rid: unified_simulator(apply_surrogate(surrogate, dset))
             for rid, surrogate in surrogates.items()
         }
         amp_datasets.append((float(amp), unified_simulator(dset), surr_datasets))

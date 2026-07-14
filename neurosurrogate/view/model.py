@@ -15,6 +15,7 @@ _NODE_COLORS = {
     "hh": "#4C9BE8",
     "passive": "#A8D5A2",
 }
+_SURR_COLOR = "#B57EDC"
 _STIM_BORDER = "#E85C4C"
 _NODE_SIZE = 4000
 _NODE_LABEL_FONTSIZE = 30
@@ -24,8 +25,12 @@ _EDGE_LABEL_FONTSIZE = 25
 _STIM_LINEWIDTH = 3.0
 
 
-def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
-    """NeuronGraph を networkx で可視化。ノード色=種別、赤枠=stim ノード。"""
+def view_neuron_graph(net, surrogate_nodes=None, figsize=(8, 4)) -> Figure:
+    """NeuronGraph を networkx で可視化。ノード色=種別、赤枠=stim ノード。
+
+    surrogate_nodes (置換対象ノード名集合) を渡すと該当ノードを紫で強調。
+    """
+    surrogate_nodes = surrogate_nodes or set()
     G = nx.DiGraph()
     for c in net.nodes:
         G.add_node(c.name, type=c.type.name)
@@ -35,7 +40,12 @@ def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
 
     pos = nx.spring_layout(G, seed=42)
 
-    node_colors = [_NODE_COLORS.get(G.nodes[n]["type"], "#CCCCCC") for n in G.nodes]
+    node_colors = [
+        _SURR_COLOR
+        if n in surrogate_nodes
+        else _NODE_COLORS.get(G.nodes[n]["type"], "#CCCCCC")
+        for n in G.nodes
+    ]
     edge_labels = {(e.src, e.dst): f"{e.weight:.2g}" for e in net.edges}
     node_edge_colors = [_STIM_BORDER if n == net.stim else "white" for n in G.nodes]
     node_linewidths = [_STIM_LINEWIDTH if n == net.stim else 1.0 for n in G.nodes]
@@ -69,6 +79,8 @@ def view_neuron_graph(net, figsize=(8, 4)) -> Figure:
     )
 
     legend_handles = [mpatches.Patch(color=c, label=t) for t, c in _NODE_COLORS.items()]
+    if surrogate_nodes:
+        legend_handles.append(mpatches.Patch(color=_SURR_COLOR, label="surrogate"))
     legend_handles.append(
         mpatches.Patch(
             facecolor="white", edgecolor=_STIM_BORDER, linewidth=2, label="stim"
@@ -124,9 +136,11 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
 def model_figures(
     bundles: list[tuple[str, SINDyBundle]],
     net: NeuronGraph,
+    surrogate_nodes: set[str] | None = None,
 ) -> list[tuple[str, Figure]]:
     """識別子付き model 図群 (係数 heatmap × run) + neurograph を一括生成。
+    surrogate_nodes は neurograph で置換ノードを強調するための名集合。
     analysis 側は fig 種別を知らず、この (id, fig) 列を保存/表示に流すだけ。"""
     figs = [(f"model({key})", view_model(bundle)) for key, bundle in bundles]
-    figs.append(("neurograph", view_neuron_graph(net)))
+    figs.append(("neurograph", view_neuron_graph(net, surrogate_nodes)))
     return figs

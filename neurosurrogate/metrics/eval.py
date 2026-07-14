@@ -8,7 +8,7 @@ import xarray as xr
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
 from ..surrogate import NeuroSurrogateBase, transform_gate
-from ..surrogate.replace import Verdict, verdict
+from ..surrogate.replace import Verdict, apply_surrogate, verdict
 from .wave import DynamicMetrics, WaveReport, wave_report
 
 
@@ -57,5 +57,5 @@ def evaluate(surrogate: NeuroSurrogateBase, dataset: DatasetConfig) -> EvalResul
         surrogate=surrogate,
         dataset=dataset,
         original_ds=unified_simulator(dataset),
-        surr_ds=unified_simulator(surrogate.apply(dataset)),
+        surr_ds=unified_simulator(apply_surrogate(surrogate, dataset)),
     )

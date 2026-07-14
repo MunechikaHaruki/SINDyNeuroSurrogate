@@ -18,7 +18,6 @@ class CompartmentType:
     name: str  # "hh", "passive", "traub", "surr"
     kernel: Callable  # (params, u_t, v, state) -> (dv, dstate)
     param_cls: "type | None"  # HHParams / PassiveParams / TraubParams / None (surr)
-    default_params: "tuple | None"  # デフォルト NamedTuple / None
     gate_names: list[str]
     default_gate_inits: list[float]
     v_init: float = -65
@@ -47,11 +46,6 @@ class Compartment:
     name: str
     type: CompartmentType
     params: "tuple | None" = None
-
-    @property
-    def resolved_params(self) -> "tuple | None":
-        """明示 params、無ければ型の default_params。params 一致判定の基準。"""
-        return self.params if self.params is not None else self.type.default_params
 
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "type": self.type.name}

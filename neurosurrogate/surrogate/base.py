@@ -89,12 +89,6 @@ class NeuroSurrogateBase(ABC):
         """
         ...
 
-    def apply(self, dataset: DatasetConfig) -> DatasetConfig:
-        """学習ドメイン内ノードを surrogate 置換 (判定/適用は replace)。"""
-        from .replace import apply as apply_surrogate
-
-        return apply_surrogate(self, dataset)
-
     @property
     @abstractmethod
     def opcost(self) -> OpCost: ...

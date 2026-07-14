@@ -201,7 +201,6 @@ TRAUB_TYPE = CompartmentType(
     name="traub",
     kernel=calc_traub_channel,
     param_cls=TraubParams,
-    default_params=_TRAUB_DEFAULT_PARAMS,
     gate_names=TRAUB_STATE_NAMES,
     default_gate_inits=_traub_state_inits(_TRAUB_DEFAULT_PARAMS),
     v_init=TRAUB_V_INIT,

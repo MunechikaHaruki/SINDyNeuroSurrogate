@@ -66,7 +66,7 @@ def _make_group_spec(bucket: list[tuple[int, Compartment]]) -> GroupSpec:
         else jax.tree.map(
             lambda *xs: jnp.asarray(xs),
             *[
-                c.params if c.params is not None else comp_type.default_params
+                c.params if c.params is not None else comp_type.param_cls()
                 for c in comps
             ],
         )

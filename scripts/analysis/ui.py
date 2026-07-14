@@ -23,6 +23,7 @@ from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate import SINDyNeuroSurrogate
+from neurosurrogate.surrogate.replace import replaced_names
 from neurosurrogate.view.model import model_figures
 from neurosurrogate.view.utils import current_preview_fig
 
@@ -172,12 +173,17 @@ def render_model_info(
         )
     ]
     model_name = sole_target_model(selected)
+    net = MCMODELS[model_name]
+    surr_nodes = set().union(
+        *(replaced_names(surrogate, net) for _, _, surrogate in loaded)
+    )
 
     # fig 生成・命名は view 層 (model_figures) に委譲。ここは (id, fig) を
     # 保存 entry と表示に流すだけ。
     figs = model_figures(
         [(run_name, surrogate.sindy_bundle) for _, run_name, surrogate in loaded],
-        MCMODELS[model_name],
+        net,
+        surr_nodes,
     )
     save_items = [_entry(name, fig, model_name) for name, fig in figs]
     bodies = [

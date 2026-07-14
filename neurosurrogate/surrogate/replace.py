@@ -24,6 +24,17 @@ class Verdict(Enum):
     SKIP = auto()  # 型不一致 → 無関係 (対象外)
 
 
+def resolved_params(comp: Compartment) -> "tuple | None":
+    """comp の実効 params: 明示 params、無ければ型 default (param_cls())。
+
+    params 一致判定 (置換ドメイン) の基準。surr のように param_cls=None の型は
+    params を持たず None。default は param_cls() が生む NamedTuple デフォルト。
+    """
+    if comp.params is not None:
+        return comp.params
+    return comp.type.param_cls() if comp.type.param_cls is not None else None
+
+
 def verdict(surrogate: "NeuroSurrogateBase", comp: Compartment) -> Verdict:
     """comp が surrogate の学習ドメイン (型 + params 両立性) に属すか判定。
 
@@ -52,8 +63,8 @@ def replaceables(surrogate: "NeuroSurrogateBase", dataset: DatasetConfig) -> set
         raise ValueError(
             f"型 {train.type.name!r} 一致だが params 非両立のノード "
             f"{[n.name for n in mismatched]}: 学習ドメイン外。\n"
-            f"  train({train.name}): {train.resolved_params}\n"
-            + "\n".join(f"  node({n.name}): {n.resolved_params}" for n in mismatched)
+            f"  train({train.name}): {resolved_params(train)}\n"
+            + "\n".join(f"  node({n.name}): {resolved_params(n)}" for n in mismatched)
         )
     targets = {name for name, v in verdicts.items() if v is Verdict.REPLACE}
     if not targets:
@@ -62,6 +73,14 @@ def replaceables(surrogate: "NeuroSurrogateBase", dataset: DatasetConfig) -> set
             f"{dataset.model_name!r} に存在しない → 置換対象ゼロ。適用不可"
         )
     return targets
+
+
+def replaced_names(surrogate: "NeuroSurrogateBase", net: NeuronGraph) -> set[str]:
+    """net 内で surrogate が置換する (REPLACE) ノード名集合を返す (非raise, 診断用)。
+
+    replaceables と違い MISMATCH/皆無でも例外を投げず、描画等の情報表示に使う。
+    """
+    return {n.name for n in net.nodes if verdict(surrogate, n) is Verdict.REPLACE}
 
 
 def replace_nodes(
@@ -74,7 +93,7 @@ def replace_nodes(
     return dc_replace(net, nodes=nodes)
 
 
-def apply(
+def apply_surrogate(
     surrogate: "NeuroSurrogateBase",
     dataset: DatasetConfig,
 ) -> DatasetConfig:
