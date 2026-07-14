@@ -10,7 +10,7 @@ from mlflow_io import load_surrogate_model, sole_target_model
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.currents import CURRENT_MAP
-from neurosurrogate.metrics.wave import DynamicMetrics, wave_report
+from neurosurrogate.metrics.wave import DynamicMetrics, WaveReport, wave_report
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate import preprocessed_latent
 from neurosurrogate.view.specs import draw_all
@@ -133,6 +133,32 @@ def _stat_cards(d: dict) -> mo.Html:
     )
 
 
+def _metrics_html(rep: WaveReport, spike_orig: int, spike_surr: int) -> mo.Html:
+    """WaveReport をメトリクス表示 UI に組み立てる。"""
+    parts: list = [
+        mo.md("#### 波形誤差スカラー"),
+        _stat_cards(rep.waveform_scalar),
+    ]
+    if rep.has_spikes:
+        parts += [
+            mo.md(
+                f"#### 動的指標（orig / surr / orig-surr）"
+                f" — spike orig: {spike_orig} / surr: {spike_surr}"
+            ),
+            rep.df_metrics,
+            mo.md("#### スパイク波形相関（spike_shape_corr）"),
+            _stat_cards(rep.spike_shape_corr),
+        ]
+    else:
+        parts.append(
+            mo.md(
+                f"（スパイク指標なし: orig {spike_orig}/{rep.n_orig}"
+                f" surr {spike_surr}/{rep.n_surr}）"
+            )
+        )
+    return mo.vstack(parts)
+
+
 def view_result(
     draw_ui: mo.ui.dictionary,
     result: dict,
@@ -150,35 +176,14 @@ def view_result(
         target_comp_id,
         lambda: result["get_preprocessed"](target_comp_id),
     )
-
-    html_parts: list = [
-        mo.md("#### 波形誤差スカラー"),
-        _stat_cards(rep.waveform_scalar),
+    fig_html = [
+        part
+        for name, fig in figs
+        for part in (mo.md(f"##### {name}"), mo.mpl.interactive(fig))
     ]
-    if rep.has_spikes:
-        html_parts += [
-            mo.md(
-                f"#### 動的指標（orig / surr / orig-surr）"
-                f" — spike orig: {spike_orig} / surr: {spike_surr}"
-            ),
-            rep.df_metrics,
-            mo.md("#### スパイク波形相関（spike_shape_corr）"),
-            _stat_cards(rep.spike_shape_corr),
-        ]
-    else:
-        html_parts.append(
-            mo.md(
-                f"（スパイク指標なし: orig {spike_orig}/{rep.n_orig}"
-                f" surr {spike_surr}/{rep.n_surr}）"
-            )
-        )
-
-    for name, fig in figs:
-        html_parts.append(mo.md(f"##### {name}"))
-        html_parts.append(mo.mpl.interactive(fig))
 
     return (
-        mo.vstack(html_parts),
+        mo.vstack([_metrics_html(rep, spike_orig, spike_surr), *fig_html]),
         figs,
         {
             "metrics": rep.df_metrics,
