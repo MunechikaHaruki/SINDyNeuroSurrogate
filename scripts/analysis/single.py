@@ -3,8 +3,6 @@ import typing
 from typing import Literal, cast
 
 import marimo as mo
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 from mlflow_io import load_surrogate_model, sole_target_model
@@ -76,43 +74,6 @@ def make_sim_ui(current_type: str) -> mo.ui.dictionary:
         }
     )
     return mo.ui.dictionary({"current_params": current_params_ui})
-
-
-# ---------------------------------------------------------------------------
-# Current Preview
-# ---------------------------------------------------------------------------
-
-
-def plot_current_preview(base_ui: mo.ui.dictionary, sim_ui: mo.ui.dictionary) -> Figure:
-    """sim_ui の current_params から電流波形を構築してプレビュー描画。
-    構築失敗時はエラーメッセージ表示 Figure を返す。"""
-    current_type = str(base_ui["sim_current_type"].value)
-    dt = float(base_ui["dt"].value)
-    params = sim_ui["current_params"].value or {}
-    try:
-        i_ext = CURRENT_MAP[current_type](**params)(dt)
-    except Exception as e:  # noqa: BLE001
-        fig, ax = plt.subplots(figsize=(6, 1.5))
-        ax.text(0.5, 0.5, f"build失敗: {e}", ha="center", va="center", fontsize=8)
-        ax.axis("off")
-        return fig
-    t = np.arange(len(i_ext)) * dt
-    fig, ax = plt.subplots(figsize=(6, 2))
-    ax.plot(t, i_ext, lw=0.8)
-    ax.set_xlabel("t [ms]")
-    ax.set_ylabel("I_ext [μA/cm²]")
-    ax.set_title(f"{current_type} preview")
-    fig.tight_layout()
-    return fig
-
-
-def render_current_preview(fig: Figure) -> mo.Html:
-    return mo.vstack(
-        [
-            mo.md("### 電流プレビュー"),
-            mo.mpl.interactive(fig),
-        ]
-    )
 
 
 # ---------------------------------------------------------------------------

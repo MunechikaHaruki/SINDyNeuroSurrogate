@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import marimo as mo
-import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import pandas as pd
@@ -21,6 +20,7 @@ from neurosurrogate.metrics.wave import (
     extract_metric,
 )
 from neurosurrogate.models import MCMODELS
+from neurosurrogate.view.utils import sweep_fig
 
 # ---------------------------------------------------------------------------
 # Sweep UI
@@ -205,43 +205,6 @@ def _compute_metrics_df(
     return pd.DataFrame(rows)
 
 
-def _plot_sweep(
-    data: pd.DataFrame,
-    run_ids: list[str],
-    metric_key: str,
-    comp_name: str,
-    sweep_param: str,
-    run_labels: dict[str, str] | None = None,
-    ylim: tuple[float, float] | None = None,
-) -> Figure:
-    run_labels = run_labels or {}
-
-    fig, ax = plt.subplots()
-    if "original" in data.columns:
-        ax.plot(data["amplitude"], data["original"], "k-o", label="Original", zorder=3)
-
-    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for idx, rid in enumerate(run_ids):
-        label = run_labels.get(rid, f"Surr {rid[:6]}")
-        ax.plot(
-            data["amplitude"],
-            data[rid],
-            marker="s",
-            linestyle="--",
-            color=colors[idx % len(colors)],
-            label=label,
-        )
-
-    ax.set_xlabel(sweep_param)
-    ax.set_ylabel(metric_key)
-    ax.set_title(f"{sweep_param} sweep — {metric_key} ({comp_name})")
-    if ylim is not None:
-        ax.set_ylim(*ylim)
-    ax.legend()
-    fig.tight_layout()
-    return fig
-
-
 def plot_sweep(
     sweep_raw: dict,
     eval_comp_name: str,
@@ -256,7 +219,7 @@ def plot_sweep(
         dt=sweep_raw["dt"],
         metric_key=metric_key,
     )
-    fig = _plot_sweep(
+    fig = sweep_fig(
         data,
         sweep_raw["run_ids"],
         metric_key,

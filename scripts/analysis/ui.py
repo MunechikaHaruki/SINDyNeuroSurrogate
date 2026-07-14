@@ -23,6 +23,7 @@ from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate import SINDyNeuroSurrogate
 from neurosurrogate.view.model import model_figures
+from neurosurrogate.view.utils import current_preview_fig
 
 CurrentList: list = list(CURRENT_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
@@ -276,8 +277,12 @@ def view_sweep(
 def plot_preview(
     base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary
 ) -> tuple[mo.Html, list[SaveEntry]]:
-    fig = analysis_single.plot_current_preview(base_ui, setting_ui["sim"])
-    html = analysis_single.render_current_preview(fig)
+    fig = current_preview_fig(
+        str(base_ui["sim_current_type"].value),
+        float(base_ui["dt"].value),
+        setting_ui["sim"]["current_params"].value or {},
+    )
+    html = mo.vstack([mo.md("### 電流プレビュー"), mo.mpl.interactive(fig)])
     return html, [_entry("current", fig, _fmt_current(base_ui, setting_ui))]
 
 
