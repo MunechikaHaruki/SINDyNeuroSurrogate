@@ -19,7 +19,7 @@ from neurosurrogate.metrics.wave import (
     waveform_summary_df,
 )
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate import Verdict, transform_gate, verdict
+from neurosurrogate.surrogate import preprocessed_latent
 from neurosurrogate.view.specs import draw_all
 
 # ---------------------------------------------------------------------------
@@ -111,22 +111,13 @@ def calc_eval(
     original_ds = unified_simulator(dataset_cfg)
     surr_ds = unified_simulator(surrogate_model.apply(dataset_cfg))
 
-    def get_preprocessed(comp_id: int):
-        comp = dataset_cfg.net.nodes[comp_id]
-        if (v := verdict(surrogate_model.meta, comp)) is not Verdict.REPLACE:
-            raise ValueError(
-                f"comp {comp.name!r} は学習ドメイン外 ({v.name}) → latent 比較不可 "
-                f"(学習型 {surrogate_model.meta.train_comp_type.name!r})"
-            )
-        return transform_gate(
-            surrogate_model.preprocessor_bundle.preprocessor, original_ds, comp_id
-        )
-
     return {
         "original_ds": original_ds,
         "surr_ds": surr_ds,
         "dt": dataset_cfg.dt,
-        "get_preprocessed": get_preprocessed,
+        "get_preprocessed": lambda comp_id: preprocessed_latent(
+            surrogate_model, dataset_cfg, original_ds, comp_id
+        ),
         "name_to_idx": MCMODELS[dataset_cfg.model_name].name_to_idx,
         "make_dm": lambda comp_id: DynamicMetrics(
             original_ds, surr_ds, comp_id, dataset_cfg.dt

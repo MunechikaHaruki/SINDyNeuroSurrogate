@@ -59,7 +59,7 @@ def collect_state_coords(
     return acc, gate_offsets
 
 
-def set_coords(raw, u, coords, dt):
+def set_coords(raw, u, coords, dt) -> xr.Dataset:
     return xr.Dataset(
         {
             "vars": (("time", "features"), raw),
