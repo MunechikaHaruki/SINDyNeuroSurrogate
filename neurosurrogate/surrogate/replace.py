@@ -7,21 +7,12 @@
 
 from collections.abc import Callable
 from dataclasses import replace as dc_replace
-from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 from ..core.network import Compartment, CompartmentType, DatasetConfig, NeuronGraph
 
 if TYPE_CHECKING:
     from .base import NeuroSurrogateBase
-
-
-class Verdict(Enum):
-    """サロゲート置換の妥当性判定 (学習ドメインとの照合結果)。"""
-
-    REPLACE = auto()  # 型一致 かつ params 両立 → 置換
-    MISMATCH = auto()  # 型一致 だが params 非両立 → 疑わしい (置換不可)
-    SKIP = auto()  # 型不一致 → 無関係 (対象外)
 
 
 def resolved_params(comp: Compartment) -> "tuple | None":
@@ -35,30 +26,29 @@ def resolved_params(comp: Compartment) -> "tuple | None":
     return comp.type.param_cls() if comp.type.param_cls is not None else None
 
 
-def verdict(surrogate: "NeuroSurrogateBase", comp: Compartment) -> Verdict:
-    """comp が surrogate の学習ドメイン (型 + params 両立性) に属すか判定。
+def replaceable(surrogate: "NeuroSurrogateBase", comp: Compartment) -> bool:
+    """comp が surrogate に置換されるか (学習型一致 かつ params 両立)。
 
-    型が違えば無関係 (SKIP)、型は同じだが params が非両立なら疑わしい
-    (MISMATCH)、両方 OK で置換可 (REPLACE)。params 両立性の基準は
-    surrogate 固有 (surrogate.params_compatible が担う)。
+    params 両立の基準は surrogate 固有 (surrogate.params_compatible が担う)。
     """
-    if comp.type != surrogate.meta.train_comp.type:
-        return Verdict.SKIP
-    if not surrogate.params_compatible(comp):
-        return Verdict.MISMATCH
-    return Verdict.REPLACE
+    return comp.type == surrogate.meta.train_comp.type and surrogate.params_compatible(
+        comp
+    )
 
 
 def replaceables(surrogate: "NeuroSurrogateBase", dataset: DatasetConfig) -> set[str]:
     """dataset 内の置換対象ノード名を返す (fail first)。
 
-    - 型一致・params 非両立 (MISMATCH) が1つでもあれば即エラー
-    - 置換対象 (REPLACE) が皆無なら即エラー (モデルとデータが噛み合わず)
+    - 学習型一致 だが params 非両立のノードが1つでもあれば即エラー (疑わしい)
+    - 置換対象が皆無なら即エラー (モデルとデータが噛み合わず)
     """
-    verdicts = {n.name: verdict(surrogate, n) for n in dataset.net.nodes}
     train = surrogate.meta.train_comp
+    targets = {n.name for n in dataset.net.nodes if replaceable(surrogate, n)}
 
-    mismatched = [n for n in dataset.net.nodes if verdicts[n.name] is Verdict.MISMATCH]
+    # 学習型一致 だが未置換 = params 非両立 → 疑わしい (置換不可)
+    mismatched = [
+        n for n in dataset.net.nodes if n.type == train.type and n.name not in targets
+    ]
     if mismatched:
         raise ValueError(
             f"型 {train.type.name!r} 一致だが params 非両立のノード "
@@ -66,7 +56,6 @@ def replaceables(surrogate: "NeuroSurrogateBase", dataset: DatasetConfig) -> set
             f"  train({train.name}): {resolved_params(train)}\n"
             + "\n".join(f"  node({n.name}): {resolved_params(n)}" for n in mismatched)
         )
-    targets = {name for name, v in verdicts.items() if v is Verdict.REPLACE}
     if not targets:
         raise ValueError(
             f"学習型 {train.type.name!r} のノードが dataset "
@@ -76,11 +65,11 @@ def replaceables(surrogate: "NeuroSurrogateBase", dataset: DatasetConfig) -> set
 
 
 def replaced_names(surrogate: "NeuroSurrogateBase", net: NeuronGraph) -> set[str]:
-    """net 内で surrogate が置換する (REPLACE) ノード名集合を返す (非raise, 診断用)。
+    """net 内で surrogate が置換するノード名集合を返す (非raise, 診断用)。
 
-    replaceables と違い MISMATCH/皆無でも例外を投げず、描画等の情報表示に使う。
+    replaceables と違い params 非両立/皆無でも例外を投げず、描画等の情報表示に使う。
     """
-    return {n.name for n in net.nodes if verdict(surrogate, n) is Verdict.REPLACE}
+    return {n.name for n in net.nodes if replaceable(surrogate, n)}
 
 
 def replace_nodes(

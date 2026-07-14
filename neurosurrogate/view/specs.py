@@ -165,8 +165,8 @@ def draw_all(result: EvalResult, comp_id: int) -> list[tuple[str, Figure]]:
     (id, fig) を保存/表示に流すだけ。学習ドメイン外 comp 等での失敗は error_fig
     に畳み戻り値型を保つ。
 
-    latent (preprocessed) は lazy 参照: 学習ドメイン外 comp で verdict が raise
-    するため diff/attractor でのみ評価する (simple は呼ばない)。
+    latent (preprocessed) は lazy 参照: 学習ドメイン外 comp で preprocessed_latent
+    が raise するため diff/attractor でのみ評価する (simple は呼ばない)。
     """
     original, surrogate = result.original_ds, result.surr_ds
     jobs: dict[str, Callable[[], Figure]] = {

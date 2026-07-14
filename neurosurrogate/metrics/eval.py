@@ -8,7 +8,7 @@ import xarray as xr
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
 from ..surrogate import NeuroSurrogateBase, transform_gate
-from ..surrogate.replace import Verdict, apply_surrogate, verdict
+from ..surrogate.replace import apply_surrogate, replaceable
 from .wave import DynamicMetrics, WaveReport, wave_report
 
 
@@ -19,11 +19,11 @@ def preprocessed_latent(
     comp_id: int,
 ) -> xr.Dataset:
     """comp_id ノードのゲートを preprocessor で latent 圧縮した (V, latent...) xr を返す
-    (診断用)。学習ドメイン外 (verdict != REPLACE) は latent 比較不可でエラー化。"""
+    (診断用)。置換対象外 (学習ドメイン外) は latent 比較不可でエラー化。"""
     comp = dataset.net.nodes[comp_id]
-    if (v := verdict(surrogate, comp)) is not Verdict.REPLACE:
+    if not replaceable(surrogate, comp):
         raise ValueError(
-            f"comp {comp.name!r} は学習ドメイン外 ({v.name}) → latent 比較不可 "
+            f"comp {comp.name!r} は学習ドメイン外 → latent 比較不可 "
             f"(学習型 {surrogate.meta.train_comp_type.name!r})"
         )
     return transform_gate(surrogate.preprocessor_bundle.preprocessor, sim_ds, comp_id)
