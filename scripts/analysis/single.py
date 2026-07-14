@@ -8,11 +8,9 @@ from matplotlib.figure import Figure
 from mlflow_io import load_surrogate_model, sole_target_model
 
 from neurosurrogate.core.network import DatasetConfig
-from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.currents import CURRENT_MAP
-from neurosurrogate.metrics.wave import DynamicMetrics, WaveReport, wave_report
-from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate import preprocessed_latent
+from neurosurrogate.metrics.eval import EvalResult, evaluate
+from neurosurrogate.metrics.wave import WaveReport
 from neurosurrogate.view.specs import draw_all
 
 # ---------------------------------------------------------------------------
@@ -74,48 +72,25 @@ def make_sim_ui(current_type: str) -> mo.ui.dictionary:
 # ---------------------------------------------------------------------------
 
 
-def _parse_eval_button(
+def calc_eval(
     base_ui: mo.ui.dictionary,
     sim_ui: mo.ui.dictionary,
-) -> tuple[DatasetConfig, str]:
+) -> EvalResult:
     selected = cast(pd.DataFrame, base_ui["run_selector"].value)
     run_ids = selected["run_id"].tolist()
     if len(run_ids) != 1:
         raise ValueError(
             f"single モードでは Run を 1 件だけ選択。現在: {len(run_ids)} 件"
         )
-    current_type = str(base_ui["sim_current_type"].value)
-    current_params = sim_ui["current_params"].value or {}
     dataset_cfg = DatasetConfig.build_dataset(
         model_name=sole_target_model(selected),
         dt=float(base_ui["dt"].value),
-        current={"type": current_type, "params": current_params},
+        current={
+            "type": str(base_ui["sim_current_type"].value),
+            "params": sim_ui["current_params"].value or {},
+        },
     )
-    return dataset_cfg, str(run_ids[0])
-
-
-def calc_eval(
-    base_ui: mo.ui.dictionary,
-    sim_ui: mo.ui.dictionary,
-) -> dict:
-    dataset_cfg, run_id = _parse_eval_button(base_ui, sim_ui)
-
-    surrogate_model = load_surrogate_model(run_id)
-    original_ds = unified_simulator(dataset_cfg)
-    surr_ds = unified_simulator(surrogate_model.apply(dataset_cfg))
-
-    return {
-        "original_ds": original_ds,
-        "surr_ds": surr_ds,
-        "dt": dataset_cfg.dt,
-        "get_preprocessed": lambda comp_id: preprocessed_latent(
-            surrogate_model, dataset_cfg, original_ds, comp_id
-        ),
-        "name_to_idx": MCMODELS[dataset_cfg.model_name].name_to_idx,
-        "make_dm": lambda comp_id: DynamicMetrics(
-            original_ds, surr_ds, comp_id, dataset_cfg.dt
-        ),
-    }
+    return evaluate(load_surrogate_model(str(run_ids[0])), dataset_cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -161,20 +136,19 @@ def _metrics_html(rep: WaveReport, spike_orig: int, spike_surr: int) -> mo.Html:
 
 def view_result(
     draw_ui: mo.ui.dictionary,
-    result: dict,
+    result: EvalResult,
     eval_comp_name: str,
 ) -> tuple[mo.Html, list[tuple[str, Figure]], dict[str, pd.DataFrame]]:
-    target_comp_id = result["name_to_idx"](eval_comp_name)
-    dm = result["make_dm"](target_comp_id)
+    target_comp_id = result.name_to_idx(eval_comp_name)
     spike_orig = int(draw_ui["spike"]["orig"].value)
     spike_surr = int(draw_ui["spike"]["surr"].value)
-    rep = wave_report(dm, spike_orig=spike_orig, spike_surr=spike_surr)
+    rep = result.wave_report(target_comp_id, spike_orig, spike_surr)
 
     figs = draw_all(
-        result["original_ds"],
-        result["surr_ds"],
+        result.original_ds,
+        result.surr_ds,
         target_comp_id,
-        lambda: result["get_preprocessed"](target_comp_id),
+        lambda: result.preprocessed_latent(target_comp_id),
     )
     fig_html = [
         part

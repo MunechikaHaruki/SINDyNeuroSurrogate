@@ -20,6 +20,7 @@ from mlflow_io import (
 )
 
 from neurosurrogate.currents import CURRENT_MAP
+from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate import SINDyNeuroSurrogate
 from neurosurrogate.view.model import model_figures
@@ -104,7 +105,7 @@ def make_setting_ui(
 def calc_single(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
-) -> dict | None:
+) -> EvalResult | None:
     if setting_ui["run_sim"].value:
         return analysis_single.calc_eval(base_ui, setting_ui["sim"])
     return None
@@ -229,7 +230,7 @@ def _fmt_sweep(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
 def view_single(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
-    res: dict | None,
+    res: EvalResult | None,
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
     if res is None:
