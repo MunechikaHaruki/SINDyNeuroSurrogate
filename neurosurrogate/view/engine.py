@@ -4,11 +4,16 @@ import logging
 import sys
 from dataclasses import dataclass, field
 
+import japanize_matplotlib  # noqa: F401  # rcParams を和文フォントへ (グローバル副作用)
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
+from matplotlib.font_manager import FontProperties
 
 logger = logging.getLogger(__name__)
+
+# rcParams 未適用経路でも和文が豆腐化しないよう明示指定する保険
+_JP_FONT = FontProperties(fname=japanize_matplotlib.get_font_ttf_path())
 
 
 def error_fig(msg: str) -> Figure:
@@ -18,7 +23,16 @@ def error_fig(msg: str) -> Figure:
     print(f"[view] 描画失敗: {msg}", file=sys.stderr)
     fig = plt.figure()
     ax = fig.subplots()
-    ax.text(0.5, 0.5, msg, transform=ax.transAxes, ha="center", color="red", wrap=True)
+    ax.text(
+        0.5,
+        0.5,
+        msg,
+        transform=ax.transAxes,
+        ha="center",
+        color="red",
+        wrap=True,
+        fontproperties=_JP_FONT,
+    )
     ax.axis("off")
     return fig
 
