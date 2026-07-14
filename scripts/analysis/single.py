@@ -10,14 +10,7 @@ from mlflow_io import load_surrogate_model, sole_target_model
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.currents import CURRENT_MAP
-from neurosurrogate.metrics.wave import (
-    DynamicMetrics,
-    n_spikes,
-    spike_features_df,
-    spike_shape_corr,
-    waveform_summary,
-    waveform_summary_df,
-)
+from neurosurrogate.metrics.wave import DynamicMetrics, wave_report
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate import preprocessed_latent
 from neurosurrogate.view.specs import draw_all
@@ -147,14 +140,9 @@ def view_result(
 ) -> tuple[mo.Html, list[tuple[str, Figure]], dict[str, pd.DataFrame]]:
     target_comp_id = result["name_to_idx"](eval_comp_name)
     dm = result["make_dm"](target_comp_id)
-
-    n_orig_count, n_surr_count = n_spikes(dm)
     spike_orig = int(draw_ui["spike"]["orig"].value)
     spike_surr = int(draw_ui["spike"]["surr"].value)
-    has_valid_spikes = 0 <= spike_orig < n_orig_count and 0 <= spike_surr < n_surr_count
-
-    wf_summary = waveform_summary(dm)
-    df_waveform = waveform_summary_df(dm)
+    rep = wave_report(dm, spike_orig=spike_orig, spike_surr=spike_surr)
 
     figs = draw_all(
         result["original_ds"],
@@ -165,31 +153,23 @@ def view_result(
 
     html_parts: list = [
         mo.md("#### 波形誤差スカラー"),
-        _stat_cards(wf_summary),
+        _stat_cards(rep.waveform_scalar),
     ]
-    df_metrics = df_waveform
-    scalar_data: dict = dict(wf_summary)
-
-    if has_valid_spikes:
-        spike_corr = spike_shape_corr(dm)
-        df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
-        df_spike.index.name = "metric"
-        df_metrics = pd.concat([df_waveform, df_spike])
-        scalar_data.update(spike_corr)
+    if rep.has_spikes:
         html_parts += [
             mo.md(
                 f"#### 動的指標（orig / surr / orig-surr）"
                 f" — spike orig: {spike_orig} / surr: {spike_surr}"
             ),
-            df_metrics,
+            rep.df_metrics,
             mo.md("#### スパイク波形相関（spike_shape_corr）"),
-            _stat_cards(spike_corr),
+            _stat_cards(rep.spike_shape_corr),
         ]
     else:
         html_parts.append(
             mo.md(
-                f"（スパイク指標なし: orig {spike_orig}/{n_orig_count}"
-                f" surr {spike_surr}/{n_surr_count}）"
+                f"（スパイク指標なし: orig {spike_orig}/{rep.n_orig}"
+                f" surr {spike_surr}/{rep.n_surr}）"
             )
         )
 
@@ -197,15 +177,11 @@ def view_result(
         html_parts.append(mo.md(f"##### {name}"))
         html_parts.append(mo.mpl.interactive(fig))
 
-    df_scalar = pd.DataFrame(
-        scalar_data.items(), columns=["metric", "value"]
-    ).set_index("metric")
-
     return (
         mo.vstack(html_parts),
         figs,
         {
-            "metrics": df_metrics,
-            "metrics(scalar)": df_scalar,
+            "metrics": rep.df_metrics,
+            "metrics(scalar)": rep.df_scalar,
         },
     )

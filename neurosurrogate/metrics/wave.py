@@ -233,6 +233,58 @@ def waveform_summary(dm: DynamicMetrics) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# 統合レポート（DataFrame 組立まで metrics 側で完結。呼び出し側は表示/保存だけ）
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class WaveReport:
+    """波形+スパイク指標を統合した評価レポート。df は表示/保存へそのまま流す。"""
+
+    n_orig: int  # orig スパイク数
+    n_surr: int  # surr スパイク数
+    has_spikes: bool  # 指定 spike index が両信号の範囲内か
+    waveform_scalar: dict  # rmse/mae/periodicity_gap
+    spike_shape_corr: dict  # has_spikes 時のみ非空
+    df_metrics: pd.DataFrame  # 波形行 (+ has_spikes 時スパイク特徴量)
+    df_scalar: pd.DataFrame  # 全スカラーを縦持ち
+
+
+def wave_report(
+    dm: DynamicMetrics,
+    spike_orig: int = 0,
+    spike_surr: int = 0,
+) -> WaveReport:
+    """dm から波形/スパイク指標を計算し DataFrame まで組み立てて返す。"""
+    n_orig, n_surr = n_spikes(dm)
+    has_spikes = 0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr
+
+    wf_scalar = waveform_summary(dm)
+    df_metrics = waveform_summary_df(dm)
+    scalar = dict(wf_scalar)
+    corr: dict = {}
+    if has_spikes:
+        corr = spike_shape_corr(dm)
+        df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
+        df_spike.index.name = "metric"
+        df_metrics = pd.concat([df_metrics, df_spike])
+        scalar.update(corr)
+
+    df_scalar = pd.DataFrame(scalar.items(), columns=["metric", "value"]).set_index(
+        "metric"
+    )
+    return WaveReport(
+        n_orig=n_orig,
+        n_surr=n_surr,
+        has_spikes=has_spikes,
+        waveform_scalar=wf_scalar,
+        spike_shape_corr=corr,
+        df_metrics=df_metrics,
+        df_scalar=df_scalar,
+    )
+
+
 def extract_metric(dm: DynamicMetrics, metric_key: str) -> tuple[float | None, float]:
     """指定 metric の (orig, surr) を返す。スカラー metric の orig は None。"""
     if metric_key in DF_ROW_METRICS:
