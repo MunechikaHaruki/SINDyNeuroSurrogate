@@ -24,8 +24,6 @@ from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate import Verdict, transform_gate, verdict
 from neurosurrogate.view.specs import DRAW_MAP, PlotContext
 
-DRAW_LIST = list(DRAW_MAP.keys())
-
 # ---------------------------------------------------------------------------
 # Sim UI
 # ---------------------------------------------------------------------------
@@ -54,9 +52,6 @@ def _make_ui_element(name: str, annotation, default):
 def make_draw_ui() -> mo.ui.dictionary:
     return mo.ui.dictionary(
         {
-            "draw_func": mo.ui.dropdown(
-                options=DRAW_LIST, value=DRAW_LIST[0], label="描画関数"
-            ),
             "spike": mo.ui.dictionary(
                 {
                     "orig": mo.ui.number(value=0, step=1, label="spike orig #"),
@@ -197,7 +192,7 @@ def view_result(
     draw_ui: mo.ui.dictionary,
     result: dict,
     eval_comp_name: str,
-) -> tuple[mo.Html, Figure, dict[str, pd.DataFrame]]:
+) -> tuple[mo.Html, dict[str, Figure], dict[str, pd.DataFrame]]:
     target_comp_id = result["name_to_idx"](eval_comp_name)
     dm = result["make_dm"](target_comp_id)
 
@@ -209,14 +204,21 @@ def view_result(
     wf_summary = waveform_summary(dm)
     df_waveform = waveform_summary_df(dm)
 
-    fig = DRAW_MAP[draw_ui["draw_func"].value](
-        PlotContext(
-            original=result["original_ds"],
-            surrogate=result["surr_ds"],
-            comp_id=target_comp_id,
-            get_preprocessed=lambda: result["get_preprocessed"](target_comp_id),
-        )
+    ctx = PlotContext(
+        original=result["original_ds"],
+        surrogate=result["surr_ds"],
+        comp_id=target_comp_id,
+        get_preprocessed=lambda: result["get_preprocessed"](target_comp_id),
     )
+    # DRAW_MAP を一括描画。preprocessed 未取得の comp では diff/attractor が
+    # raise するため個別ガードし、描けたものだけ並べる。
+    figs: dict[str, Figure] = {}
+    fig_errors: list[str] = []
+    for name, draw in DRAW_MAP.items():
+        try:
+            figs[name] = draw(ctx)
+        except (ValueError, KeyError) as e:
+            fig_errors.append(f"⚠️ {name}: {e}")
 
     html_parts: list = [
         mo.md("#### 波形誤差スカラー"),
@@ -248,7 +250,11 @@ def view_result(
             )
         )
 
-    html_parts.append(mo.mpl.interactive(fig))
+    for name, fig in figs.items():
+        html_parts.append(mo.md(f"##### {name}"))
+        html_parts.append(mo.mpl.interactive(fig))
+    if fig_errors:
+        html_parts.append(mo.md("\n".join(fig_errors)))
 
     df_scalar = pd.DataFrame(
         scalar_data.items(), columns=["metric", "value"]
@@ -256,7 +262,7 @@ def view_result(
 
     return (
         mo.vstack(html_parts),
-        fig,
+        figs,
         {
             "metrics": df_metrics,
             "metrics(scalar)": df_scalar,

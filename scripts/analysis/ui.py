@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import typing
 from dataclasses import dataclass
 from pathlib import Path
@@ -97,12 +99,19 @@ def make_setting_ui(
 # ---------------------------------------------------------------------------
 
 
-def calc(
+def calc_single(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
 ) -> dict | None:
     if setting_ui["run_sim"].value:
         return analysis_single.calc_eval(base_ui, setting_ui["sim"])
+    return None
+
+
+def calc_sweep(
+    base_ui: mo.ui.dictionary,
+    setting_ui: mo.ui.dictionary,
+) -> dict | None:
     if "run_sweep" in setting_ui and setting_ui["run_sweep"].value:
         return analysis_sweep.calc_sweep(base_ui, setting_ui["sweep"])
     return None
@@ -147,9 +156,11 @@ def _eval_df(
     return pd.DataFrame(rows).set_index("run_name")
 
 
-def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
+def render_model_info(
+    base_ui: mo.ui.dictionary,
+) -> tuple[mo.Html, list[SaveEntry]]:
     selected = cast(pd.DataFrame, base_ui["run_selector"].value)
-    entries: list[tuple[str, str, SINDyNeuroSurrogate]] = [
+    loaded: list[tuple[str, str, SINDyNeuroSurrogate]] = [
         (rid, run_name, load_surrogate_model(rid))
         for rid, run_name in zip(
             selected["run_id"].tolist(),
@@ -158,24 +169,34 @@ def render_model_info(base_ui: mo.ui.dictionary) -> mo.Html:
         )
     ]
     model_name = sole_target_model(selected)
-    return mo.vstack(
-        [
+
+    save_items: list[SaveEntry] = []
+    blocks: list[mo.Html] = []
+    for rid, run_name, surrogate in loaded:
+        fig = view_model(surrogate.sindy_bundle)
+        save_items.append(_entry(f"model({rid[:8]})", fig, model_name))
+        blocks.append(
             mo.vstack(
                 [
                     mo.md(f"run_id:{rid[:8]}.. &nbsp;&nbsp;　{run_name}"),
                     mo.md(f"{surrogate.sindy_bundle.equations[:40]}"),
-                    mo.mpl.interactive(view_model(surrogate.sindy_bundle)),
+                    mo.mpl.interactive(fig),
                 ]
             )
-            for rid, run_name, surrogate in entries
-        ]
+        )
+    ng_fig = view_neuron_graph(MCMODELS[model_name])
+    save_items.append(_entry("neurograph", ng_fig, model_name))
+
+    html = mo.vstack(
+        blocks
         + [
             mo.md("### 評価サマリ (preprocessor / OpCost)"),
-            _eval_df(entries),
+            _eval_df(loaded),
             mo.md(f"### NeuronGraph: `{model_name}`"),
-            mo.mpl.interactive(view_neuron_graph(MCMODELS[model_name])),
+            mo.mpl.interactive(ng_fig),
         ]
     )
+    return html, save_items
 
 
 # ---------------------------------------------------------------------------
@@ -214,40 +235,36 @@ def _fmt_sweep(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
     )
 
 
-def view(
+def view_single(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
     res: dict | None,
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
-    model = sole_target_model(cast(pd.DataFrame, base_ui["run_selector"].value))
-    current = _fmt_current(base_ui, setting_ui)
-    eval_comp = str(draw_ui["eval_comp"].value)
-    info = f"eval:{eval_comp}"
-    single_prefix = f"{model}({info})_{current}"
-
-    run_ids = cast(pd.DataFrame, base_ui["run_selector"].value)["run_id"].tolist()
-    entries: list[SaveEntry] = [
-        _entry("neurograph", view_neuron_graph(MCMODELS[str(model)]), model),
-        _entry(
-            "current",
-            analysis_single.plot_current_preview(base_ui, setting_ui["sim"]),
-            current,
-        ),
-    ]
-    for rid in run_ids:
-        surrogate = load_surrogate_model(rid)
-        fig = view_model(surrogate.sindy_bundle)
-        entries.append(_entry(f"model({rid[:8]})", fig, model))
-
     if res is None:
-        return mo.md("(結果なし)"), entries
-    if "make_dm" in res:
-        html, fig, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
-        entries.append(_entry("waveform", fig, single_prefix))
-        entries.append(_entry("metrics", dfs["metrics"], single_prefix))
-        entries.append(_entry("metrics(scalar)", dfs["metrics(scalar)"], single_prefix))
-        return html, entries
+        return mo.md("(single結果なし)"), []
+    model = sole_target_model(cast(pd.DataFrame, base_ui["run_selector"].value))
+    eval_comp = str(draw_ui["eval_comp"].value)
+    single_prefix = f"{model}(eval:{eval_comp})_{_fmt_current(base_ui, setting_ui)}"
+
+    html, figs, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
+    entries = [_entry(name, fig, single_prefix) for name, fig in figs.items()]
+    entries.append(_entry("metrics", dfs["metrics"], single_prefix))
+    entries.append(_entry("metrics(scalar)", dfs["metrics(scalar)"], single_prefix))
+    return html, entries
+
+
+def view_sweep(
+    base_ui: mo.ui.dictionary,
+    setting_ui: mo.ui.dictionary,
+    res: dict | None,
+    draw_ui: mo.ui.dictionary,
+) -> tuple[mo.Html, list[SaveEntry]]:
+    if res is None or "sweep" not in draw_ui:
+        return mo.md("(sweep結果なし)"), []
+    model = sole_target_model(cast(pd.DataFrame, base_ui["run_selector"].value))
+    eval_comp = str(draw_ui["eval_comp"].value)
+
     ylim_ui = draw_ui["sweep"]["ylim"]
     ylim = (
         None
@@ -260,15 +277,16 @@ def view(
         metric_key=draw_ui["sweep"]["metric"].value,
         ylim=ylim,
     )
-    entries.append(
-        _entry("sweep", fig, f"{model}({info})_{_fmt_sweep(base_ui, setting_ui)}")
-    )
-    return html, entries
+    prefix = f"{model}(eval:{eval_comp})_{_fmt_sweep(base_ui, setting_ui)}"
+    return html, [_entry("sweep", fig, prefix)]
 
 
-def plot_preview(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> mo.Html:
+def plot_preview(
+    base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary
+) -> tuple[mo.Html, list[SaveEntry]]:
     fig = analysis_single.plot_current_preview(base_ui, setting_ui["sim"])
-    return analysis_single.render_current_preview(fig)
+    html = analysis_single.render_current_preview(fig)
+    return html, [_entry("current", fig, _fmt_current(base_ui, setting_ui))]
 
 
 # ---------------------------------------------------------------------------
