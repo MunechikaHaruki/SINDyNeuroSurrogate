@@ -8,6 +8,7 @@ import seaborn as sns
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
+from ..core import access
 from ..surrogate.bundle import SINDyBundle
 
 _NODE_COLORS = {
@@ -123,22 +124,13 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
 def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None):
     """相平面重ね描き。orig と surr のダイナミクス一致度可視化。"""
     if state_vars is None:
-        state_vars = ["V", "latent1"]
+        state_vars = [access.POTENTIAL_VAR, "latent1"]
     fig = Figure()
     ax = fig.subplots()
 
     def extract_trajectory(ds):
-        coords = []
-        for var in state_vars:
-            # Vはgate=False、それ以外（latent等）はgate=Trueから取得
-            is_gate = var != "V"
-            d = (
-                ds["vars"]
-                .sel(gate=is_gate, comp_id=comp_id, variable=var)
-                .values.squeeze()
-            )
-            coords.append(d)
-        return coords  # [x_array, y_array]
+        # access.trace は (t, y) を返す。相平面は値のみ使う
+        return [access.trace(ds, comp_id, var)[1] for var in state_vars]
 
     # --- 1. データの抽出 ---
     try:

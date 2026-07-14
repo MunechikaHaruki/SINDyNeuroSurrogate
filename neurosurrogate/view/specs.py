@@ -1,29 +1,29 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
-import numpy as np
 import xarray as xr
 from matplotlib.figure import Figure
 
+from ..core import access
+from ..core.access import POTENTIAL_VAR
 from .engine import PanelSpec, TraceSpec, draw_engine
 from .plots import plot_2d_attractor_comparison
 
 
 def spec_simple(ds: xr.Dataset) -> list[PanelSpec]:
-    comp_ids = np.unique(ds.coords["comp_id"].values)
+    comp_ids = access.comp_ids(ds)
     multi = len(comp_ids) > 1
     spec: list[PanelSpec] = [
-        PanelSpec("I_ext", [TraceSpec(ds["I_ext"])]),
+        PanelSpec("I_ext", [TraceSpec(*access.i_ext(ds))]),
     ]
 
-    if "I_internal" in ds:
+    if access.has_i_internal(ds):
         spec.append(
             PanelSpec(
                 "I_internal",
                 [
-                    TraceSpec(ds["I_internal"].sel(node_id=i), label=f"Comp {i}")
+                    TraceSpec(*access.i_internal(ds, i), label=f"Comp {i}")
                     for i in comp_ids
                 ],
             )
@@ -34,7 +34,7 @@ def spec_simple(ds: xr.Dataset) -> list[PanelSpec]:
             "V(t) [mV]",
             [
                 TraceSpec(
-                    ds["vars"].sel(gate=False, comp_id=i),
+                    *access.trace(ds, i, POTENTIAL_VAR),
                     label=f"V (Comp {i})" if multi else None,
                 )
                 for i in comp_ids
@@ -43,14 +43,9 @@ def spec_simple(ds: xr.Dataset) -> list[PanelSpec]:
     )
 
     gate_traces = [
-        TraceSpec(
-            ds["vars"].sel(gate=True, comp_id=i, variable=v),
-            label=f"{v} (Comp {i})",
-        )
+        TraceSpec(*access.trace(ds, i, v), label=f"{v} (Comp {i})")
         for i in comp_ids
-        for v in np.unique(
-            ds["vars"].sel(gate=True, comp_id=i).coords["variable"].values
-        )
+        for v in access.gate_variables(ds, i)
     ]
     if gate_traces:
         spec.append(PanelSpec("Gates / Latent", gate_traces))
@@ -64,18 +59,18 @@ def spec_diff(
     surrogate: xr.Dataset,
     surr_id: int,
 ) -> list[PanelSpec]:
-    v_sel: dict[str, Any] = {"comp_id": surr_id, "variable": "V"}
-    latent_vars = [v for v in preprocessed.coords["variable"].values if v != "V"]
-    gate_data = original["vars"].sel(comp_id=surr_id, gate=True)
-
     return [
-        PanelSpec("I_ext(t)", [TraceSpec(original["I_ext"], color="gold")]),
+        PanelSpec("I_ext(t)", [TraceSpec(*access.i_ext(original), color="gold")]),
         PanelSpec(
             "V [mV]",
             [
-                TraceSpec(original["vars"].sel(**v_sel), label="orig V", color="blue"),
                 TraceSpec(
-                    surrogate["vars"].sel(**v_sel),
+                    *access.trace(original, surr_id, POTENTIAL_VAR),
+                    label="orig V",
+                    color="blue",
+                ),
+                TraceSpec(
+                    *access.trace(surrogate, surr_id, POTENTIAL_VAR),
                     label="surr V",
                     color="red",
                     style="--",
@@ -87,25 +82,25 @@ def spec_diff(
                 latent,
                 [
                     TraceSpec(
-                        preprocessed["vars"].sel(variable=latent),
+                        *access.trace(preprocessed, surr_id, latent),
                         label=f"target {latent}",
                         color="blue",
                     ),
                     TraceSpec(
-                        surrogate["vars"].sel(comp_id=surr_id, variable=latent),
+                        *access.trace(surrogate, surr_id, latent),
                         label=f"surr {latent}",
                         color="red",
                         style="--",
                     ),
                 ],
             )
-            for latent in latent_vars
+            for latent in access.latent_variables(preprocessed)
         ],
         PanelSpec(
             "orig gates",
             [
-                TraceSpec(gate_data.sel(variable=name), label=name)
-                for name in gate_data.coords["variable"].values
+                TraceSpec(*access.trace(original, surr_id, name), label=name)
+                for name in access.gate_variables(original, surr_id)
             ],
         ),
     ]

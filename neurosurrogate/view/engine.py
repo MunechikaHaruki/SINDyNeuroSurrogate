@@ -4,19 +4,19 @@ from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
 import numpy as np
-import xarray as xr
 from matplotlib.figure import Figure
 
 
 @dataclass
 class TraceSpec:
-    data: xr.DataArray
+    t: np.ndarray
+    y: np.ndarray
     label: str | None = None
     color: str | None = None
     style: str = "-"
 
     def xy(self) -> tuple[np.ndarray, np.ndarray]:
-        return self.data.time.values, self.data.values.squeeze()
+        return self.t, self.y
 
 
 @dataclass
