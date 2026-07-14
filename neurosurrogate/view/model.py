@@ -9,7 +9,9 @@ from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
 from ..core.network import NeuronGraph
+from ..surrogate import NeuroSurrogateBase
 from ..surrogate.bundle import SINDyBundle
+from ..surrogate.replace import replaced_names
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
@@ -134,13 +136,17 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
 
 
 def model_figures(
-    bundles: list[tuple[str, SINDyBundle]],
+    run_name: str,
+    surrogate: NeuroSurrogateBase,
     net: NeuronGraph,
-    surrogate_nodes: set[str] | None = None,
 ) -> list[tuple[str, Figure]]:
-    """識別子付き model 図群 (係数 heatmap × run) + neurograph を一括生成。
-    surrogate_nodes は neurograph で置換ノードを強調するための名集合。
-    analysis 側は fig 種別を知らず、この (id, fig) 列を保存/表示に流すだけ。"""
-    figs = [(f"model({key})", view_model(bundle)) for key, bundle in bundles]
-    figs.append(("neurograph", view_neuron_graph(net, surrogate_nodes)))
-    return figs
+    """1 run 分の識別子付き model 図群: 係数 heatmap + 置換ノード強調 neurograph。
+    置換ノードは surrogate の replaced_names で自己解決。analysis 側は fig 種別を
+    知らず、この (id, fig) 列を保存/表示に流すだけ (複数 run の集約は呼び出し側)。"""
+    return [
+        (f"model({run_name})", view_model(surrogate.sindy_bundle)),
+        (
+            f"neurograph({run_name})",
+            view_neuron_graph(net, replaced_names(surrogate, net)),
+        ),
+    ]

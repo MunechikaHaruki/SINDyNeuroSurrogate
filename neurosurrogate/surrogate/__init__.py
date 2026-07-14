@@ -66,12 +66,6 @@ def load_surrogate(dir: Path | str) -> NeuroSurrogateBase:
 
 
 __all__ = [
-    "SURR_CLS",
-    "HybridSINDyNeuroSurrogate",
     "NeuroSurrogateBase",
-    "SINDyNeuroSurrogate",
     "SurrogateMeta",
-    "get_gate_numpy",
-    "load_surrogate",
-    "transform_gate",
 ]
