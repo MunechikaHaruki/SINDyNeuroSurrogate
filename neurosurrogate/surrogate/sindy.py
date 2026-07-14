@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 
+from ..core import access
 from ..core.network import CompartmentType
 from ..core.opcost import OpCost
 from . import get_gate_numpy, transform_gate
@@ -23,11 +24,9 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             sindy_bundle=SINDyBundle.from_sindy(
                 library_specs=library_specs,
                 optimizer_spec=optimizer,
-                x=preprocessed_xr["vars"]
-                .sel(comp_id=self._meta.train_comp_id)
-                .to_numpy(),
-                u=preprocessed_xr["I_ext"].to_numpy(),
-                t=self._train_xr["time"].to_numpy(),
+                x=access.comp_matrix(preprocessed_xr, self._meta.train_comp_id),
+                u=access.i_ext_values(preprocessed_xr),
+                t=access.time(self._train_xr),
                 target_names=target_names,
                 input_names=["u"],
             ),

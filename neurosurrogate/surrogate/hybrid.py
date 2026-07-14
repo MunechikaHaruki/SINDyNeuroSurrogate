@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 
 from ..compartments.hh import HH_DV_COST, HHParams
+from ..core import access
 from ..core.network import CompartmentType
 from ..core.opcost import OpCost
 from . import get_gate_numpy
@@ -22,11 +23,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         gate_data = get_gate_numpy(self._train_xr, self._meta.train_comp_id)
         preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, gate_data)
         latent = preprocessor_bundle.preprocessor.transform(gate_data)
-        v = (
-            self._train_xr["vars"]
-            .sel(gate=False, comp_id=self._meta.train_comp_id)
-            .to_numpy()
-        )
+        v = access.potential(self._train_xr, self._meta.train_comp_id)
         latent_names = [f"latent{i + 1}" for i in range(latent.shape[1])]
         self._set_bundles(
             sindy_bundle=SINDyBundle.from_sindy(
@@ -34,7 +31,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
                 optimizer_spec=optimizer,
                 x=latent,
                 u=v,
-                t=self._train_xr["time"].to_numpy(),
+                t=access.time(self._train_xr),
                 target_names=latent_names,
                 input_names=["V"],
             ),

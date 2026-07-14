@@ -8,6 +8,8 @@ import efel
 import numpy as np
 import pandas as pd
 
+from ..core import access
+
 T = TypeVar("T")
 R = TypeVar("R")
 
@@ -92,19 +94,10 @@ class DynamicMetrics:
 
     @cached_property
     def voltages(self) -> tuple[np.ndarray, np.ndarray]:
-        orig_v = (
-            self.original["vars"]
-            .sel(gate=False, comp_id=self.comp_id)
-            .to_numpy()
-            .squeeze()
+        return (
+            access.potential(self.original, self.comp_id),
+            access.potential(self.surrogate, self.comp_id),
         )
-        surr_v = (
-            self.surrogate["vars"]
-            .sel(gate=False, comp_id=self.comp_id)
-            .to_numpy()
-            .squeeze()
-        )
-        return orig_v, surr_v
 
     @cached_property
     def efel(self) -> tuple[dict, dict]:

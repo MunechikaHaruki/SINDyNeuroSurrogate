@@ -3,6 +3,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 
+from ..core import access
 from ..core.coords import StateAccumulator, set_coords
 from .base import (
     BUNDLE_FILE,
@@ -13,7 +14,7 @@ from .replace import Verdict, verdict
 
 
 def get_gate_numpy(train_xr, target_comp_id):
-    return train_xr["vars"].sel(gate=True, comp_id=target_comp_id).to_numpy()
+    return access.gate_matrix(train_xr, target_comp_id)
 
 
 def transform_gate(preprocessor, xr_data, target_comp_id):
@@ -23,15 +24,12 @@ def transform_gate(preprocessor, xr_data, target_comp_id):
     return set_coords(
         raw=np.concatenate(
             (
-                xr_data["vars"]
-                .sel(gate=False, comp_id=target_comp_id)
-                .to_numpy()
-                .reshape(-1, 1),
+                access.potential(xr_data, target_comp_id).reshape(-1, 1),
                 transformed_gate,
             ),
             axis=1,
         ),
-        u=xr_data["I_internal"].sel(node_id=target_comp_id).to_numpy(),
+        u=access.i_internal_values(xr_data, target_comp_id),
         coords=StateAccumulator(
             comp_id=[target_comp_id] * (n_latent + 1),
             variable=["V"] + [f"latent{i + 1}" for i in range(n_latent)],

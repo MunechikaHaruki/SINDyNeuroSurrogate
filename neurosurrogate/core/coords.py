@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from . import access
 from .network import Compartment
 
 
@@ -78,7 +79,7 @@ def set_i_internal(dataset, C_matrix, stim_idx, u, stim_area_scale: float = 1.0)
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
     I_ext_2d[:, stim_idx] = u * stim_area_scale  # 密度→絶対変換 (traub19 等)
 
-    V_data = dataset["vars"].sel(gate=False).sortby("comp_id").values  # 形状: (time, N)
+    V_data = access.potential_matrix(dataset)  # 形状: (time, N)
     I_internal_np = V_data @ C_matrix + I_ext_2d
     # xarray に格納
     dataset["I_internal"] = xr.DataArray(
