@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -7,6 +9,9 @@ from matplotlib.figure import Figure
 
 from ..currents import CURRENT_MAP
 from .engine import error_fig
+
+if TYPE_CHECKING:
+    from ..metrics.eval_sweep import CurrentSweepConfig
 
 
 def current_preview_fig(current_type: str, dt: float, params: dict) -> Figure:
@@ -27,33 +32,32 @@ def current_preview_fig(current_type: str, dt: float, params: dict) -> Figure:
 
 def sweep_fig(
     data: pd.DataFrame,
-    run_ids: list[str],
-    metric_key: str,
+    cfg: CurrentSweepConfig,
     comp_name: str,
-    sweep_param: str,
-    run_labels: dict[str, str] | None = None,
+    metric_key: str,
+    run_labels: dict[str, str],
     ylim: tuple[float, float] | None = None,
 ) -> Figure:
-    """sweep メトリクス折れ線 (Original + surrogate 各 run)。marimo 非依存。"""
-    run_labels = run_labels or {}
+    """sweep メトリクス折れ線 (Original + surrogate 各 run)。marimo 非依存。
+    run_labels は rid→表示名 (順序=描画順、keys=run_ids)。"""
     fig, ax = plt.subplots()
     if "original" in data.columns:
         ax.plot(data["amplitude"], data["original"], "k-o", label="Original", zorder=3)
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for idx, rid in enumerate(run_ids):
+    for idx, (rid, label) in enumerate(run_labels.items()):
         ax.plot(
             data["amplitude"],
             data[rid],
             marker="s",
             linestyle="--",
             color=colors[idx % len(colors)],
-            label=run_labels.get(rid, f"Surr {rid[:6]}"),
+            label=label,
         )
 
-    ax.set_xlabel(sweep_param)
+    ax.set_xlabel(cfg.sweep_param)
     ax.set_ylabel(metric_key)
-    ax.set_title(f"{sweep_param} sweep — {metric_key} ({comp_name})")
+    ax.set_title(f"{cfg.sweep_param} sweep — {metric_key} ({comp_name})")
     if ylim is not None:
         ax.set_ylim(*ylim)
     ax.legend()
