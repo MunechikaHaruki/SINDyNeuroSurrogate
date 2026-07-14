@@ -22,7 +22,7 @@ from neurosurrogate.metrics.wave import (
 )
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate import Verdict, transform_gate, verdict
-from neurosurrogate.view.specs import DRAW_MAP
+from neurosurrogate.view.specs import DRAW_MAP, PlotContext
 
 DRAW_LIST = list(DRAW_MAP.keys())
 
@@ -210,10 +210,12 @@ def view_result(
     df_waveform = waveform_summary_df(dm)
 
     fig = DRAW_MAP[draw_ui["draw_func"].value](
-        result["original_ds"],
-        result["surr_ds"],
-        lambda: result["get_preprocessed"](target_comp_id),
-        target_comp_id,
+        PlotContext(
+            original=result["original_ds"],
+            surrogate=result["surr_ds"],
+            comp_id=target_comp_id,
+            get_preprocessed=lambda: result["get_preprocessed"](target_comp_id),
+        )
     )
 
     html_parts: list = [

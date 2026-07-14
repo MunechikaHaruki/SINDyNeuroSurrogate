@@ -121,7 +121,7 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
     return fig
 
 
-def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None):
+def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None) -> Figure:
     """相平面重ね描き。orig と surr のダイナミクス一致度可視化。"""
     if state_vars is None:
         state_vars = [access.POTENTIAL_VAR, "latent1"]

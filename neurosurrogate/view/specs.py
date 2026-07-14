@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import xarray as xr
 from matplotlib.figure import Figure
@@ -106,13 +107,38 @@ def spec_diff(
     ]
 
 
-DrawFn = Callable[[xr.Dataset, xr.Dataset, Callable[[], xr.Dataset], int], Figure]
-DRAW_MAP: dict = {
-    "diff": lambda orig, surr, get_pre, comp_id: draw_engine(
-        spec_diff(orig, get_pre(), surr, surr_id=comp_id)
-    ),
-    "simple": lambda orig, surr, get_pre, comp_id: draw_engine(spec_simple(orig)),
-    "attractor": lambda orig, surr, get_pre, comp_id: plot_2d_attractor_comparison(
-        get_pre(), surr, comp_id
-    ),
+@dataclass(frozen=True)
+class PlotContext:
+    """描画 registry の共通入力。各 draw 関数は必要なフィールドだけ使う。
+
+    get_preprocessed は lazy: 学習ドメイン外の comp では verdict が raise する
+    ため、latent を参照する diff/attractor でのみ評価する (simple は呼ばない)。
+    """
+
+    original: xr.Dataset
+    surrogate: xr.Dataset
+    comp_id: int
+    get_preprocessed: Callable[[], xr.Dataset]
+
+
+def draw_diff(ctx: PlotContext) -> Figure:
+    return draw_engine(
+        spec_diff(ctx.original, ctx.get_preprocessed(), ctx.surrogate, ctx.comp_id)
+    )
+
+
+def draw_simple(ctx: PlotContext) -> Figure:
+    return draw_engine(spec_simple(ctx.original))
+
+
+def draw_attractor(ctx: PlotContext) -> Figure:
+    return plot_2d_attractor_comparison(
+        ctx.get_preprocessed(), ctx.surrogate, ctx.comp_id
+    )
+
+
+DRAW_MAP: dict[str, Callable[[PlotContext], Figure]] = {
+    "diff": draw_diff,
+    "simple": draw_simple,
+    "attractor": draw_attractor,
 }
