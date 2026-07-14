@@ -7,6 +7,15 @@ import numpy as np
 from matplotlib.figure import Figure
 
 
+def error_fig(msg: str) -> Figure:
+    """描画失敗を赤テキストの Figure に畳む。戻り値型を fig で統一するため。"""
+    fig = plt.figure()
+    ax = fig.subplots()
+    ax.text(0.5, 0.5, msg, transform=ax.transAxes, ha="center", color="red", wrap=True)
+    ax.axis("off")
+    return fig
+
+
 @dataclass
 class TraceSpec:
     t: np.ndarray

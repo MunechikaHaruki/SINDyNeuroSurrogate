@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 
 import xarray as xr
 from matplotlib.figure import Figure
 
 from ..core import access
 from ..core.access import POTENTIAL_VAR
-from .engine import PanelSpec, TraceSpec, draw_engine
+from .engine import PanelSpec, TraceSpec, draw_engine, error_fig
 
 
 def spec_simple(ds: xr.Dataset) -> list[PanelSpec]:
@@ -106,30 +105,6 @@ def spec_diff(
     ]
 
 
-@dataclass(frozen=True)
-class PlotContext:
-    """描画 registry の共通入力。各 draw 関数は必要なフィールドだけ使う。
-
-    get_preprocessed は lazy: 学習ドメイン外の comp では verdict が raise する
-    ため、latent を参照する diff/attractor でのみ評価する (simple は呼ばない)。
-    """
-
-    original: xr.Dataset
-    surrogate: xr.Dataset
-    comp_id: int
-    get_preprocessed: Callable[[], xr.Dataset]
-
-
-def draw_diff(ctx: PlotContext) -> Figure:
-    return draw_engine(
-        spec_diff(ctx.original, ctx.get_preprocessed(), ctx.surrogate, ctx.comp_id)
-    )
-
-
-def draw_simple(ctx: PlotContext) -> Figure:
-    return draw_engine(spec_simple(ctx.original))
-
-
 def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None) -> Figure:
     """相平面重ね描き。orig と surr のダイナミクス一致度可視化。"""
     if state_vars is None:
@@ -181,14 +156,32 @@ def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None) -> 
     return fig
 
 
-def draw_attractor(ctx: PlotContext) -> Figure:
-    return plot_2d_attractor_comparison(
-        ctx.get_preprocessed(), ctx.surrogate, ctx.comp_id
-    )
+def draw_all(
+    original: xr.Dataset,
+    surrogate: xr.Dataset,
+    comp_id: int,
+    get_preprocessed: Callable[[], xr.Dataset],
+) -> list[tuple[str, Figure]]:
+    """全描画を識別子付きで一括生成。analysis 側は種別を知らず (id, fig) を
+    保存/表示に流すだけ。学習ドメイン外 comp 等での失敗は error_fig に畳み
+    戻り値型を保つ。
 
-
-DRAW_MAP: dict[str, Callable[[PlotContext], Figure]] = {
-    "diff": draw_diff,
-    "simple": draw_simple,
-    "attractor": draw_attractor,
-}
+    get_preprocessed は lazy: 学習ドメイン外 comp で verdict が raise するため
+    latent 参照する diff/attractor でのみ評価する (simple は呼ばない)。
+    """
+    jobs: dict[str, Callable[[], Figure]] = {
+        "diff": lambda: draw_engine(
+            spec_diff(original, get_preprocessed(), surrogate, comp_id)
+        ),
+        "simple": lambda: draw_engine(spec_simple(original)),
+        "attractor": lambda: plot_2d_attractor_comparison(
+            get_preprocessed(), surrogate, comp_id
+        ),
+    }
+    out: list[tuple[str, Figure]] = []
+    for name, job in jobs.items():
+        try:
+            out.append((name, job()))
+        except (ValueError, KeyError) as e:
+            out.append((name, error_fig(f"{name}: {e}")))
+    return out

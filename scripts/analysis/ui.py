@@ -22,7 +22,7 @@ from mlflow_io import (
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate import SINDyNeuroSurrogate
-from neurosurrogate.view.model import view_model, view_neuron_graph
+from neurosurrogate.view.model import model_figures
 
 CurrentList: list = list(CURRENT_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
@@ -171,31 +171,20 @@ def render_model_info(
     ]
     model_name = sole_target_model(selected)
 
-    save_items: list[SaveEntry] = []
-    blocks: list[mo.Html] = []
-    for rid, run_name, surrogate in loaded:
-        fig = view_model(surrogate.sindy_bundle)
-        save_items.append(_entry(f"model({rid[:8]})", fig, f"{run_name}({model_name})"))
-        blocks.append(
-            mo.vstack(
-                [
-                    mo.md(f"run_id:{rid[:8]}.. &nbsp;&nbsp;　{run_name}"),
-                    mo.md(f"{surrogate.sindy_bundle.equations[:40]}"),
-                    mo.mpl.interactive(fig),
-                ]
-            )
-        )
-    ng_fig = view_neuron_graph(MCMODELS[model_name])
-    save_items.append(_entry("neurograph", ng_fig, model_name))
+    # fig 生成・命名は view 層 (model_figures) に委譲。ここは (id, fig) を
+    # 保存 entry と表示に流すだけ。
+    figs = model_figures(
+        [(run_name, surrogate.sindy_bundle) for _, run_name, surrogate in loaded],
+        MCMODELS[model_name],
+    )
+    save_items = [_entry(name, fig, model_name) for name, fig in figs]
+    bodies = [
+        mo.vstack([mo.md(f"##### {name}"), mo.mpl.interactive(fig)])
+        for name, fig in figs
+    ]
 
     html = mo.vstack(
-        blocks
-        + [
-            mo.md("### 評価サマリ (preprocessor / OpCost)"),
-            _eval_df(loaded),
-            mo.md(f"### NeuronGraph: `{model_name}`"),
-            mo.mpl.interactive(ng_fig),
-        ]
+        bodies + [mo.md("### 評価サマリ (preprocessor / OpCost)"), _eval_df(loaded)]
     )
     return html, save_items
 
@@ -250,7 +239,7 @@ def view_single(
     single_prefix = f"{model_tag}(eval:{eval_comp})_{_fmt_current(base_ui, setting_ui)}"
 
     html, figs, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
-    entries = [_entry(name, fig, single_prefix) for name, fig in figs.items()]
+    entries = [_entry(name, fig, single_prefix) for name, fig in figs]
     entries.append(_entry("metrics", dfs["metrics"], single_prefix))
     entries.append(_entry("metrics(scalar)", dfs["metrics(scalar)"], single_prefix))
     return html, entries

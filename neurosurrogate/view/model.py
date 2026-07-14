@@ -8,6 +8,7 @@ import seaborn as sns
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
+from ..core.network import NeuronGraph
 from ..surrogate.bundle import SINDyBundle
 
 _NODE_COLORS = {
@@ -104,7 +105,7 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
         annot=False,
     )
 
-    ax.set_title("SINDy Coefficients (SymLog Scale)")
+    ax.set_title(f"SINDy Coefficients (SymLog Scale)\n{result.equations[:60]}")
 
     if len(result.target_names) == xi_matrix.shape[0]:
         ax.set_yticks(np.arange(len(result.target_names)) + 0.5)
@@ -118,3 +119,14 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
 
     fig.tight_layout()
     return fig
+
+
+def model_figures(
+    bundles: list[tuple[str, SINDyBundle]],
+    net: NeuronGraph,
+) -> list[tuple[str, Figure]]:
+    """識別子付き model 図群 (係数 heatmap × run) + neurograph を一括生成。
+    analysis 側は fig 種別を知らず、この (id, fig) 列を保存/表示に流すだけ。"""
+    figs = [(f"model({key})", view_model(bundle)) for key, bundle in bundles]
+    figs.append(("neurograph", view_neuron_graph(net)))
+    return figs
