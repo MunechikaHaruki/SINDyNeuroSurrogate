@@ -5,10 +5,10 @@ from typing import ClassVar
 
 import joblib
 
-from ..core.network import Compartment, CompartmentType, DatasetConfig
-from ..core.opcost import OpCost
-from ..core.simulator import unified_simulator
-from .bundle import PreprocessorBundle, SINDyBundle
+from ...core.network import Compartment, CompartmentType, DatasetConfig
+from ...core.opcost import OpCost
+from ...core.simulator import unified_simulator
+from ..bundle import PreprocessorBundle, SINDyBundle
 
 BUNDLE_FILE = "surrogate.joblib"
 

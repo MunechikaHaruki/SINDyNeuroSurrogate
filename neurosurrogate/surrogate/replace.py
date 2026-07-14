@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from ..core.network import Compartment, CompartmentType, DatasetConfig, NeuronGraph
 
 if TYPE_CHECKING:
-    from .base import NeuroSurrogateBase
+    from .ansatz.base import NeuroSurrogateBase
 
 
 def resolved_params(comp: Compartment) -> "tuple | None":

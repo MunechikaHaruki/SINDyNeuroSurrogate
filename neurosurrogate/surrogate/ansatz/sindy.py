@@ -1,12 +1,12 @@
 import jax.numpy as jnp
 
-from ..core import access
-from ..core.network import Compartment, CompartmentType
-from ..core.opcost import OpCost
-from . import get_gate_numpy, transform_gate
+from ...core import access
+from ...core.network import Compartment, CompartmentType
+from ...core.opcost import OpCost
+from ..bundle import PreprocessorBundle, SINDyBundle
+from ..replace import resolved_params
 from .base import NeuroSurrogateBase
-from .bundle import PreprocessorBundle, SINDyBundle
-from .replace import resolved_params
+from .common import get_gate_numpy, transform_gate
 
 
 class SINDyNeuroSurrogate(NeuroSurrogateBase):

@@ -1,13 +1,13 @@
 import jax.numpy as jnp
 
-from ..compartments.hh import HH_DV_COST, HHParams
-from ..core import access
-from ..core.network import Compartment, CompartmentType
-from ..core.opcost import OpCost
-from . import get_gate_numpy
+from ...compartments.hh import HH_DV_COST, HHParams
+from ...core import access
+from ...core.network import Compartment, CompartmentType
+from ...core.opcost import OpCost
+from ..bundle import PreprocessorBundle, SINDyBundle
+from ..replace import resolved_params
 from .base import NeuroSurrogateBase
-from .bundle import PreprocessorBundle, SINDyBundle
-from .replace import resolved_params
+from .common import get_gate_numpy
 
 
 class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):

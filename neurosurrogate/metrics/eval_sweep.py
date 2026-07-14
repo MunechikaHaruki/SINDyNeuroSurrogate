@@ -11,7 +11,7 @@ import xarray as xr
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
 from ..models import MCMODELS
-from ..surrogate import NeuroSurrogateBase
+from ..surrogate.ansatz import NeuroSurrogateBase
 from ..surrogate.replace import apply_surrogate
 from .wave import DynamicMetrics, extract_metric
 

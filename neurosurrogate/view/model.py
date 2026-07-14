@@ -9,7 +9,7 @@ from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
 from ..core.network import NeuronGraph
-from ..surrogate import NeuroSurrogateBase
+from ..surrogate.ansatz import NeuroSurrogateBase
 from ..surrogate.bundle import SINDyBundle
 from ..surrogate.replace import replaced_names
 

@@ -9,7 +9,7 @@ import mlflow.artifacts
 import pandas as pd
 from tqdm import tqdm
 
-from neurosurrogate.surrogate import NeuroSurrogateBase, load_surrogate
+from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase, load_surrogate
 
 TARGET_EXP = "test_static_params"
 

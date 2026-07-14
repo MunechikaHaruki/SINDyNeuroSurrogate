@@ -22,7 +22,7 @@ from mlflow_io import (
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate import SINDyNeuroSurrogate
+from neurosurrogate.surrogate.ansatz import SINDyNeuroSurrogate
 from neurosurrogate.view.model import model_figures
 from neurosurrogate.view.utils import current_preview_fig
 
