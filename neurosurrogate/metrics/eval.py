@@ -7,8 +7,26 @@ import xarray as xr
 
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
-from ..surrogate import NeuroSurrogateBase, preprocessed_latent
+from ..surrogate import NeuroSurrogateBase, transform_gate
+from ..surrogate.replace import Verdict, verdict
 from .wave import DynamicMetrics, WaveReport, wave_report
+
+
+def preprocessed_latent(
+    surrogate: NeuroSurrogateBase,
+    dataset: DatasetConfig,
+    sim_ds: xr.Dataset,
+    comp_id: int,
+) -> xr.Dataset:
+    """comp_id ノードのゲートを preprocessor で latent 圧縮した (V, latent...) xr を返す
+    (診断用)。学習ドメイン外 (verdict != REPLACE) は latent 比較不可でエラー化。"""
+    comp = dataset.net.nodes[comp_id]
+    if (v := verdict(surrogate.meta, comp)) is not Verdict.REPLACE:
+        raise ValueError(
+            f"comp {comp.name!r} は学習ドメイン外 ({v.name}) → latent 比較不可 "
+            f"(学習型 {surrogate.meta.train_comp_type.name!r})"
+        )
+    return transform_gate(surrogate.preprocessor_bundle.preprocessor, sim_ds, comp_id)
 
 
 @dataclass(frozen=True)
@@ -20,16 +38,6 @@ class EvalResult:
     original_ds: xr.Dataset
     surr_ds: xr.Dataset
 
-    @property
-    def dt(self) -> float:
-        return self.dataset.dt
-
-    def name_to_idx(self, comp_name: str) -> int:
-        return self.dataset.net.name_to_idx(comp_name)
-
-    def dynamic_metrics(self, comp_id: int) -> DynamicMetrics:
-        return DynamicMetrics(self.original_ds, self.surr_ds, comp_id, self.dt)
-
     def preprocessed_latent(self, comp_id: int) -> xr.Dataset:
         """comp_id ノードの原系ゲートを surrogate の latent 空間へ射影 (診断用)。"""
         return preprocessed_latent(
@@ -39,11 +47,8 @@ class EvalResult:
     def wave_report(
         self, comp_id: int, spike_orig: int = 0, spike_surr: int = 0
     ) -> WaveReport:
-        return wave_report(
-            self.dynamic_metrics(comp_id),
-            spike_orig=spike_orig,
-            spike_surr=spike_surr,
-        )
+        dm = DynamicMetrics(self.original_ds, self.surr_ds, comp_id, self.dataset.dt)
+        return wave_report(dm, spike_orig=spike_orig, spike_surr=spike_surr)
 
 
 def evaluate(surrogate: NeuroSurrogateBase, dataset: DatasetConfig) -> EvalResult:

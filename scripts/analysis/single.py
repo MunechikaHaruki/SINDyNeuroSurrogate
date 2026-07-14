@@ -139,7 +139,7 @@ def view_result(
     result: EvalResult,
     eval_comp_name: str,
 ) -> tuple[mo.Html, list[tuple[str, Figure]], dict[str, pd.DataFrame]]:
-    target_comp_id = result.name_to_idx(eval_comp_name)
+    target_comp_id = result.dataset.net.name_to_idx(eval_comp_name)
     spike_orig = int(draw_ui["spike"]["orig"].value)
     spike_surr = int(draw_ui["spike"]["surr"].value)
     rep = result.wave_report(target_comp_id, spike_orig, spike_surr)

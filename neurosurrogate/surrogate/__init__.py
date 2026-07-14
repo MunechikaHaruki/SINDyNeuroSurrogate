@@ -7,13 +7,11 @@ import xarray as xr
 
 from ..core import access
 from ..core.coords import StateAccumulator, set_coords
-from ..core.network import DatasetConfig
 from .base import (
     BUNDLE_FILE,
     NeuroSurrogateBase,
     SurrogateMeta,
 )
-from .replace import Verdict, verdict
 
 
 def get_gate_numpy(train_xr: xr.Dataset, target_comp_id: int) -> np.ndarray:
@@ -42,23 +40,6 @@ def transform_gate(
         ).to_coords(),
         dt=float(xr_data.time[1] - xr_data.time[0]),
     )
-
-
-def preprocessed_latent(
-    surrogate: NeuroSurrogateBase,
-    dataset: DatasetConfig,
-    sim_ds: xr.Dataset,
-    comp_id: int,
-) -> xr.Dataset:
-    """comp_id ノードのゲートを preprocessor で latent 圧縮した (V, latent...) xr を返す
-    (診断用)。学習ドメイン外 (verdict != REPLACE) は latent 比較不可でエラー化。"""
-    comp = dataset.net.nodes[comp_id]
-    if (v := verdict(surrogate.meta, comp)) is not Verdict.REPLACE:
-        raise ValueError(
-            f"comp {comp.name!r} は学習ドメイン外 ({v.name}) → latent 比較不可 "
-            f"(学習型 {surrogate.meta.train_comp_type.name!r})"
-        )
-    return transform_gate(surrogate.preprocessor_bundle.preprocessor, sim_ds, comp_id)
 
 
 # get_gate_numpy/transform_gate は hybrid/sindy が使うため、
@@ -92,6 +73,5 @@ __all__ = [
     "SurrogateMeta",
     "get_gate_numpy",
     "load_surrogate",
-    "preprocessed_latent",
     "transform_gate",
 ]
