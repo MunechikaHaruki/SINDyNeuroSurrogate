@@ -140,8 +140,8 @@ class TraubParams(NamedTuple):
     area: float = 1.0
 
 
-def calc_traub_channel(p: TraubParams, u_t, v, states):
-    """Traub: (dv, dstates 10次元) を返す"""
+def traub_dv(p: TraubParams, u_t, v, states):
+    """Traub 物理 dV/dt。states=10次元 (hybrid では decode 済 latent)。"""
     M, S, N, C, A, H, R, B, Q, XI = [states[i] for i in range(10)]
     i_leak = p.g_leak * (v - p.V_LEAK)
     i_na = p.g_Na * M * M * H * (v - p.V_Na)
@@ -152,7 +152,13 @@ def calc_traub_channel(p: TraubParams, u_t, v, states):
     i_kc = p.g_K_C * C * jnp.minimum(1.0, XI / 250.0) * (v - p.V_K)
     i_ion = i_leak + i_na + i_ca + i_kdr + i_ka + i_kahp + i_kc
     # u_t は絶対電流 [μA] スケール (coupling: g_axial · dV, ext: μA)。密度化に /area。
-    dv = (-i_ion + u_t / p.area) / p.Cm
+    return (-i_ion + u_t / p.area) / p.Cm
+
+
+def calc_traub_channel(p: TraubParams, u_t, v, states):
+    """Traub: (dv, dstates 10次元) を返す"""
+    M, S, N, C, A, H, R, B, Q, XI = [states[i] for i in range(10)]
+    dv = traub_dv(p, u_t, v, states)
 
     dM = _traub_dstate_v("M", v, M)
     dS = _traub_dstate_v("S", v, S)
@@ -163,6 +169,7 @@ def calc_traub_channel(p: TraubParams, u_t, v, states):
     dR = _traub_dstate_v("R", v, R)
     dB = _traub_dstate_v("B", v, B)
     dQ = traub_alpha_q(XI) * (1.0 - Q) - traub_beta_q(XI) * Q
+    i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
     dXI = -p.phi_area * i_ca - p.Beta * XI
 
     return dv, jnp.stack([dM, dS, dN, dC, dA, dH, dR, dB, dQ, dXI])
@@ -192,6 +199,20 @@ def _traub_state_inits(p: TraubParams):
 def _traub_dstate_v(name, v, x):
     a, b = _TRAUB_RATE_V[name]
     return a(v) * (1.0 - x) - b(v) * x
+
+
+# 物理 dV/dt 演算コスト (traub_dv): 7イオン電流 + i_ion 総和 + dv/dt
+TRAUB_DV_COST = (
+    OpCost(pm=1, mul=1)  # i_leak
+    + OpCost(pm=1, mul=4)  # i_na
+    + OpCost(pm=1, mul=4)  # i_ca
+    + OpCost(pm=1, mul=2)  # i_kdr
+    + OpCost(pm=1, mul=3)  # i_ka
+    + OpCost(pm=1, mul=2)  # i_kahp
+    + OpCost(pm=1, mul=3, div=1)  # i_kc (min は無視)
+    + OpCost(pm=6)  # i_ion 総和
+    + OpCost(pm=1, div=2)  # dv = (-i_ion + u_t/area) / Cm
+)
 
 
 _TRAUB_DEFAULT_PARAMS = TraubParams()

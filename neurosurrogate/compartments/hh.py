@@ -62,16 +62,21 @@ class PassiveParams(NamedTuple):
 # --- Kernel 関数 (物理式、モジュール関数) ---
 
 
-def calc_hh_channel(p: HHParams, u_t, v, curr_gate):
-    """HH: (dv, dgate) を返す"""
-    m, h, n = curr_gate[0], curr_gate[1], curr_gate[2]
+def hh_dv(p: HHParams, u_t, v, gates):
+    """HH 物理 dV/dt。gates=(m,h,n) はゲート値 (hybrid では decode 済 latent)。"""
+    m, h, n = gates[0], gates[1], gates[2]
     i_na = p.G_NA * m**3 * h * (v - p.E_NA)
     i_k = p.G_K * n**4 * (v - p.E_K)
     i_leak = p.G_LEAK * (v - p.E_LEAK)
-    dv = (-i_leak - i_na - i_k + u_t) / p.C
+    return (-i_leak - i_na - i_k + u_t) / p.C
+
+
+def calc_hh_channel(p: HHParams, u_t, v, curr_gate):
+    """HH: (dv, dgate) を返す"""
+    m, h, n = curr_gate[0], curr_gate[1], curr_gate[2]
     v_rel = v - p.E_REST
     dgate = jnp.stack([dmdt(v_rel, m), dhdt(v_rel, h), dndt(v_rel, n)])
-    return dv, dgate
+    return hh_dv(p, u_t, v, curr_gate), dgate
 
 
 def calc_passive_channel(p: PassiveParams, u_t, v, state):
