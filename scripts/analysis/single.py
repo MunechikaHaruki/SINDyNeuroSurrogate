@@ -144,12 +144,7 @@ def view_result(
     spike_surr = int(draw_ui["spike"]["surr"].value)
     rep = result.wave_report(target_comp_id, spike_orig, spike_surr)
 
-    figs = draw_all(
-        result.original_ds,
-        result.surr_ds,
-        target_comp_id,
-        lambda: result.preprocessed_latent(target_comp_id),
-    )
+    figs = draw_all(result, target_comp_id)
     fig_html = [
         part
         for name, fig in figs

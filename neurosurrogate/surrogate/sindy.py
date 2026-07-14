@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 
 from ..core import access
-from ..core.network import CompartmentType
+from ..core.network import Compartment, CompartmentType
 from ..core.opcost import OpCost
 from . import get_gate_numpy, transform_gate
 from .base import NeuroSurrogateBase
@@ -32,6 +32,11 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             ),
             preprocessor_bundle=preprocessor_bundle,
         )
+
+    def params_compatible(self, comp: Compartment) -> bool:
+        # surr は param_cls=None → simulator がノード params を捨て、学習モデルが
+        # V+gate 全体を train params 込みで再現。→ 全 params 完全一致が必須。
+        return self.meta.train_comp.resolved_params == comp.resolved_params
 
     @property
     def surr_comp_type(self) -> CompartmentType:

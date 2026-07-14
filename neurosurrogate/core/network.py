@@ -48,6 +48,11 @@ class Compartment:
     type: CompartmentType
     params: "tuple | None" = None
 
+    @property
+    def resolved_params(self) -> "tuple | None":
+        """明示 params、無ければ型の default_params。params 一致判定の基準。"""
+        return self.params if self.params is not None else self.type.default_params
+
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "type": self.type.name}
         if self.params is not None:

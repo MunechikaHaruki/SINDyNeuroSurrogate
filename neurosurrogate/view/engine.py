@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import logging
+import sys
 from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
 
+logger = logging.getLogger(__name__)
+
 
 def error_fig(msg: str) -> Figure:
-    """描画失敗を赤テキストの Figure に畳む。戻り値型を fig で統一するため。"""
+    """描画失敗を赤テキストの Figure に畳む。戻り値型を fig で統一するため。
+    失敗は握り潰さず標準エラー/ログにも流す (marimo 表示外でも気付けるように)。"""
+    logger.error("描画失敗: %s", msg)
+    print(f"[view] 描画失敗: {msg}", file=sys.stderr)
     fig = plt.figure()
     ax = fig.subplots()
     ax.text(0.5, 0.5, msg, transform=ax.transAxes, ha="center", color="red", wrap=True)

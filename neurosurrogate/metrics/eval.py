@@ -21,7 +21,7 @@ def preprocessed_latent(
     """comp_id ノードのゲートを preprocessor で latent 圧縮した (V, latent...) xr を返す
     (診断用)。学習ドメイン外 (verdict != REPLACE) は latent 比較不可でエラー化。"""
     comp = dataset.net.nodes[comp_id]
-    if (v := verdict(surrogate.meta, comp)) is not Verdict.REPLACE:
+    if (v := verdict(surrogate, comp)) is not Verdict.REPLACE:
         raise ValueError(
             f"comp {comp.name!r} は学習ドメイン外 ({v.name}) → latent 比較不可 "
             f"(学習型 {surrogate.meta.train_comp_type.name!r})"

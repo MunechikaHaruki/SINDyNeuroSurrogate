@@ -2,7 +2,7 @@ import jax.numpy as jnp
 
 from ..compartments.hh import HH_DV_COST, HHParams
 from ..core import access
-from ..core.network import CompartmentType
+from ..core.network import Compartment, CompartmentType
 from ..core.opcost import OpCost
 from . import get_gate_numpy
 from .base import NeuroSurrogateBase
@@ -36,6 +36,16 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
                 input_names=["V"],
             ),
             preprocessor_bundle=preprocessor_bundle,
+        )
+
+    def params_compatible(self, comp: Compartment) -> bool:
+        # 物理 dV/dt (hybrid_kernel) はノード params (G_*, E_*, C 等) を陽に読む
+        # → 導電率・反転電位は自由。一方 gate dynamics は SINDy が絶対 V で fit し
+        # 学習ノードの E_REST を暗黙に焼込む (rate は v_rel=v-E_REST 依存) →
+        # E_REST のみ一致必須。
+        return bool(
+            self.meta.train_comp.resolved_params.E_REST  # type: ignore[union-attr]
+            == comp.resolved_params.E_REST  # type: ignore[union-attr]
         )
 
     @property

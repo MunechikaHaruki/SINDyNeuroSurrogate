@@ -80,11 +80,20 @@ class NeuroSurrogateBase(ABC):
         """置換後の surrogate CompartmentType (学習結果から構築)。"""
         ...
 
+    @abstractmethod
+    def params_compatible(self, comp: Compartment) -> bool:
+        """comp (型は学習型と一致済) の params が学習ドメインと両立するか。
+
+        surrogate ごとに異なる: 学習モデルがどの物理 params を焼込むかで決まる。
+        両立しなければ replace は MISMATCH と判定し置換を拒否する。
+        """
+        ...
+
     def apply(self, dataset: DatasetConfig) -> DatasetConfig:
         """学習ドメイン内ノードを surrogate 置換 (判定/適用は replace)。"""
         from .replace import apply as apply_surrogate
 
-        return apply_surrogate(self.meta, self.surr_comp_type, dataset)
+        return apply_surrogate(self, dataset)
 
     @property
     @abstractmethod

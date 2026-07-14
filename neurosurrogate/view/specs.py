@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import xarray as xr
 from matplotlib.figure import Figure
@@ -8,6 +9,9 @@ from matplotlib.figure import Figure
 from ..core import access
 from ..core.access import POTENTIAL_VAR
 from .engine import PanelSpec, TraceSpec, draw_engine, error_fig
+
+if TYPE_CHECKING:
+    from ..metrics.eval import EvalResult
 
 
 def spec_simple(ds: xr.Dataset) -> list[PanelSpec]:
@@ -156,26 +160,22 @@ def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None) -> 
     return fig
 
 
-def draw_all(
-    original: xr.Dataset,
-    surrogate: xr.Dataset,
-    comp_id: int,
-    get_preprocessed: Callable[[], xr.Dataset],
-) -> list[tuple[str, Figure]]:
-    """全描画を識別子付きで一括生成。analysis 側は種別を知らず (id, fig) を
-    保存/表示に流すだけ。学習ドメイン外 comp 等での失敗は error_fig に畳み
-    戻り値型を保つ。
+def draw_all(result: EvalResult, comp_id: int) -> list[tuple[str, Figure]]:
+    """EvalResult から全描画を識別子付きで一括生成。analysis 側は種別を知らず
+    (id, fig) を保存/表示に流すだけ。学習ドメイン外 comp 等での失敗は error_fig
+    に畳み戻り値型を保つ。
 
-    get_preprocessed は lazy: 学習ドメイン外 comp で verdict が raise するため
-    latent 参照する diff/attractor でのみ評価する (simple は呼ばない)。
+    latent (preprocessed) は lazy 参照: 学習ドメイン外 comp で verdict が raise
+    するため diff/attractor でのみ評価する (simple は呼ばない)。
     """
+    original, surrogate = result.original_ds, result.surr_ds
     jobs: dict[str, Callable[[], Figure]] = {
         "diff": lambda: draw_engine(
-            spec_diff(original, get_preprocessed(), surrogate, comp_id)
+            spec_diff(original, result.preprocessed_latent(comp_id), surrogate, comp_id)
         ),
         "simple": lambda: draw_engine(spec_simple(original)),
         "attractor": lambda: plot_2d_attractor_comparison(
-            get_preprocessed(), surrogate, comp_id
+            result.preprocessed_latent(comp_id), surrogate, comp_id
         ),
     }
     out: list[tuple[str, Figure]] = []
