@@ -19,7 +19,7 @@ from mlflow_io import (
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate import SINDyNeuroSurrogate
-from neurosurrogate.view.plots import view_model, view_neuron_graph
+from neurosurrogate.view.model import view_model, view_neuron_graph
 
 CurrentList: list = list(CURRENT_MAP.keys())
 MplStyle = Literal["paper", "presentation"]

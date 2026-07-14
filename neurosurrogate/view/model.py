@@ -8,7 +8,6 @@ import seaborn as sns
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
-from ..core import access
 from ..surrogate.bundle import SINDyBundle
 
 _NODE_COLORS = {
@@ -118,55 +117,4 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
         ax.set_xlabel("Library Features")
 
     fig.tight_layout()
-    return fig
-
-
-def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None) -> Figure:
-    """相平面重ね描き。orig と surr のダイナミクス一致度可視化。"""
-    if state_vars is None:
-        state_vars = [access.POTENTIAL_VAR, "latent1"]
-    fig = Figure()
-    ax = fig.subplots()
-
-    def extract_trajectory(ds):
-        # access.trace は (t, y) を返す。相平面は値のみ使う
-        return [access.trace(ds, comp_id, var)[1] for var in state_vars]
-
-    # --- 1. データの抽出 ---
-    try:
-        o_x, o_y = extract_trajectory(orig_ds)
-        s_x, s_y = extract_trajectory(surr_ds)
-    except KeyError as e:
-        ax.text(
-            0.5,
-            0.5,
-            f"Variable not found:\n{e}",
-            transform=ax.transAxes,
-            ha="center",
-            color="red",
-        )
-        return fig
-
-    # --- 2. 描画 ---
-    # オリジナル：黒で「正解」の形を示す。alphaを少し下げて重なりを見やすくする
-    ax.plot(
-        o_x, o_y, color="black", linewidth=1.2, alpha=0.6, label="Original (Target)"
-    )
-
-    # サロゲート：赤（または青）の破線や細線で「再現」を示す
-    ax.plot(
-        s_x, s_y, color="crimson", linewidth=1.0, alpha=0.8, label="Surrogate (SINDy)"
-    )
-
-    # --- 3. 装飾 ---
-    ax.set_xlabel(f"{state_vars[0]}")
-    ax.set_ylabel(f"{state_vars[1]}")
-    ax.set_title(f"Attractor Comparison (Comp {comp_id})")
-
-    # ランダム電流などの場合、軌道がボヤけるのでグリッドがあると位置関係が追いやすい
-    ax.grid(True, linestyle=":", alpha=0.5)
-    ax.legend(loc="upper right", frameon=True)
-
-    fig.tight_layout()
-
     return fig
