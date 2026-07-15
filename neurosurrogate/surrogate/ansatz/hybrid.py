@@ -128,4 +128,9 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
 
     @property
     def opcost(self) -> OpCost:
-        return self.sindy_bundle.opcost() + self._physics.dv_cost
+        # kernel の 1 ステップ = decode(latent→gate) + 物理 dV/dt + SINDy 潜在方程式。
+        return (
+            self.preprocessor_bundle.opcost()
+            + self._physics.dv_cost
+            + self.sindy_bundle.opcost()
+        )

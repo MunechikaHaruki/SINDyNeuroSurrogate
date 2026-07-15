@@ -25,6 +25,9 @@ OPTIMIZER_CLS: dict[str, type] = {
     "stlsq": ps.optimizers.STLSQ,
 }
 
+# tanh(x) = 1 - 2 / (exp(2x) + 1)
+TANH_COST = OpCost(exp=1, div=1, pm=2, mul=1)
+
 
 def _instantiate(spec: dict, registry: dict[str, type]):
     spec = dict(spec)
@@ -68,6 +71,11 @@ class PCABundle:
 
     def decode(self, state: jnp.ndarray) -> jnp.ndarray:
         return state @ jnp.asarray(self.components) + jnp.asarray(self.mean)
+
+    def opcost(self) -> OpCost:
+        # decode: gate ごとに latent 数の積 + (latent-1 加算 + mean 1 加算)。
+        n_latent, n_gates = self.components.shape
+        return OpCost(mul=n_latent * n_gates, pm=n_latent * n_gates)
 
 
 @dataclass
@@ -113,6 +121,16 @@ class AutoEncoderBundle:
         x_hat = decoder(jax_params, state)
         return jnp.asarray(x_hat * jnp.asarray(self.x_std) + jnp.asarray(self.x_mean))
 
+    def opcost(self) -> OpCost:
+        n_latent, hidden = self.dec_params["W1"].shape
+        n_gates = int(self.dec_params["W2"].shape[1])
+        return (
+            OpCost(mul=n_latent * hidden, pm=n_latent * hidden)  # z @ W1 + b1
+            + TANH_COST * int(hidden)
+            + OpCost(mul=hidden * n_gates, pm=hidden * n_gates)  # h @ W2 + b2
+            + OpCost(mul=n_gates, pm=n_gates)  # 標準化の逆変換 (* std + mean)
+        )
+
 
 def _build_bundle(preprocessor, train_gate: np.ndarray):
     if isinstance(preprocessor, PCA):
@@ -140,6 +158,14 @@ class PreprocessorBundle:
 
     def metrics(self) -> dict:
         return self.bundle.metrics() if self.bundle is not None else {}
+
+    def opcost(self) -> OpCost:
+        """decode を実行時に呼ぶ ansatz (hybrid) 用の decode コスト。"""
+        if self.bundle is None:
+            raise ValueError(
+                f"opcost 未対応 preprocessor: {type(self.preprocessor).__name__}"
+            )
+        return self.bundle.opcost()
 
 
 @dataclass
