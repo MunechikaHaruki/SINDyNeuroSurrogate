@@ -20,9 +20,9 @@ def _disable_proxy() -> None:
 
 def _make_run_name() -> str:
     hc = HydraConfig.get()
-    yaml_name = hc.runtime.choices["sindy"]
+    yaml_name = hc.runtime.choices["surrogate"]
     extra = [
-        o.rsplit(".", 1)[-1] for o in hc.overrides.task if not o.startswith("sindy=")
+        o.rsplit(".", 1)[-1] for o in hc.overrides.task if not o.startswith("surrogate=")
     ]
     return " ".join([yaml_name, *extra])
 
@@ -32,13 +32,13 @@ def main(cfg: DictConfig) -> None:
     _disable_proxy()
     setup_mlflow()
     OmegaConf.resolve(cfg)
-    cfg_sindy = OmegaConf.to_container(cfg, resolve=True)["sindy"]
-    assert isinstance(cfg_sindy, dict)
-    surrogate = NeuroSurrogateBase.build(type=cfg_sindy["type"], init=cfg_sindy["init"])
+    cfg_surr = OmegaConf.to_container(cfg, resolve=True)["surrogate"]
+    assert isinstance(cfg_surr, dict)
+    surrogate = NeuroSurrogateBase.build(type=cfg_surr["type"], init=cfg_surr["init"])
     run_name = _make_run_name()
     with mlflow.start_run(run_name=run_name):
         logger.info(f"[{run_name}] fit 開始")
-        surrogate.fit(**cfg_sindy["fit"])
+        surrogate.fit(**cfg_surr["fit"])
         log_surrogate_model(surrogate)
         logger.info(f"[{run_name}] 完了")
 

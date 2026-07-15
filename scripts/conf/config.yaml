@@ -1,9 +1,9 @@
 defaults:
   - _self_ # inline は default 扱い、preset で上書き可能に
-  - sindy: base
+  - surrogate: base
 
 
-sindy:
+surrogate:
   type: sindy
   init:
     datasets:
@@ -24,4 +24,4 @@ hydra:
     dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
   sweeper:
     params:
-      sindy.fit.optimizer.alpha: 0.01, 0.05, 0.1, 0.5, 1.0
+      surrogate.fit.optimizer.alpha: 0.01, 0.05, 0.1, 0.5, 1.0
