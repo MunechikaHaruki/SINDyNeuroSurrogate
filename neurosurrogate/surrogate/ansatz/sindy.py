@@ -49,21 +49,20 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
 
     @property
     def surr_comp_type(self) -> CompartmentType:
-        xi = self.sindy_bundle.xi
+        xi = jnp.asarray(self.sindy_bundle.xi)
         compute_theta = self.sindy_bundle.compute_theta()
+        n_latent = len(self.preprocessor_bundle.gate_inits)
 
         def surr_kernel(params, i_t, v, state):
-            theta = compute_theta(v, state[0], i_t)
-            return xi[0] @ theta, jnp.stack([xi[1] @ theta])
+            # 列構造 [V, latent1..N, u] の順で束縛。xi の行も同順 (0=V, 1..=latent)。
+            theta = compute_theta(v, *(state[i] for i in range(n_latent)), i_t)
+            return xi[0] @ theta, xi[1:] @ theta
 
         return CompartmentType(
             name="surr",
             kernel=surr_kernel,
             param_cls=None,
-            gate_names=[
-                f"latent{i + 1}"
-                for i in range(len(self.preprocessor_bundle.gate_inits))
-            ],
+            gate_names=[f"latent{i + 1}" for i in range(n_latent)],
             default_gate_inits=self.preprocessor_bundle.gate_inits,
             v_init=-65,
             opcost=None,
