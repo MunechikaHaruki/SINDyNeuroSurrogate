@@ -27,6 +27,7 @@ dependencies = [
     "efel>=5.7.23",
     "networkx>=3.6.1",
     "setuptools>=83.0.0",
+    "sympy>=1.14.0",
 ]
 
 [dependency-groups]
@@ -52,7 +53,7 @@ warn_unused_ignores = true
 exclude = ["scripts/"]
 
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "pysindy", "efel", "joblib", "optax", "networkx", "seaborn", "japanize_matplotlib"]
+module = ["sklearn.*", "pysindy", "sympy.*", "efel", "joblib", "optax", "networkx", "seaborn", "japanize_matplotlib"]
 ignore_missing_imports = true
 
 [tool.ruff]

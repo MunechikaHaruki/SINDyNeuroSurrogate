@@ -1,7 +1,9 @@
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pysindy as ps
+import sympy as sp
+from sympy.core.function import AppliedUndef
 
 from ..compartments.hh import (
     HH_RATE_COST_MAP,
@@ -14,15 +16,77 @@ from ..compartments.hh import (
 )
 from ..core.opcost import OpCost
 
+# ---------------------------------------------------------------------------
+# 項 = 1つの sympy 式。func(lambdify) / name(render) / cost(op_cost) / arity は
+# すべてここから派生する (手書き3重同期を廃止)。HH レート関数は数値安定な exp
+# 実装を壊さないため未定義関数シンボルで構造だけ保持し、lambdify 時に注入する。
+# ---------------------------------------------------------------------------
+
+_RATE_IMPL: dict[str, Callable] = {
+    "alpha_m": alpha_m,
+    "beta_m": beta_m,
+    "alpha_h": alpha_h,
+    "beta_h": beta_h,
+    "alpha_n": alpha_n,
+    "beta_n": beta_n,
+}
+_RATE_S: dict[str, sp.Function] = {nm: sp.Function(nm) for nm in _RATE_IMPL}
+
+V, G = sp.symbols("V g")  # 電位 / ゲート (product・relaxation・gate_poly 用)
+M, H, N = sp.symbols("m h n")  # volt 項の 3 ゲート
+
+
+def op_cost(e: sp.Expr) -> OpCost:
+    """sympy 式木を辿り OpCost へ集計。冪→mul(p-1)、積→mul(項数-1)、和→pm(項数-1)、
+    未定義レート関数→HH_RATE_COST_MAP。"""
+    if e.is_Symbol or e.is_Number:
+        return OpCost()
+    if isinstance(e, AppliedUndef):
+        return sum((op_cost(a) for a in e.args), HH_RATE_COST_MAP[e.func.__name__])
+    if isinstance(e, sp.Pow):
+        base, exp = e.args
+        if not (exp.is_Integer and int(exp) >= 1):
+            raise ValueError(f"整数冪 (>=1) のみ対応: {e}")
+        return op_cost(base) + OpCost(mul=int(exp) - 1)
+    if isinstance(e, sp.Mul):
+        return sum((op_cost(a) for a in e.args), OpCost(mul=len(e.args) - 1))
+    if isinstance(e, sp.Add):
+        return sum((op_cost(a) for a in e.args), OpCost(pm=len(e.args) - 1))
+    raise ValueError(f"op_cost 未対応ノード: {e!r}")
+
 
 @dataclass(frozen=True)
 class LibraryEntry:
-    func: Callable
-    name_func: Callable
-    cost: OpCost
+    """候補項1つ。expr が真実源、args は位置引数シンボル (arity 兼束縛順)。"""
+
+    expr: sp.Expr
+    args: tuple[sp.Symbol, ...]
+    func: Callable = field(compare=False)  # lambdify 結果 (jax-ready、束縛時1回)
+
+    @property
+    def cost(self) -> OpCost:
+        return op_cost(self.expr)
+
+    @property
+    def arity(self) -> int:
+        return len(self.args)
+
+    def name_func(self, *names: str) -> str:
+        """位置引数名を代入した文字列 (pysindy の function_names / コスト表 共通源)。"""
+        return str(
+            self.expr.subs(dict(zip(self.args, map(sp.Symbol, names), strict=True)))
+        )
 
     def to_cost_entry(self, input_names: list[str]) -> tuple[str, OpCost]:
         return self.name_func(*input_names), self.cost
+
+
+def _entry(expr: sp.Expr, *args: sp.Symbol) -> LibraryEntry:
+    return LibraryEntry(
+        expr=expr,
+        args=args,
+        func=sp.lambdify(args, expr, modules=[_RATE_IMPL, "jax"]),
+    )
 
 
 @dataclass(frozen=True)
@@ -64,10 +128,9 @@ class FeatureLibrary:
             inputs = spec["inputs"]
             if t in FIXED_LIB_ENTRIES:
                 entries = FIXED_LIB_ENTRIES[t]
-                expected = entries[0].func.__code__.co_argcount
-                if len(inputs) != expected:
+                if len(inputs) != entries[0].arity:
                     raise ValueError(
-                        f"type={t!r} は arity={expected} 要求、"
+                        f"type={t!r} は arity={entries[0].arity} 要求、"
                         f"inputs={inputs} (arity={len(inputs)})"
                     )
                 return SubLibrary(entries=entries, inputs=inputs)
@@ -91,156 +154,37 @@ class FeatureLibrary:
 
 
 # ---------------------------------------------------------------------------
-# LibraryEntry カタログ (旧 registry/feature_libraries.py + hh.py の HH_* 部)
+# 項カタログ。式リストが唯一の真実源 → func/name/cost/arity は自動派生。
 # ---------------------------------------------------------------------------
 
-
-def _rate_entry(name: str, f, cost: OpCost) -> LibraryEntry:
-    """レート関数 f を f(x) 形式の 1入力 LibraryEntry に。"""
-    return LibraryEntry(
-        func=f,
-        name_func=(lambda nm: lambda x: f"{nm}({x})")(name),
-        cost=cost,
-    )
+_GATE_RATES = ["alpha_m", "beta_m", "alpha_h", "beta_h", "alpha_n", "beta_n"]
+_FORWARD_RATES = ["alpha_m", "alpha_h", "alpha_n"]
+_RELAX_PAIRS = [("alpha_m", "beta_m"), ("alpha_h", "beta_h"), ("alpha_n", "beta_n")]
 
 
-ALPHA_M_ENTRY = _rate_entry("alpha_m", alpha_m, HH_RATE_COST_MAP["alpha_m"])
-BETA_M_ENTRY = _rate_entry("beta_m", beta_m, HH_RATE_COST_MAP["beta_m"])
-ALPHA_H_ENTRY = _rate_entry("alpha_h", alpha_h, HH_RATE_COST_MAP["alpha_h"])
-BETA_H_ENTRY = _rate_entry("beta_h", beta_h, HH_RATE_COST_MAP["beta_h"])
-ALPHA_N_ENTRY = _rate_entry("alpha_n", alpha_n, HH_RATE_COST_MAP["alpha_n"])
-BETA_N_ENTRY = _rate_entry("beta_n", beta_n, HH_RATE_COST_MAP["beta_n"])
-
-HH_RATE_ENTRIES: list[LibraryEntry] = [
-    ALPHA_M_ENTRY,
-    BETA_M_ENTRY,
-    ALPHA_H_ENTRY,
-    BETA_H_ENTRY,
-    ALPHA_N_ENTRY,
-    BETA_N_ENTRY,
-]
-
-HH_GATE_PAIRS: list[tuple[LibraryEntry, LibraryEntry]] = [
-    (ALPHA_M_ENTRY, BETA_M_ENTRY),
-    (ALPHA_H_ENTRY, BETA_H_ENTRY),
-    (ALPHA_N_ENTRY, BETA_N_ENTRY),
-]
-
-HH_GATE_FORWARD: list[LibraryEntry] = [ALPHA_M_ENTRY, ALPHA_H_ENTRY, ALPHA_N_ENTRY]
-
-
-def _to_product(entry: LibraryEntry) -> LibraryEntry:
-    """1入力 entry を (V, g) → f(V) * g の 2入力 entry に昇格。cost に mul 1 追加。"""
-    base_f, base_name = entry.func, entry.name_func
-    return LibraryEntry(
-        func=(lambda fn: lambda x, y: fn(x) * y)(base_f),
-        name_func=(lambda nfn: lambda x, y: f"{nfn(x)}*{y}")(base_name),
-        cost=entry.cost + OpCost(mul=1),
-    )
-
-
-def _to_relaxation_decay(alpha_e: LibraryEntry, beta_e: LibraryEntry) -> LibraryEntry:
-    """(alpha_entry, beta_entry) → (alpha(V) + beta(V)) * g の 2入力 entry。"""
-    af, bf = alpha_e.func, beta_e.func
-    an, bn = alpha_e.name_func, beta_e.name_func
-    return LibraryEntry(
-        func=(lambda af_, bf_: lambda x, y: (af_(x) + bf_(x)) * y)(af, bf),
-        name_func=(lambda an_, bn_: lambda x, y: f"({an_(x)}+{bn_(x)})*{y}")(an, bn),
-        cost=alpha_e.cost + beta_e.cost + OpCost(pm=1, mul=1),
-    )
-
-
-_VOLT: list[LibraryEntry] = [
-    LibraryEntry(
-        func=lambda u, v, w: u**3 * v * w,
-        name_func=lambda u, v, w: f"{u}**3 * {v} * {w}",
-        cost=OpCost(mul=4),
-    ),
-    LibraryEntry(
-        func=lambda u, v, w: u**3 * v,
-        name_func=lambda u, v, w: f"{u}**3 * {v}",
-        cost=OpCost(mul=3),
-    ),
-    LibraryEntry(
-        func=lambda u, v, w: u**4 * v,
-        name_func=lambda u, v, w: f"{u}**4 * {v}",
-        cost=OpCost(mul=4),
-    ),
-    LibraryEntry(
-        func=lambda u, v, w: u**4,
-        name_func=lambda u, v, w: f"{u}**4",
-        cost=OpCost(mul=3),
-    ),
-]
-
-
-_GATE_POLY_VOLT: list[LibraryEntry] = []
-for _p in range(1, 5):
-    _GATE_POLY_VOLT.append(
-        LibraryEntry(
-            func=(lambda pp: lambda V, g: g**pp)(_p),
-            name_func=(lambda pp: lambda V, g: f"{g}**{pp}")(_p),
-            cost=OpCost(mul=max(0, _p - 1)),
-        )
-    )
-    _GATE_POLY_VOLT.append(
-        LibraryEntry(
-            func=(lambda pp: lambda V, g: g**pp * V)(_p),
-            name_func=(lambda pp: lambda V, g: f"{g}**{pp} * {V}")(_p),
-            cost=OpCost(mul=max(0, _p - 1) + 1),
-        )
-    )
-
-
-def _make_projector(i: int, n: int) -> Callable:
-    """n 引数関数で i 番目引数返す (co_argcount=n 保証)。"""
-    args = ", ".join(f"x{j}" for j in range(n))
-    src = f"def _p({args}): return x{i}\n"
-    ns: dict = {}
-    exec(src, ns)
-    return ns["_p"]  # type: ignore[no-any-return]
-
-
-def _make_constant(n: int) -> Callable:
-    """n 引数関数で常に 1 返す。"""
-    args = ", ".join(f"x{j}" for j in range(n))
-    src = f"def _c({args}): return 1\n"
-    ns: dict = {}
-    exec(src, ns)
-    return ns["_c"]  # type: ignore[no-any-return]
-
-
-def _build_basis(n: int) -> list[LibraryEntry]:
-    entries: list[LibraryEntry] = []
-    for i in range(n):
-        entries.append(
-            LibraryEntry(
-                func=_make_projector(i, n),
-                name_func=(lambda ii: lambda *names: f"{names[ii]}")(i),
-                cost=OpCost(),
-            )
-        )
-    entries.append(
-        LibraryEntry(
-            func=_make_constant(n),
-            name_func=lambda *names: "1",
-            cost=OpCost(),
-        )
-    )
-    return entries
+def _basis(n: int) -> list[LibraryEntry]:
+    """n 入力の射影 (各引数そのまま) + 定数 1。"""
+    xs = tuple(sp.Symbol(f"x{i}") for i in range(n))
+    return [_entry(x, *xs) for x in xs] + [_entry(sp.Integer(1), *xs)]
 
 
 FIXED_LIB_ENTRIES: dict[str, list[LibraryEntry]] = {
-    "hh_gate": HH_RATE_ENTRIES,
-    "hh_gate_product": [_to_product(e) for e in HH_RATE_ENTRIES],
-    "hh_gate_forward": HH_GATE_FORWARD,
-    "hh_gate_forward_product": [_to_product(e) for e in HH_GATE_FORWARD],
-    "hh_relaxation_driver": [a for a, _ in HH_GATE_PAIRS],
-    "hh_relaxation_decay": [_to_relaxation_decay(a, b) for a, b in HH_GATE_PAIRS],
-    "volt": _VOLT,
-    "gate_poly_volt": _GATE_POLY_VOLT,
+    "hh_gate": [_entry(_RATE_S[nm](V), V) for nm in _GATE_RATES],
+    "hh_gate_product": [_entry(_RATE_S[nm](V) * G, V, G) for nm in _GATE_RATES],
+    "hh_gate_forward": [_entry(_RATE_S[nm](V), V) for nm in _FORWARD_RATES],
+    "hh_gate_forward_product": [
+        _entry(_RATE_S[nm](V) * G, V, G) for nm in _FORWARD_RATES
+    ],
+    "hh_relaxation_driver": [_entry(_RATE_S[a](V), V) for a, _ in _RELAX_PAIRS],
+    "hh_relaxation_decay": [
+        _entry((_RATE_S[a](V) + _RATE_S[b](V)) * G, V, G) for a, b in _RELAX_PAIRS
+    ],
+    "volt": [_entry(e, M, H, N) for e in (M**3 * H * N, M**3 * H, M**4 * H, M**4)],
+    "gate_poly_volt": [
+        _entry(expr, V, G) for p in range(1, 5) for expr in (G**p, G**p * V)
+    ],
 }
 
 VARIADIC_LIB_ENTRIES: dict[str, Callable[[int], list[LibraryEntry]]] = {
-    "basis": _build_basis,
+    "basis": _basis,
 }
