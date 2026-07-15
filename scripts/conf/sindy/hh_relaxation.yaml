@@ -10,7 +10,7 @@ fit:
   library_specs:
     - type: gate_poly_volt
     - type: basis
-      roles: [V, u]
+      latents: []   # V, u, 1 のみ (latent の基底は gate_poly_volt が供給)
     # --- dg0/dt 用 (relaxation形式) ---
     - type: hh_relaxation_driver
     - type: hh_relaxation_decay

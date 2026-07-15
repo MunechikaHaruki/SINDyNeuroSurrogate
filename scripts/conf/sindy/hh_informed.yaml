@@ -12,4 +12,4 @@ fit:
     - type: hh_gate_forward
     - type: hh_gate_product
     - type: basis
-      roles: [V, u]
+      latents: []   # V, u, 1 のみ (latent の基底は gate_poly_volt が供給)

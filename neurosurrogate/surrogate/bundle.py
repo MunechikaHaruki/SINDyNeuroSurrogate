@@ -158,11 +158,7 @@ class SINDyBundle:
         pickle 不能 → field でなく cache 化し、__getstate__ で保存対象から除外する。"""
         from .libraries.entry import FeatureLibrary
 
-        return FeatureLibrary.build(
-            self.library_specs,
-            self.roles,
-            len(self.target_names) + len(self.input_names),
-        )
+        return FeatureLibrary.build(self.library_specs, self.roles)
 
     def __getstate__(self) -> dict:
         # feature_library の cache (pickle 不能な lambdify 関数) を落として保存。

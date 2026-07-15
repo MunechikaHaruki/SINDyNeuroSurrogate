@@ -1,3 +1,4 @@
+from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -59,6 +60,12 @@ class LibraryEntry:
     def arity(self) -> int:
         return len(self.args)
 
+    @property
+    def argnames(self) -> tuple[str, ...]:
+        """args のシンボル名 (V/g/u)。この項が何の列を要求するかを表す = 列束縛の
+        キーであり、展開規則 (g→latent 複製 / u→u 無し ansatz で脱落) の判定源。"""
+        return tuple(s.name for s in self.args)
+
     def name_func(self, *names: str) -> str:
         """位置引数名を代入した文字列 (pysindy の function_names / コスト表 共通源)。"""
         return str(
@@ -69,6 +76,17 @@ class LibraryEntry:
         return self.name_func(*input_names), self.cost
 
 
+def _group_by_argnames(
+    entries: list[LibraryEntry],
+) -> dict[tuple[str, ...], list[LibraryEntry]]:
+    """argnames が同じ項をまとめる (挿入順保持)。argnames が同じ = 束縛先の列も
+    arity も同じ → まとめて 1 束 (= SubLibrary 1 つ) に収まる。"""
+    groups: defaultdict[tuple[str, ...], list[LibraryEntry]] = defaultdict(list)
+    for e in entries:
+        groups[e.argnames].append(e)
+    return groups
+
+
 @dataclass(frozen=True)
 class SubLibrary:
     """1 library_spec を解決した 1 束。entries + 入力列 binding。"""
@@ -77,29 +95,31 @@ class SubLibrary:
     inputs: list[int]
 
     @classmethod
-    def expand(cls, spec: dict, roles: "Roles", n_inputs: int) -> list["SubLibrary"]:
-        """1 library_spec を役割 (roles) で列に束縛して解決。手書き index は不要:
-        項の args シンボル名 (V / g) が列を決める。g を持つ項は選択 gate 上に展開
-        (spec["gates"]=gate 序数リスト、既定=全 gate)。basis は spec["roles"] の
-        役割名で列選択 (既定=全入力)。未知 type はエラー。"""
-        from .catalog import FIXED_LIB_ENTRIES, VARIADIC_LIB_ENTRIES
+    def expand(cls, spec: dict, roles: "Roles") -> list["SubLibrary"]:
+        """1 library_spec を役割 (roles) で列に束縛して解決。spec = {type, latents?}
+        のみ: 手書き index も役割名も不要で、指定できる番号は latent (隠れ変数) の
+        序数だけ (spec["latents"]、既定=全 latent)。展開の仕方は項の args シンボル名
+        が決める: g を持つ項は選択 latent ごとに複製、持たない項は latent 非依存で
+        1 束、u を持つ項は u の無い ansatz では落ちる。未知 type はエラー。"""
+        from .catalog import LIB_ENTRIES
 
-        t = spec["type"]
-        if t in VARIADIC_LIB_ENTRIES:
-            cols = roles.basis_cols(spec.get("roles"), n_inputs)
-            return [cls(entries=VARIADIC_LIB_ENTRIES[t](len(cols)), inputs=cols)]
-        if t in FIXED_LIB_ENTRIES:
-            entries = FIXED_LIB_ENTRIES[t]
-            argnames = [s.name for s in entries[0].args]
-            if "g" not in argnames:
-                return [cls(entries=entries, inputs=roles.bind(argnames, None))]
-            ords = spec.get("gates", range(len(roles.g)))
-            return [
-                cls(entries=entries, inputs=roles.bind(argnames, roles.g[k]))
-                for k in ords
-            ]
-        known = sorted([*FIXED_LIB_ENTRIES, *VARIADIC_LIB_ENTRIES])
-        raise ValueError(f"未知 library type: {t!r}。対応 type: {known}")
+        if (t := spec["type"]) not in LIB_ENTRIES:
+            raise ValueError(
+                f"未知 library type: {t!r}。対応 type: {sorted(LIB_ENTRIES)}"
+            )
+        latents = spec.get("latents", range(len(roles.g)))
+        subs: list[SubLibrary] = []
+        for argnames, group in _group_by_argnames(LIB_ENTRIES[t]).items():
+            if "u" in argnames and roles.u is None:
+                continue
+            if "g" in argnames:
+                subs += [
+                    cls(entries=group, inputs=roles.bind(argnames, roles.g[k]))
+                    for k in latents
+                ]
+            else:
+                subs.append(cls(entries=group, inputs=roles.bind(argnames, None)))
+        return subs
 
     def to_ps_library(self) -> ps.CustomLibrary:
         return ps.CustomLibrary(
@@ -127,14 +147,8 @@ class FeatureLibrary:
         return base_cost
 
     @staticmethod
-    def build(
-        library_specs: list[dict], roles: "Roles", n_inputs: int
-    ) -> "FeatureLibrary":
-        subs = [
-            sub
-            for spec in library_specs
-            for sub in SubLibrary.expand(spec, roles, n_inputs)
-        ]
+    def build(library_specs: list[dict], roles: "Roles") -> "FeatureLibrary":
+        subs = [sub for spec in library_specs for sub in SubLibrary.expand(spec, roles)]
         return FeatureLibrary(
             sub_libraries=subs,
             library=ps.GeneralizedLibrary(
