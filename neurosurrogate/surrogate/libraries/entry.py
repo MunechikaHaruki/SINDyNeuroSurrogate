@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import pysindy as ps
 import sympy as sp
@@ -7,6 +8,9 @@ from sympy.core.function import AppliedUndef
 
 from ...compartments.hh import HH_RATE_COST_MAP
 from ...core.opcost import OpCost
+
+if TYPE_CHECKING:
+    from ..ansatz.roles import Roles
 
 # ---------------------------------------------------------------------------
 # ロジック層。項 = 1つの sympy 式。func(lambdify) / name(subs) / cost(op_cost) /
@@ -67,29 +71,33 @@ class LibraryEntry:
 
 @dataclass(frozen=True)
 class SubLibrary:
-    """1 library_spec 単位。entries + 入力インデックス binding。"""
+    """1 library_spec を解決した 1 束。entries + 入力列 binding。"""
 
     entries: list[LibraryEntry]
     inputs: list[int]
 
     @classmethod
-    def from_spec(cls, spec: dict) -> "SubLibrary":
-        """1 library_spec (type + inputs) を解決。fixed は arity 照合、variadic は
-        入力数から entries 生成。未知 type はエラー。"""
+    def expand(cls, spec: dict, roles: "Roles", n_inputs: int) -> list["SubLibrary"]:
+        """1 library_spec を役割 (roles) で列に束縛して解決。手書き index は不要:
+        項の args シンボル名 (V / g) が列を決める。g を持つ項は選択 gate 上に展開
+        (spec["gates"]=gate 序数リスト、既定=全 gate)。basis は spec["roles"] の
+        役割名で列選択 (既定=全入力)。未知 type はエラー。"""
         from .catalog import FIXED_LIB_ENTRIES, VARIADIC_LIB_ENTRIES
 
         t = spec["type"]
-        inputs = spec["inputs"]
+        if t in VARIADIC_LIB_ENTRIES:
+            cols = roles.basis_cols(spec.get("roles"), n_inputs)
+            return [cls(entries=VARIADIC_LIB_ENTRIES[t](len(cols)), inputs=cols)]
         if t in FIXED_LIB_ENTRIES:
             entries = FIXED_LIB_ENTRIES[t]
-            if len(inputs) != entries[0].arity:
-                raise ValueError(
-                    f"type={t!r} は arity={entries[0].arity} 要求、"
-                    f"inputs={inputs} (arity={len(inputs)})"
-                )
-            return cls(entries=entries, inputs=inputs)
-        if t in VARIADIC_LIB_ENTRIES:
-            return cls(entries=VARIADIC_LIB_ENTRIES[t](len(inputs)), inputs=inputs)
+            argnames = [s.name for s in entries[0].args]
+            if "g" not in argnames:
+                return [cls(entries=entries, inputs=roles.bind(argnames, None))]
+            ords = spec.get("gates", range(len(roles.g)))
+            return [
+                cls(entries=entries, inputs=roles.bind(argnames, roles.g[k]))
+                for k in ords
+            ]
         known = sorted([*FIXED_LIB_ENTRIES, *VARIADIC_LIB_ENTRIES])
         raise ValueError(f"未知 library type: {t!r}。対応 type: {known}")
 
@@ -119,8 +127,14 @@ class FeatureLibrary:
         return base_cost
 
     @staticmethod
-    def build(library_specs: list[dict]) -> "FeatureLibrary":
-        subs = [SubLibrary.from_spec(s) for s in library_specs]
+    def build(
+        library_specs: list[dict], roles: "Roles", n_inputs: int
+    ) -> "FeatureLibrary":
+        subs = [
+            sub
+            for spec in library_specs
+            for sub in SubLibrary.expand(spec, roles, n_inputs)
+        ]
         return FeatureLibrary(
             sub_libraries=subs,
             library=ps.GeneralizedLibrary(

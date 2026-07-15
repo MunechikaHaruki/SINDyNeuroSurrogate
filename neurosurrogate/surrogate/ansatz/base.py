@@ -53,12 +53,15 @@ class NeuroSurrogateBase(ABC):
     _sindy_bundle: SINDyBundle
     _preprocessor_bundle: PreprocessorBundle
 
-    def __init__(self, datasets: dict, train_comp_identifier: str):
+    def __init__(self, datasets: dict, train_comp_identifier: str, n_components: int):
         self._meta = SurrogateMeta.build(
             surrogate_type=self.SURROGATE_TYPE,
             datasets=datasets,
             train_comp_identifier=train_comp_identifier,
         )
+        # 潜在方程式の次元 = ansatz の方程式構造を決める第一義。preprocessor は
+        # この次元の一消費者にすぎず、fit で spec に注入する (単一源)。
+        self._n_components = n_components
         self._train_xr = self._meta.simulate()
 
     @classmethod

@@ -1,5 +1,6 @@
 type: hybrid
 init:
+  n_components: 3
   datasets:
     model_name: hh
     current:
@@ -8,16 +9,7 @@ init:
 fit:
   preprocessor:
     type: pca
-    n_components: 3
   library_specs:
-    # SINDy 入力順: 0=latent1, 1=latent2, 2=latent3, 3=V
     - type: hh_gate            # α(V), β(V) 6個
-      inputs: [3]
-    - type: hh_gate_product    # α(V)·latent1
-      inputs: [3, 0]
-    - type: hh_gate_product    # α(V)·latent2
-      inputs: [3, 1]
-    - type: hh_gate_product    # α(V)·latent3
-      inputs: [3, 2]
-    - type: basis              # latent1, latent2, latent3, V, 1
-      inputs: [0, 1, 2, 3]
+    - type: hh_gate_product    # α(V)·latent_k を全 latent に自動展開
+    - type: basis              # latent1..3, V, 1 (全入力)

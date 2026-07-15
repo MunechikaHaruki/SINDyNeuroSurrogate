@@ -7,14 +7,10 @@ init:
 fit:
   preprocessor:
     type: pca
-    n_components: 1
   library_specs:
     - type: gate_poly_volt
-      inputs: [0, 1]
     - type: basis
-      inputs: [0, 2]
+      roles: [V, u]
     # --- dg0/dt 用 (relaxation形式) ---
     - type: hh_relaxation_driver
-      inputs: [0]
     - type: hh_relaxation_decay
-      inputs: [0, 1]

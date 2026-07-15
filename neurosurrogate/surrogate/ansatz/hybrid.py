@@ -11,6 +11,7 @@ from ...core.opcost import OpCost
 from ..bundle import PreprocessorBundle, SINDyBundle
 from ..replace import resolved_params
 from .base import NeuroSurrogateBase
+from .roles import Roles
 
 
 @dataclass(frozen=True)
@@ -72,19 +73,21 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         gate_data = access.gate_matrix(self._train_xr, self._meta.train_comp_id)
-        preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, gate_data)
+        preprocessor_bundle = PreprocessorBundle.from_spec(
+            {**preprocessor, "n_components": self._n_components}, gate_data
+        )
         latent = preprocessor_bundle.preprocessor.transform(gate_data)
-        v = access.potential(self._train_xr, self._meta.train_comp_id)
-        latent_names = [f"latent{i + 1}" for i in range(latent.shape[1])]
         self._set_bundles(
             sindy_bundle=SINDyBundle.from_sindy(
                 library_specs=library_specs,
                 optimizer_spec=optimizer,
                 x=latent,
-                u=v,
+                u=access.potential(self._train_xr, self._meta.train_comp_id),
                 t=access.time(self._train_xr),
-                target_names=latent_names,
+                target_names=[f"latent{i + 1}" for i in range(self._n_components)],
                 input_names=["V"],
+                # 列構造: [latent1..N, V]。gate 群が先頭、末尾に V。u は入力に無し。
+                roles=Roles(V=self._n_components, g=list(range(self._n_components))),
             ),
             preprocessor_bundle=preprocessor_bundle,
         )

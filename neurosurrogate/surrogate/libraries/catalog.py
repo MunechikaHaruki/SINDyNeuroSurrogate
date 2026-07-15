@@ -28,7 +28,6 @@ _RATE_IMPL: dict[str, Callable] = {
 _RATE_S: dict[str, sp.Function] = {nm: sp.Function(nm) for nm in _RATE_IMPL}
 
 V, G = sp.symbols("V g")  # 電位 / ゲート (product・relaxation・gate_poly 用)
-M, H, N = sp.symbols("m h n")  # volt 項の 3 ゲート
 
 
 def _entry(expr: sp.Expr, *args: sp.Symbol) -> LibraryEntry:
@@ -61,7 +60,6 @@ FIXED_LIB_ENTRIES: dict[str, list[LibraryEntry]] = {
     "hh_relaxation_decay": [
         _entry((_RATE_S[a](V) + _RATE_S[b](V)) * G, V, G) for a, b in _RELAX_PAIRS
     ],
-    "volt": [_entry(e, M, H, N) for e in (M**3 * H * N, M**3 * H, M**4 * H, M**4)],
     "gate_poly_volt": [
         _entry(expr, V, G) for p in range(1, 5) for expr in (G**p, G**p * V)
     ],

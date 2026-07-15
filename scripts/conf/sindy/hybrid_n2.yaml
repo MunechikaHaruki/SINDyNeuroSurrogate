@@ -1,5 +1,6 @@
 type: hybrid
 init:
+  n_components: 2
   datasets:
     model_name: hh
     current:
@@ -8,14 +9,7 @@ init:
 fit:
   preprocessor:
     type: ae
-    n_components: 2
   library_specs:
-    # SINDy 入力順: 0=latent1, 1=latent2, 2=V
     - type: hh_gate            # α(V), β(V) 6個
-      inputs: [2]
-    - type: hh_gate_product    # α(V)·latent1
-      inputs: [2, 0]
-    - type: hh_gate_product    # α(V)·latent2
-      inputs: [2, 1]
-    - type: basis              # latent1, latent2, V, 1
-      inputs: [0, 1, 2]
+    - type: hh_gate_product    # α(V)·latent_k を全 latent に自動展開
+    - type: basis              # latent1..2, V, 1 (全入力)

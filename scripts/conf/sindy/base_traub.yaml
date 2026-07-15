@@ -7,13 +7,7 @@ init:
 fit:
   preprocessor:
     type: pca
-    n_components: 1
   library_specs:
     - type: hh_gate
-      inputs: [0]
     - type: hh_gate_product
-      inputs: [0, 1]
-    - type: volt
-      inputs: [0, 1, 2]
     - type: basis
-      inputs: [0, 1, 2]

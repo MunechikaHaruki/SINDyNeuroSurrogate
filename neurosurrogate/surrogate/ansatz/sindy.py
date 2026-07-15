@@ -7,6 +7,7 @@ from ...core.opcost import OpCost
 from ..bundle import PreprocessorBundle, SINDyBundle
 from ..replace import resolved_params
 from .base import NeuroSurrogateBase
+from .roles import Roles
 
 
 class SINDyNeuroSurrogate(NeuroSurrogateBase):
@@ -14,13 +15,14 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
         train_gate = access.gate_matrix(self._train_xr, self._meta.train_comp_id)
-        preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, train_gate)
+        preprocessor_bundle = PreprocessorBundle.from_spec(
+            {**preprocessor, "n_components": self._n_components}, train_gate
+        )
         preprocessed_xr = transform_gate(
             preprocessor_bundle.preprocessor,
             self._train_xr,
             comp_id=self._meta.train_comp_id,
         )
-        target_names = preprocessed_xr.variable.values.tolist()
         self._set_bundles(
             sindy_bundle=SINDyBundle.from_sindy(
                 library_specs=library_specs,
@@ -28,8 +30,14 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
                 x=access.comp_matrix(preprocessed_xr, self._meta.train_comp_id),
                 u=access.i_ext_values(preprocessed_xr),
                 t=access.time(self._train_xr),
-                target_names=target_names,
+                target_names=preprocessed_xr.variable.values.tolist(),
                 input_names=["u"],
+                # 列構造: [V, latent1..N, u]。V=0, gate 群, 末尾に外部電流。
+                roles=Roles(
+                    V=0,
+                    g=list(range(1, 1 + self._n_components)),
+                    u=1 + self._n_components,
+                ),
             ),
             preprocessor_bundle=preprocessor_bundle,
         )

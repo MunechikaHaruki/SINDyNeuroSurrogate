@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
 import jax.numpy as jnp
@@ -11,6 +12,9 @@ from .autoencoder import AutoEncoderPreprocessor, decoder
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from .ansatz.roles import Roles
+    from .libraries.entry import FeatureLibrary
 
 PREPROCESSOR_CLS: dict[str, type] = {
     "pca": PCA,
@@ -146,6 +150,24 @@ class SINDyBundle:
     input_names: list[str]
     equations: str
     library_specs: list[dict]
+    roles: "Roles"
+
+    @cached_property
+    def feature_library(self) -> "FeatureLibrary":
+        """役割束縛済み FeatureLibrary (compute_theta/opcost 共用)。lambdify 関数は
+        pickle 不能 → field でなく cache 化し、__getstate__ で保存対象から除外する。"""
+        from .libraries.entry import FeatureLibrary
+
+        return FeatureLibrary.build(
+            self.library_specs,
+            self.roles,
+            len(self.target_names) + len(self.input_names),
+        )
+
+    def __getstate__(self) -> dict:
+        # feature_library の cache (pickle 不能な lambdify 関数) を落として保存。
+        # load 後は library_specs+roles から lazy 再構築される。
+        return {k: v for k, v in self.__dict__.items() if k != "feature_library"}
 
     @classmethod
     def from_sindy(
@@ -157,31 +179,33 @@ class SINDyBundle:
         t: np.ndarray,
         target_names: list[str],
         input_names: list[str],
+        roles: "Roles",
     ) -> "SINDyBundle":
-        from .libraries.entry import FeatureLibrary
-
+        bundle = cls(
+            xi=np.empty(0),
+            feature_names=[],
+            target_names=target_names,
+            input_names=input_names,
+            equations="",
+            library_specs=library_specs,
+            roles=roles,
+        )
         sindy = ps.SINDy(
-            feature_library=FeatureLibrary.build(library_specs).library,
+            feature_library=bundle.feature_library.library,
             optimizer=_instantiate(optimizer_spec, OPTIMIZER_CLS),
         )
         sindy.fit(x, u=u, t=t, feature_names=target_names + input_names)
-        return cls(
-            xi=sindy.coefficients(),
-            feature_names=sindy.get_feature_names(),
-            target_names=target_names,
-            input_names=input_names,
-            equations="\n".join(sindy.equations(precision=3)),
-            library_specs=library_specs,
-        )
+        bundle.xi = sindy.coefficients()
+        bundle.feature_names = sindy.get_feature_names()
+        bundle.equations = "\n".join(sindy.equations(precision=3))
+        return bundle
 
     def xi_metrics(self) -> dict[str, float]:
         nnz = int((self.xi != 0).sum())
         return {"nnz": nnz, "nnz_ratio": nnz / self.xi.size}
 
     def compute_theta(self) -> "Callable":
-        from .libraries.entry import FeatureLibrary
-
-        subs = FeatureLibrary.build(self.library_specs).sub_libraries
+        subs = self.feature_library.sub_libraries
 
         def compute_theta(*inputs):
             values = []
@@ -194,9 +218,7 @@ class SINDyBundle:
         return compute_theta
 
     def opcost(self) -> OpCost:
-        from .libraries.entry import FeatureLibrary
-
-        cost_map = FeatureLibrary.build(self.library_specs).to_base_cost(
+        cost_map = self.feature_library.to_base_cost(
             self.target_names + self.input_names
         )
         active_mask = np.any(self.xi != 0, axis=0)
