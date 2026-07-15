@@ -6,14 +6,14 @@ from ...core.opcost import OpCost
 from ..bundle import PreprocessorBundle, SINDyBundle
 from ..replace import resolved_params
 from .base import NeuroSurrogateBase
-from .common import get_gate_numpy, transform_gate
+from .common import transform_gate
 
 
 class SINDyNeuroSurrogate(NeuroSurrogateBase):
     SURROGATE_TYPE = "sindy"
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
-        train_gate = get_gate_numpy(self._train_xr, self._meta.train_comp_id)
+        train_gate = access.gate_matrix(self._train_xr, self._meta.train_comp_id)
         preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, train_gate)
         preprocessed_xr = transform_gate(
             preprocessor_bundle.preprocessor,

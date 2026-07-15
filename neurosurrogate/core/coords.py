@@ -74,6 +74,27 @@ def set_coords(raw, u, coords, dt) -> xr.Dataset:
     )
 
 
+def set_latent_coords(
+    v: np.ndarray, latent: np.ndarray, u: np.ndarray, comp_id: int, dt: float
+) -> xr.Dataset:
+    """単一 comp の [V, latent1..N] を preprocessed Dataset に組立 (surrogate用)。"""
+    n_latent = latent.shape[1]
+    acc = StateAccumulator()
+    acc.add(comp_id, ["V"], [False], [0.0])
+    acc.add(
+        comp_id,
+        [f"latent{i + 1}" for i in range(n_latent)],
+        [True] * n_latent,
+        [0.0] * n_latent,
+    )
+    return set_coords(
+        raw=np.concatenate((v.reshape(-1, 1), latent), axis=1),
+        u=u,
+        coords=acc.to_coords(),
+        dt=dt,
+    )
+
+
 def set_i_internal(dataset, C_matrix, stim_idx, u, stim_area_scale: float = 1.0):
     N = C_matrix.shape[0]
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)

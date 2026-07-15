@@ -24,6 +24,10 @@ def time(ds: xr.Dataset) -> np.ndarray:
     return ds["time"].values
 
 
+def dt(ds: xr.Dataset) -> float:
+    return float(ds["time"][1] - ds["time"][0])
+
+
 def comp_ids(ds: xr.Dataset) -> np.ndarray:
     return np.unique(ds.coords["comp_id"].values)
 
