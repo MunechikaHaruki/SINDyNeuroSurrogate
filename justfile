@@ -54,8 +54,9 @@ radon:
 # PROJECT RULES                                                                 #
 #################################################################################
 
-# Smoke test: Hydra entry + marimo notebook (headless, cell error -> exit 1)
+# Smoke test: pytest (ドメイン層) + Hydra entry + marimo notebook (cell error -> exit 1)
 test:
+    {{ VIRTUAL_ENV }} pytest -q
     {{ VIRTUAL_ENV }} python scripts/main.py
     {{ VIRTUAL_ENV }} marimo export html scripts/marimo.py -o /dev/null -f
 

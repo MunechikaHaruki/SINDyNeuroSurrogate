@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 一時変数は同じ値を何度も使うような場合にのみ許可
   - NG: `x = obj.attr; f(x)`
   - OK: `f(obj.attr)`
-- 実装が終わったら、just test でエラーが出ないことを確認
+- 実装が終わったら、just test でエラーが出ないことを確認,tests/ 以下のテストは自由に追加して良い
 - Hooksで実行されるjust lint、just formatのエラーは都度対処すること
 - surrogate/ 以下は _がプレフィックスで一括実行から除外、__がプレフィックスでgit除外
 
@@ -18,9 +18,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 uv sync                                                           # 初期セットアップ（依存導入）
-uv run scripts/main.py                                            # 実行（変更後は必ず確認。テストスイート無し→これが唯一の smoke check）
+uv run scripts/main.py                                            # 実行 (fit+MLflow log のみ。kernel は回さない)
 uv run scripts/main.py surrogate=hh_relaxation                    # Hydraプリセット切替 (base/base_traub/hh_informed/hh_relaxation/hybrid/hybrid_n2)
 uv run scripts/main.py --multirun surrogate.fit.optimizer.alpha=0.01,0.1  # スイープ
+just test                  # pytest (tests/、Hydraプリセット読込→fit→置換シミュ→指標/描画) + main.py + marimo export
 just format && just lint   # ruff fix+format / ruff+mypy (strict、scripts/ 除外)
 just mlflow                # MLflow UI (port 5100、backend: mlflow.db)
 just marimo                # marimo notebook (port 2700)

@@ -46,6 +46,9 @@ dev = [
     "pandas-stubs>=3.0.3.260530",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.mypy]
 strict = false
 warn_return_any = true
