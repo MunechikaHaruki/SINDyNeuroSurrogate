@@ -22,7 +22,9 @@ def _make_run_name() -> str:
     hc = HydraConfig.get()
     yaml_name = hc.runtime.choices["surrogate"]
     extra = [
-        o.rsplit(".", 1)[-1] for o in hc.overrides.task if not o.startswith("surrogate=")
+        o.rsplit(".", 1)[-1]
+        for o in hc.overrides.task
+        if not o.startswith("surrogate=")
     ]
     return " ".join([yaml_name, *extra])
 
