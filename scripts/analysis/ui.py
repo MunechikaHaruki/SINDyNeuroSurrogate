@@ -33,7 +33,7 @@ MCNameList = list(MCMODELS.keys())
 setup_mlflow()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RESULT_DIR = REPO_ROOT / "docs" / "slide" / "result"
+RESULT_DIR = REPO_ROOT / "scripts" / "conf" / "surrogate" / "result"
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ class SaveEntry:
 
 def _entry(name: str, obj: SaveItem, prefix: str) -> SaveEntry:
     ext = ".csv" if isinstance(obj, pd.DataFrame) else ".png"
-    return SaveEntry(name, obj, f"_{prefix}_{name}{ext}")
+    return SaveEntry(name, obj, f"{prefix}_{name}{ext}")
 
 
 def _fmt_current(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:

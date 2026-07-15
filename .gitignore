@@ -12,6 +12,7 @@ mlflow.db
 **/hydra-outputs/**/
 
 scripts/conf/surrogate/__*
+scripts/conf/surrogate/result/
 
 docs/slide/result/_*
 docs/slide/main.pdf

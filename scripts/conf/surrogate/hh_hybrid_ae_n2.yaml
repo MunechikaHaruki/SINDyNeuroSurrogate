@@ -15,3 +15,5 @@ fit:
     - type: hh_gate_forward_product   # α(V)·latent_k を全 latent に自動展開
     - type: hh_gate_backward_product  # β(V)·latent_k を全 latent に自動展開
     - type: basis                     # latent1..2, V, 1 (全入力)
+
+#うまくスパイクをこれまでのどのモデルよりも精度良く再現できている

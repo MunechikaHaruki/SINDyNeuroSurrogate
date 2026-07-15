@@ -15,3 +15,5 @@ fit:
     - type: hh_gate_forward_product   # α(V)·latent_1
     - type: hh_gate_backward_product  # β(V)·latent_1
     - type: basis                     # latent1, V, 1 (全入力)
+
+# スパイク応答が確認できず

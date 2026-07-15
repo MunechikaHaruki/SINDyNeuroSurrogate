@@ -22,6 +22,6 @@ hydra:
     dir: hydra-outputs/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
     dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
-  sweeper:
-    params:
-      surrogate.fit.optimizer.alpha: 0.01, 0.05, 0.1, 0.5, 1.0
+  # sweeper:
+  #   params:
+  #     surrogate.fit.optimizer.alpha: 0.01, 0.05, 0.1, 0.5, 1.0
