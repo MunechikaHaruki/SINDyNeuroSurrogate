@@ -8,7 +8,10 @@ import sympy as sp
 from sympy.core.function import AppliedUndef
 
 from ...compartments.hh import HH_RATE_COST_MAP
+from ...compartments.traub import TRAUB_RATE_COST_MAP
 from ...core.opcost import OpCost
+
+_RATE_COST_MAP = HH_RATE_COST_MAP | TRAUB_RATE_COST_MAP
 
 if TYPE_CHECKING:
     from ..ansatz.roles import Roles
@@ -26,12 +29,12 @@ def op_cost(e: sp.Expr) -> OpCost:
 
 def _node_cost(e: sp.Expr) -> OpCost:
     """子を除いた自ノード単独の演算コスト。冪→mul(p-1)、積→mul(項数-1)、
-    和→pm(項数-1)、未定義レート関数→HH_RATE_COST_MAP、葉(記号/数)→0。"""
+    和→pm(項数-1)、未定義レート関数→_RATE_COST_MAP、葉(記号/数)→0。"""
     match e:
         case _ if e.is_Symbol or e.is_Number:
             return OpCost()
         case AppliedUndef():
-            return HH_RATE_COST_MAP[e.func.__name__]
+            return _RATE_COST_MAP[e.func.__name__]
         case sp.Pow() if e.exp.is_Integer and int(e.exp) >= 1:
             return OpCost(mul=int(e.exp) - 1)
         case sp.Pow():

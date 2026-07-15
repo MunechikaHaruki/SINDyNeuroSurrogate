@@ -10,6 +10,8 @@ fit:
   preprocessor:
     type: ae
   library_specs:
-    - type: hh_gate            # α(V), β(V) 6個
-    - type: hh_gate_product    # α(V)·latent_k を全 latent に自動展開
-    - type: basis              # latent1..2, V, 1 (全入力)
+    - type: hh_gate_forward           # α(V) 3個
+    - type: hh_gate_backward          # β(V) 3個
+    - type: hh_gate_forward_product   # α(V)·latent_k を全 latent に自動展開
+    - type: hh_gate_backward_product  # β(V)·latent_k を全 latent に自動展開
+    - type: basis                     # latent1..2, V, 1 (全入力)

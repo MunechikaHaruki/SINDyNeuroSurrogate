@@ -8,8 +8,8 @@ fit:
   preprocessor:
     type: pca
   library_specs:
-    - type: gate_poly_volt
+    - type: gate_poly_volt  # latent の高次項・V 積 (1次は basis)
     - type: hh_gate_forward
-    - type: hh_gate_product
+    - type: hh_gate_forward_product
+    - type: hh_gate_backward_product
     - type: basis
-      latents: []   # V, u, 1 のみ (latent の基底は gate_poly_volt が供給)

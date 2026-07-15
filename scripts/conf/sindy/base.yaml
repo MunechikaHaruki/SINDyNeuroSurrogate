@@ -8,6 +8,8 @@ fit:
   preprocessor:
     type: pca
   library_specs:
-    - type: hh_gate
-    - type: hh_gate_product
+    - type: hh_gate_forward
+    - type: hh_gate_backward
+    - type: hh_gate_forward_product
+    - type: hh_gate_backward_product
     - type: basis

@@ -8,9 +8,8 @@ fit:
   preprocessor:
     type: pca
   library_specs:
-    - type: gate_poly_volt
+    - type: gate_poly_volt  # latent の高次項・V 積 (1次は basis)
     - type: basis
-      latents: []   # V, u, 1 のみ (latent の基底は gate_poly_volt が供給)
-    # --- dg0/dt 用 (relaxation形式) ---
-    - type: hh_relaxation_driver
-    - type: hh_relaxation_decay
+    # --- dg0/dt 用 (relaxation形式 dg/dt = α(V) - (α+β)(V)·g) ---
+    - type: hh_gate_forward      # 駆動項 α(V)
+    - type: hh_relaxation_decay  # 減衰項 (α+β)(V)·g

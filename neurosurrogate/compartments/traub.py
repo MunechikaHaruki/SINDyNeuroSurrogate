@@ -201,6 +201,28 @@ def _traub_dstate_v(name, v, x):
     return a(v) * (1.0 - x) - b(v) * x
 
 
+# レート関数の演算コスト。_traub_u の pm=1、lin_exp_form の (exp=1, pm=1, div=1) を
+# 含む。jnp.where の分岐は両枝とも評価されるため両方を積算 (比較自体は無視)。
+TRAUB_RATE_COST_MAP: dict[str, OpCost] = {
+    "traub_alpha_m": OpCost(exp=1, div=2, pm=3, mul=1),
+    "traub_beta_m": OpCost(exp=1, div=2, pm=3, mul=1),
+    "traub_alpha_s": OpCost(exp=1, div=1, pm=3, mul=1),
+    "traub_beta_s": OpCost(exp=1, div=2, pm=3, mul=1),
+    "traub_alpha_n": OpCost(exp=1, div=2, pm=3, mul=1),
+    "traub_beta_n": OpCost(exp=1, div=1, pm=2, mul=1),
+    "traub_alpha_c": OpCost(exp=2, div=4, pm=6, mul=1),
+    "traub_beta_c": OpCost(exp=3, div=5, pm=10, mul=2),  # alpha_c 再計算を含む
+    "traub_alpha_a": OpCost(exp=1, div=2, pm=3, mul=1),
+    "traub_beta_a": OpCost(exp=1, div=2, pm=3, mul=1),
+    "traub_alpha_h": OpCost(exp=1, div=1, pm=2, mul=1),
+    "traub_beta_h": OpCost(exp=1, div=2, pm=3),
+    "traub_alpha_r": OpCost(exp=1, div=2, pm=2),
+    "traub_beta_r": OpCost(exp=1, div=2, pm=3),  # alpha_r 再計算を含む
+    "traub_alpha_b": OpCost(exp=1, div=1, pm=2, mul=1),
+    "traub_beta_b": OpCost(exp=1, div=2, pm=3),
+}
+
+
 # 物理 dV/dt 演算コスト (traub_dv): 7イオン電流 + i_ion 総和 + dv/dt
 TRAUB_DV_COST = (
     OpCost(pm=1, mul=1)  # i_leak
