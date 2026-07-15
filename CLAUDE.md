@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - OK: `f(obj.attr)`
 - 実装が終わったら、just test でエラーが出ないことを確認
 - Hooksで実行されるjust lint、just formatのエラーは都度対処すること
+- surrogate/ 以下は _がプレフィックスで一括実行から除外、__がプレフィックスでgit除外
 
 [以下のセクションは永続メモリとして上書きしても構いません。
 ただし、30行以内程度に納め、本当に必要な情報だけを圧縮して書くこと]

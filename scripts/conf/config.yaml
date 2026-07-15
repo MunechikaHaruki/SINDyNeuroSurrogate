@@ -1,6 +1,6 @@
 defaults:
   - _self_ # inline は default 扱い、preset で上書き可能に
-  - surrogate: base
+  - surrogate: hh_sindy
 
 
 surrogate:

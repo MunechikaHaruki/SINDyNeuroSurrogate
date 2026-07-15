@@ -1,11 +1,9 @@
 # personal settings
 .vscode
-tmp/
 # pkg info
 neurosurrogate.egg-info/
 # cache
 **/__pycache__/**
-**/resources/**
 **/__marimo__/**
 # logged artifacts
 **/mlruns/**
@@ -13,7 +11,8 @@ mlflow.db
 **/hydra-multiruns/**
 **/hydra-outputs/**/
 
-tests/
+scripts/conf/surrogate/__*
+
 docs/slide/result/_*
 docs/slide/main.pdf
 
