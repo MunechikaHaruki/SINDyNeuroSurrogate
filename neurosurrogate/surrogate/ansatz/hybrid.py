@@ -11,7 +11,6 @@ from ...core.opcost import OpCost
 from ..bundle import PreprocessorBundle, SINDyBundle
 from ..replace import resolved_params
 from .base import NeuroSurrogateBase
-from .common import get_gate_numpy
 
 
 @dataclass(frozen=True)
@@ -72,7 +71,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         return HYBRID_PHYSICS[self.meta.train_comp_type.name]
 
     def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
-        gate_data = get_gate_numpy(self._train_xr, self._meta.train_comp_id)
+        gate_data = access.gate_matrix(self._train_xr, self._meta.train_comp_id)
         preprocessor_bundle = PreprocessorBundle.from_spec(preprocessor, gate_data)
         latent = preprocessor_bundle.preprocessor.transform(gate_data)
         v = access.potential(self._train_xr, self._meta.train_comp_id)
