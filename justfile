@@ -54,6 +54,11 @@ radon:
 # PROJECT RULES                                                                 #
 #################################################################################
 
+# Smoke test: Hydra entry + marimo notebook (headless, cell error -> exit 1)
+test:
+    {{ VIRTUAL_ENV }} python scripts/main.py
+    {{ VIRTUAL_ENV }} marimo export html scripts/marimo.py -o /dev/null -f
+
 # activate logging server
 mlflow:
     @lsof -t -i:{{ MLFLOW_PORT }} | xargs kill -9 || true
