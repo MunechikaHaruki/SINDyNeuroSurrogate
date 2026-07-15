@@ -5,10 +5,10 @@ from dataclasses import dataclass
 
 import xarray as xr
 
+from ..core.coords import transform_gate
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
 from ..surrogate.ansatz import NeuroSurrogateBase
-from ..surrogate.ansatz.common import transform_gate
 from ..surrogate.replace import apply_surrogate, replaceable
 from .wave import DynamicMetrics, WaveReport, wave_report
 

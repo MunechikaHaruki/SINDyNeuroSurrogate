@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -92,6 +93,17 @@ def set_latent_coords(
         u=u,
         coords=acc.to_coords(),
         dt=dt,
+    )
+
+
+def transform_gate(preprocessor: Any, ds: xr.Dataset, comp_id: int) -> xr.Dataset:
+    """comp_id のゲートを preprocessor で latent 圧縮した preprocessed Dataset。"""
+    return set_latent_coords(
+        v=access.potential(ds, comp_id),
+        latent=preprocessor.transform(access.gate_matrix(ds, comp_id)),
+        u=access.i_internal_values(ds, comp_id),
+        comp_id=comp_id,
+        dt=access.dt(ds),
     )
 
 

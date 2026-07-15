@@ -1,12 +1,12 @@
 import jax.numpy as jnp
 
 from ...core import access
+from ...core.coords import transform_gate
 from ...core.network import Compartment, CompartmentType
 from ...core.opcost import OpCost
 from ..bundle import PreprocessorBundle, SINDyBundle
 from ..replace import resolved_params
 from .base import NeuroSurrogateBase
-from .common import transform_gate
 
 
 class SINDyNeuroSurrogate(NeuroSurrogateBase):
@@ -18,7 +18,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
         preprocessed_xr = transform_gate(
             preprocessor_bundle.preprocessor,
             self._train_xr,
-            target_comp_id=self._meta.train_comp_id,
+            comp_id=self._meta.train_comp_id,
         )
         target_names = preprocessed_xr.variable.values.tolist()
         self._set_bundles(
