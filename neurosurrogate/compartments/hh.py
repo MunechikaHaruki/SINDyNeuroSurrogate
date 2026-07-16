@@ -7,36 +7,36 @@ from ..core.opcost import OpCost
 from .common import _gate_ode, _inf_ode, lin_exp_form
 
 
-def alpha_m(v):
+def alpha_m__hh(v):
     return lin_exp_form(2.5 - 0.1 * v)
 
 
-def beta_m(v):
+def beta_m__hh(v):
     return 4.0 * jnp.exp(-v / 18.0)
 
 
-def alpha_h(v):
+def alpha_h__hh(v):
     return 0.07 * jnp.exp(-v / 20.0)
 
 
-def beta_h(v):
+def beta_h__hh(v):
     return 1.0 / (jnp.exp(3.0 - 0.1 * v) + 1.0)
 
 
-def alpha_n(v):
+def alpha_n__hh(v):
     return 0.1 * lin_exp_form(1 - 0.1 * v)
 
 
-def beta_n(v):
+def beta_n__hh(v):
     return 0.125 * jnp.exp(-v / 80.0)
 
 
-m_inf = _inf_ode(alpha_m, beta_m)
-h_inf = _inf_ode(alpha_h, beta_h)
-n_inf = _inf_ode(alpha_n, beta_n)
-dmdt = _gate_ode(alpha_m, beta_m)
-dhdt = _gate_ode(alpha_h, beta_h)
-dndt = _gate_ode(alpha_n, beta_n)
+m_inf = _inf_ode(alpha_m__hh, beta_m__hh)
+h_inf = _inf_ode(alpha_h__hh, beta_h__hh)
+n_inf = _inf_ode(alpha_n__hh, beta_n__hh)
+dmdt = _gate_ode(alpha_m__hh, beta_m__hh)
+dhdt = _gate_ode(alpha_h__hh, beta_h__hh)
+dndt = _gate_ode(alpha_n__hh, beta_n__hh)
 
 
 # --- Params クラス (データのみ、NamedTuple) ---
@@ -89,12 +89,12 @@ def calc_passive_channel(p: PassiveParams, u_t, v, state):
 
 
 HH_RATE_COST_MAP: dict[str, OpCost] = {
-    "alpha_m": OpCost(exp=1, div=1, pm=2, mul=2),
-    "beta_m": OpCost(exp=1, div=1, pm=1, mul=1),
-    "alpha_h": OpCost(exp=1, div=1, pm=1, mul=1),
-    "beta_h": OpCost(exp=1, div=1, pm=2, mul=1),
-    "alpha_n": OpCost(exp=1, div=1, pm=2, mul=2),
-    "beta_n": OpCost(exp=1, div=1, pm=1, mul=1),
+    "alpha_m__hh": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_m__hh": OpCost(exp=1, div=1, pm=1, mul=1),
+    "alpha_h__hh": OpCost(exp=1, div=1, pm=1, mul=1),
+    "beta_h__hh": OpCost(exp=1, div=1, pm=2, mul=1),
+    "alpha_n__hh": OpCost(exp=1, div=1, pm=2, mul=2),
+    "beta_n__hh": OpCost(exp=1, div=1, pm=1, mul=1),
 }
 
 

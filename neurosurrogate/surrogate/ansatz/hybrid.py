@@ -2,6 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import jax.numpy as jnp
+import sympy as sp
 
 from ...compartments.hh import HH_DV_COST, HHParams, hh_dv
 from ...compartments.traub import TRAUB_DV_COST, TRAUB_V_INIT, TraubParams, traub_dv
@@ -61,7 +62,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
       dV/dt   = 学習型の物理式 (HYBRID_PHYSICS[train_type].dv)
       gates   = decode(latent)                        (線形/AE decoder)
       d(latent)/dt = f(V, latent) via SINDy
-    SINDy 入力順: (latent_1, ..., V) → library_specs は index 0=latent, 末尾=V。
+    SINDy 入力順: (g1, ..., V) → library_specs は index 0=latent, 末尾=V。
     HH/Traub 両対応 (gate 数・param_cls・dv は学習型から解決)。
     """
 
@@ -84,9 +85,9 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
                 x=latent,
                 u=access.potential(self._train_xr, self._meta.train_comp_id),
                 t=access.time(self._train_xr),
-                target_names=[f"latent{i + 1}" for i in range(self._n_components)],
-                input_names=["V"],
-                # 列構造: [latent1..N, V]。gate 群が先頭、末尾に V。u は入力に無し。
+                targets=[sp.Symbol(v) for v in access.latent_vars(self._n_components)],
+                inputs=[sp.Symbol(access.POTENTIAL_VAR)],
+                # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
                 roles=Roles(V=self._n_components, g=list(range(self._n_components))),
             ),
             preprocessor_bundle=preprocessor_bundle,
@@ -120,7 +121,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             name="hybrid_surr",
             kernel=hybrid_kernel,
             param_cls=phys.param_cls,
-            gate_names=[f"latent{i + 1}" for i in range(n_latent)],
+            gate_names=access.latent_vars(n_latent),
             default_gate_inits=self.preprocessor_bundle.gate_inits,
             v_init=phys.v_init,
             opcost=None,

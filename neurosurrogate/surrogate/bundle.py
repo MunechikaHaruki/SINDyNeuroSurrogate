@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 import jax.numpy as jnp
 import numpy as np
 import pysindy as ps
+import sympy as sp
 from sklearn.decomposition import PCA
 
 from ..core.opcost import OpCost
@@ -171,12 +172,22 @@ class PreprocessorBundle:
 @dataclass
 class SINDyBundle:
     xi: np.ndarray
-    feature_names: list[str]
-    target_names: list[str]
-    input_names: list[str]
-    equations: str
+    targets: list[sp.Symbol]
+    inputs: list[sp.Symbol]
     library_specs: list[dict]
     roles: "Roles"
+
+    @property
+    def columns(self) -> list[sp.Symbol]:
+        """SINDy 入力行列の列シンボル (roles の列 index が指す先)。"""
+        return self.targets + self.inputs
+
+    @property
+    def feature_exprs(self) -> list[sp.Expr]:
+        """xi の列に対応する feature 式 (列順 = compute_theta = pysindy の feature
+        順。from_sindy が pysindy 名との一致を検証済み)。feature の同一性はこの式で
+        表され、コスト (op_cost) も表示 (str/latex) もここから派生する。"""
+        return self.feature_library.bound_exprs(self.columns)
 
     @cached_property
     def feature_library(self) -> "FeatureLibrary":
@@ -199,16 +210,14 @@ class SINDyBundle:
         x: np.ndarray,
         u: np.ndarray,
         t: np.ndarray,
-        target_names: list[str],
-        input_names: list[str],
+        targets: list[sp.Symbol],
+        inputs: list[sp.Symbol],
         roles: "Roles",
     ) -> "SINDyBundle":
         bundle = cls(
             xi=np.empty(0),
-            feature_names=[],
-            target_names=target_names,
-            input_names=input_names,
-            equations="",
+            targets=targets,
+            inputs=inputs,
             library_specs=library_specs,
             roles=roles,
         )
@@ -216,10 +225,14 @@ class SINDyBundle:
             feature_library=bundle.feature_library.library,
             optimizer=_instantiate(optimizer_spec, OPTIMIZER_CLS),
         )
-        sindy.fit(x, u=u, t=t, feature_names=target_names + input_names)
+        sindy.fit(x, u=u, t=t, feature_names=[str(s) for s in bundle.columns])
         bundle.xi = sindy.coefficients()
-        bundle.feature_names = sindy.get_feature_names()
-        bundle.equations = "\n".join(sindy.equations(precision=3))
+        # xi の列は pysindy が並べたもの、feature_exprs は自前展開。両者が同順・同表記
+        # であることが opcost/compute_theta/描画すべての前提 → fit 時に照合する。
+        if (names := sindy.get_feature_names()) != [
+            str(e) for e in bundle.feature_exprs
+        ]:
+            raise ValueError(f"pysindy の feature 順が展開結果と不一致: {names}")
         return bundle
 
     def xi_metrics(self) -> dict[str, float]:
@@ -240,17 +253,17 @@ class SINDyBundle:
         return compute_theta
 
     def opcost(self) -> OpCost:
-        cost_map = self.feature_library.to_base_cost(
-            self.target_names + self.input_names
-        )
-        active_mask = np.any(self.xi != 0, axis=0)
-        active_features = [
-            f for i, f in enumerate(self.feature_names) if active_mask[i]
-        ]
+        """ξ の積和コスト + 生き残った feature 式の評価コスト (式木から直接算出)。"""
+        from .libraries.entry import op_cost
+
         nnz = np.count_nonzero(self.xi).item()
-        cost = OpCost(mul=nnz, pm=max(0, nnz - int(self.xi.shape[0])))
-        for feature in active_features:
-            if feature not in cost_map:
-                raise ValueError(f"Found Unknown base func: '{feature}'")
-            cost = cost + cost_map[feature]
-        return cost
+        return sum(
+            (
+                op_cost(expr)
+                for expr, active in zip(
+                    self.feature_exprs, np.any(self.xi != 0, axis=0), strict=True
+                )
+                if active
+            ),
+            OpCost(mul=nnz, pm=max(0, nnz - int(self.xi.shape[0]))),
+        )

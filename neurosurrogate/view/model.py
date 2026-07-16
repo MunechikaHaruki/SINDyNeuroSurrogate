@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import seaborn as sns
+import sympy as sp
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
@@ -25,6 +26,8 @@ _EDGE_WIDTH = 2.0
 _EDGE_COLOR = "#666666"
 _EDGE_LABEL_FONTSIZE = 25
 _STIM_LINEWIDTH = 3.0
+_COEF_DIGITS = 3  # 方程式表示の係数有効桁
+_T = sp.Symbol("t")
 
 
 def view_neuron_graph(net, surrogate_nodes=None, figsize=(8, 4)) -> Figure:
@@ -95,6 +98,11 @@ def view_neuron_graph(net, surrogate_nodes=None, figsize=(8, 4)) -> Figure:
     return fig
 
 
+def tex(e: sp.Basic) -> str:
+    """sympy 式 → インライン数式 (matplotlib mathtext / marimo の md 共通記法)。"""
+    return f"${sp.latex(e)}$"
+
+
 def view_model(result: SINDyBundle, figsize=(15, 3)):
     xi_matrix = np.asarray(result.xi)
     fig, ax = plt.subplots(figsize=figsize)
@@ -119,20 +127,49 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
         annot=False,
     )
 
-    ax.set_title(f"SINDy Coefficients (SymLog Scale)\n{result.equations[:60]}")
+    ax.set_title("SINDy Coefficients (SymLog Scale)")
 
-    if len(result.target_names) == xi_matrix.shape[0]:
-        ax.set_yticks(np.arange(len(result.target_names)) + 0.5)
-        ax.set_yticklabels(result.target_names, rotation=0)
+    if len(result.targets) == xi_matrix.shape[0]:
+        ax.set_yticks(np.arange(len(result.targets)) + 0.5)
+        ax.set_yticklabels([tex(s) for s in result.targets], rotation=0)
         ax.set_ylabel("Target Variables")
 
-    if len(result.feature_names) == xi_matrix.shape[1]:
-        ax.set_xticks(np.arange(len(result.feature_names)) + 0.5)
-        ax.set_xticklabels(result.feature_names, rotation=45, ha="right", fontsize=8)
+    if len(result.feature_exprs) == xi_matrix.shape[1]:
+        ax.set_xticks(np.arange(xi_matrix.shape[1]) + 0.5)
+        ax.set_xticklabels(
+            [tex(e) for e in result.feature_exprs],
+            rotation=45,
+            ha="right",
+            fontsize=8,
+        )
         ax.set_xlabel("Library Features")
 
     fig.tight_layout()
     return fig
+
+
+def equations_tex(bundle: SINDyBundle) -> str:
+    """学習方程式 d(target)/dt = Σ ξ·θ を組み立てた TeX ブロック (marimo の mo.md
+    へそのまま流す)。係数は可読性のため丸め、0 係数の項は落とす (どちらも表示都合
+    で、xi 本体は触らない)。"""
+    exprs = bundle.feature_exprs
+    eqs = [
+        sp.Eq(
+            sp.Derivative(target, _T),
+            sum(
+                (
+                    sp.Float(c, _COEF_DIGITS) * expr
+                    for c, expr in zip(row, exprs, strict=True)
+                    if c != 0
+                ),
+                sp.S.Zero,
+            ),
+            evaluate=False,
+        )
+        for target, row in zip(bundle.targets, bundle.xi, strict=True)
+    ]
+    body = r" \\ ".join(map(sp.latex, eqs))
+    return rf"$$\begin{{aligned}} {body} \end{{aligned}}$$"
 
 
 def model_figures(

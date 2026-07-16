@@ -17,6 +17,12 @@ Trace = tuple[np.ndarray, np.ndarray]  # (time, value)
 POTENTIAL_VAR = "V"
 
 
+def latent_vars(n: int) -> list[str]:
+    """潜在ゲート変数名 g1..gN。preprocessed/surr Dataset の座標名・SINDy の列名・
+    数式や図の表示名はすべてこの規約 1 本を共有する (roles.g の g と同じ意味)。"""
+    return [f"g{i + 1}" for i in range(n)]
+
+
 # --- 座標列挙 ---------------------------------------------------------------
 
 

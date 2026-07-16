@@ -12,8 +12,8 @@ fit:
   library_specs:
     - type: hh_gate_forward           # α(V) 3個
     - type: hh_gate_backward          # β(V) 3個
-    - type: hh_gate_forward_product   # α(V)·latent_1
-    - type: hh_gate_backward_product  # β(V)·latent_1
-    - type: basis                     # latent1, V, 1 (全入力)
+    - type: hh_gate_forward_product   # α(V)·g1
+    - type: hh_gate_backward_product  # β(V)·g1
+    - type: basis                     # g1, V, 1 (全入力)
 
 # スパイク応答が確認できず

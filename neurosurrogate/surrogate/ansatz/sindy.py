@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import sympy as sp
 
 from ...core import access
 from ...core.coords import transform_gate
@@ -30,9 +31,9 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
                 x=access.comp_matrix(preprocessed_xr, self._meta.train_comp_id),
                 u=access.i_ext_values(preprocessed_xr),
                 t=access.time(self._train_xr),
-                target_names=preprocessed_xr.variable.values.tolist(),
-                input_names=["u"],
-                # 列構造: [V, latent1..N, u]。V=0, gate 群, 末尾に外部電流。
+                targets=[sp.Symbol(v) for v in preprocessed_xr.variable.values],
+                inputs=[sp.Symbol("u")],
+                # 列構造: [V, g1..gN, u]。V=0, gate 群, 末尾に外部電流。
                 roles=Roles(
                     V=0,
                     g=list(range(1, 1 + self._n_components)),
@@ -54,7 +55,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
         n_latent = len(self.preprocessor_bundle.gate_inits)
 
         def surr_kernel(params, i_t, v, state):
-            # 列構造 [V, latent1..N, u] の順で束縛。xi の行も同順 (0=V, 1..=latent)。
+            # 列構造 [V, g1..gN, u] の順で束縛。xi の行も同順 (0=V, 1..=latent)。
             theta = compute_theta(v, *(state[i] for i in range(n_latent)), i_t)
             return xi[0] @ theta, xi[1:] @ theta
 
@@ -62,7 +63,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             name="surr",
             kernel=surr_kernel,
             param_cls=None,
-            gate_names=[f"latent{i + 1}" for i in range(n_latent)],
+            gate_names=access.latent_vars(n_latent),
             default_gate_inits=self.preprocessor_bundle.gate_inits,
             v_init=-65,
             opcost=None,

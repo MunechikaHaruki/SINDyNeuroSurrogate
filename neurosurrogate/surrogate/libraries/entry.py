@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -56,10 +56,6 @@ class LibraryEntry:
     func: Callable = field(compare=False)  # lambdify 結果 (jax-ready、束縛時1回)
 
     @property
-    def cost(self) -> OpCost:
-        return op_cost(self.expr)
-
-    @property
     def arity(self) -> int:
         return len(self.args)
 
@@ -69,14 +65,14 @@ class LibraryEntry:
         キーであり、展開規則 (g→latent 複製 / u→u 無し ansatz で脱落) の判定源。"""
         return tuple(s.name for s in self.args)
 
-    def name_func(self, *names: str) -> str:
-        """位置引数名を代入した文字列 (pysindy の function_names / コスト表 共通源)。"""
-        return str(
-            self.expr.subs(dict(zip(self.args, map(sp.Symbol, names), strict=True)))
-        )
+    def bound_expr(self, *cols: sp.Symbol) -> sp.Expr:
+        """位置引数を列シンボルへ束縛した式。この式が feature の同一性そのもので、
+        コストも (op_cost で) ここから出る。文字列化は表示と pysindy 境界のみ。"""
+        return self.expr.subs(dict(zip(self.args, cols, strict=True)))
 
-    def to_cost_entry(self, input_names: list[str]) -> tuple[str, OpCost]:
-        return self.name_func(*input_names), self.cost
+    def name_func(self, *names: str) -> str:
+        """pysindy の function_names コールバック (str で呼ばれ str を返す境界)。"""
+        return str(self.bound_expr(*map(sp.Symbol, names)))
 
 
 def _group_by_argnames(
@@ -130,9 +126,10 @@ class SubLibrary:
             function_names=[e.name_func for e in self.entries],
         )
 
-    def to_cost_dict(self, input_names: list[str]) -> dict[str, OpCost]:
-        bound = [input_names[i] for i in self.inputs]
-        return dict(e.to_cost_entry(bound) for e in self.entries)
+    def bound_exprs(self, columns: list[sp.Symbol]) -> list[sp.Expr]:
+        """この束の項を実際の列シンボルへ束縛した式列 (feature 順)。"""
+        bound = [columns[i] for i in self.inputs]
+        return [e.bound_expr(*bound) for e in self.entries]
 
 
 @dataclass(frozen=True)
@@ -140,14 +137,13 @@ class FeatureLibrary:
     sub_libraries: list[SubLibrary]
     library: ps.GeneralizedLibrary
 
-    def to_base_cost(self, input_names: list[str]) -> dict[str, OpCost]:
-        base_cost: dict[str, OpCost] = {}
-        for sl in self.sub_libraries:
-            new_data = sl.to_cost_dict(input_names)
-            if dup := base_cost.keys() & new_data.keys():
-                raise KeyError(f"library間で feature名 重複: {sorted(dup)}")
-            base_cost |= new_data
-        return base_cost
+    def bound_exprs(self, columns: list[sp.Symbol]) -> list[sp.Expr]:
+        """全 feature の束縛式 (列順 = compute_theta = pysindy の feature 順)。
+        式の重複 = 列の重複 → library type が互いに素という不変条件の破れ。"""
+        exprs = [e for sl in self.sub_libraries for e in sl.bound_exprs(columns)]
+        if dup := [e for e, n in Counter(exprs).items() if n > 1]:
+            raise ValueError(f"library間で feature 重複: {sorted(map(str, dup))}")
+        return exprs
 
     @staticmethod
     def build(library_specs: list[dict], roles: "Roles") -> "FeatureLibrary":

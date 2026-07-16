@@ -17,96 +17,96 @@ def _traub_u(v):
     return v - TRAUB_V_LEAK
 
 
-def traub_alpha_m(v):
+def alpha_m__traub(v):
     return 0.32 * 4.0 * lin_exp_form((13.1 - _traub_u(v)) / 4.0)
 
 
-def traub_beta_m(v):
+def beta_m__traub(v):
     return 0.28 * 5.0 * lin_exp_form((_traub_u(v) - 40.1) / 5.0)
 
 
-def traub_alpha_s(v):
+def alpha_s__traub(v):
     return 1.6 / (1.0 + jnp.exp(-0.072 * (_traub_u(v) - 65.0)))
 
 
-def traub_beta_s(v):
+def beta_s__traub(v):
     return 0.02 * 5.0 * lin_exp_form((_traub_u(v) - 51.1) / 5.0)
 
 
-def traub_alpha_n(v):
+def alpha_n__traub(v):
     return 0.016 * 5.0 * lin_exp_form((35.1 - _traub_u(v)) / 5.0)
 
 
-def traub_beta_n(v):
+def beta_n__traub(v):
     return 0.25 * jnp.exp((20.0 - _traub_u(v)) / 40.0)
 
 
-def traub_alpha_c(v):
+def alpha_c__traub(v):
     u = _traub_u(v)
     low = jnp.exp((u - 10.0) / 11.0 - (u - 6.5) / 27.0) / 18.975
     high = 2.0 * jnp.exp(-(u - 6.5) / 27.0)
     return jnp.where(v <= 50.0 + TRAUB_V_LEAK, low, high)
 
 
-def traub_beta_c(v):
+def beta_c__traub(v):
     u = _traub_u(v)
     return jnp.where(
         v <= 50.0 + TRAUB_V_LEAK,
-        2.0 * jnp.exp(-(u - 6.5) / 27.0) - traub_alpha_c(v),
+        2.0 * jnp.exp(-(u - 6.5) / 27.0) - alpha_c__traub(v),
         0.0,
     )
 
 
-def traub_alpha_a(v):
+def alpha_a__traub(v):
     return 0.02 * 10.0 * lin_exp_form((13.1 - _traub_u(v)) / 10.0)
 
 
-def traub_beta_a(v):
+def beta_a__traub(v):
     return 0.0175 * 10.0 * lin_exp_form((_traub_u(v) - 40.1) / 10.0)
 
 
-def traub_alpha_h(v):
+def alpha_h__traub(v):
     return 0.128 * jnp.exp((17.0 - _traub_u(v)) / 18.0)
 
 
-def traub_beta_h(v):
+def beta_h__traub(v):
     return 4.0 / (1.0 + jnp.exp((40.0 - _traub_u(v)) / 5.0))
 
 
-def traub_alpha_r(v):
+def alpha_r__traub(v):
     u = _traub_u(v)
     return jnp.where(v <= TRAUB_V_LEAK, 0.005, jnp.exp(-u / 20.0) / 200.0)
 
 
-def traub_beta_r(v):
-    return jnp.where(v <= TRAUB_V_LEAK, 0.0, 0.005 - traub_alpha_r(v))
+def beta_r__traub(v):
+    return jnp.where(v <= TRAUB_V_LEAK, 0.0, 0.005 - alpha_r__traub(v))
 
 
-def traub_alpha_b(v):
+def alpha_b__traub(v):
     return 0.0016 * jnp.exp((-13.0 - _traub_u(v)) / 18.0)
 
 
-def traub_beta_b(v):
+def beta_b__traub(v):
     return 0.05 / (1.0 + jnp.exp((10.1 - _traub_u(v)) / 5.0))
 
 
-def traub_alpha_q(xi):
+def alpha_q__traub(xi):
     return jnp.minimum(0.2e-4 * xi, 0.01)
 
 
-def traub_beta_q(xi):
+def beta_q__traub(xi):
     return jnp.full_like(xi, 0.001)
 
 
 _TRAUB_RATE_V = {
-    "M": (traub_alpha_m, traub_beta_m),
-    "S": (traub_alpha_s, traub_beta_s),
-    "N": (traub_alpha_n, traub_beta_n),
-    "C": (traub_alpha_c, traub_beta_c),
-    "A": (traub_alpha_a, traub_beta_a),
-    "H": (traub_alpha_h, traub_beta_h),
-    "R": (traub_alpha_r, traub_beta_r),
-    "B": (traub_alpha_b, traub_beta_b),
+    "M": (alpha_m__traub, beta_m__traub),
+    "S": (alpha_s__traub, beta_s__traub),
+    "N": (alpha_n__traub, beta_n__traub),
+    "C": (alpha_c__traub, beta_c__traub),
+    "A": (alpha_a__traub, beta_a__traub),
+    "H": (alpha_h__traub, beta_h__traub),
+    "R": (alpha_r__traub, beta_r__traub),
+    "B": (alpha_b__traub, beta_b__traub),
 }
 
 
@@ -116,7 +116,7 @@ def _traub_inf_v(name, v):
 
 
 def _traub_inf_q(xi):
-    return traub_alpha_q(xi) / (traub_alpha_q(xi) + traub_beta_q(xi))
+    return alpha_q__traub(xi) / (alpha_q__traub(xi) + beta_q__traub(xi))
 
 
 class TraubParams(NamedTuple):
@@ -168,7 +168,7 @@ def calc_traub_channel(p: TraubParams, u_t, v, states):
     dH = _traub_dstate_v("H", v, H)
     dR = _traub_dstate_v("R", v, R)
     dB = _traub_dstate_v("B", v, B)
-    dQ = traub_alpha_q(XI) * (1.0 - Q) - traub_beta_q(XI) * Q
+    dQ = alpha_q__traub(XI) * (1.0 - Q) - beta_q__traub(XI) * Q
     i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
     dXI = -p.phi_area * i_ca - p.Beta * XI
 
@@ -204,22 +204,22 @@ def _traub_dstate_v(name, v, x):
 # レート関数の演算コスト。_traub_u の pm=1、lin_exp_form の (exp=1, pm=1, div=1) を
 # 含む。jnp.where の分岐は両枝とも評価されるため両方を積算 (比較自体は無視)。
 TRAUB_RATE_COST_MAP: dict[str, OpCost] = {
-    "traub_alpha_m": OpCost(exp=1, div=2, pm=3, mul=1),
-    "traub_beta_m": OpCost(exp=1, div=2, pm=3, mul=1),
-    "traub_alpha_s": OpCost(exp=1, div=1, pm=3, mul=1),
-    "traub_beta_s": OpCost(exp=1, div=2, pm=3, mul=1),
-    "traub_alpha_n": OpCost(exp=1, div=2, pm=3, mul=1),
-    "traub_beta_n": OpCost(exp=1, div=1, pm=2, mul=1),
-    "traub_alpha_c": OpCost(exp=2, div=4, pm=6, mul=1),
-    "traub_beta_c": OpCost(exp=3, div=5, pm=10, mul=2),  # alpha_c 再計算を含む
-    "traub_alpha_a": OpCost(exp=1, div=2, pm=3, mul=1),
-    "traub_beta_a": OpCost(exp=1, div=2, pm=3, mul=1),
-    "traub_alpha_h": OpCost(exp=1, div=1, pm=2, mul=1),
-    "traub_beta_h": OpCost(exp=1, div=2, pm=3),
-    "traub_alpha_r": OpCost(exp=1, div=2, pm=2),
-    "traub_beta_r": OpCost(exp=1, div=2, pm=3),  # alpha_r 再計算を含む
-    "traub_alpha_b": OpCost(exp=1, div=1, pm=2, mul=1),
-    "traub_beta_b": OpCost(exp=1, div=2, pm=3),
+    "alpha_m__traub": OpCost(exp=1, div=2, pm=3, mul=1),
+    "beta_m__traub": OpCost(exp=1, div=2, pm=3, mul=1),
+    "alpha_s__traub": OpCost(exp=1, div=1, pm=3, mul=1),
+    "beta_s__traub": OpCost(exp=1, div=2, pm=3, mul=1),
+    "alpha_n__traub": OpCost(exp=1, div=2, pm=3, mul=1),
+    "beta_n__traub": OpCost(exp=1, div=1, pm=2, mul=1),
+    "alpha_c__traub": OpCost(exp=2, div=4, pm=6, mul=1),
+    "beta_c__traub": OpCost(exp=3, div=5, pm=10, mul=2),  # alpha_c 再計算を含む
+    "alpha_a__traub": OpCost(exp=1, div=2, pm=3, mul=1),
+    "beta_a__traub": OpCost(exp=1, div=2, pm=3, mul=1),
+    "alpha_h__traub": OpCost(exp=1, div=1, pm=2, mul=1),
+    "beta_h__traub": OpCost(exp=1, div=2, pm=3),
+    "alpha_r__traub": OpCost(exp=1, div=2, pm=2),
+    "beta_r__traub": OpCost(exp=1, div=2, pm=3),  # alpha_r 再計算を含む
+    "alpha_b__traub": OpCost(exp=1, div=1, pm=2, mul=1),
+    "beta_b__traub": OpCost(exp=1, div=2, pm=3),
 }
 
 

@@ -43,7 +43,7 @@ def sindy_surrogates() -> dict[int, NeuroSurrogateBase]:
 
 @pytest.mark.parametrize("n_components", [1, 2, 3])
 def test_sindy_replaced_sim_runs_at_any_latent_dim(sindy_surrogates, n_components):
-    """列構造 [V, latent1..N, u] は latent 次元によらず置換シミュまで通る。"""
+    """列構造 [V, g1..gN, u] は latent 次元によらず置換シミュまで通る。"""
     surrogate = sindy_surrogates[n_components]
     assert surrogate.sindy_bundle.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor_bundle.gate_inits) == n_components
@@ -60,6 +60,35 @@ def test_sindy_draws_all_figs(sindy_surrogates):
     from neurosurrogate.view.specs import draw_all
 
     assert [name for name, _ in draw_all(result, 0)] == ["diff", "simple", "attractor"]
+
+
+def test_feature_exprs_align_with_xi_columns(sindy_surrogates):
+    """feature 式列は xi の列と 1:1 (fit が pysindy 名との一致を検証済み)。"""
+    bundle = sindy_surrogates[2].sindy_bundle
+    assert len(bundle.feature_exprs) == bundle.xi.shape[1]
+
+
+def test_duplicate_library_types_are_rejected(sindy_surrogates):
+    """library type は互いに素 → 同 type 2 回で feature 式が重複しエラー。"""
+    bundle = sindy_surrogates[2].sindy_bundle
+    from neurosurrogate.surrogate.libraries.entry import FeatureLibrary
+
+    library = FeatureLibrary.build(
+        bundle.library_specs + bundle.library_specs, bundle.roles
+    )
+    with pytest.raises(ValueError, match="feature 重複"):
+        library.bound_exprs(bundle.columns)
+
+
+def test_equations_render_as_tex(sindy_surrogates):
+    from neurosurrogate.view.model import equations_tex
+
+    bundle = sindy_surrogates[2].sindy_bundle
+    body = equations_tex(bundle)
+    assert body.startswith("$$") and body.endswith("$$")
+    assert body.count(r"\frac{d}{d t}") == len(bundle.targets)  # 1 target = 1 式
+    # レート関数は未定義 Function → sympy が自動でギリシャ文字化 (model は上付き)
+    assert r"\alpha^{hh}_{m}{\left(V \right)}" in body
 
 
 def test_hybrid_opcost_includes_decode():
