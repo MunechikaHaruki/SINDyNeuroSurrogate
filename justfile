@@ -58,7 +58,6 @@ radon:
 test:
     {{ VIRTUAL_ENV }} pytest -q
     {{ VIRTUAL_ENV }} python scripts/main.py
-    {{ VIRTUAL_ENV }} marimo export html scripts/marimo.py -o /dev/null -f
 
 # Run all surrogate presets (conf/surrogate/*.yaml, excluding _-prefixed)
 runall:
@@ -79,10 +78,3 @@ marimo:
 # Claude Code連携用（MCP + watchモード）
 marimo-mcp:
     {{ VIRTUAL_ENV }} marimo edit --watch --mcp --no-token --port 2701 scripts/marimo.py
-
-unite:
-    gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite \
-      -dDEVICEWIDTHPOINTS=960 -dDEVICEHEIGHTPOINTS=540 \
-      -dFIXEDMEDIA -dPDFFitPage \
-      -sOutputFile=./docs/slide/researchslide.pdf \
-      ./docs/slide/first.pdf ./docs/slide/second.pdf
