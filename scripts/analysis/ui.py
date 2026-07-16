@@ -352,7 +352,7 @@ def make_save_panel(entries: list[SaveEntry]) -> mo.ui.dictionary:
             e.name: mo.ui.dictionary(
                 {
                     "path": mo.ui.text(value=e.path, label=e.name),
-                    "save": mo.ui.run_button(label=f"{e.name} 保存"),
+                    "save": mo.ui.run_button(label="save"),
                 }
             )
             for e in entries

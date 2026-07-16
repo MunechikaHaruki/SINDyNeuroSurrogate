@@ -34,22 +34,6 @@ def _(SWEEP_DEFAULTS, analysis, base_ui, runs_df):
 
 
 @app.cell
-def _(analysis, setting_ui):
-    # single 用 run 選択の surrogate (model_info neurograph + single heatmap で共有)
-    loaded_single = analysis.load_selected(setting_ui["sim"])
-    return (loaded_single,)
-
-
-@app.cell
-def _(analysis, setting_ui):
-    # sweep 用 run 選択の surrogate (評価サマリ + sweep で共有)。sweep 無効時は空。
-    loaded_sweep = (
-        analysis.load_selected(setting_ui["sweep"]) if "sweep" in setting_ui else []
-    )
-    return (loaded_sweep,)
-
-
-@app.cell
 def _(analysis, base_ui):
     draw_ui = analysis.make_draw_ui(base_ui)
     draw_ui  # noqa: B018
@@ -137,6 +121,22 @@ def _(analysis, base_ui, set_res_sweep, setting_ui):
     if _new is not None:
         set_res_sweep(_new)
     return
+
+
+@app.cell
+def _(analysis, setting_ui):
+    # sweep 用 run 選択の surrogate (評価サマリ + sweep で共有)。sweep 無効時は空。
+    loaded_sweep = (
+        analysis.load_selected(setting_ui["sweep"]) if "sweep" in setting_ui else []
+    )
+    return (loaded_sweep,)
+
+
+@app.cell
+def _(analysis, setting_ui):
+    # single 用 run 選択の surrogate (model_info neurograph + single heatmap で共有)
+    loaded_single = analysis.load_selected(setting_ui["sim"])
+    return (loaded_single,)
 
 
 if __name__ == "__main__":
