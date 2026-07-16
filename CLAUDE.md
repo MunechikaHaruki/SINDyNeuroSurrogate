@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 一時変数は同じ値を何度も使うような場合にのみ許可
   - NG: `x = obj.attr; f(x)`
   - OK: `f(obj.attr)`
-- 実装が終わったら、just test でエラーが出ないことを確認,tests/ 以下のテストは自由に追加して良い
+- 大きな改装が終わったら、just test でエラーが出ないことを確認,tests/ 以下のテストは自由に追加して良い ただし、20s以下に抑えること
 - Hooksで実行されるjust lint、just formatのエラーは都度対処すること
 - surrogate/ 以下は _がプレフィックスで一括実行から除外、__がプレフィックスでgit除外
 

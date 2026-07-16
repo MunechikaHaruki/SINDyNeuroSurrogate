@@ -57,7 +57,7 @@ radon:
 # Smoke test: pytest (ドメイン層) + Hydra entry + marimo notebook (cell error -> exit 1)
 test:
     {{ VIRTUAL_ENV }} pytest -q
-    {{ VIRTUAL_ENV }} python scripts/main.py
+    {{ VIRTUAL_ENV }} python scripts/main.py +surrogate.init.datasets.current.params.duration=180
 
 # Run all surrogate presets (conf/surrogate/*.yaml, excluding _-prefixed)
 runall:
