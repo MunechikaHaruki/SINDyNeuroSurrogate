@@ -51,7 +51,7 @@ def make_draw_ui() -> mo.ui.dictionary:
     )
 
 
-def make_sim_ui(current_type: str) -> mo.ui.dictionary:
+def make_sim_ui(current_type: str, run_selector: mo.ui.table) -> mo.ui.dictionary:
     current_params_ui = mo.ui.dictionary(
         {
             name: _make_ui_element(
@@ -64,7 +64,9 @@ def make_sim_ui(current_type: str) -> mo.ui.dictionary:
             ).parameters.items()
         }
     )
-    return mo.ui.dictionary({"current_params": current_params_ui})
+    return mo.ui.dictionary(
+        {"run_selector": run_selector, "current_params": current_params_ui}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +78,9 @@ def calc_eval(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
 ) -> EvalResult:
-    run_ids = cast(pd.DataFrame, setting_ui["run_selector"].value)["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, setting_ui["sim"]["run_selector"].value)[
+        "run_id"
+    ].tolist()
     if len(run_ids) != 1:
         raise ValueError(
             f"single モードでは Run を 1 件だけ選択。現在: {len(run_ids)} 件"

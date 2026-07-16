@@ -35,9 +35,18 @@ def _(SWEEP_DEFAULTS, analysis, base_ui, runs_df):
 
 @app.cell
 def _(analysis, setting_ui):
-    # 選択 run の surrogate を 1 回だけロードし model_info/single/sweep で共有
-    loaded = analysis.load_selected(setting_ui)
-    return (loaded,)
+    # single 用 run 選択の surrogate (model_info neurograph + single heatmap で共有)
+    loaded_single = analysis.load_selected(setting_ui["sim"])
+    return (loaded_single,)
+
+
+@app.cell
+def _(analysis, setting_ui):
+    # sweep 用 run 選択の surrogate (評価サマリ + sweep で共有)。sweep 無効時は空。
+    loaded_sweep = (
+        analysis.load_selected(setting_ui["sweep"]) if "sweep" in setting_ui else []
+    )
+    return (loaded_sweep,)
 
 
 @app.cell
@@ -75,25 +84,25 @@ def _(analysis, save_items, save_panel):
 
 
 @app.cell(column=1)
-def _(analysis, base_ui, loaded):
-    html_model, save_model = analysis.render_model_info(loaded, base_ui)
+def _(analysis, base_ui, loaded_single):
+    html_model, save_model = analysis.render_model_info(loaded_single, base_ui)
     html_model  # noqa: B018
     return (save_model,)
 
 
 @app.cell
-def _(analysis, base_ui, draw_ui, loaded, res_single, setting_ui):
+def _(analysis, base_ui, draw_ui, loaded_single, res_single):
     html_single, save_single = analysis.view_single(
-        loaded, base_ui, setting_ui, res_single, draw_ui
+        loaded_single, base_ui, res_single, draw_ui
     )
     html_single  # noqa: B018
     return (save_single,)
 
 
 @app.cell
-def _(analysis, base_ui, draw_ui, loaded, res_sweep, setting_ui):
+def _(analysis, base_ui, draw_ui, loaded_sweep, res_sweep):
     html_sweep, save_sweep = analysis.view_sweep(
-        loaded, base_ui, setting_ui, res_sweep, draw_ui
+        loaded_sweep, base_ui, res_sweep, draw_ui
     )
     html_sweep  # noqa: B018
     return (save_sweep,)

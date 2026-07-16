@@ -88,26 +88,37 @@ def setup_mpl(matplotlib_style: str):
     plt.style.use(style_dir / f"{matplotlib_style}.mplstyle")
 
 
+def _run_selector(runs: pd.DataFrame, label: str) -> mo.ui.table:
+    return mo.ui.table(
+        runs,
+        label=label,
+        selection="multi",
+        initial_selection=[0] if len(runs) else [],
+    )
+
+
 def make_setting_ui(
     runs_df: pd.DataFrame,
     base_ui: mo.ui.dictionary,
     sweep_defaults: analysis_sweep.SweepDefaults,
 ) -> mo.ui.dictionary:
     current_type = str(base_ui["sim_current_type"].value)
-    # 選択 train_model の run のみを提示 (single=1件必須 / sweep=複数可)。
-    runs = runs_df[runs_df["train_model"] == train_of(base_ui)]
-    # 置換対象は surrogate の学習元 type で自動導出 → targets 選択 UI は不要
+    # 選択 train_model の run のみを提示。run_selector は sim/sweep 各キーへ個別に
+    # 埋め、single (1件必須) と sweep (複数可) で選択状態を分離する。
+    runs = pd.DataFrame(
+        runs_df[runs_df["train_model"] == train_of(base_ui)][
+            ["tags.mlflow.runName", "run_id"]
+        ]
+    )
     d: dict = {
-        "run_selector": mo.ui.table(
-            pd.DataFrame(runs[["tags.mlflow.runName", "run_id"]]),
-            label="Run 選択 (single=1件 / sweep=複数可)",
-            selection="multi",
-            initial_selection=[0] if len(runs) else [],
+        "sim": analysis_single.make_sim_ui(
+            current_type, _run_selector(runs, "single Run (1件)")
         ),
-        "sim": analysis_single.make_sim_ui(current_type),
         "run_sim": mo.ui.run_button(label="single 実行"),
     }
-    sweep = analysis_sweep.make_sweep_ui(current_type, sweep_defaults)
+    sweep = analysis_sweep.make_sweep_ui(
+        current_type, sweep_defaults, _run_selector(runs, "sweep Run (複数可)")
+    )
     if sweep is not None:
         d["sweep"] = sweep
         d["run_sweep"] = mo.ui.run_button(label="sweep 実行")
@@ -142,10 +153,10 @@ def calc_sweep(
 # ---------------------------------------------------------------------------
 
 
-def load_selected(setting_ui: mo.ui.dictionary) -> list[LoadedRun]:
-    """選択 run の surrogate を 1 回だけロードし (id, name, surrogate) 列で共有。
-    neurograph / heatmap / 評価サマリ の 3 描画がこれを消費 (再 DL 回避)。"""
-    selected = cast(pd.DataFrame, setting_ui["run_selector"].value)
+def load_selected(sub_ui: mo.ui.dictionary) -> list[LoadedRun]:
+    """sub_ui (sim or sweep) の run_selector 選択 run の surrogate をロードし
+    (id, name, surrogate) 列で返す。single 用と sweep 用で別々に呼ぶ。"""
+    selected = cast(pd.DataFrame, sub_ui["run_selector"].value)
     return [
         (rid, run_name, load_surrogate_model(rid))
         for rid, run_name in zip(
@@ -192,13 +203,17 @@ def render_model_info(
     base_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
     """model_info は neurograph のみ (heatmap→single / 評価サマリ→sweep へ移管)。"""
-    target = target_of(base_ui)
-    net = MCMODELS[target]
+    net = MCMODELS[target_of(base_ui)]
+    pair = _pair(base_ui)
+    multi = len(loaded) > 1
     figs = [
-        (f"neurograph({run_name})", view_neuron_graph(net, replaced_names(surr, net)))
+        (
+            f"neurograph({pair},{run_name})" if multi else f"neurograph({pair})",
+            view_neuron_graph(net, replaced_names(surr, net)),
+        )
         for _, run_name, surr in loaded
     ]
-    save_items = [_entry(name, fig, target) for name, fig in figs]
+    save_items = [_entry(name, fig) for name, fig in figs]
     bodies = [
         mo.vstack([mo.md(f"##### {name}"), mo.mpl.interactive(fig)])
         for name, fig in figs
@@ -221,39 +236,33 @@ class SaveEntry:
     path: str  # default path (docs/slide/result 相対)
 
 
-def _entry(name: str, obj: SaveItem, prefix: str) -> SaveEntry:
+def _entry(name: str, obj: SaveItem) -> SaveEntry:
+    """name をそのまま既定ファイル名に (拡張子のみ付与)。呼び出し側が pair 等を含む
+    最終的な表示名を組む。"""
     ext = ".csv" if isinstance(obj, pd.DataFrame) else ".png"
-    return SaveEntry(name, obj, f"{prefix}_{name}{ext}")
+    return SaveEntry(name, obj, f"{name}{ext}")
 
 
-def _fmt_current(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
-    ct = base_ui["sim_current_type"].value
-    params = setting_ui["sim"]["current_params"].value or {}
-    tail = "&".join(f"{k}:{v}" for k, v in params.items())
-    return f"{ct}&{tail}" if tail else ct
-
-
-def _fmt_sweep(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
-    ct = base_ui["sim_current_type"].value
-    s = setting_ui["sweep"]
-    return (
-        f"{ct}_sw{s['amp_start'].value:g}-{s['amp_stop'].value:g}"
-        f"n{s['amp_steps'].value}"
-    )
+def _pair(base_ui: mo.ui.dictionary) -> str:
+    """選択ペアのタグ文字列 (例 'hh→hh')。既定保存名に使う。"""
+    train, target = base_ui["model_pair"].value
+    return f"{train}→{target}"
 
 
 def view_single(
     loaded: list[LoadedRun],
     base_ui: mo.ui.dictionary,
-    setting_ui: mo.ui.dictionary,
     res: EvalResult | None,
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
     """先頭に係数 heatmap (選択 run 静的) → 続けて single 波形評価 (res ゲート)。"""
-    target = target_of(base_ui)
-    # heatmap は電流非依存のモデル静的図 → prefix=target (current を含めない)。
+    pair = _pair(base_ui)
+    multi = len(loaded) > 1
     heat = [
-        (f"model({run_name})", view_model(surr.sindy_bundle))
+        (
+            f"model({pair},{run_name})" if multi else f"model({pair})",
+            view_model(surr.sindy_bundle),
+        )
         for _, run_name, surr in loaded
     ]
     blocks: list[mo.Html] = [mo.md("### SINDy 係数")]
@@ -262,37 +271,33 @@ def view_single(
         for name, fig in heat
         for part in (mo.md(f"##### {name}"), mo.mpl.interactive(fig))
     ]
-    entries = [_entry(name, fig, target) for name, fig in heat]
+    entries = [_entry(name, fig) for name, fig in heat]
 
     if res is None:
         blocks.append(mo.md("(single結果なし)"))
         return mo.vstack(blocks), entries
 
     eval_comp = str(draw_ui["eval_comp"].value)
-    run_tag = loaded[0][1] if len(loaded) == 1 else target
-    single_prefix = (
-        f"{run_tag}({target})(eval:{eval_comp})_{_fmt_current(base_ui, setting_ui)}"
-    )
+    tag = f"{pair},{eval_comp}"
     html, figs, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
     blocks += [mo.md("### 波形評価 (single)"), html]
-    entries += [_entry(name, fig, single_prefix) for name, fig in figs]
-    entries.append(_entry("metrics", dfs["metrics"], single_prefix))
-    entries.append(_entry("metrics(scalar)", dfs["metrics(scalar)"], single_prefix))
+    entries += [_entry(f"{name}({tag})", fig) for name, fig in figs]
+    entries.append(_entry(f"metrics({tag})", dfs["metrics"]))
+    entries.append(_entry(f"metrics_scalar({tag})", dfs["metrics(scalar)"]))
     return mo.vstack(blocks), entries
 
 
 def view_sweep(
     loaded: list[LoadedRun],
     base_ui: mo.ui.dictionary,
-    setting_ui: mo.ui.dictionary,
     res: dict | None,
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
     """先頭に評価サマリ表 (選択 run 静的) → 続けて sweep 結果 (res ゲート)。"""
-    target = target_of(base_ui)
+    pair = _pair(base_ui)
     summary = _eval_df(loaded)
     blocks: list[mo.Html] = [mo.md("### 評価サマリ (preprocessor / OpCost)"), summary]
-    entries = [_entry("eval_summary", summary, target)]
+    entries = [_entry(f"eval_summary({pair})", summary)]
 
     if res is None or "sweep" not in draw_ui:
         blocks.append(mo.md("(sweep結果なし)"))
@@ -311,22 +316,22 @@ def view_sweep(
         metric_key=draw_ui["sweep"]["metric"].value,
         ylim=ylim,
     )
-    prefix = f"{target}(eval:{eval_comp})_{_fmt_sweep(base_ui, setting_ui)}"
     blocks += [mo.md("### Sweep"), html]
-    entries.append(_entry("sweep", fig, prefix))
+    entries.append(_entry(f"sweep({pair},{eval_comp})", fig))
     return mo.vstack(blocks), entries
 
 
 def plot_preview(
     base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary
 ) -> tuple[mo.Html, list[SaveEntry]]:
+    current_type = str(base_ui["sim_current_type"].value)
     fig = current_preview_fig(
-        str(base_ui["sim_current_type"].value),
+        current_type,
         float(base_ui["dt"].value),
         setting_ui["sim"]["current_params"].value or {},
     )
     html = mo.vstack([mo.md("### 電流プレビュー"), mo.mpl.interactive(fig)])
-    return html, [_entry("current", fig, _fmt_current(base_ui, setting_ui))]
+    return html, [_entry(f"current({current_type})", fig)]
 
 
 # ---------------------------------------------------------------------------

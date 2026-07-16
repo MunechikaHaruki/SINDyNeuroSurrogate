@@ -29,13 +29,14 @@ _SWEEP_FALLBACK = (-5.0, 20.0, 10)
 
 
 def make_sweep_ui(
-    current_type: str, defaults: SweepDefaults
+    current_type: str, defaults: SweepDefaults, run_selector: mo.ui.table
 ) -> mo.ui.dictionary | None:
     if _sweep_param_of(current_type) is None:
         return None
     start, stop, steps = defaults.get(current_type, _SWEEP_FALLBACK)
     return mo.ui.dictionary(
         {
+            "run_selector": run_selector,
             "amp_start": mo.ui.number(value=start, step=1.0, label="amp_start"),
             "amp_stop": mo.ui.number(value=stop, step=1.0, label="amp_stop"),
             "amp_steps": mo.ui.number(value=steps, step=1, label="steps"),
@@ -75,9 +76,9 @@ def calc_sweep(
     setting_ui: mo.ui.dictionary,
 ) -> dict:
     """UI/mlflow 値を引き出し evaluate_sweep へ委譲。raw sim データを返す。"""
-    run_ids = setting_ui["run_selector"].value["run_id"].tolist()
-    current_type = base_ui["sim_current_type"].value
     sweep_ui = setting_ui["sweep"]
+    run_ids = sweep_ui["run_selector"].value["run_id"].tolist()
+    current_type = base_ui["sim_current_type"].value
     cfg = CurrentSweepConfig(
         current_type=current_type,
         sweep_param=_sweep_param_of(current_type),
