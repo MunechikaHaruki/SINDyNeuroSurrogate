@@ -23,7 +23,7 @@ from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate.ansatz import SINDyNeuroSurrogate
-from neurosurrogate.view.model import equations_tex, model_figures
+from neurosurrogate.view.model import model_figures
 from neurosurrogate.view.utils import current_preview_fig
 
 CurrentList: list = list(CURRENT_MAP.keys())
@@ -187,20 +187,8 @@ def render_model_info(
         for name, fig in figs
     ]
 
-    eqs = [
-        mo.vstack(
-            [
-                mo.md(f"##### equations({run_name})"),
-                mo.md(equations_tex(surrogate.sindy_bundle)),
-            ]
-        )
-        for _, run_name, surrogate in loaded
-    ]
-
     html = mo.vstack(
-        bodies
-        + eqs
-        + [mo.md("### 評価サマリ (preprocessor / OpCost)"), _eval_df(loaded)]
+        bodies + [mo.md("### 評価サマリ (preprocessor / OpCost)"), _eval_df(loaded)]
     )
     return html, save_items
 

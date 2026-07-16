@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -27,6 +29,8 @@ _EDGE_COLOR = "#666666"
 _EDGE_LABEL_FONTSIZE = 25
 _STIM_LINEWIDTH = 3.0
 _COEF_DIGITS = 3  # 方程式表示の係数有効桁
+_EQ_HEAD_TERMS = 3  # 見出しに出す先頭項数 (残りは \cdots)
+_EQ_FONTSIZE = 8
 _T = sp.Symbol("t")
 
 
@@ -98,9 +102,16 @@ def view_neuron_graph(net, surrogate_nodes=None, figsize=(8, 4)) -> Figure:
     return fig
 
 
+def _latex(e: sp.Basic) -> str:
+    """sympy 式 → latex 本体。レート名 alpha_m_hh の下付き "m hh" は sympy が空白で
+    繋ぐが、mathtext は下付き内の空白を詰めて α_mhh と読めなくなる → 表示時のみ
+    model を括弧に整形する (α_{m(hh)})。"""
+    return re.sub(r"_\{(\w+) (\w+)\}", r"_{\1(\2)}", sp.latex(e))
+
+
 def tex(e: sp.Basic) -> str:
     """sympy 式 → インライン数式 (matplotlib mathtext / marimo の md 共通記法)。"""
-    return f"${sp.latex(e)}$"
+    return f"${_latex(e)}$"
 
 
 def view_model(result: SINDyBundle, figsize=(15, 3)):
@@ -127,7 +138,9 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
         annot=False,
     )
 
-    ax.set_title("SINDy Coefficients (SymLog Scale)")
+    # 図題は suptitle に上げ、その下 (heatmap との間) に各 target の式を抜粋表示。
+    fig.suptitle("SINDy Coefficients (SymLog Scale)")
+    ax.set_title("\n".join(equation_texs(result)), fontsize=_EQ_FONTSIZE)
 
     if len(result.targets) == xi_matrix.shape[0]:
         ax.set_yticks(np.arange(len(result.targets)) + 0.5)
@@ -148,28 +161,26 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
     return fig
 
 
-def equations_tex(bundle: SINDyBundle) -> str:
-    """学習方程式 d(target)/dt = Σ ξ·θ を組み立てた TeX ブロック (marimo の mo.md
-    へそのまま流す)。係数は可読性のため丸め、0 係数の項は落とす (どちらも表示都合
-    で、xi 本体は触らない)。"""
+def equation_texs(bundle: SINDyBundle) -> list[str]:
+    """target ごとの d(target)/dt = Σ ξ·θ を先頭数項だけ切り出した数式 (図の見出し
+    用の抜粋。全項は heatmap 本体が示す)。係数の丸めと 0 係数落としは表示都合で、
+    xi 本体は触らない。"""
     exprs = bundle.feature_exprs
-    eqs = [
-        sp.Eq(
+    texs = []
+    for target, row in zip(bundle.targets, bundle.xi, strict=True):
+        terms = [
+            sp.Float(c, _COEF_DIGITS) * expr
+            for c, expr in zip(row, exprs, strict=True)
+            if c != 0
+        ]
+        head = sp.Eq(
             sp.Derivative(target, _T),
-            sum(
-                (
-                    sp.Float(c, _COEF_DIGITS) * expr
-                    for c, expr in zip(row, exprs, strict=True)
-                    if c != 0
-                ),
-                sp.S.Zero,
-            ),
+            sum(terms[:_EQ_HEAD_TERMS], sp.S.Zero),
             evaluate=False,
         )
-        for target, row in zip(bundle.targets, bundle.xi, strict=True)
-    ]
-    body = r" \\ ".join(map(sp.latex, eqs))
-    return rf"$$\begin{{aligned}} {body} \end{{aligned}}$$"
+        tail = r" + \cdots" if len(terms) > _EQ_HEAD_TERMS else ""
+        texs.append(f"${_latex(head)}{tail}$")
+    return texs
 
 
 def model_figures(

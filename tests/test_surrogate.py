@@ -81,14 +81,17 @@ def test_duplicate_library_types_are_rejected(sindy_surrogates):
 
 
 def test_equations_render_as_tex(sindy_surrogates):
-    from neurosurrogate.view.model import equations_tex
+    from neurosurrogate.view.model import equation_texs
 
     bundle = sindy_surrogates[2].sindy_bundle
-    body = equations_tex(bundle)
-    assert body.startswith("$$") and body.endswith("$$")
-    assert body.count(r"\frac{d}{d t}") == len(bundle.targets)  # 1 target = 1 式
-    # レート関数は未定義 Function → sympy が自動でギリシャ文字化 (model は上付き)
-    assert r"\alpha^{hh}_{m}{\left(V \right)}" in body
+    texs = equation_texs(bundle)
+    assert len(texs) == len(bundle.targets)  # 1 target = 1 式
+    assert all(t.startswith("$") and t.endswith("$") for t in texs)
+    # 見出しは抜粋 → 先頭数項のみで残りは \cdots に畳む
+    assert all(r"+ \cdots" in t for t in texs)
+    # レート関数は未定義 Function → sympy が自動でギリシャ文字化。model は下付きへ
+    # 回し、表示時に括弧へ整形 (mathtext が下付き内の空白を詰めるため)
+    assert any(r"\alpha_{m(hh)}{\left(V \right)}" in t for t in texs)
 
 
 def test_hybrid_opcost_includes_decode():
