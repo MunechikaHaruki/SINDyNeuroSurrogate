@@ -30,7 +30,12 @@ _RI = 0.1  # KΩ·cm
 
 NC = 19
 SOMA_IDX = 8
-_STIM_NAME = f"c{SOMA_IDX:02d}"
+_SOMA_NAME = "soma"  # 細胞体は全モデル共通で "soma" と命名 (SOMA_IDX の comp)
+
+
+def _name_at(i: int) -> str:
+    """細胞体 (SOMA_IDX) は "soma"、他は c00..c18。"""
+    return _SOMA_NAME if i == SOMA_IDX else f"c{i:02d}"
 
 
 def _params_at(i: int) -> TraubParams:
@@ -56,11 +61,11 @@ def _g_axial(i: int) -> float:
 
 def build_traub19() -> NeuronGraph:
     nodes = [
-        Compartment(name=f"c{i:02d}", type=TRAUB_TYPE, params=_params_at(i))
+        Compartment(name=_name_at(i), type=TRAUB_TYPE, params=_params_at(i))
         for i in range(NC)
     ]
-    edges = [Edge(f"c{i:02d}", f"c{i + 1:02d}", _g_axial(i)) for i in range(NC - 1)]
+    edges = [Edge(_name_at(i), _name_at(i + 1), _g_axial(i)) for i in range(NC - 1)]
     # 外部電流を密度 [μA/cm^2] → 絶対 [μA] に変換 (kernel 内で /area して密度に戻す)
     return NeuronGraph(
-        nodes=nodes, edges=edges, stim=_STIM_NAME, stim_area_scale=_AREA[SOMA_IDX]
+        nodes=nodes, edges=edges, stim=_SOMA_NAME, stim_area_scale=_AREA[SOMA_IDX]
     )

@@ -14,21 +14,28 @@ def chain(
 ) -> NeuronGraph:
     """type 名リストから直鎖 NeuronGraph 構築。
 
-    ノード名は型の頭文字 + 0始まり連番。
-    例: ["passive","hh","passive"] → ["p0","h0","p1"]
+    ノード名は型の頭文字 + 0始まり連番。ただし最初の非 passive (=細胞体) は "soma"
+    と命名し全モデル共通の soma 規約に揃える (train_comp_identifier 既定と一致)。
+    例: ["passive","hh","passive"] → ["p0","soma","p1"]
     """
     expected = len(node_types) - 1
     assert len(weights) == expected, (
         f"weights の長さは len(node_types) - 1 = {expected} 必要"
     )
+    soma_idx = next(
+        (i for i, t in enumerate(node_types) if t != "passive"),
+        None,
+    )
+    assert soma_idx is not None, "chain に非 passive (soma) ノードが必要"
     counters: Counter = Counter()
     nodes = []
-    for t in node_types:
-        prefix = t[0]
-        nodes.append(
-            Compartment(name=f"{prefix}{counters[prefix]}", type=COMPARTMENT_TYPES[t])
-        )
-        counters[prefix] += 1
+    for i, t in enumerate(node_types):
+        if i == soma_idx:
+            name = "soma"
+        else:
+            name = f"{t[0]}{counters[t[0]]}"
+            counters[t[0]] += 1
+        nodes.append(Compartment(name=name, type=COMPARTMENT_TYPES[t]))
     return NeuronGraph(
         nodes=nodes,
         edges=[
@@ -84,7 +91,7 @@ MCMODELS: dict[str, NeuronGraph] = {
     "hh7": NeuronGraph(
         nodes=[
             Compartment(name="p1", type=PASSIVE_TYPE),
-            Compartment(name="h1", type=HH_TYPE),
+            Compartment(name="soma", type=HH_TYPE),
             Compartment(name="h2", type=HH_TYPE),
             Compartment(name="h3", type=HH_TYPE),
             Compartment(name="h4", type=HH_TYPE),
@@ -92,8 +99,8 @@ MCMODELS: dict[str, NeuronGraph] = {
             Compartment(name="p3", type=PASSIVE_TYPE),
         ],
         edges=[
-            Edge("p1", "h1", 1.0),
-            Edge("h1", "h2", 0.7),
+            Edge("p1", "soma", 1.0),
+            Edge("soma", "h2", 0.7),
             Edge("h2", "h3", 0.7),
             Edge("h2", "h4", 0.5),
             Edge("h3", "p2", 0.5),

@@ -48,7 +48,7 @@ def view_neuron_graph(net, surrogate_nodes=None, figsize=None) -> Figure:
     # BFS 深さを層に割当 → multipartite で層ごとに列。chain は直線、tree は階層列
     # (spring_layout の blob を回避)。根は stim でなく端点 (stim から最遠ノード) に
     # 取る → chain で stim が中央でも層が片方向に伸び 1 ノード/列の直線になる
-    # (traub19: c08 stim でも c00..c18 が一列)。
+    # (traub19: soma stim が中央でも c00..soma..c18 が一列)。
     from_stim = nx.single_source_shortest_path_length(G, net.stim)
     root = max(from_stim, key=lambda n: from_stim[n])
     depth = nx.single_source_shortest_path_length(G, root)

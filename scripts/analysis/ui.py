@@ -168,10 +168,11 @@ def load_selected(sub_ui: mo.ui.dictionary) -> list[LoadedRun]:
 
 
 def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    comp_names = MCMODELS[target_of(base_ui)].names
+    net = MCMODELS[target_of(base_ui)]
     d: dict = {
+        # 既定=soma (全モデルが細胞体を "soma" と命名する共通規約)。
         "eval_comp": mo.ui.dropdown(
-            options=comp_names, value=comp_names[0], label="評価対象comp"
+            options=net.names, value="soma", label="評価対象comp"
         ),
         "single": analysis_single.make_draw_ui(),
     }
