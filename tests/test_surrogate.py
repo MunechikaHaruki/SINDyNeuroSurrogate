@@ -51,7 +51,7 @@ def fit_surrogate(
 @pytest.fixture(scope="module")
 def sindy() -> NeuroSurrogateBase:
     """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。"""
-    return fit_surrogate("hh_full", REPRESENTATIVE_DIM)
+    return fit_surrogate("hh", REPRESENTATIVE_DIM)
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +62,7 @@ def sindy_eval(sindy: NeuroSurrogateBase) -> EvalResult:
 @pytest.mark.parametrize("n_components", LATENT_DIMS)
 def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     """列構造 [V, g1..gN, u] は latent 次元によらず置換シミュまで通る。"""
-    surrogate = fit_surrogate("hh_full", n_components)
+    surrogate = fit_surrogate("hh", n_components)
     assert surrogate.sindy_bundle.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor_bundle.gate_inits) == n_components
 
@@ -109,7 +109,7 @@ def test_equations_render_as_tex(sindy: NeuroSurrogateBase) -> None:
 def test_hybrid_opcost_includes_decode() -> None:
     """hybrid の kernel は毎ステップ decode を呼ぶ → OpCost に計上されている。"""
     surrogate = fit_surrogate(
-        "hh_full",
+        "hh",
         3,
         extra=["surrogate.type=hybrid", "surrogate.fit.preprocessor.type=pca"],
     )
