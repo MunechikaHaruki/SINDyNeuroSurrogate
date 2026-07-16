@@ -19,8 +19,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 uv sync                                                           # 初期セットアップ（依存導入）
 uv run scripts/main.py                                            # 実行 (fit+MLflow log のみ。kernel は回さない)
-uv run scripts/main.py surrogate=hh_relaxation                    # Hydraプリセット切替 (base/base_traub/hh_informed/hh_relaxation/hybrid/hybrid_n2)
-uv run scripts/main.py --multirun surrogate.fit.optimizer.alpha=0.01,0.1  # スイープ
+uv run scripts/main.py surrogate=_hh_informed                     # Hydraプリセット切替 (base=hh_full/traub_full、lib違いは _hh_informed/_hh_relaxation)
+uv run scripts/main.py --multirun                                 # config.yaml の hydra.sweeper.params 直積 sweep (hh/traub × type{sindy,hybrid} × n_components{1,2} × preprocessor{pca,ae} = 16 run)
 just test                  # pytest (tests/、Hydraプリセット読込→fit→置換シミュ→指標/描画) + main.py + marimo export
 just format && just lint   # ruff fix+format / ruff+mypy (strict、scripts/ 除外)
 just mlflow                # MLflow UI (port 5100、backend: mlflow.db)
@@ -41,4 +41,4 @@ just clean-cache / clean-log
 
 **neurosurrogate/{metrics,view}**: `metrics/wave.py`(eFEL スパイク + RMSE/MAE、V 抽出は `core.access` 経由) / `view/{engine,specs,model}.py`(`draw_engine`/`TraceSpec`(t,y numpy 保持で Dataset 非依存)/`PanelSpec`/`error_fig` は engine、`plot_2d_attractor_comparison`+`draw_all(original,surrogate,comp_id,get_preprocessed)` (内部 jobs dict で全描画一括、失敗を error_fig に畳み識別子付き fig 列返却) は specs、`view_neuron_graph`/`view_model`+`model_figures` (識別子付き model 図列) は model、`current_preview_fig`/`sweep_fig` (marimo 非依存の純粋描画。analysis は UI 値引き出しのみ担い委譲) は utils。**view が (id,fig) 列を提供し analysis は保存/表示に流すだけ**。Dataset 掘削は `core.access` 経由)
 
-**scripts/**: `main.py`(Hydra エントリ) / `mlflow_io.py`(MLflow I/O。`log_surrogate_model` は `surrogate.save` + `meta.yaml`(surrogate_type/dataset/train_comp_id) を artifact log、`load_surrogate_model` は `(NeuroSurrogateBase, SurrogateMeta)` tuple 返却) / `analysis/{single,sweep,ui}.py`(marimo 評価、`calc_eval` がサロゲート置換後シミュ結果返却) / `marimo.py` / `conf/`(`config.yaml` に共通 `surrogate.fit.optimizer` + `init.n_components` 既定 (1) 集約 + `surrogate/*.yaml` プリセット。`n_components` は `init` 直下 (preprocessor spec でなく)、library_specs は type+latent序数 `latents` のみ (省略=全latent。V/u/定数は項が固定保有))
+**scripts/**: `main.py`(Hydra エントリ) / `mlflow_io.py`(MLflow I/O。`log_surrogate_model` は `surrogate.save` + `meta.yaml`(surrogate_type/dataset/train_comp_id) を artifact log、`load_surrogate_model` は `(NeuroSurrogateBase, SurrogateMeta)` tuple 返却) / `analysis/{single,sweep,ui}.py`(marimo 評価、`calc_eval` がサロゲート置換後シミュ結果返却) / `marimo.py` / `conf/`(`config.yaml` に共通 `surrogate.fit.optimizer` + `init.n_components` 既定 (1) 集約 + `surrogate/*.yaml` プリセット (base=`hh_full`/`traub_full` は lib=full の素体、type/n_components/preprocessor は `hydra.sweeper.params` 既定の `--multirun` で直積に振る。lib 本質差の `_hh_informed`/`_hh_relaxation` のみ個別)。`n_components` は `init` 直下 (preprocessor spec でなく)、library_specs は type+latent序数 `latents` のみ (省略=全latent。V/u/定数は項が固定保有))

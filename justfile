@@ -59,14 +59,6 @@ test:
     {{ VIRTUAL_ENV }} pytest -q
     {{ VIRTUAL_ENV }} python scripts/main.py +surrogate.init.datasets.current.params.duration=180
 
-# Run all surrogate presets (conf/surrogate/*.yaml, excluding _-prefixed)
-runall:
-    #!/usr/bin/env sh
-    set -eu
-    presets=$(ls scripts/conf/surrogate/*.yaml | xargs -n1 basename | sed 's/\.yaml$//' | grep -v '^_' | paste -sd, -)
-    echo "presets: $presets"
-    {{ VIRTUAL_ENV }} python scripts/main.py --multirun surrogate="$presets"
-
 # activate logging server
 mlflow:
     @lsof -t -i:{{ MLFLOW_PORT }} | xargs kill -9 || true

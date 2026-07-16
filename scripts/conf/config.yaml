@@ -1,6 +1,6 @@
 defaults:
   - _self_ # inline は default 扱い、preset で上書き可能に
-  - surrogate: hh_sindy
+  - surrogate: hh_full
 
 
 surrogate:
@@ -22,6 +22,10 @@ hydra:
     dir: hydra-outputs/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
     dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
-  # sweeper:
-  #   params:
-  #     surrogate.fit.optimizer.alpha: 0.01, 0.05, 0.1, 0.5, 1.0
+  sweeper:
+    # --multirun 既定 = hh/traub × type × n_components × preprocessor の直積 (16 run)
+    # 単発実行では無効 (sweeper は multirun 時のみ効く)
+    params:
+      surrogate.type: sindy,hybrid
+      surrogate.init.n_components: 1,2
+      surrogate.fit.preprocessor.type: pca,ae

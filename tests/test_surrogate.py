@@ -27,7 +27,9 @@ LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, g1..gN, u
 REPRESENTATIVE_DIM = 3  # 式構造/描画テストの代表。latent 複数の方が構造が厳しい
 
 
-def fit_surrogate(preset: str, n_components: int) -> NeuroSurrogateBase:
+def fit_surrogate(
+    preset: str, n_components: int, extra: list[str] | None = None
+) -> NeuroSurrogateBase:
     """Hydra プリセットを短縮電流で fit。テストの唯一の surrogate 生成口。"""
     with initialize_config_dir(config_dir=str(CONF_DIR), version_base=None):
         cfg = compose(
@@ -36,6 +38,7 @@ def fit_surrogate(preset: str, n_components: int) -> NeuroSurrogateBase:
                 f"surrogate={preset}",
                 f"surrogate.init.n_components={n_components}",
                 f"+surrogate.init.datasets.current.params.duration={TRAIN_DURATION}",
+                *(extra or []),
             ],
         )
     c = OmegaConf.to_container(cfg.surrogate, resolve=True)
@@ -48,7 +51,7 @@ def fit_surrogate(preset: str, n_components: int) -> NeuroSurrogateBase:
 @pytest.fixture(scope="module")
 def sindy() -> NeuroSurrogateBase:
     """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。"""
-    return fit_surrogate("hh_sindy", REPRESENTATIVE_DIM)
+    return fit_surrogate("hh_full", REPRESENTATIVE_DIM)
 
 
 @pytest.fixture(scope="module")
@@ -59,7 +62,7 @@ def sindy_eval(sindy: NeuroSurrogateBase) -> EvalResult:
 @pytest.mark.parametrize("n_components", LATENT_DIMS)
 def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     """列構造 [V, g1..gN, u] は latent 次元によらず置換シミュまで通る。"""
-    surrogate = fit_surrogate("hh_sindy", n_components)
+    surrogate = fit_surrogate("hh_full", n_components)
     assert surrogate.sindy_bundle.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor_bundle.gate_inits) == n_components
 
@@ -105,7 +108,11 @@ def test_equations_render_as_tex(sindy: NeuroSurrogateBase) -> None:
 
 def test_hybrid_opcost_includes_decode() -> None:
     """hybrid の kernel は毎ステップ decode を呼ぶ → OpCost に計上されている。"""
-    surrogate = fit_surrogate("_hh_hybrid_pca_n3", 3)
+    surrogate = fit_surrogate(
+        "hh_full",
+        3,
+        extra=["surrogate.type=hybrid", "surrogate.fit.preprocessor.type=pca"],
+    )
     assert isinstance(surrogate, HybridSINDyNeuroSurrogate)  # _physics は hybrid 固有
     decode_cost = surrogate.preprocessor_bundle.opcost()
     # PCA decode: gate ごとに latent 数の積 + 同数の加減 (3 latent x 3 gate)
