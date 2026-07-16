@@ -17,7 +17,7 @@ def _():
         "periodic&sinousoidal": (0, 200.0, 10),  # frequency [Hz]
     }
 
-    TARGET_MODEL = {"hh": ["hh", "phhhp"]}
+    TARGET_MODEL = {"hh": ["hh", "phhhp"], "traub": ["traub19", "traub"]}
 
     runs_df = get_runs_df()
     base_ui = analysis.make_base_ui(runs_df, TARGET_MODEL)
