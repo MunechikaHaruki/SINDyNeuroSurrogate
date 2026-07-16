@@ -29,7 +29,8 @@ def _make_ui_element(name: str, annotation, default):
     if annotation is int:
         return mo.ui.number(value=int(default), step=1, label=name)
     elif annotation is float:
-        return mo.ui.number(value=float(default), step=0.1, label=name)
+        # step 指定なし → 任意精度で入力可 (0.1 刻み制限を外す。例: 1e-4/area=3.012…)
+        return mo.ui.number(value=float(default), label=name)
     elif annotation is bool:
         return mo.ui.checkbox(value=bool(default), label=name)
     elif annotation is list:
