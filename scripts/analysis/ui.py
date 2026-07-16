@@ -310,13 +310,17 @@ def view_sweep(
         if ylim_ui["auto"].value
         else (float(ylim_ui["min"].value), float(ylim_ui["max"].value))
     )
+    trace_html, trace_fig = analysis_sweep.plot_sweep_traces(res, eval_comp)
+    blocks += [mo.md("### Sweep 波形 (列=amp / 行=各run vs orig)"), trace_html]
+    entries.append(_entry(f"sweep_traces({pair},{eval_comp})", trace_fig))
+
     html, fig = analysis_sweep.plot_sweep(
         res,
         eval_comp_name=eval_comp,
         metric_key=draw_ui["sweep"]["metric"].value,
         ylim=ylim,
     )
-    blocks += [mo.md("### Sweep"), html]
+    blocks += [mo.md("### Sweep メトリクス"), html]
     entries.append(_entry(f"sweep({pair},{eval_comp})", fig))
     return mo.vstack(blocks), entries
 

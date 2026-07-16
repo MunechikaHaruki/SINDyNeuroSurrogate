@@ -7,11 +7,13 @@ import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
+from ..core import access
 from ..currents import CURRENT_MAP
+from ..models import MCMODELS
 from .engine import error_fig
 
 if TYPE_CHECKING:
-    from ..metrics.eval_sweep import CurrentSweepConfig
+    from ..metrics.eval_sweep import CurrentSweepConfig, SweepEval
 
 
 def current_preview_fig(current_type: str, dt: float, params: dict) -> Figure:
@@ -61,5 +63,53 @@ def sweep_fig(
     if ylim is not None:
         ax.set_ylim(*ylim)
     ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def sweep_trace_grid_fig(
+    sweep: SweepEval,
+    comp_name: str,
+    run_labels: dict[str, str],
+) -> Figure:
+    """列=掃引 amp の波形格子。行1=I_ext、行2以降=各 run の V 波形 (orig 重畳)。
+    run_labels は rid→表示名 (順序=行順、keys=run_ids)。marimo 非依存。"""
+    comp_id = MCMODELS[sweep.model_name].name_to_idx(comp_name)
+    n_col = len(sweep.amp_datasets)
+    n_row = 1 + len(run_labels)
+    fig, axes = plt.subplots(
+        n_row,
+        n_col,
+        figsize=(2.6 * n_col, 1.5 * n_row),
+        squeeze=False,
+        sharex=True,
+    )
+    for c, (amp, orig_ds, surr_datasets) in enumerate(sweep.amp_datasets):
+        axes[0][c].plot(*access.i_ext(orig_ds), lw=0.8, color="tab:gray")
+        axes[0][c].set_title(f"amp={amp:.3g}")
+        for r, rid in enumerate(run_labels, start=1):
+            ax = axes[r][c]
+            ax.plot(
+                access.time(orig_ds),
+                access.potential(orig_ds, comp_id),
+                "k-",
+                lw=0.7,
+                label="Original",
+            )
+            ax.plot(
+                access.time(surr_datasets[rid]),
+                access.potential(surr_datasets[rid], comp_id),
+                "--",
+                lw=0.7,
+                color="tab:red",
+                label="surrogate",
+            )
+    axes[0][0].set_ylabel("I_ext")
+    for r, label in enumerate(run_labels.values(), start=1):
+        axes[r][0].set_ylabel(label)
+    for c in range(n_col):
+        axes[-1][c].set_xlabel("t [ms]")
+    axes[1][0].legend(loc="upper right", fontsize="x-small")
+    fig.suptitle(f"amp sweep 波形 ({comp_name})")
     fig.tight_layout()
     return fig

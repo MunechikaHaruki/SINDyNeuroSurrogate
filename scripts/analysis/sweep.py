@@ -8,7 +8,7 @@ from mlflow_io import load_surrogate_model
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval_sweep import CurrentSweepConfig, evaluate_sweep
 from neurosurrogate.metrics.wave import DF_ROW_METRICS, SCALAR_METRICS
-from neurosurrogate.view.utils import sweep_fig
+from neurosurrogate.view.utils import sweep_fig, sweep_trace_grid_fig
 
 # ---------------------------------------------------------------------------
 # Sweep UI
@@ -126,3 +126,16 @@ def plot_sweep(
         ylim=ylim,
     )
     return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)]), fig
+
+
+def plot_sweep_traces(
+    sweep_raw: dict,
+    eval_comp_name: str,
+) -> tuple[mo.Html, Figure]:
+    """列=掃引 amp の波形格子 (行1=I_ext / 行2以降=各 run vs orig)。再走なし。"""
+    fig = sweep_trace_grid_fig(
+        sweep_raw["sweep_eval"],
+        eval_comp_name,
+        sweep_raw["run_labels"],
+    )
+    return mo.mpl.interactive(fig), fig
