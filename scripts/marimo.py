@@ -8,6 +8,7 @@ app = marimo.App(width="columns")
 def _():
     import marimo as mo
     from analysis import ui as analysis
+    from mlflow_io import get_runs_df
 
     # current_type → (amp_start, amp_stop, amp_steps)
     # 未登録 current は fallback (-5.0, 20.0, 10)
@@ -18,17 +19,25 @@ def _():
 
     TARGET_MODEL = {"hh": ["hh", "phhhp"]}
 
-    base_ui = analysis.make_base_ui(TARGET_MODEL)
+    runs_df = get_runs_df()
+    base_ui = analysis.make_base_ui(runs_df, TARGET_MODEL)
     base_ui  # noqa: B018
-    return SWEEP_DEFAULTS, analysis, base_ui, mo
+    return SWEEP_DEFAULTS, analysis, base_ui, mo, runs_df
 
 
 @app.cell
-def _(SWEEP_DEFAULTS, analysis, base_ui):
+def _(SWEEP_DEFAULTS, analysis, base_ui, runs_df):
     analysis.setup_mpl(base_ui["plt_style"].value)
-    setting_ui = analysis.make_setting_ui(base_ui, SWEEP_DEFAULTS)
+    setting_ui = analysis.make_setting_ui(runs_df, base_ui, SWEEP_DEFAULTS)
     setting_ui  # noqa: B018
     return (setting_ui,)
+
+
+@app.cell
+def _(analysis, setting_ui):
+    # 選択 run の surrogate を 1 回だけロードし model_info/single/sweep で共有
+    loaded = analysis.load_selected(setting_ui)
+    return (loaded,)
 
 
 @app.cell
@@ -66,25 +75,25 @@ def _(analysis, save_items, save_panel):
 
 
 @app.cell(column=1)
-def _(analysis, base_ui):
-    html_model, save_model = analysis.render_model_info(base_ui)
+def _(analysis, base_ui, loaded):
+    html_model, save_model = analysis.render_model_info(loaded, base_ui)
     html_model  # noqa: B018
     return (save_model,)
 
 
 @app.cell
-def _(analysis, base_ui, draw_ui, res_single, setting_ui):
+def _(analysis, base_ui, draw_ui, loaded, res_single, setting_ui):
     html_single, save_single = analysis.view_single(
-        base_ui, setting_ui, res_single, draw_ui
+        loaded, base_ui, setting_ui, res_single, draw_ui
     )
     html_single  # noqa: B018
     return (save_single,)
 
 
 @app.cell
-def _(analysis, base_ui, draw_ui, res_sweep, setting_ui):
+def _(analysis, base_ui, draw_ui, loaded, res_sweep, setting_ui):
     html_sweep, save_sweep = analysis.view_sweep(
-        base_ui, setting_ui, res_sweep, draw_ui
+        loaded, base_ui, setting_ui, res_sweep, draw_ui
     )
     html_sweep  # noqa: B018
     return (save_sweep,)

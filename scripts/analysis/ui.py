@@ -12,19 +12,20 @@ from analysis import single as analysis_single
 from analysis import sweep as analysis_sweep
 from matplotlib.figure import Figure
 from mlflow_io import (
-    get_runs_df,
     load_surrogate_model,
     setup_mlflow,
-    sole_run_name,
-    sole_target_model,
 )
 
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate.ansatz import SINDyNeuroSurrogate
-from neurosurrogate.view.model import model_figures
+from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
+from neurosurrogate.surrogate.replace import replaced_names
+from neurosurrogate.view.model import view_model, view_neuron_graph
 from neurosurrogate.view.utils import current_preview_fig
+
+# 選択 run 1件 = (run_id, run_name, surrogate)
+LoadedRun = tuple[str, str, NeuroSurrogateBase]
 
 CurrentList: list = list(CURRENT_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
@@ -41,32 +42,39 @@ RESULT_DIR = REPO_ROOT / "scripts" / "conf" / "surrogate" / "result"
 # ---------------------------------------------------------------------------
 
 
-def make_base_ui(target_model: dict[str, list[str]]) -> mo.ui.dictionary:
-    runs_df = get_runs_df()
-    # train_model → 適用候補 target_model を展開 (候補ごとに行を複製)。
-    # 未登録 train_model は自身のみを候補とする。
-    runs_df["target_model"] = runs_df["train_model"].map(
-        lambda m: target_model.get(m, [m])
-    )
-    runs_df = runs_df.explode("target_model", ignore_index=True)
+def make_base_ui(
+    runs_df: pd.DataFrame, target_model: dict[str, list[str]]
+) -> mo.ui.dictionary:
+    # 学習 train_model × 適用候補 target_model の有効ペアを 1 dropdown で列挙。
+    # 未登録 train_model は自身のみを候補とする。label→(train,target) を .value で得る。
+    pairs = {
+        f"{train}→{tgt}": (train, tgt)
+        for train in sorted(runs_df["train_model"].unique())
+        for tgt in target_model.get(train, [train])
+    }
     plt_options = list(typing.get_args(MplStyle))
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(options=plt_options, value=plt_options[1]),
             "sim_current_type": mo.ui.dropdown(CurrentList, value="lin&steady&pulse"),
             "dt": mo.ui.number(value=0.01, step=0.001),
-            "run_selector": mo.ui.table(
-                pd.DataFrame(
-                    runs_df[
-                        ["tags.mlflow.runName", "run_id", "train_model", "target_model"]
-                    ]
-                ),
-                label="サロゲート選択 (target=適用先MC / train=学習元)",
-                selection="multi",
-                initial_selection=[0],
+            "model_pair": mo.ui.dropdown(
+                options=pairs,
+                value=next(iter(pairs)),
+                label="モデルペア (train→target)",
             ),
         }
     )
+
+
+def target_of(base_ui: mo.ui.dictionary) -> str:
+    """選択ペアの適用先 MC モデル名。"""
+    return str(base_ui["model_pair"].value[1])
+
+
+def train_of(base_ui: mo.ui.dictionary) -> str:
+    """選択ペアの学習元 train_model 名。"""
+    return str(base_ui["model_pair"].value[0])
 
 
 # ---------------------------------------------------------------------------
@@ -81,12 +89,21 @@ def setup_mpl(matplotlib_style: str):
 
 
 def make_setting_ui(
+    runs_df: pd.DataFrame,
     base_ui: mo.ui.dictionary,
     sweep_defaults: analysis_sweep.SweepDefaults,
 ) -> mo.ui.dictionary:
     current_type = str(base_ui["sim_current_type"].value)
+    # 選択 train_model の run のみを提示 (single=1件必須 / sweep=複数可)。
+    runs = runs_df[runs_df["train_model"] == train_of(base_ui)]
     # 置換対象は surrogate の学習元 type で自動導出 → targets 選択 UI は不要
     d: dict = {
+        "run_selector": mo.ui.table(
+            pd.DataFrame(runs[["tags.mlflow.runName", "run_id"]]),
+            label="Run 選択 (single=1件 / sweep=複数可)",
+            selection="multi",
+            initial_selection=[0] if len(runs) else [],
+        ),
         "sim": analysis_single.make_sim_ui(current_type),
         "run_sim": mo.ui.run_button(label="single 実行"),
     }
@@ -107,7 +124,7 @@ def calc_single(
     setting_ui: mo.ui.dictionary,
 ) -> EvalResult | None:
     if setting_ui["run_sim"].value:
-        return analysis_single.calc_eval(base_ui, setting_ui["sim"])
+        return analysis_single.calc_eval(base_ui, setting_ui)
     return None
 
 
@@ -116,7 +133,7 @@ def calc_sweep(
     setting_ui: mo.ui.dictionary,
 ) -> dict | None:
     if "run_sweep" in setting_ui and setting_ui["run_sweep"].value:
-        return analysis_sweep.calc_sweep(base_ui, setting_ui["sweep"])
+        return analysis_sweep.calc_sweep(base_ui, setting_ui)
     return None
 
 
@@ -125,9 +142,22 @@ def calc_sweep(
 # ---------------------------------------------------------------------------
 
 
+def load_selected(setting_ui: mo.ui.dictionary) -> list[LoadedRun]:
+    """選択 run の surrogate を 1 回だけロードし (id, name, surrogate) 列で共有。
+    neurograph / heatmap / 評価サマリ の 3 描画がこれを消費 (再 DL 回避)。"""
+    selected = cast(pd.DataFrame, setting_ui["run_selector"].value)
+    return [
+        (rid, run_name, load_surrogate_model(rid))
+        for rid, run_name in zip(
+            selected["run_id"].tolist(),
+            selected["tags.mlflow.runName"].tolist(),
+            strict=True,
+        )
+    ]
+
+
 def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
-    model_name = sole_target_model(cast(pd.DataFrame, base_ui["run_selector"].value))
-    comp_names = MCMODELS[model_name].names
+    comp_names = MCMODELS[target_of(base_ui)].names
     d: dict = {
         "eval_comp": mo.ui.dropdown(
             options=comp_names, value=comp_names[0], label="評価対象comp"
@@ -145,52 +175,35 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 # ---------------------------------------------------------------------------
 
 
-def _eval_df(
-    entries: list[tuple[str, str, SINDyNeuroSurrogate]],
-) -> pd.DataFrame:
+def _eval_df(loaded: list[LoadedRun]) -> pd.DataFrame:
     rows = [
         {
             "run_name": run_name,
             "run_id": rid[:8],
             **surrogate.metrics(),
         }
-        for rid, run_name, surrogate in entries
+        for rid, run_name, surrogate in loaded
     ]
     return pd.DataFrame(rows).set_index("run_name")
 
 
 def render_model_info(
+    loaded: list[LoadedRun],
     base_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
-    selected = cast(pd.DataFrame, base_ui["run_selector"].value)
-    loaded: list[tuple[str, str, SINDyNeuroSurrogate]] = [
-        (rid, run_name, load_surrogate_model(rid))
-        for rid, run_name in zip(
-            selected["run_id"].tolist(),
-            selected["tags.mlflow.runName"].tolist(),
-            strict=True,
-        )
-    ]
-    model_name = sole_target_model(selected)
-    net = MCMODELS[model_name]
-
-    # fig 生成・命名・置換ノード解決は view 層 (model_figures) に委譲。ここは run
-    # ごとの (id, fig) 列を flatten し、保存 entry と表示に流すだけ。
+    """model_info は neurograph のみ (heatmap→single / 評価サマリ→sweep へ移管)。"""
+    target = target_of(base_ui)
+    net = MCMODELS[target]
     figs = [
-        fig
-        for _, run_name, surrogate in loaded
-        for fig in model_figures(run_name, surrogate, net)
+        (f"neurograph({run_name})", view_neuron_graph(net, replaced_names(surr, net)))
+        for _, run_name, surr in loaded
     ]
-    save_items = [_entry(name, fig, model_name) for name, fig in figs]
+    save_items = [_entry(name, fig, target) for name, fig in figs]
     bodies = [
         mo.vstack([mo.md(f"##### {name}"), mo.mpl.interactive(fig)])
         for name, fig in figs
     ]
-
-    html = mo.vstack(
-        bodies + [mo.md("### 評価サマリ (preprocessor / OpCost)"), _eval_df(loaded)]
-    )
-    return html, save_items
+    return mo.vstack([mo.md("### NeuronGraph"), *bodies]), save_items
 
 
 # ---------------------------------------------------------------------------
@@ -230,37 +243,62 @@ def _fmt_sweep(base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary) -> str:
 
 
 def view_single(
+    loaded: list[LoadedRun],
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
     res: EvalResult | None,
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
-    if res is None:
-        return mo.md("(single結果なし)"), []
-    selected = cast(pd.DataFrame, base_ui["run_selector"].value)
-    model_tag = f"{sole_run_name(selected)}({sole_target_model(selected)})"
-    eval_comp = str(draw_ui["eval_comp"].value)
-    single_prefix = f"{model_tag}(eval:{eval_comp})_{_fmt_current(base_ui, setting_ui)}"
+    """先頭に係数 heatmap (選択 run 静的) → 続けて single 波形評価 (res ゲート)。"""
+    target = target_of(base_ui)
+    # heatmap は電流非依存のモデル静的図 → prefix=target (current を含めない)。
+    heat = [
+        (f"model({run_name})", view_model(surr.sindy_bundle))
+        for _, run_name, surr in loaded
+    ]
+    blocks: list[mo.Html] = [mo.md("### SINDy 係数")]
+    blocks += [
+        part
+        for name, fig in heat
+        for part in (mo.md(f"##### {name}"), mo.mpl.interactive(fig))
+    ]
+    entries = [_entry(name, fig, target) for name, fig in heat]
 
+    if res is None:
+        blocks.append(mo.md("(single結果なし)"))
+        return mo.vstack(blocks), entries
+
+    eval_comp = str(draw_ui["eval_comp"].value)
+    run_tag = loaded[0][1] if len(loaded) == 1 else target
+    single_prefix = (
+        f"{run_tag}({target})(eval:{eval_comp})_{_fmt_current(base_ui, setting_ui)}"
+    )
     html, figs, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
-    entries = [_entry(name, fig, single_prefix) for name, fig in figs]
+    blocks += [mo.md("### 波形評価 (single)"), html]
+    entries += [_entry(name, fig, single_prefix) for name, fig in figs]
     entries.append(_entry("metrics", dfs["metrics"], single_prefix))
     entries.append(_entry("metrics(scalar)", dfs["metrics(scalar)"], single_prefix))
-    return html, entries
+    return mo.vstack(blocks), entries
 
 
 def view_sweep(
+    loaded: list[LoadedRun],
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
     res: dict | None,
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
-    if res is None or "sweep" not in draw_ui:
-        return mo.md("(sweep結果なし)"), []
-    selected = cast(pd.DataFrame, base_ui["run_selector"].value)
-    model_tag = f"{sole_run_name(selected)}({sole_target_model(selected)})"
-    eval_comp = str(draw_ui["eval_comp"].value)
+    """先頭に評価サマリ表 (選択 run 静的) → 続けて sweep 結果 (res ゲート)。"""
+    target = target_of(base_ui)
+    summary = _eval_df(loaded)
+    blocks: list[mo.Html] = [mo.md("### 評価サマリ (preprocessor / OpCost)"), summary]
+    entries = [_entry("eval_summary", summary, target)]
 
+    if res is None or "sweep" not in draw_ui:
+        blocks.append(mo.md("(sweep結果なし)"))
+        return mo.vstack(blocks), entries
+
+    eval_comp = str(draw_ui["eval_comp"].value)
     ylim_ui = draw_ui["sweep"]["ylim"]
     ylim = (
         None
@@ -273,8 +311,10 @@ def view_sweep(
         metric_key=draw_ui["sweep"]["metric"].value,
         ylim=ylim,
     )
-    prefix = f"{model_tag}(eval:{eval_comp})_{_fmt_sweep(base_ui, setting_ui)}"
-    return html, [_entry("sweep", fig, prefix)]
+    prefix = f"{target}(eval:{eval_comp})_{_fmt_sweep(base_ui, setting_ui)}"
+    blocks += [mo.md("### Sweep"), html]
+    entries.append(_entry("sweep", fig, prefix))
+    return mo.vstack(blocks), entries
 
 
 def plot_preview(

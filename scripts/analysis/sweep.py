@@ -3,7 +3,7 @@ import inspect
 import marimo as mo
 import mlflow
 from matplotlib.figure import Figure
-from mlflow_io import load_surrogate_model, sole_target_model
+from mlflow_io import load_surrogate_model
 
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval_sweep import CurrentSweepConfig, evaluate_sweep
@@ -71,12 +71,13 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary | None:
 
 
 def calc_sweep(
-    base_button: mo.ui.dictionary,
-    sweep_ui: mo.ui.dictionary,
+    base_ui: mo.ui.dictionary,
+    setting_ui: mo.ui.dictionary,
 ) -> dict:
     """UI/mlflow 値を引き出し evaluate_sweep へ委譲。raw sim データを返す。"""
-    run_ids = base_button["run_selector"].value["run_id"].tolist()
-    current_type = base_button["sim_current_type"].value
+    run_ids = setting_ui["run_selector"].value["run_id"].tolist()
+    current_type = base_ui["sim_current_type"].value
+    sweep_ui = setting_ui["sweep"]
     cfg = CurrentSweepConfig(
         current_type=current_type,
         sweep_param=_sweep_param_of(current_type),
@@ -86,8 +87,8 @@ def calc_sweep(
     )
     sweep_eval = evaluate_sweep(
         {rid: load_surrogate_model(rid) for rid in run_ids},
-        model_name=sole_target_model(base_button["run_selector"].value),
-        dt=float(base_button["dt"].value),
+        model_name=str(base_ui["model_pair"].value[1]),
+        dt=float(base_ui["dt"].value),
         cfg=cfg,
     )
     return {

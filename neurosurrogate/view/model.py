@@ -11,10 +11,7 @@ import sympy as sp
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
-from ..core.network import NeuronGraph
-from ..surrogate.ansatz import NeuroSurrogateBase
 from ..surrogate.bundle import SINDyBundle
-from ..surrogate.replace import replaced_names
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
@@ -182,20 +179,3 @@ def equation_texs(bundle: SINDyBundle) -> list[str]:
         tail = r" + \cdots" if len(terms) > _EQ_HEAD_TERMS else ""
         texs.append(f"${_latex(head)}{tail}$")
     return texs
-
-
-def model_figures(
-    run_name: str,
-    surrogate: NeuroSurrogateBase,
-    net: NeuronGraph,
-) -> list[tuple[str, Figure]]:
-    """1 run 分の識別子付き model 図群: 係数 heatmap + 置換ノード強調 neurograph。
-    置換ノードは surrogate の replaced_names で自己解決。analysis 側は fig 種別を
-    知らず、この (id, fig) 列を保存/表示に流すだけ (複数 run の集約は呼び出し側)。"""
-    return [
-        (f"model({run_name})", view_model(surrogate.sindy_bundle)),
-        (
-            f"neurograph({run_name})",
-            view_neuron_graph(net, replaced_names(surrogate, net)),
-        ),
-    ]

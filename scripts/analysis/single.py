@@ -5,7 +5,7 @@ from typing import Literal, cast
 import marimo as mo
 import pandas as pd
 from matplotlib.figure import Figure
-from mlflow_io import load_surrogate_model, sole_target_model
+from mlflow_io import load_surrogate_model
 
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.currents import CURRENT_MAP
@@ -74,20 +74,19 @@ def make_sim_ui(current_type: str) -> mo.ui.dictionary:
 
 def calc_eval(
     base_ui: mo.ui.dictionary,
-    sim_ui: mo.ui.dictionary,
+    setting_ui: mo.ui.dictionary,
 ) -> EvalResult:
-    selected = cast(pd.DataFrame, base_ui["run_selector"].value)
-    run_ids = selected["run_id"].tolist()
+    run_ids = cast(pd.DataFrame, setting_ui["run_selector"].value)["run_id"].tolist()
     if len(run_ids) != 1:
         raise ValueError(
             f"single モードでは Run を 1 件だけ選択。現在: {len(run_ids)} 件"
         )
     dataset_cfg = DatasetConfig.build_dataset(
-        model_name=sole_target_model(selected),
+        model_name=str(base_ui["model_pair"].value[1]),
         dt=float(base_ui["dt"].value),
         current={
             "type": str(base_ui["sim_current_type"].value),
-            "params": sim_ui["current_params"].value or {},
+            "params": setting_ui["sim"]["current_params"].value or {},
         },
     )
     return evaluate(load_surrogate_model(str(run_ids[0])), dataset_cfg)
