@@ -31,6 +31,7 @@ _STIM_LINEWIDTH = 3.0
 _COEF_DIGITS = 3  # 方程式表示の係数有効桁
 _EQ_HEAD_TERMS = 3  # 見出しに出す先頭項数 (残りは \cdots)
 _EQ_FONTSIZE = 8
+_FEATURE_FONTSCALE = 1.3  # heatmap X軸 basis 関数 (TeX) をデフォルトの何倍にするか
 _T = sp.Symbol("t")
 
 
@@ -153,7 +154,7 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
             [tex(e) for e in result.feature_exprs],
             rotation=45,
             ha="right",
-            fontsize=8,
+            fontsize=plt.rcParams["font.size"] * _FEATURE_FONTSCALE,
         )
         ax.set_xlabel("Library Features")
 

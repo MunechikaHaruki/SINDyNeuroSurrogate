@@ -15,7 +15,6 @@ lines.markersize: 10
 
 # --- Axes & Grid ---
 axes.linewidth: 2.5
-axes.grid: True
 grid.linewidth: 1.5
 grid.linestyle: --
 grid.alpha: 0.6
