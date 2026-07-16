@@ -27,6 +27,24 @@ def _sweep_param_of(current_type: str) -> str | None:
 SweepDefaults = dict[str, tuple[float, float, int]]
 _SWEEP_FALLBACK = (-5.0, 20.0, 10)
 
+# runName は `<preset> key=value ...` 形式 (main._make_run_name)。長く図で重なるため
+# value=... だけ残し n_components は n<val> に畳んで短縮する。preset 名 (hh 等) は
+# 同一 sweep で混在比較しないため落とす。type= は2つ (surrogate 種 / preprocessor 種)
+# あるが値自体で区別できるため key は落として良い。
+_ABBR_VALUE = {"hybrid": "hybrid", "sindy": "sindy"}
+
+
+def _fetch_abbr_name(run_name: str) -> str:
+    """runName をパースし図表示用の簡約名にする (runName 本体は不変)。例:
+    `hh type=hybrid n_components=2 type=ae` → `hybrid/n2/ae`。"""
+    out: list[str] = []
+    for tok in run_name.split():
+        if "=" not in tok:  # preset 名等はスキップ
+            continue
+        key, val = tok.split("=", 1)
+        out.append(f"n{val}" if key == "n_components" else _ABBR_VALUE.get(val, val))
+    return "/".join(out) if out else run_name
+
 
 def make_sweep_ui(
     current_type: str, defaults: SweepDefaults, run_selector: mo.ui.table
@@ -95,9 +113,11 @@ def calc_sweep(
     return {
         "sweep_eval": sweep_eval,
         "run_labels": {
-            rid: mlflow.MlflowClient()
-            .get_run(rid)
-            .data.tags.get("mlflow.runName", rid[:6])
+            rid: _fetch_abbr_name(
+                mlflow.MlflowClient()
+                .get_run(rid)
+                .data.tags.get("mlflow.runName", rid[:6])
+            )
             for rid in run_ids
         },
         "cfg": cfg,
