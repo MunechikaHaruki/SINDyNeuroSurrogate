@@ -1,0 +1,15 @@
+init:
+  datasets:
+    model_name: traub
+    current:
+      type: train
+      params: {}
+fit:
+  preprocessor:
+    type: pca
+  library_specs:
+    - type: gate_poly_volt  # latent の高次項・V 積 (1次は basis)
+    - type: traub_gate_forward
+    - type: traub_gate_forward_product
+    - type: traub_gate_backward_product
+    - type: basis

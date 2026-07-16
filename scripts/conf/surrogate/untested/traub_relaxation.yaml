@@ -1,0 +1,15 @@
+init:
+  datasets:
+    model_name: traub
+    current:
+      type: train
+      params: {}
+fit:
+  preprocessor:
+    type: pca
+  library_specs:
+    - type: gate_poly_volt  # latent の高次項・V 積 (1次は basis)
+    - type: basis
+    # --- dg0/dt 用 (relaxation形式 dg/dt = α(V) - (α+β)(V)·g) ---
+    - type: traub_gate_forward      # 駆動項 α(V)
+    - type: traub_relaxation_decay  # 減衰項 (α+β)(V)·g
