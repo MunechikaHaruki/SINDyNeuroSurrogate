@@ -4,8 +4,8 @@ import logging
 import sys
 from dataclasses import dataclass, field
 
-import japanize_matplotlib  # noqa: F401  # rcParams を和文フォントへ (グローバル副作用)
 import matplotlib.pyplot as plt
+import matplotlib_fontja  # noqa: F401  # rcParams を和文フォントへ (グローバル副作用)
 import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.font_manager import FontProperties
@@ -13,7 +13,7 @@ from matplotlib.font_manager import FontProperties
 logger = logging.getLogger(__name__)
 
 # rcParams 未適用経路でも和文が豆腐化しないよう明示指定する保険
-_JP_FONT = FontProperties(fname=japanize_matplotlib.get_font_ttf_path())
+_JP_FONT = FontProperties(fname=matplotlib_fontja.get_font_ttf_path())
 
 
 def error_fig(msg: str) -> Figure:

@@ -17,7 +17,6 @@ dependencies = [
     "xarray>=2024.7.0",
     "hydra-core>=1.3.2",
     "scipy>=1.16.2",
-    "japanize-matplotlib>=1.1.3",
     "tabulate>=0.10.0",
     "psutil>=7.0.0",
     "seaborn>=0.13.2",
@@ -28,6 +27,7 @@ dependencies = [
     "networkx>=3.6.1",
     "setuptools>=83.0.0",
     "sympy>=1.14.0",
+    "matplotlib-fontja>=1.1.0",
 ]
 
 [dependency-groups]
@@ -56,7 +56,7 @@ warn_unused_ignores = true
 exclude = ["scripts/"]
 
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "pysindy", "sympy.*", "efel", "joblib", "optax", "networkx", "seaborn", "japanize_matplotlib"]
+module = ["sklearn.*", "pysindy", "sympy.*", "efel", "joblib", "optax", "networkx", "seaborn", "matplotlib_fontja"]
 ignore_missing_imports = true
 
 [tool.ruff]
