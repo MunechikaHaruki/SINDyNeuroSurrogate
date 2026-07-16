@@ -10,7 +10,7 @@ from matplotlib.figure import Figure
 from ..core import access
 from ..currents import CURRENT_MAP
 from ..models import MCMODELS
-from .engine import _JP_FONT, error_fig
+from .engine import error_fig
 
 if TYPE_CHECKING:
     from ..metrics.eval_sweep import CurrentSweepConfig, SweepEval
@@ -21,7 +21,7 @@ def current_preview_fig(current_type: str, dt: float, params: dict) -> Figure:
     try:
         i_ext = CURRENT_MAP[current_type](**params)(dt)
     except Exception as e:  # noqa: BLE001
-        return error_fig(f"build失敗: {e}")
+        return error_fig(f"build failed: {e}")
     t = np.arange(len(i_ext)) * dt
     fig, ax = plt.subplots(figsize=(6, 2))
     ax.plot(t, i_ext, lw=0.8)
@@ -112,12 +112,11 @@ def sweep_trace_grid_fig(
                 ax.text(
                     0.5,
                     0.5,
-                    "発散",
+                    "diverged",
                     transform=ax.transAxes,
                     ha="center",
                     va="center",
                     color="red",
-                    fontproperties=_JP_FONT,
                 )
                 continue
             ax.plot(
@@ -130,10 +129,10 @@ def sweep_trace_grid_fig(
             )
     axes[0][0].set_ylabel("I_ext")
     for r, label in enumerate(run_labels.values(), start=1):
-        axes[r][0].set_ylabel(label, fontproperties=_JP_FONT)
+        axes[r][0].set_ylabel(label)
     for c in range(n_col):
         axes[-1][c].set_xlabel("t [ms]")
     axes[1][0].legend(loc="upper right", fontsize="x-small")
-    fig.suptitle(f"amp sweep waveform ({comp_name})", fontproperties=_JP_FONT)
+    fig.suptitle(f"amp sweep waveform ({comp_name})")
     fig.tight_layout()
     return fig
