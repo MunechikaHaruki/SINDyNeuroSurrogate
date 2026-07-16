@@ -178,6 +178,42 @@ def calc_traub_channel(p: TraubParams, u_t, v, states):
 # 状態順序: [M, S, N, C, A, H, R, B, Q, XI]
 TRAUB_STATE_NAMES = ["M", "S", "N", "C", "A", "H", "R", "B", "Q", "XI"]
 
+# hybrid での学習/physics 分割 (params 依存性による):
+#   学習 = 純電位依存ゲート (定数 TRAUB_V_LEAK 基準 → params 非依存)
+#   extra(physics) = Ca サブ系 XI(濃度)/Q。dXI が phi_area/g_Ca/V_Ca/Beta を、
+#   i_kc/i_kahp が XI/Q を陽に読む → 各ノード自身の params で解けば任意 comp へ移植可。
+TRAUB_LEARNED_GATE_NAMES = ["M", "S", "N", "C", "A", "H", "R", "B"]
+TRAUB_EXTRA_GATE_NAMES = ["XI", "Q"]  # surr state に latent の後へ付く physics 状態
+
+
+def traub_calcium_step(p: TraubParams, v, gates8, extra):
+    """Ca サブ系 physics step。gates8=decode 済 [M,S,N,C,A,H,R,B]、extra=[XI,Q]。
+    traub_dv 用の全 10 状態 [M..B,Q,XI] と d(extra)=[dXI,dQ] を返す。"""
+    XI, Q = extra[0], extra[1]
+    S, R = gates8[1], gates8[6]
+    i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
+    dXI = -p.phi_area * i_ca - p.Beta * XI
+    dQ = alpha_q_traub(XI) * (1.0 - Q) - beta_q_traub(XI) * Q
+    full = jnp.concatenate([gates8, jnp.stack([Q, XI])])
+    return full, jnp.stack([dXI, dQ])
+
+
+def traub_extra_inits(p: TraubParams) -> list[float]:
+    """[XI, Q] 初期値を params から算出 (V_LEAK 定常)。params のみ依存 → load 後も
+    train_comp params から再現可 (train データ不要)。"""
+    s = _traub_inf_v("S", p.V_LEAK)
+    r = _traub_inf_v("R", p.V_LEAK)
+    xi = float(-p.phi_area * (p.g_Ca * s * s * r * (p.V_LEAK - p.V_Ca)) / p.Beta)
+    return [xi, float(_traub_inf_q(jnp.asarray(xi)))]
+
+
+# Ca サブ系 physics の演算コスト (i_ca + dXI + dQ)。
+TRAUB_CA_COST = (
+    OpCost(pm=1, mul=4)  # i_ca = g_Ca·S·S·R·(v-V_Ca)
+    + OpCost(pm=1, mul=2)  # dXI = -phi_area·i_ca - Beta·XI
+    + OpCost(pm=2, mul=3)  # dQ = alpha_q·(1-Q) - beta_q·Q (min/const は無視)
+)
+
 
 def _traub_state_inits(p: TraubParams):
     v0 = p.V_LEAK

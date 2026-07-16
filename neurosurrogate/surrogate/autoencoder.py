@@ -79,6 +79,12 @@ class AutoEncoderPreprocessor:
             },
         }
 
+    @property
+    def n_features_in_(self) -> int:
+        """学習入力ゲート数 (PCA.n_features_in_ 互換。transform_gate の幅整合用)。"""
+        assert self._mean is not None
+        return int(self._mean.shape[0])
+
     def fit(self, X: np.ndarray) -> "AutoEncoderPreprocessor":
         X = np.asarray(X, dtype=np.float32)
 

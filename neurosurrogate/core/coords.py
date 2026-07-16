@@ -97,10 +97,15 @@ def set_latent_coords(
 
 
 def transform_gate(preprocessor: Any, ds: xr.Dataset, comp_id: int) -> xr.Dataset:
-    """comp_id のゲートを preprocessor で latent 圧縮した preprocessed Dataset。"""
+    """comp_id のゲートを preprocessor で latent 圧縮した preprocessed Dataset。
+
+    hybrid は先頭 n ゲートのみ学習 (Ca サブ系 XI/Q は physics へ分離) → preprocessor
+    の学習幅に合わせ gate_matrix 先頭列をスライスする (sindy は全ゲート幅で無変化)。
+    """
+    n_feat = preprocessor.n_features_in_
     return set_latent_coords(
         v=access.potential(ds, comp_id),
-        latent=preprocessor.transform(access.gate_matrix(ds, comp_id)),
+        latent=preprocessor.transform(access.gate_matrix(ds, comp_id)[:, :n_feat]),
         u=access.i_internal_values(ds, comp_id),
         comp_id=comp_id,
         dt=access.dt(ds),

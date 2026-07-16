@@ -12,12 +12,15 @@ from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
 from neurosurrogate.core import access
+from neurosurrogate.core.network import DatasetConfig
+from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.metrics.eval import EvalResult, evaluate
 from neurosurrogate.surrogate.ansatz import (
     HybridSINDyNeuroSurrogate,
     NeuroSurrogateBase,
 )
 from neurosurrogate.surrogate.libraries.entry import FeatureLibrary
+from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
 from neurosurrogate.view.model import equation_texs
 from neurosurrogate.view.specs import draw_all
 
@@ -104,6 +107,29 @@ def test_equations_render_as_tex(sindy: NeuroSurrogateBase) -> None:
     # レート関数は未定義 Function → sympy が自動でギリシャ文字化。model は下付きへ
     # 回し、表示時に括弧へ整形 (mathtext が下付き内の空白を詰めるため)
     assert any(r"\alpha_{m(hh)}{\left(V \right)}" in t for t in texs)
+
+
+def test_hybrid_traub_transplants_across_heterogeneous_compartments() -> None:
+    """hybrid traub は Ca サブ系 (XI/Q) を physics へ分離し純電位依存ゲートのみ学習 →
+    Ca params (phi_area/g_Ca) がノード毎に違う traub19 全 comp を 1 サロゲートで置換
+    できる (compatible=True)。学習は 8 電位依存ゲートのみ、surr state は latent+[XI,Q]。
+    新 kernel の XI/Q 積分が置換シミュまで有限に走ることも確認する。"""
+    surrogate = fit_surrogate("traub", 5, extra=["surrogate.type=hybrid"])
+    assert surrogate.surr_comp_type.gate_names[-2:] == ["XI", "Q"]
+
+    traub19 = DatasetConfig.build_dataset(
+        dt=0.01, model_name="traub19", current={"type": "train", "params": {}}
+    )
+    # phi_area/g_Ca が異なる 19 comp すべてが置換対象。pre-B は soma のみ一致で
+    # ValueError だった (Ca params が latent に焼込まれ params 一致必須だったため)。
+    assert replaceables(surrogate, traub19) == set(traub19.net.names)
+
+    # 置換シミュ (XI/Q を各ノード params で physics 積分) が有限に走る。
+    v = access.potential(
+        unified_simulator(apply_surrogate(surrogate, surrogate.meta.dataset)),
+        surrogate.meta.train_comp_id,
+    )
+    assert np.isfinite(v).all()
 
 
 def test_hybrid_opcost_includes_decode() -> None:
