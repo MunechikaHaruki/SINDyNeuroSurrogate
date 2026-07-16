@@ -10,7 +10,7 @@ from matplotlib.figure import Figure
 from ..core import access
 from ..currents import CURRENT_MAP
 from ..models import MCMODELS
-from .engine import error_fig
+from .engine import _JP_FONT, error_fig
 
 if TYPE_CHECKING:
     from ..metrics.eval_sweep import CurrentSweepConfig, SweepEval
@@ -84,11 +84,22 @@ def sweep_trace_grid_fig(
         squeeze=False,
         sharex=True,
     )
+    # y レンジは発散しない Original 電位の全 amp min/max から決める (ニューロン挙動を
+    # 捉えるレンジ)。全 V 行で共有し、発散 surrogate はこのレンジで頭打ちにする。
+    orig_vs = [
+        access.potential(orig_ds, comp_id) for _, orig_ds, _ in sweep.amp_datasets
+    ]
+    lo = min(float(v.min()) for v in orig_vs)
+    hi = max(float(v.max()) for v in orig_vs)
+    pad = 0.1 * (hi - lo) if hi > lo else 1.0
+    v_ylim = (lo - pad, hi + pad)
+
     for c, (amp, orig_ds, surr_datasets) in enumerate(sweep.amp_datasets):
         axes[0][c].plot(*access.i_ext(orig_ds), lw=0.8, color="tab:gray")
         axes[0][c].set_title(f"amp={amp:.3g}")
         for r, rid in enumerate(run_labels, start=1):
             ax = axes[r][c]
+            ax.set_ylim(*v_ylim)
             ax.plot(
                 access.time(orig_ds),
                 access.potential(orig_ds, comp_id),
@@ -96,9 +107,22 @@ def sweep_trace_grid_fig(
                 lw=0.7,
                 label="Original",
             )
+            surr_v = access.potential(surr_datasets[rid], comp_id)
+            if not np.all(np.isfinite(surr_v)) or float(np.abs(surr_v).max()) > 1e4:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "発散",
+                    transform=ax.transAxes,
+                    ha="center",
+                    va="center",
+                    color="red",
+                    fontproperties=_JP_FONT,
+                )
+                continue
             ax.plot(
                 access.time(surr_datasets[rid]),
-                access.potential(surr_datasets[rid], comp_id),
+                surr_v,
                 "--",
                 lw=0.7,
                 color="tab:red",
@@ -106,10 +130,10 @@ def sweep_trace_grid_fig(
             )
     axes[0][0].set_ylabel("I_ext")
     for r, label in enumerate(run_labels.values(), start=1):
-        axes[r][0].set_ylabel(label)
+        axes[r][0].set_ylabel(label, fontproperties=_JP_FONT)
     for c in range(n_col):
         axes[-1][c].set_xlabel("t [ms]")
     axes[1][0].legend(loc="upper right", fontsize="x-small")
-    fig.suptitle(f"amp sweep 波形 ({comp_name})")
+    fig.suptitle(f"amp sweep waveform ({comp_name})", fontproperties=_JP_FONT)
     fig.tight_layout()
     return fig
