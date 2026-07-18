@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast
 
@@ -10,7 +9,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from analysis import single as analysis_single
 from analysis import sweep as analysis_sweep
-from matplotlib.figure import Figure
+from analysis.panel import (
+    Panel,
+    SaveEntry,
+    entry,
+    pair,
+)
 from mlflow_io import (
     load_surrogate_model,
     setup_mlflow,
@@ -32,9 +36,6 @@ MplStyle = Literal["paper", "presentation"]
 MCNameList = list(MCMODELS.keys())
 
 setup_mlflow()
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-RESULT_DIR = REPO_ROOT / "scripts" / "conf" / "surrogate" / "result"
 
 
 # ---------------------------------------------------------------------------
@@ -191,8 +192,49 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
 
 
 # ---------------------------------------------------------------------------
-# Model Info
+# Result View
 # ---------------------------------------------------------------------------
+
+
+def view_single(
+    run: LoadedRun | None,
+    base_ui: mo.ui.dictionary,
+    res: EvalResult | None,
+    draw_ui: mo.ui.dictionary,
+) -> tuple[mo.Html, list[SaveEntry]]:
+    """NeuronGraph → 係数 heatmap (選択 run 静的) → single 波形評価 (res ゲート)。"""
+    pair_tag = pair(base_ui)
+    panel = Panel()
+    if run is None:
+        panel.note("(single Run 未選択)")
+        return panel.done()
+
+    net = MCMODELS[target_of(base_ui)]
+    surr = run[2]
+    panel.figs(
+        "NeuronGraph",
+        [
+            (
+                f"neurograph({pair_tag})",
+                view_neuron_graph(net, replaced_names(surr, net)),
+            )
+        ],
+    )
+    panel.figs("SINDy 係数", [(f"model({pair_tag})", view_model(surr.sindy_bundle))])
+
+    if res is None:
+        panel.note("(single結果なし)")
+        return panel.done()
+
+    eval_comp = str(draw_ui["eval_comp"].value)
+    suffix = f"{pair_tag},{eval_comp}"
+    html, figs, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
+    panel.section("波形評価 (single)", html)
+    for name, fig in figs:
+        panel.save(f"{name}({suffix})", fig)
+    panel.save(f"metrics({suffix})", dfs["metrics"])
+    panel.save(f"metrics_scalar({suffix})", dfs["metrics(scalar)"])
+    return panel.done()
 
 
 def _eval_df(loaded: list[LoadedRun]) -> pd.DataFrame:
@@ -207,101 +249,6 @@ def _eval_df(loaded: list[LoadedRun]) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("run_name")
 
 
-# ---------------------------------------------------------------------------
-# Result View
-# ---------------------------------------------------------------------------
-
-
-SaveItem = Figure | pd.DataFrame
-
-
-@dataclass(frozen=True)
-class SaveEntry:
-    name: str
-    obj: SaveItem
-    path: str  # default path (docs/slide/result 相対)
-
-
-def _entry(name: str, obj: SaveItem) -> SaveEntry:
-    """name をそのまま既定ファイル名に (拡張子のみ付与)。呼び出し側が pair 等を含む
-    最終的な表示名を組む。"""
-    ext = ".csv" if isinstance(obj, pd.DataFrame) else ".png"
-    return SaveEntry(name, obj, f"{name}{ext}")
-
-
-def _pair(base_ui: mo.ui.dictionary) -> str:
-    """選択ペアのタグ文字列 (例 'hh→hh')。既定保存名に使う。"""
-    train, target = base_ui["model_pair"].value
-    return f"{train}→{target}"
-
-
-@dataclass
-class _Panel:
-    """表示 blocks と保存 entries を同時に積む。`figs` が「表示した fig をそのまま
-    save entry に載せる」不変条件を1箇所に閉じ、view 関数を上から順に読める形に保つ。"""
-
-    blocks: list[mo.Html] = field(default_factory=list)
-    entries: list[SaveEntry] = field(default_factory=list)
-
-    def note(self, md: str) -> None:
-        """保存対象でない見出し/注記のみ追加。"""
-        self.blocks.append(mo.md(md))
-
-    def section(self, title: str, body: mo.Html) -> None:
-        """### 見出し + 完成済み body (html/df) を表示。保存は別途 `save`。"""
-        self.blocks += [mo.md(f"### {title}"), body]
-
-    def figs(self, title: str, named: list[tuple[str, Figure]]) -> None:
-        """### 見出し下に各 fig を表示し、同一 object を save entry へ登録。"""
-        self.blocks.append(mo.md(f"### {title}"))
-        for name, fig in named:
-            self.blocks += [mo.md(f"##### {name}"), mo.mpl.interactive(fig)]
-            self.entries.append(_entry(name, fig))
-
-    def save(self, name: str, obj: SaveItem) -> None:
-        """表示済み (or 表示不要) の obj を save entry のみ登録。"""
-        self.entries.append(_entry(name, obj))
-
-    def done(self) -> tuple[mo.Html, list[SaveEntry]]:
-        return mo.vstack(self.blocks), self.entries
-
-
-def view_single(
-    run: LoadedRun | None,
-    base_ui: mo.ui.dictionary,
-    res: EvalResult | None,
-    draw_ui: mo.ui.dictionary,
-) -> tuple[mo.Html, list[SaveEntry]]:
-    """NeuronGraph → 係数 heatmap (選択 run 静的) → single 波形評価 (res ゲート)。"""
-    pair = _pair(base_ui)
-    panel = _Panel()
-    if run is None:
-        panel.note("(single Run 未選択)")
-        return panel.done()
-
-    net = MCMODELS[target_of(base_ui)]
-    surr = run[2]
-    panel.figs(
-        "NeuronGraph",
-        [(f"neurograph({pair})", view_neuron_graph(net, replaced_names(surr, net)))],
-    )
-    panel.figs("SINDy 係数", [(f"model({pair})", view_model(surr.sindy_bundle))])
-
-    if res is None:
-        panel.note("(single結果なし)")
-        return panel.done()
-
-    eval_comp = str(draw_ui["eval_comp"].value)
-    suffix = f"{pair},{eval_comp}"
-    html, figs, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
-    panel.section("波形評価 (single)", html)
-    for name, fig in figs:
-        panel.save(f"{name}({suffix})", fig)
-    panel.save(f"metrics({suffix})", dfs["metrics"])
-    panel.save(f"metrics_scalar({suffix})", dfs["metrics(scalar)"])
-    return panel.done()
-
-
 def view_sweep(
     loaded: list[LoadedRun],
     base_ui: mo.ui.dictionary,
@@ -309,11 +256,11 @@ def view_sweep(
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
     """先頭に評価サマリ表 (選択 run 静的) → 続けて sweep 結果 (res ゲート)。"""
-    pair = _pair(base_ui)
+    pair_tag = pair(base_ui)
     summary = _eval_df(loaded)
-    panel = _Panel()
+    panel = Panel()
     panel.section("評価サマリ (preprocessor / OpCost)", summary)
-    panel.save(f"eval_summary({pair})", summary)
+    panel.save(f"eval_summary({pair_tag})", summary)
 
     if res is None or "sweep" not in draw_ui:
         panel.note("(sweep結果なし)")
@@ -328,7 +275,7 @@ def view_sweep(
     )
     trace_html, trace_fig = analysis_sweep.plot_sweep_traces(res, eval_comp)
     panel.section("Sweep 波形 (列=amp / 行=各run vs orig)", trace_html)
-    panel.save(f"sweep_traces({pair},{eval_comp})", trace_fig)
+    panel.save(f"sweep_traces({pair_tag},{eval_comp})", trace_fig)
 
     html, fig = analysis_sweep.plot_sweep(
         res,
@@ -337,7 +284,7 @@ def view_sweep(
         ylim=ylim,
     )
     panel.section("Sweep メトリクス", html)
-    panel.save(f"sweep({pair},{eval_comp})", fig)
+    panel.save(f"sweep({pair_tag},{eval_comp})", fig)
     return panel.done()
 
 
@@ -351,54 +298,4 @@ def plot_preview(
         setting_ui["sim"]["current_params"].value or {},
     )
     html = mo.vstack([mo.md("### 電流プレビュー"), mo.mpl.interactive(fig)])
-    return html, [_entry(f"current({current_type})", fig)]
-
-
-# ---------------------------------------------------------------------------
-# Save Panel
-# ---------------------------------------------------------------------------
-
-
-SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
-    Figure: lambda o, p: o.savefig(p, dpi=300, bbox_inches="tight"),
-    pd.DataFrame: lambda o, p: o.to_csv(p),
-}
-
-
-def make_save_panel(entries: list[SaveEntry]) -> mo.ui.dictionary:
-    """SaveEntry から各 name の path入力＋保存ボタンを生成。"""
-    return mo.ui.dictionary(
-        {
-            e.name: mo.ui.dictionary(
-                {
-                    "path": mo.ui.text(value=e.path, label=e.name),
-                    "save": mo.ui.run_button(label="save"),
-                }
-            )
-            for e in entries
-        }
-    )
-
-
-def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
-    rows = [
-        mo.hstack(
-            [item["path"], item["save"]],
-            justify="start",
-        )
-        for item in panel.values()
-    ]
-    return mo.vstack([mo.md("### 画像保存パネル (docs/result/ 配下)"), *rows])
-
-
-def save(save_panel: mo.ui.dictionary, entries: list[SaveEntry]) -> mo.Html:
-    msgs: list[mo.Html] = []
-    for e in entries:
-        ctrl = save_panel[e.name]
-        if not ctrl["save"].value:
-            continue
-        path = RESULT_DIR / str(ctrl["path"].value).strip()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        SAVERS[type(e.obj)](e.obj, path)
-        msgs.append(mo.md(f"✅ {e.name}: `{path.relative_to(REPO_ROOT)}`"))
-    return mo.vstack(msgs) if msgs else mo.md("(未保存)")
+    return html, [entry(f"current({current_type})", fig)]

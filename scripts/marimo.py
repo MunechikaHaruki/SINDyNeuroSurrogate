@@ -7,6 +7,7 @@ app = marimo.App(width="columns")
 @app.cell(column=0)
 def _():
     import marimo as mo
+    from analysis import panel
     from analysis import ui as analysis
     from mlflow_io import get_runs_df
 
@@ -22,7 +23,7 @@ def _():
     runs_df = get_runs_df()
     base_ui = analysis.make_base_ui(runs_df, TARGET_MODEL)
     base_ui  # noqa: B018
-    return SWEEP_DEFAULTS, analysis, base_ui, mo, runs_df
+    return SWEEP_DEFAULTS, analysis, base_ui, mo, panel, runs_df
 
 
 @app.cell
@@ -55,15 +56,15 @@ def _(save_current, save_single, save_sweep):
 
 
 @app.cell
-def _(analysis, save_items):
-    save_panel = analysis.make_save_panel(save_items)
-    analysis.render_save_panel(save_panel)
+def _(panel, save_items):
+    save_panel = panel.make_save_panel(save_items)
+    panel.render_save_panel(save_panel)
     return (save_panel,)
 
 
 @app.cell
-def _(analysis, save_items, save_panel):
-    analysis.save(save_panel, save_items)
+def _(panel, save_items, save_panel):
+    panel.save(save_panel, save_items)
     return
 
 
