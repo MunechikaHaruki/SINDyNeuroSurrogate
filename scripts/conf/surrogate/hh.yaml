@@ -1,9 +1,7 @@
 init:
   datasets:
     model_name: hh
-    current:
-      type: train
-      params: {}
+    current_type: train
 fit:
   preprocessor:
     type: pca

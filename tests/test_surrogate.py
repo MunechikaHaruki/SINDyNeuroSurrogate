@@ -40,7 +40,7 @@ def fit_surrogate(
             overrides=[
                 f"surrogate={preset}",
                 f"surrogate.init.n_components={n_components}",
-                f"+surrogate.init.datasets.current.params.duration={TRAIN_DURATION}",
+                f"+surrogate.init.datasets.current_params.duration={TRAIN_DURATION}",
                 *(extra or []),
             ],
         )
@@ -118,7 +118,7 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments() -> None:
     assert surrogate.surr_comp_type.gate_names[-2:] == ["XI", "Q"]
 
     traub19 = DatasetConfig.build_dataset(
-        dt=0.01, model_name="traub19", current={"type": "train", "params": {}}
+        dt=0.01, model_name="traub19", current_type="train", current_params={}
     )
     # phi_area/g_Ca が異なる 19 comp すべてが置換対象。pre-B は soma のみ一致で
     # ValueError だった (Ca params が latent に焼込まれ params 一致必須だったため)。

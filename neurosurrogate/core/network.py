@@ -143,14 +143,16 @@ class NeuronGraph:
 class DatasetConfig:
     model_name: str
     dt: float
-    current: dict  # {"type": str, "params": dict}
+    current_type: str
+    current_params: dict
     net: NeuronGraph
 
     def to_dict(self) -> dict:
         return {
             "model_name": self.model_name,
             "dt": self.dt,
-            "current": self.current,
+            "current_type": self.current_type,
+            "current_params": self.current_params,
             "net": self.net.to_dict(),
         }
 
@@ -159,30 +161,31 @@ class DatasetConfig:
         return cls(
             model_name=d["model_name"],
             dt=d["dt"],
-            current=d["current"],
+            current_type=d["current_type"],
+            current_params=d["current_params"],
             net=NeuronGraph.from_dict(d["net"]),
         )
 
     def build_current(self) -> np.ndarray:
         from ..currents import CURRENT_MAP
 
-        return CURRENT_MAP[self.current["type"]](**self.current.get("params", {}))(
-            self.dt
-        )
+        return CURRENT_MAP[self.current_type](**self.current_params)(self.dt)
 
     @classmethod
     def build_dataset(
         cls,
         dt: float,
         model_name: str,
-        current: dict,
+        current_type: str,
+        current_params: dict | None = None,
     ) -> "DatasetConfig":
-        """yamlとの境界"""
+        """yamlとの境界。current_params 省略時はパラメータ無し (既定値)。"""
         from ..models import MCMODELS
 
         return DatasetConfig(
             model_name=model_name,
             dt=dt,
-            current=current,
+            current_type=current_type,
+            current_params=current_params or {},
             net=MCMODELS[model_name],
         )

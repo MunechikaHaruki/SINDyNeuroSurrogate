@@ -30,9 +30,6 @@ class CurrentSweepConfig:
     def amp_values(self) -> np.ndarray:
         return np.linspace(self.amp_start, self.amp_stop, self.amp_steps)
 
-    def current_at(self, amp: float) -> dict:
-        return {"type": self.current_type, "params": {self.sweep_param: amp}}
-
 
 @dataclass(frozen=True)
 class SweepEval:
@@ -74,7 +71,11 @@ def evaluate_sweep(
     amp_datasets: list[tuple[float, xr.Dataset, dict[str, xr.Dataset]]] = []
     for amp in cfg.amp_values:
         dset = DatasetConfig(
-            model_name=model_name, dt=dt, current=cfg.current_at(float(amp)), net=net
+            model_name=model_name,
+            dt=dt,
+            current_type=cfg.current_type,
+            current_params={cfg.sweep_param: float(amp)},
+            net=net,
         )
         surr_datasets = {
             rid: unified_simulator(apply_surrogate(surrogate, dset))

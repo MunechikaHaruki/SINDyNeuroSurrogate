@@ -89,10 +89,8 @@ def calc_eval(
     dataset_cfg = DatasetConfig.build_dataset(
         model_name=str(base_ui["model_pair"].value[1]),
         dt=float(base_ui["dt"].value),
-        current={
-            "type": str(base_ui["sim_current_type"].value),
-            "params": setting_ui["sim"]["current_params"].value or {},
-        },
+        current_type=str(base_ui["sim_current_type"].value),
+        current_params=setting_ui["sim"]["current_params"].value or {},
     )
     return evaluate(load_surrogate_model(str(run_ids[0])), dataset_cfg)
 
