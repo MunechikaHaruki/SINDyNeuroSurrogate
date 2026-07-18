@@ -1,11 +1,18 @@
 import logging
+from typing import ClassVar
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 
+from ...core.opcost import OpCost
+from .base import Preprocessor
+
 logger = logging.getLogger(__name__)
+
+# tanh(x) = 1 - 2 / (exp(2x) + 1)
+TANH_COST = OpCost(exp=1, div=1, pm=2, mul=1)
 
 
 # ------------------------------------------------------------------
@@ -82,3 +89,73 @@ def train_autoencoder(
         if (epoch + 1) % 50 == 0:
             logger.info(f"[AutoEncoder] epoch {epoch + 1}/{epochs}  loss={loss:.6f}")
     return params, mean, std
+
+
+class AEPreprocessor(Preprocessor):
+    kind: ClassVar[str] = "ae"
+
+    def __init__(
+        self,
+        epochs: int,
+        lr: float,
+        enc_params: dict[str, np.ndarray],
+        dec_params: dict[str, np.ndarray],
+        x_mean: np.ndarray,
+        x_std: np.ndarray,
+    ):
+        self.epochs = epochs
+        self.lr = lr
+        self.enc_params = enc_params
+        self.dec_params = dec_params
+        self.x_mean = x_mean
+        self.x_std = x_std
+
+    @classmethod
+    def fit(cls, train_gate: np.ndarray, spec: dict) -> "AEPreprocessor":
+        epochs = int(spec.get("epochs", 1000))
+        lr = float(spec.get("lr", 3e-2))
+        params, mean, std = train_autoencoder(
+            train_gate, n_components=spec["n_components"], epochs=epochs, lr=lr
+        )
+        inst = cls(
+            epochs=epochs,
+            lr=lr,
+            enc_params={k: np.asarray(v) for k, v in params["enc"].items()},
+            dec_params={k: np.asarray(v) for k, v in params["dec"].items()},
+            x_mean=np.asarray(mean),
+            x_std=np.asarray(std),
+        )
+        inst._set_fit_artifacts(train_gate)
+        return inst
+
+    @property
+    def n_features(self) -> int:
+        return int(self.enc_params["W1"].shape[0])
+
+    def encode(self, x: np.ndarray) -> np.ndarray:
+        params = {k: jnp.asarray(v) for k, v in self.enc_params.items()}
+        x_norm = (jnp.asarray(np.asarray(x)) - jnp.asarray(self.x_mean)) / jnp.asarray(
+            self.x_std
+        )
+        return np.asarray(encoder(params, x_norm))
+
+    def decode(self, state: jnp.ndarray) -> jnp.ndarray:
+        params = {k: jnp.asarray(v) for k, v in self.dec_params.items()}
+        x_hat = decoder(params, state)
+        return jnp.asarray(x_hat * jnp.asarray(self.x_std) + jnp.asarray(self.x_mean))
+
+    def metrics(self) -> dict:
+        return {
+            "ae/reconstruction_mse": self.reconstruction_mse,
+            "ae/reconstruction_mse_ratio": self.reconstruction_mse_ratio,
+        }
+
+    def opcost(self) -> OpCost:
+        n_latent, hidden = self.dec_params["W1"].shape
+        n_gates = int(self.dec_params["W2"].shape[1])
+        return (
+            OpCost(mul=n_latent * hidden, pm=n_latent * hidden)  # z @ W1 + b1
+            + TANH_COST * int(hidden)
+            + OpCost(mul=hidden * n_gates, pm=hidden * n_gates)  # h @ W2 + b2
+            + OpCost(mul=n_gates, pm=n_gates)  # 標準化の逆変換 (* std + mean)
+        )

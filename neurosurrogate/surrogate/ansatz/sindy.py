@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import numpy as np
 import sympy as sp
 
 from ...core import access
@@ -6,7 +7,6 @@ from ...core.coords import transform_gate
 from ...core.network import Compartment, CompartmentType
 from ...core.opcost import OpCost
 from ..bundle import SINDyBundle
-from ..preprocessor import build_preprocessor
 from ..replace import resolved_params
 from .base import NeuroSurrogateBase
 from .roles import Roles
@@ -15,34 +15,29 @@ from .roles import Roles
 class SINDyNeuroSurrogate(NeuroSurrogateBase):
     SURROGATE_TYPE = "sindy"
 
+    def _train_gate(self) -> np.ndarray:
+        return access.gate_matrix(self._train_xr, self._meta.train_comp_id)
+
     def fit(self, optimizer, library_specs: list[dict]) -> None:
-        train_gate = access.gate_matrix(self._train_xr, self._meta.train_comp_id)
-        preprocessor = build_preprocessor(
-            {**self._preprocessor_spec, "n_components": self._meta.n_components},
-            train_gate,
-        )
         preprocessed_xr = transform_gate(
-            preprocessor,
+            self.preprocessor,
             self._train_xr,
             comp_id=self._meta.train_comp_id,
         )
-        self._set_bundles(
-            sindy_bundle=SINDyBundle.from_sindy(
-                library_specs=library_specs,
-                optimizer_spec=optimizer,
-                x=access.comp_matrix(preprocessed_xr, self._meta.train_comp_id),
-                u=access.i_ext_values(preprocessed_xr),
-                t=access.time(self._train_xr),
-                targets=[sp.Symbol(v) for v in preprocessed_xr.variable.values],
-                inputs=[sp.Symbol("u")],
-                # 列構造: [V, g1..gN, u]。V=0, gate 群, 末尾に外部電流。
-                roles=Roles(
-                    V=0,
-                    g=list(range(1, 1 + self._meta.n_components)),
-                    u=1 + self._meta.n_components,
-                ),
+        self._sindy_bundle = SINDyBundle.from_sindy(
+            library_specs=library_specs,
+            optimizer_spec=optimizer,
+            x=access.comp_matrix(preprocessed_xr, self._meta.train_comp_id),
+            u=access.i_ext_values(preprocessed_xr),
+            t=access.time(self._train_xr),
+            targets=[sp.Symbol(v) for v in preprocessed_xr.variable.values],
+            inputs=[sp.Symbol("u")],
+            # 列構造: [V, g1..gN, u]。V=0, gate 群, 末尾に外部電流。
+            roles=Roles(
+                V=0,
+                g=list(range(1, 1 + self._meta.n_components)),
+                u=1 + self._meta.n_components,
             ),
-            preprocessor=preprocessor,
         )
 
     def params_compatible(self, comp: Compartment) -> bool:

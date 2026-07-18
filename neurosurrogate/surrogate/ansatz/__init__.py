@@ -26,8 +26,6 @@ def load_surrogate(dir: Path | str) -> NeuroSurrogateBase:
     cls = SURR_CLS[meta.surrogate_type]
     surrogate = cls.__new__(cls)
     surrogate._meta = meta
-    surrogate._set_bundles(
-        sindy_bundle=data["sindy_bundle"],
-        preprocessor=data["preprocessor"],
-    )
+    surrogate._sindy_bundle = data["sindy_bundle"]
+    surrogate._preprocessor = data["preprocessor"]
     return surrogate

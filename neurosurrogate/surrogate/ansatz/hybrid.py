@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import jax.numpy as jnp
+import numpy as np
 import sympy as sp
 
 from ...compartments.hh import HH_DV_COST, HHParams, hh_dv
@@ -21,7 +22,6 @@ from ...core import access
 from ...core.network import Compartment, CompartmentType
 from ...core.opcost import OpCost
 from ..bundle import SINDyBundle
-from ..preprocessor import build_preprocessor
 from ..replace import resolved_params
 from .base import NeuroSurrogateBase
 from .roles import Roles
@@ -118,34 +118,26 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
     def _physics(self) -> HybridPhysics:
         return HYBRID_PHYSICS[self.meta.train_comp_type.name]
 
-    def fit(self, optimizer, library_specs: list[dict]) -> None:
+    def _train_gate(self) -> np.ndarray:
         # 学習は先頭 n_learned ゲートのみ (extra=Ca サブ系は physics へ分離)。
-        gate_data = access.gate_matrix(self._train_xr, self._meta.train_comp_id)[
+        return access.gate_matrix(self._train_xr, self._meta.train_comp_id)[
             :, : self._physics.n_learned
         ]
-        preprocessor = build_preprocessor(
-            {**self._preprocessor_spec, "n_components": self._meta.n_components},
-            gate_data,
-        )
-        latent = preprocessor.encode(gate_data)
-        self._set_bundles(
-            sindy_bundle=SINDyBundle.from_sindy(
-                library_specs=library_specs,
-                optimizer_spec=optimizer,
-                x=latent,
-                u=access.potential(self._train_xr, self._meta.train_comp_id),
-                t=access.time(self._train_xr),
-                targets=[
-                    sp.Symbol(v) for v in access.latent_vars(self._meta.n_components)
-                ],
-                inputs=[sp.Symbol(access.POTENTIAL_VAR)],
-                # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
-                roles=Roles(
-                    V=self._meta.n_components,
-                    g=list(range(self._meta.n_components)),
-                ),
+
+    def fit(self, optimizer, library_specs: list[dict]) -> None:
+        self._sindy_bundle = SINDyBundle.from_sindy(
+            library_specs=library_specs,
+            optimizer_spec=optimizer,
+            x=self.preprocessor.encode(self._train_gate()),
+            u=access.potential(self._train_xr, self._meta.train_comp_id),
+            t=access.time(self._train_xr),
+            targets=[sp.Symbol(v) for v in access.latent_vars(self._meta.n_components)],
+            inputs=[sp.Symbol(access.POTENTIAL_VAR)],
+            # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
+            roles=Roles(
+                V=self._meta.n_components,
+                g=list(range(self._meta.n_components)),
             ),
-            preprocessor=preprocessor,
         )
 
     def params_compatible(self, comp: Compartment) -> bool:

@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import ClassVar
 
 import joblib
+import numpy as np
 
 from ...core.network import Compartment, CompartmentType, DatasetConfig
 from ...core.opcost import OpCost
 from ...core.simulator import unified_simulator
 from ..bundle import SINDyBundle
-from ..preprocessor import Preprocessor
+from ..preprocessor import Preprocessor, build_preprocessor
 
 BUNDLE_FILE = "surrogate.joblib"
 
@@ -65,7 +66,6 @@ class SurrogateMeta:
 class NeuroSurrogateBase(ABC):
     SURROGATE_TYPE: ClassVar[str]
     _meta: SurrogateMeta
-    _preprocessor_spec: dict
     _sindy_bundle: SINDyBundle
     _preprocessor: Preprocessor
 
@@ -76,8 +76,9 @@ class NeuroSurrogateBase(ABC):
         n_components: int,
         preprocessor: dict,
     ):
-        # 学習構造 (n_components / preprocessor 種別) は meta が単一源で保持し
-        # save で永続化。preprocessor spec 本体は fit で build に渡すため保持。
+        # 学習構造 (n_components / preprocessor 種別) は meta が単一源で保持し save で
+        # 永続化。preprocessor は学習ゲート (ansatz が _train_gate で列選択) から即
+        # ビルドし、fit は残りの SINDy 同定のみを担う。
         self._meta = SurrogateMeta.build(
             surrogate_type=self.SURROGATE_TYPE,
             datasets=datasets,
@@ -85,8 +86,11 @@ class NeuroSurrogateBase(ABC):
             n_components=n_components,
             preprocessor_kind=preprocessor["type"],
         )
-        self._preprocessor_spec = preprocessor
         self._train_xr = self._meta.simulate()
+        self._preprocessor = build_preprocessor(
+            {**preprocessor, "n_components": self._meta.n_components},
+            self._train_gate(),
+        )
 
     @classmethod
     def build(cls, type: str, init: dict) -> "NeuroSurrogateBase":
@@ -97,6 +101,11 @@ class NeuroSurrogateBase(ABC):
     @property
     def meta(self) -> SurrogateMeta:
         return self._meta
+
+    @abstractmethod
+    def _train_gate(self) -> np.ndarray:
+        """preprocessor 学習に使うゲート行列 (ansatz が列選択)。__init__ で参照。"""
+        ...
 
     @abstractmethod
     def fit(self, optimizer, library_specs: list[dict]) -> None: ...
@@ -127,14 +136,6 @@ class NeuroSurrogateBase(ABC):
     @property
     def preprocessor(self) -> Preprocessor:
         return self._preprocessor
-
-    def _set_bundles(
-        self,
-        sindy_bundle: SINDyBundle,
-        preprocessor: Preprocessor,
-    ) -> None:
-        self._sindy_bundle = sindy_bundle
-        self._preprocessor = preprocessor
 
     def metrics(self) -> dict:
         return {
