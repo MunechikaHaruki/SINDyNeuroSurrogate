@@ -16,12 +16,19 @@ from neurosurrogate.view.utils import sweep_fig, sweep_trace_grid_fig
 
 
 def _sweep_param_of(current_type: str) -> str | None:
-    keys = [
-        n
-        for n, p in inspect.signature(CURRENT_MAP[current_type]).parameters.items()
+    """掃引軸に使う単一 numeric パラメータ名を返す。
+    掃引軸が一意に定まらない (numeric param が 0 個 or 複数) 場合は
+    None = 掃引 UI 非対応。"""
+    numeric_params = [
+        name
+        for name, p in inspect.signature(CURRENT_MAP[current_type]).parameters.items()
         if p.annotation in (int, float)
     ]
-    return keys[0] if len(keys) == 1 else None
+    return numeric_params[0] if len(numeric_params) == 1 else None
+
+
+def _is_sweepable(current_type: str) -> bool:
+    return _sweep_param_of(current_type) is not None
 
 
 SweepDefaults = dict[str, tuple[float, float, int]]
@@ -49,7 +56,7 @@ def _fetch_abbr_name(run_name: str) -> str:
 def make_sweep_ui(
     current_type: str, defaults: SweepDefaults, run_selector: mo.ui.table
 ) -> mo.ui.dictionary | None:
-    if _sweep_param_of(current_type) is None:
+    if not _is_sweepable(current_type):
         return None
     start, stop, steps = defaults.get(current_type, _SWEEP_FALLBACK)
     return mo.ui.dictionary(
@@ -64,7 +71,7 @@ def make_sweep_ui(
 
 def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary | None:
     current_type = str(base_ui["sim_current_type"].value)
-    if _sweep_param_of(current_type) is None:
+    if not _is_sweepable(current_type):
         return None
     return mo.ui.dictionary(
         {
