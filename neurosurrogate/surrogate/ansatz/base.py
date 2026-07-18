@@ -18,17 +18,31 @@ class SurrogateMeta:
     surrogate_type: str
     dataset: DatasetConfig
     train_comp_id: int
+    n_components: int
+    preprocessor_kind: str  # pca/ae
 
     @classmethod
     def build(
-        cls, surrogate_type: str, datasets: dict, train_comp_identifier: str
+        cls,
+        surrogate_type: str,
+        datasets: dict,
+        train_comp_identifier: str,
+        n_components: int,
+        preprocessor_kind: str,
     ) -> "SurrogateMeta":
         dataset = DatasetConfig.build_dataset(**datasets)
         return cls(
             surrogate_type=surrogate_type,
             dataset=dataset,
             train_comp_id=dataset.net.name_to_idx(train_comp_identifier),
+            n_components=n_components,
+            preprocessor_kind=preprocessor_kind,
         )
+
+    @property
+    def label(self) -> str:
+        """図表示用の簡約名。例 hybrid/n2/ae。runName 文字列に非依存。"""
+        return f"{self.surrogate_type}/n{self.n_components}/{self.preprocessor_kind}"
 
     @property
     def train_comp(self) -> Compartment:
@@ -50,18 +64,27 @@ class SurrogateMeta:
 class NeuroSurrogateBase(ABC):
     SURROGATE_TYPE: ClassVar[str]
     _meta: SurrogateMeta
+    _preprocessor: dict
     _sindy_bundle: SINDyBundle
     _preprocessor_bundle: PreprocessorBundle
 
-    def __init__(self, datasets: dict, train_comp_identifier: str, n_components: int):
+    def __init__(
+        self,
+        datasets: dict,
+        train_comp_identifier: str,
+        n_components: int,
+        preprocessor: dict,
+    ):
+        # 学習構造 (n_components / preprocessor 種別) は meta が単一源で保持し
+        # save で永続化。preprocessor spec 本体は fit で from_spec に渡すため保持。
         self._meta = SurrogateMeta.build(
             surrogate_type=self.SURROGATE_TYPE,
             datasets=datasets,
             train_comp_identifier=train_comp_identifier,
+            n_components=n_components,
+            preprocessor_kind=preprocessor["type"],
         )
-        # 潜在方程式の次元 = ansatz の方程式構造を決める第一義。preprocessor は
-        # この次元の一消費者にすぎず、fit で spec に注入する (単一源)。
-        self._n_components = n_components
+        self._preprocessor = preprocessor
         self._train_xr = self._meta.simulate()
 
     @classmethod
@@ -75,7 +98,7 @@ class NeuroSurrogateBase(ABC):
         return self._meta
 
     @abstractmethod
-    def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None: ...
+    def fit(self, optimizer, library_specs: list[dict]) -> None: ...
 
     @property
     @abstractmethod

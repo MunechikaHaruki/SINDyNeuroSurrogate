@@ -117,13 +117,13 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
     def _physics(self) -> HybridPhysics:
         return HYBRID_PHYSICS[self.meta.train_comp_type.name]
 
-    def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
+    def fit(self, optimizer, library_specs: list[dict]) -> None:
         # 学習は先頭 n_learned ゲートのみ (extra=Ca サブ系は physics へ分離)。
         gate_data = access.gate_matrix(self._train_xr, self._meta.train_comp_id)[
             :, : self._physics.n_learned
         ]
         preprocessor_bundle = PreprocessorBundle.from_spec(
-            {**preprocessor, "n_components": self._n_components}, gate_data
+            {**self._preprocessor, "n_components": self._meta.n_components}, gate_data
         )
         latent = preprocessor_bundle.preprocessor.transform(gate_data)
         self._set_bundles(
@@ -133,10 +133,15 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
                 x=latent,
                 u=access.potential(self._train_xr, self._meta.train_comp_id),
                 t=access.time(self._train_xr),
-                targets=[sp.Symbol(v) for v in access.latent_vars(self._n_components)],
+                targets=[
+                    sp.Symbol(v) for v in access.latent_vars(self._meta.n_components)
+                ],
                 inputs=[sp.Symbol(access.POTENTIAL_VAR)],
                 # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
-                roles=Roles(V=self._n_components, g=list(range(self._n_components))),
+                roles=Roles(
+                    V=self._meta.n_components,
+                    g=list(range(self._meta.n_components)),
+                ),
             ),
             preprocessor_bundle=preprocessor_bundle,
         )

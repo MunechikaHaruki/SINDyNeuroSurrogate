@@ -28,4 +28,4 @@ hydra:
     params:
       surrogate.type: sindy,hybrid
       surrogate.init.n_components: 1,2
-      surrogate.fit.preprocessor.type: pca,ae
+      surrogate.init.preprocessor.type: pca,ae

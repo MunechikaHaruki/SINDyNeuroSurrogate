@@ -2,9 +2,9 @@ init:
   datasets:
     model_name: traub
     current_type: train
-fit:
   preprocessor:
     type: pca
+fit:
   library_specs:
     - type: traub_gate_forward
     - type: traub_gate_backward

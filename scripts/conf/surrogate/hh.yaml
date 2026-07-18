@@ -2,9 +2,9 @@ init:
   datasets:
     model_name: hh
     current_type: train
-fit:
   preprocessor:
     type: pca
+fit:
   library_specs:
     - type: hh_gate_forward
     - type: hh_gate_backward

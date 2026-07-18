@@ -14,10 +14,10 @@ from .roles import Roles
 class SINDyNeuroSurrogate(NeuroSurrogateBase):
     SURROGATE_TYPE = "sindy"
 
-    def fit(self, preprocessor, optimizer, library_specs: list[dict]) -> None:
+    def fit(self, optimizer, library_specs: list[dict]) -> None:
         train_gate = access.gate_matrix(self._train_xr, self._meta.train_comp_id)
         preprocessor_bundle = PreprocessorBundle.from_spec(
-            {**preprocessor, "n_components": self._n_components}, train_gate
+            {**self._preprocessor, "n_components": self._meta.n_components}, train_gate
         )
         preprocessed_xr = transform_gate(
             preprocessor_bundle.preprocessor,
@@ -36,8 +36,8 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
                 # 列構造: [V, g1..gN, u]。V=0, gate 群, 末尾に外部電流。
                 roles=Roles(
                     V=0,
-                    g=list(range(1, 1 + self._n_components)),
-                    u=1 + self._n_components,
+                    g=list(range(1, 1 + self._meta.n_components)),
+                    u=1 + self._meta.n_components,
                 ),
             ),
             preprocessor_bundle=preprocessor_bundle,

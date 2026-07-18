@@ -2,9 +2,9 @@ init:
   datasets:
     model_name: hh
     current_type: train
-fit:
   preprocessor:
     type: pca
+fit:
   library_specs:
     - type: gate_poly_volt  # latent の高次項・V 積 (1次は basis)
     - type: hh_gate_forward

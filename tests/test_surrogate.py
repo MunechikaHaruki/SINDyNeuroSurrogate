@@ -137,7 +137,7 @@ def test_hybrid_opcost_includes_decode() -> None:
     surrogate = fit_surrogate(
         "hh",
         3,
-        extra=["surrogate.type=hybrid", "surrogate.fit.preprocessor.type=pca"],
+        extra=["surrogate.type=hybrid", "surrogate.init.preprocessor.type=pca"],
     )
     assert isinstance(surrogate, HybridSINDyNeuroSurrogate)  # _physics は hybrid 固有
     decode_cost = surrogate.preprocessor_bundle.opcost()

@@ -10,8 +10,6 @@ from mlflow_io import LoadedRun
 
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate.replace import replaced_names
-from neurosurrogate.view.model import view_model, view_neuron_graph
 from neurosurrogate.view.utils import current_preview_fig
 
 
@@ -29,17 +27,8 @@ def view_single(
         return panel.done()
 
     net = MCMODELS[target_of(base_ui)]
-    surr = run.surrogate
-    panel.figs(
-        "NeuronGraph",
-        [
-            (
-                f"neurograph({pair_tag})",
-                view_neuron_graph(net, replaced_names(surr, net)),
-            )
-        ],
-    )
-    panel.figs("SINDy 係数", [(f"model({pair_tag})", view_model(surr.sindy_bundle))])
+    for title, name, fig in analysis_single.model_figs(net, run.surrogate):
+        panel.figs(title, [(f"{name}({pair_tag})", fig)])
 
     if res is None:
         panel.note("(single結果なし)")

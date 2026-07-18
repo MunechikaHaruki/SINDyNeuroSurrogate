@@ -7,10 +7,13 @@ import pandas as pd
 from matplotlib.figure import Figure
 from mlflow_io import load_surrogate_model
 
-from neurosurrogate.core.network import DatasetConfig
+from neurosurrogate.core.network import DatasetConfig, NeuronGraph
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult, evaluate
 from neurosurrogate.metrics.wave import WaveReport
+from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
+from neurosurrogate.surrogate.replace import replaced_names
+from neurosurrogate.view.model import view_model, view_neuron_graph
 from neurosurrogate.view.specs import draw_all
 
 # ---------------------------------------------------------------------------
@@ -93,6 +96,25 @@ def calc_eval(
         current_params=setting_ui["sim"]["current_params"].value or {},
     )
     return evaluate(load_surrogate_model(str(run_ids[0])), dataset_cfg)
+
+
+# ---------------------------------------------------------------------------
+# Model View (eval 前・静的: surrogate + net のみ依存)
+# ---------------------------------------------------------------------------
+
+
+def model_figs(
+    net: NeuronGraph, surrogate: NeuroSurrogateBase
+) -> list[tuple[str, str, Figure]]:
+    """single mode の静的モデル図。(section 見出し, save 名, fig) 列。"""
+    return [
+        (
+            "NeuronGraph",
+            "neurograph",
+            view_neuron_graph(net, replaced_names(surrogate, net)),
+        ),
+        ("SINDy 係数", "model", view_model(surrogate.sindy_bundle)),
+    ]
 
 
 # ---------------------------------------------------------------------------
