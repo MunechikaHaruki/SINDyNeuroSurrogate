@@ -7,8 +7,7 @@ app = marimo.App(width="columns")
 @app.cell(column=0)
 def _():
     import marimo as mo
-    from analysis import panel, view
-    from analysis import ui as analysis
+    from analysis import actions, panel, ui, view
     from mlflow_io import get_runs_df
 
     # current_type → (amp_start, amp_stop, amp_steps)
@@ -21,22 +20,22 @@ def _():
     TARGET_MODEL = {"hh": ["hh", "phhhp"], "traub": ["traub19", "traub"]}
 
     runs_df = get_runs_df()
-    base_ui = analysis.make_base_ui(runs_df, TARGET_MODEL)
+    base_ui = ui.make_base_ui(runs_df, TARGET_MODEL)
     base_ui  # noqa: B018
-    return SWEEP_DEFAULTS, analysis, base_ui, mo, panel, runs_df, view
+    return SWEEP_DEFAULTS, actions, base_ui, mo, panel, runs_df, ui, view
 
 
 @app.cell
-def _(SWEEP_DEFAULTS, analysis, base_ui, runs_df):
-    analysis.setup_mpl(base_ui["plt_style"].value)
-    setting_ui = analysis.make_setting_ui(runs_df, base_ui, SWEEP_DEFAULTS)
+def _(SWEEP_DEFAULTS, base_ui, runs_df, ui):
+    ui.setup_mpl(base_ui["plt_style"].value)
+    setting_ui = ui.make_setting_ui(runs_df, base_ui, SWEEP_DEFAULTS)
     setting_ui  # noqa: B018
     return (setting_ui,)
 
 
 @app.cell
-def _(analysis, base_ui):
-    draw_ui = analysis.make_draw_ui(base_ui)
+def _(base_ui, ui):
+    draw_ui = ui.make_draw_ui(base_ui)
     draw_ui  # noqa: B018
     return (draw_ui,)
 
@@ -100,34 +99,34 @@ def _(get_res_single, get_res_sweep):
 
 
 @app.cell
-def _(analysis, base_ui, set_res_single, setting_ui):
-    _new = analysis.calc_single(base_ui, setting_ui)
+def _(actions, base_ui, set_res_single, setting_ui):
+    _new = actions.calc_single(base_ui, setting_ui)
     if _new is not None:
         set_res_single(_new)
     return
 
 
 @app.cell
-def _(analysis, base_ui, set_res_sweep, setting_ui):
-    _new = analysis.calc_sweep(base_ui, setting_ui)
+def _(actions, base_ui, set_res_sweep, setting_ui):
+    _new = actions.calc_sweep(base_ui, setting_ui)
     if _new is not None:
         set_res_sweep(_new)
     return
 
 
 @app.cell
-def _(analysis, setting_ui):
+def _(actions, setting_ui):
     # sweep 用 run 選択の surrogate (評価サマリ + sweep で共有)。sweep 無効時は空。
     loaded_sweep = (
-        analysis.load_selected(setting_ui["sweep"]) if "sweep" in setting_ui else []
+        actions.load_selected(setting_ui["sweep"]) if "sweep" in setting_ui else []
     )
     return (loaded_sweep,)
 
 
 @app.cell
-def _(analysis, setting_ui):
+def _(actions, setting_ui):
     # single 用 run 選択の surrogate (neurograph + heatmap + 波形評価で共有)
-    loaded_single = analysis.load_single(setting_ui["sim"])
+    loaded_single = actions.load_single(setting_ui["sim"])
     return (loaded_single,)
 
 

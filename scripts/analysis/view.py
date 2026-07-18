@@ -4,8 +4,9 @@ import marimo as mo
 import pandas as pd
 from analysis import single as analysis_single
 from analysis import sweep as analysis_sweep
+from analysis.actions import LoadedRun
 from analysis.panel import Panel, SaveEntry, entry, pair
-from analysis.ui import LoadedRun, target_of
+from analysis.ui import target_of
 
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
