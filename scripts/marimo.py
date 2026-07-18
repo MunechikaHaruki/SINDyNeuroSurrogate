@@ -107,8 +107,8 @@ def _(actions, base_ui, set_res_single, setting_ui):
 
 
 @app.cell
-def _(actions, base_ui, set_res_sweep, setting_ui):
-    _new = actions.calc_sweep(base_ui, setting_ui)
+def _(actions, base_ui, loaded_sweep, set_res_sweep, setting_ui):
+    _new = actions.calc_sweep(base_ui, setting_ui, loaded_sweep)
     if _new is not None:
         set_res_sweep(_new)
     return

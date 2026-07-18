@@ -1,6 +1,7 @@
 import logging
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -42,6 +43,28 @@ def load_surrogate_model(run_id: str) -> NeuroSurrogateBase:
             )
         )
         return load_surrogate(local)
+
+
+@dataclass(frozen=True)
+class LoadedRun:
+    """ロード済 run 1件。run 選択の下流 (評価/描画) が扱う単位。"""
+
+    run_id: str
+    run_name: str
+    surrogate: NeuroSurrogateBase
+
+
+def load_runs(run_ids: list[str]) -> list[LoadedRun]:
+    """run_id 列 → runName 取得 + surrogate ロードを束ねた LoadedRun 列。
+    run 選択の唯一のロード経路 (sweep 複数 / single 1件 共通)。"""
+    return [
+        LoadedRun(
+            run_id=rid,
+            run_name=mlflow.get_run(rid).data.tags.get("mlflow.runName", rid[:6]),
+            surrogate=load_surrogate_model(rid),
+        )
+        for rid in run_ids
+    ]
 
 
 def get_runs_df():

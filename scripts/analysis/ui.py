@@ -7,8 +7,8 @@ from typing import Literal
 import marimo as mo
 import matplotlib.pyplot as plt
 import pandas as pd
-from analysis import single as analysis_single
-from analysis import sweep as analysis_sweep
+from analysis.mode import single as analysis_single
+from analysis.mode import sweep as analysis_sweep
 from mlflow_io import setup_mlflow
 
 from neurosurrogate.currents import CURRENT_MAP

@@ -1,9 +1,8 @@
 import inspect
 
 import marimo as mo
-import mlflow
 from matplotlib.figure import Figure
-from mlflow_io import load_surrogate_model
+from mlflow_io import LoadedRun
 
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval_sweep import CurrentSweepConfig, evaluate_sweep
@@ -99,10 +98,11 @@ def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary | None:
 def calc_sweep(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
+    loaded: list[LoadedRun],
 ) -> dict:
-    """UI/mlflow 値を引き出し evaluate_sweep へ委譲。raw sim データを返す。"""
+    """UI 値 + ロード済 run を evaluate_sweep へ委譲。raw sim データを返す。
+    surrogate/runName は loaded (load_selected 由来) を単一源とし再取得しない。"""
     sweep_ui = setting_ui["sweep"]
-    run_ids = sweep_ui["run_selector"].value["run_id"].tolist()
     current_type = base_ui["sim_current_type"].value
     cfg = CurrentSweepConfig(
         current_type=current_type,
@@ -112,21 +112,14 @@ def calc_sweep(
         amp_steps=sweep_ui["amp_steps"].value,
     )
     sweep_eval = evaluate_sweep(
-        {rid: load_surrogate_model(rid) for rid in run_ids},
+        {r.run_id: r.surrogate for r in loaded},
         model_name=str(base_ui["model_pair"].value[1]),
         dt=float(base_ui["dt"].value),
         cfg=cfg,
     )
     return {
         "sweep_eval": sweep_eval,
-        "run_labels": {
-            rid: _fetch_abbr_name(
-                mlflow.MlflowClient()
-                .get_run(rid)
-                .data.tags.get("mlflow.runName", rid[:6])
-            )
-            for rid in run_ids
-        },
+        "run_labels": {r.run_id: _fetch_abbr_name(r.run_name) for r in loaded},
         "cfg": cfg,
     }
 

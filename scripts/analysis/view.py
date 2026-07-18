@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import marimo as mo
 import pandas as pd
-from analysis import single as analysis_single
-from analysis import sweep as analysis_sweep
-from analysis.actions import LoadedRun
+from analysis.mode import single as analysis_single
+from analysis.mode import sweep as analysis_sweep
 from analysis.panel import Panel, SaveEntry, entry, pair
 from analysis.ui import target_of
+from mlflow_io import LoadedRun
 
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
@@ -29,7 +29,7 @@ def view_single(
         return panel.done()
 
     net = MCMODELS[target_of(base_ui)]
-    surr = run[2]
+    surr = run.surrogate
     panel.figs(
         "NeuronGraph",
         [
@@ -59,11 +59,11 @@ def view_single(
 def _eval_df(loaded: list[LoadedRun]) -> pd.DataFrame:
     rows = [
         {
-            "run_name": run_name,
-            "run_id": rid[:8],
-            **surrogate.metrics(),
+            "run_name": r.run_name,
+            "run_id": r.run_id[:8],
+            **r.surrogate.metrics(),
         }
-        for rid, run_name, surrogate in loaded
+        for r in loaded
     ]
     return pd.DataFrame(rows).set_index("run_name")
 

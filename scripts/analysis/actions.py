@@ -4,16 +4,11 @@ from typing import cast
 
 import marimo as mo
 import pandas as pd
-from analysis import single as analysis_single
-from analysis import sweep as analysis_sweep
-from mlflow_io import load_surrogate_model
+from analysis.mode import single as analysis_single
+from analysis.mode import sweep as analysis_sweep
+from mlflow_io import LoadedRun, load_runs
 
 from neurosurrogate.metrics.eval import EvalResult
-from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
-
-# 選択 run 1件 = (run_id, run_name, surrogate)
-LoadedRun = tuple[str, str, NeuroSurrogateBase]
-
 
 # ---------------------------------------------------------------------------
 # Calc (run ボタンゲート → 各 ansatz へ委譲)
@@ -32,9 +27,10 @@ def calc_single(
 def calc_sweep(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
+    loaded: list[LoadedRun],
 ) -> dict | None:
     if "run_sweep" in setting_ui and setting_ui["run_sweep"].value:
-        return analysis_sweep.calc_sweep(base_ui, setting_ui)
+        return analysis_sweep.calc_sweep(base_ui, setting_ui, loaded)
     return None
 
 
@@ -44,17 +40,10 @@ def calc_sweep(
 
 
 def load_selected(sub_ui: mo.ui.dictionary) -> list[LoadedRun]:
-    """sub_ui の run_selector 選択 run の surrogate をロードし (id, name, surrogate)
-    列で返す。sweep (複数可) 用。single は `load_single`。"""
-    selected = cast(pd.DataFrame, sub_ui["run_selector"].value)
-    return [
-        (rid, run_name, load_surrogate_model(rid))
-        for rid, run_name in zip(
-            selected["run_id"].tolist(),
-            selected["tags.mlflow.runName"].tolist(),
-            strict=True,
-        )
-    ]
+    """run_selector 選択 (複数可) の run_id を抽出し load_runs へ委譲。
+    single (1件) は `load_single`。"""
+    run_ids = cast(pd.DataFrame, sub_ui["run_selector"].value)["run_id"].tolist()
+    return load_runs(run_ids)
 
 
 def load_single(sub_ui: mo.ui.dictionary) -> LoadedRun | None:
