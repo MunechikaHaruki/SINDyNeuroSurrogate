@@ -35,99 +35,50 @@ def loss_fn(params, x):
 
 
 # ------------------------------------------------------------------
-# sklearn互換クラス
+# 学習 (パラメータ → 直列化は AEPreprocessor が担う)
 # ------------------------------------------------------------------
 
 
-class AutoEncoderPreprocessor:
-    """
-    JAX実装のAutoEncoder。PCAと同じfit/transformインターフェース。
+def _init_params(input_dim: int, n_components: int, key) -> dict:
+    k1, k2, k3, k4, k5, k6, k7, k8 = jax.random.split(key, 8)
+    hidden = 16
+    return {
+        "enc": {
+            "W1": jax.random.normal(k1, (input_dim, hidden)) * 0.1,
+            "b1": jax.random.normal(k2, (hidden,)) * 0.1,
+            "W2": jax.random.normal(k3, (hidden, n_components)) * 0.1,
+            "b2": jax.random.normal(k4, (n_components,)) * 0.1,
+        },
+        "dec": {
+            "W1": jax.random.normal(k5, (n_components, hidden)) * 0.1,
+            "b1": jax.random.normal(k6, (hidden,)) * 0.1,
+            "W2": jax.random.normal(k7, (hidden, input_dim)) * 0.1,
+            "b2": jax.random.normal(k8, (input_dim,)) * 0.1,
+        },
+    }
 
-    Parameters
-    ----------
-    n_components : int
-        潜在空間の次元数（PCAのn_componentsに相当）。
-    epochs : int
-        学習エポック数。
-    lr : float
-        学習率。
-    """
 
-    def __init__(self, n_components: int = 1, epochs: int = 1000, lr: float = 3e-2):
-        self.n_components = n_components
-        self.epochs = epochs
-        self.lr = lr
-        self._params: dict | None = None
-        self._mean: np.ndarray | None = None
-        self._std: np.ndarray | None = None
+def train_autoencoder(
+    X: np.ndarray, n_components: int, epochs: int, lr: float
+) -> tuple[dict, np.ndarray, np.ndarray]:
+    """AutoEncoder を学習し (params, x_mean, x_std) を返す。標準化込み。"""
+    X = np.asarray(X, dtype=np.float32)
+    mean = X.mean(axis=0)
+    std = X.std(axis=0) + 1e-8
+    X_norm = jnp.array((X - mean) / std)
 
-    def _init_params(self, input_dim, key):
-        k1, k2, k3, k4, k5, k6, k7, k8 = jax.random.split(key, 8)
-        hidden = 16
-        return {
-            "enc": {
-                "W1": jax.random.normal(k1, (input_dim, hidden)) * 0.1,
-                "b1": jax.random.normal(k2, (hidden,)) * 0.1,
-                "W2": jax.random.normal(k3, (hidden, self.n_components)) * 0.1,
-                "b2": jax.random.normal(k4, (self.n_components,)) * 0.1,
-            },
-            "dec": {
-                "W1": jax.random.normal(k5, (self.n_components, hidden)) * 0.1,
-                "b1": jax.random.normal(k6, (hidden,)) * 0.1,
-                "W2": jax.random.normal(k7, (hidden, input_dim)) * 0.1,
-                "b2": jax.random.normal(k8, (input_dim,)) * 0.1,
-            },
-        }
+    params = _init_params(X.shape[1], n_components, jax.random.PRNGKey(0))
+    optimizer = optax.adam(lr)
+    opt_state = optimizer.init(params)
 
-    @property
-    def n_features_in_(self) -> int:
-        """学習入力ゲート数 (PCA.n_features_in_ 互換。transform_gate の幅整合用)。"""
-        assert self._mean is not None
-        return int(self._mean.shape[0])
+    @jax.jit
+    def step(params, opt_state, x):
+        loss, grads = jax.value_and_grad(loss_fn)(params, x)
+        updates, opt_state = optimizer.update(grads, opt_state)
+        return optax.apply_updates(params, updates), opt_state, loss
 
-    def fit(self, X: np.ndarray) -> "AutoEncoderPreprocessor":
-        X = np.asarray(X, dtype=np.float32)
-
-        # 標準化
-        self._mean = X.mean(axis=0)
-        self._std = X.std(axis=0) + 1e-8
-        X_norm = jnp.array((X - self._mean) / self._std)
-
-        # 初期化
-        params = self._init_params(X.shape[1], jax.random.PRNGKey(0))
-        optimizer = optax.adam(self.lr)
-        opt_state = optimizer.init(params)
-
-        # JITコンパイル
-        @jax.jit
-        def step(params, opt_state, x):
-            loss, grads = jax.value_and_grad(loss_fn)(params, x)
-            updates, opt_state = optimizer.update(grads, opt_state)
-            params = optax.apply_updates(params, updates)
-            return params, opt_state, loss
-
-        # 学習ループ
-        for epoch in range(self.epochs):
-            params, opt_state, loss = step(params, opt_state, X_norm)
-            if (epoch + 1) % 50 == 0:
-                logger.info(
-                    f"[AutoEncoder] epoch {epoch + 1}/{self.epochs}  loss={loss:.6f}"
-                )
-
-        self._params = params
-        return self
-
-    def transform(self, X: np.ndarray) -> np.ndarray:
-        if self._params is None or self._mean is None or self._std is None:
-            raise RuntimeError("fit()を先に呼んでください。")
-        X_norm = jnp.array((np.asarray(X, dtype=np.float32) - self._mean) / self._std)
-        return np.array(encoder(self._params["enc"], X_norm))
-
-    def fit_transform(self, X: np.ndarray) -> np.ndarray:
-        return self.fit(X).transform(X)
-
-    def inverse_transform(self, Z: np.ndarray) -> np.ndarray:
-        if self._params is None or self._mean is None or self._std is None:
-            raise RuntimeError("fit()を先に呼んでください。")
-        x_hat = decoder(self._params["dec"], jnp.array(np.asarray(Z, dtype=np.float32)))
-        return np.array(x_hat) * self._std + self._mean  # type: ignore[no-any-return]
+    for epoch in range(epochs):
+        params, opt_state, loss = step(params, opt_state, X_norm)
+        if (epoch + 1) % 50 == 0:
+            logger.info(f"[AutoEncoder] epoch {epoch + 1}/{epochs}  loss={loss:.6f}")
+    return params, mean, std

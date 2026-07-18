@@ -27,7 +27,7 @@ def preprocessed_latent(
             f"comp {comp.name!r} は学習ドメイン外 → latent 比較不可 "
             f"(学習型 {surrogate.meta.train_comp_type.name!r})"
         )
-    return transform_gate(surrogate.preprocessor_bundle.preprocessor, sim_ds, comp_id)
+    return transform_gate(surrogate.preprocessor, sim_ds, comp_id)
 
 
 @dataclass(frozen=True)

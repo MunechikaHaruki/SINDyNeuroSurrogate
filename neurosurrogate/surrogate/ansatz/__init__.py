@@ -28,6 +28,6 @@ def load_surrogate(dir: Path | str) -> NeuroSurrogateBase:
     surrogate._meta = meta
     surrogate._set_bundles(
         sindy_bundle=data["sindy_bundle"],
-        preprocessor_bundle=data["preprocessor_bundle"],
+        preprocessor=data["preprocessor"],
     )
     return surrogate

@@ -8,7 +8,8 @@ import joblib
 from ...core.network import Compartment, CompartmentType, DatasetConfig
 from ...core.opcost import OpCost
 from ...core.simulator import unified_simulator
-from ..bundle import PreprocessorBundle, SINDyBundle
+from ..bundle import SINDyBundle
+from ..preprocessor import Preprocessor
 
 BUNDLE_FILE = "surrogate.joblib"
 
@@ -64,9 +65,9 @@ class SurrogateMeta:
 class NeuroSurrogateBase(ABC):
     SURROGATE_TYPE: ClassVar[str]
     _meta: SurrogateMeta
-    _preprocessor: dict
+    _preprocessor_spec: dict
     _sindy_bundle: SINDyBundle
-    _preprocessor_bundle: PreprocessorBundle
+    _preprocessor: Preprocessor
 
     def __init__(
         self,
@@ -76,7 +77,7 @@ class NeuroSurrogateBase(ABC):
         preprocessor: dict,
     ):
         # 学習構造 (n_components / preprocessor 種別) は meta が単一源で保持し
-        # save で永続化。preprocessor spec 本体は fit で from_spec に渡すため保持。
+        # save で永続化。preprocessor spec 本体は fit で build に渡すため保持。
         self._meta = SurrogateMeta.build(
             surrogate_type=self.SURROGATE_TYPE,
             datasets=datasets,
@@ -84,7 +85,7 @@ class NeuroSurrogateBase(ABC):
             n_components=n_components,
             preprocessor_kind=preprocessor["type"],
         )
-        self._preprocessor = preprocessor
+        self._preprocessor_spec = preprocessor
         self._train_xr = self._meta.simulate()
 
     @classmethod
@@ -124,21 +125,21 @@ class NeuroSurrogateBase(ABC):
         return self._sindy_bundle
 
     @property
-    def preprocessor_bundle(self) -> PreprocessorBundle:
-        return self._preprocessor_bundle
+    def preprocessor(self) -> Preprocessor:
+        return self._preprocessor
 
     def _set_bundles(
         self,
         sindy_bundle: SINDyBundle,
-        preprocessor_bundle: PreprocessorBundle,
+        preprocessor: Preprocessor,
     ) -> None:
         self._sindy_bundle = sindy_bundle
-        self._preprocessor_bundle = preprocessor_bundle
+        self._preprocessor = preprocessor
 
     def metrics(self) -> dict:
         return {
             **self.sindy_bundle.xi_metrics(),
-            **self.preprocessor_bundle.metrics(),
+            **self.preprocessor.metrics(),
             **self.opcost.diff_dict(self._meta.original_opcost),
         }
 
@@ -147,7 +148,7 @@ class NeuroSurrogateBase(ABC):
             {
                 "meta": self._meta,
                 "sindy_bundle": self.sindy_bundle,
-                "preprocessor_bundle": self.preprocessor_bundle,
+                "preprocessor": self.preprocessor,
             },
             Path(dir) / BUNDLE_FILE,
         )

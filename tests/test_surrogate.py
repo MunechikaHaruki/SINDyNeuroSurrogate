@@ -67,7 +67,7 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     """列構造 [V, g1..gN, u] は latent 次元によらず置換シミュまで通る。"""
     surrogate = fit_surrogate("hh", n_components)
     assert surrogate.sindy_bundle.xi.shape[0] == n_components + 1  # V + latent
-    assert len(surrogate.preprocessor_bundle.gate_inits) == n_components
+    assert len(surrogate.preprocessor.gate_inits) == n_components
 
     result = evaluate(surrogate, surrogate.meta.dataset)
     v = access.potential(result.surr_ds, surrogate.meta.train_comp_id)
@@ -140,7 +140,7 @@ def test_hybrid_opcost_includes_decode() -> None:
         extra=["surrogate.type=hybrid", "surrogate.init.preprocessor.type=pca"],
     )
     assert isinstance(surrogate, HybridSINDyNeuroSurrogate)  # _physics は hybrid 固有
-    decode_cost = surrogate.preprocessor_bundle.opcost()
+    decode_cost = surrogate.preprocessor.opcost()
     # PCA decode: gate ごとに latent 数の積 + 同数の加減 (3 latent x 3 gate)
     assert (decode_cost.mul, decode_cost.pm) == (9, 9)
     assert surrogate.opcost == (

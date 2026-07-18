@@ -20,7 +20,8 @@ from ...compartments.traub import (
 from ...core import access
 from ...core.network import Compartment, CompartmentType
 from ...core.opcost import OpCost
-from ..bundle import PreprocessorBundle, SINDyBundle
+from ..bundle import SINDyBundle
+from ..preprocessor import build_preprocessor
 from ..replace import resolved_params
 from .base import NeuroSurrogateBase
 from .roles import Roles
@@ -122,10 +123,11 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         gate_data = access.gate_matrix(self._train_xr, self._meta.train_comp_id)[
             :, : self._physics.n_learned
         ]
-        preprocessor_bundle = PreprocessorBundle.from_spec(
-            {**self._preprocessor, "n_components": self._meta.n_components}, gate_data
+        preprocessor = build_preprocessor(
+            {**self._preprocessor_spec, "n_components": self._meta.n_components},
+            gate_data,
         )
-        latent = preprocessor_bundle.preprocessor.transform(gate_data)
+        latent = preprocessor.encode(gate_data)
         self._set_bundles(
             sindy_bundle=SINDyBundle.from_sindy(
                 library_specs=library_specs,
@@ -143,7 +145,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
                     g=list(range(self._meta.n_components)),
                 ),
             ),
-            preprocessor_bundle=preprocessor_bundle,
+            preprocessor=preprocessor,
         )
 
     def params_compatible(self, comp: Compartment) -> bool:
@@ -157,11 +159,9 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         phys = self._physics
         extra = phys.extra
         xi = jnp.asarray(self.sindy_bundle.xi)
-        bundle = self.preprocessor_bundle.bundle
-        assert bundle is not None
-        decode = bundle.decode
+        decode = self.preprocessor.decode
         compute_theta = self.sindy_bundle.compute_theta()
-        n_latent = len(self.preprocessor_bundle.gate_inits)
+        n_latent = self._meta.n_components
 
         # surr state = [latent₁..latentₙ, *extra]。extra は physics で解く追加状態
         # (Ca サブ系)、無ければ学習ゲート=dv 用の全ゲート。
@@ -184,7 +184,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             kernel=hybrid_kernel,
             param_cls=phys.param_cls,
             gate_names=access.latent_vars(n_latent) + extra_names,
-            default_gate_inits=self.preprocessor_bundle.gate_inits + extra_inits,
+            default_gate_inits=self.preprocessor.gate_inits + extra_inits,
             v_init=phys.v_init,
             opcost=None,
         )
@@ -196,7 +196,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         extra = self._physics.extra
         extra_cost = OpCost() if extra is None else extra.cost
         return (
-            self.preprocessor_bundle.opcost()
+            self.preprocessor.opcost()
             + extra_cost
             + self._physics.dv_cost
             + self.sindy_bundle.opcost()

@@ -5,7 +5,8 @@ from ...core import access
 from ...core.coords import transform_gate
 from ...core.network import Compartment, CompartmentType
 from ...core.opcost import OpCost
-from ..bundle import PreprocessorBundle, SINDyBundle
+from ..bundle import SINDyBundle
+from ..preprocessor import build_preprocessor
 from ..replace import resolved_params
 from .base import NeuroSurrogateBase
 from .roles import Roles
@@ -16,11 +17,12 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
 
     def fit(self, optimizer, library_specs: list[dict]) -> None:
         train_gate = access.gate_matrix(self._train_xr, self._meta.train_comp_id)
-        preprocessor_bundle = PreprocessorBundle.from_spec(
-            {**self._preprocessor, "n_components": self._meta.n_components}, train_gate
+        preprocessor = build_preprocessor(
+            {**self._preprocessor_spec, "n_components": self._meta.n_components},
+            train_gate,
         )
         preprocessed_xr = transform_gate(
-            preprocessor_bundle.preprocessor,
+            preprocessor,
             self._train_xr,
             comp_id=self._meta.train_comp_id,
         )
@@ -40,7 +42,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
                     u=1 + self._meta.n_components,
                 ),
             ),
-            preprocessor_bundle=preprocessor_bundle,
+            preprocessor=preprocessor,
         )
 
     def params_compatible(self, comp: Compartment) -> bool:
@@ -52,7 +54,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
     def surr_comp_type(self) -> CompartmentType:
         xi = jnp.asarray(self.sindy_bundle.xi)
         compute_theta = self.sindy_bundle.compute_theta()
-        n_latent = len(self.preprocessor_bundle.gate_inits)
+        n_latent = self._meta.n_components
 
         def surr_kernel(params, i_t, v, state):
             # 列構造 [V, g1..gN, u] の順で束縛。xi の行も同順 (0=V, 1..=latent)。
@@ -64,7 +66,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             kernel=surr_kernel,
             param_cls=None,
             gate_names=access.latent_vars(n_latent),
-            default_gate_inits=self.preprocessor_bundle.gate_inits,
+            default_gate_inits=self.preprocessor.gate_inits,
             v_init=-65,
             opcost=None,
         )
