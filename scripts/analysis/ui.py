@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast
 
@@ -88,11 +88,13 @@ def setup_mpl(matplotlib_style: str):
     plt.style.use(style_dir / f"{matplotlib_style}.mplstyle")
 
 
-def _run_selector(runs: pd.DataFrame, label: str) -> mo.ui.table:
+def _run_selector(
+    runs: pd.DataFrame, label: str, selection: Literal["single", "multi"] = "multi"
+) -> mo.ui.table:
     return mo.ui.table(
         runs,
         label=label,
-        selection="multi",
+        selection=selection,
         initial_selection=[0] if len(runs) else [],
     )
 
@@ -112,7 +114,7 @@ def make_setting_ui(
     )
     d: dict = {
         "sim": analysis_single.make_sim_ui(
-            current_type, _run_selector(runs, "single Run (1件)")
+            current_type, _run_selector(runs, "single Run (1件)", "single")
         ),
         "run_sim": mo.ui.run_button(label="single 実行"),
     }
@@ -154,8 +156,8 @@ def calc_sweep(
 
 
 def load_selected(sub_ui: mo.ui.dictionary) -> list[LoadedRun]:
-    """sub_ui (sim or sweep) の run_selector 選択 run の surrogate をロードし
-    (id, name, surrogate) 列で返す。single 用と sweep 用で別々に呼ぶ。"""
+    """sub_ui の run_selector 選択 run の surrogate をロードし (id, name, surrogate)
+    列で返す。sweep (複数可) 用。single は `load_single`。"""
     selected = cast(pd.DataFrame, sub_ui["run_selector"].value)
     return [
         (rid, run_name, load_surrogate_model(rid))
@@ -165,6 +167,12 @@ def load_selected(sub_ui: mo.ui.dictionary) -> list[LoadedRun]:
             strict=True,
         )
     ]
+
+
+def load_single(sub_ui: mo.ui.dictionary) -> LoadedRun | None:
+    """single 用。run_selector (単一選択) の 0/1 件を 1 run or None に畳む。"""
+    loaded = load_selected(sub_ui)
+    return loaded[0] if loaded else None
 
 
 def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
@@ -199,29 +207,6 @@ def _eval_df(loaded: list[LoadedRun]) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("run_name")
 
 
-def render_model_info(
-    loaded: list[LoadedRun],
-    base_ui: mo.ui.dictionary,
-) -> tuple[mo.Html, list[SaveEntry]]:
-    """model_info は neurograph のみ (heatmap→single / 評価サマリ→sweep へ移管)。"""
-    net = MCMODELS[target_of(base_ui)]
-    pair = _pair(base_ui)
-    multi = len(loaded) > 1
-    figs = [
-        (
-            f"neurograph({pair},{run_name})" if multi else f"neurograph({pair})",
-            view_neuron_graph(net, replaced_names(surr, net)),
-        )
-        for _, run_name, surr in loaded
-    ]
-    save_items = [_entry(name, fig) for name, fig in figs]
-    bodies = [
-        mo.vstack([mo.md(f"##### {name}"), mo.mpl.interactive(fig)])
-        for name, fig in figs
-    ]
-    return mo.vstack([mo.md("### NeuronGraph"), *bodies]), save_items
-
-
 # ---------------------------------------------------------------------------
 # Result View
 # ---------------------------------------------------------------------------
@@ -250,42 +235,71 @@ def _pair(base_ui: mo.ui.dictionary) -> str:
     return f"{train}→{target}"
 
 
+@dataclass
+class _Panel:
+    """表示 blocks と保存 entries を同時に積む。`figs` が「表示した fig をそのまま
+    save entry に載せる」不変条件を1箇所に閉じ、view 関数を上から順に読める形に保つ。"""
+
+    blocks: list[mo.Html] = field(default_factory=list)
+    entries: list[SaveEntry] = field(default_factory=list)
+
+    def note(self, md: str) -> None:
+        """保存対象でない見出し/注記のみ追加。"""
+        self.blocks.append(mo.md(md))
+
+    def section(self, title: str, body: mo.Html) -> None:
+        """### 見出し + 完成済み body (html/df) を表示。保存は別途 `save`。"""
+        self.blocks += [mo.md(f"### {title}"), body]
+
+    def figs(self, title: str, named: list[tuple[str, Figure]]) -> None:
+        """### 見出し下に各 fig を表示し、同一 object を save entry へ登録。"""
+        self.blocks.append(mo.md(f"### {title}"))
+        for name, fig in named:
+            self.blocks += [mo.md(f"##### {name}"), mo.mpl.interactive(fig)]
+            self.entries.append(_entry(name, fig))
+
+    def save(self, name: str, obj: SaveItem) -> None:
+        """表示済み (or 表示不要) の obj を save entry のみ登録。"""
+        self.entries.append(_entry(name, obj))
+
+    def done(self) -> tuple[mo.Html, list[SaveEntry]]:
+        return mo.vstack(self.blocks), self.entries
+
+
 def view_single(
-    loaded: list[LoadedRun],
+    run: LoadedRun | None,
     base_ui: mo.ui.dictionary,
     res: EvalResult | None,
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
-    """先頭に係数 heatmap (選択 run 静的) → 続けて single 波形評価 (res ゲート)。"""
+    """NeuronGraph → 係数 heatmap (選択 run 静的) → single 波形評価 (res ゲート)。"""
     pair = _pair(base_ui)
-    multi = len(loaded) > 1
-    heat = [
-        (
-            f"model({pair},{run_name})" if multi else f"model({pair})",
-            view_model(surr.sindy_bundle),
-        )
-        for _, run_name, surr in loaded
-    ]
-    blocks: list[mo.Html] = [mo.md("### SINDy 係数")]
-    blocks += [
-        part
-        for name, fig in heat
-        for part in (mo.md(f"##### {name}"), mo.mpl.interactive(fig))
-    ]
-    entries = [_entry(name, fig) for name, fig in heat]
+    panel = _Panel()
+    if run is None:
+        panel.note("(single Run 未選択)")
+        return panel.done()
+
+    net = MCMODELS[target_of(base_ui)]
+    surr = run[2]
+    panel.figs(
+        "NeuronGraph",
+        [(f"neurograph({pair})", view_neuron_graph(net, replaced_names(surr, net)))],
+    )
+    panel.figs("SINDy 係数", [(f"model({pair})", view_model(surr.sindy_bundle))])
 
     if res is None:
-        blocks.append(mo.md("(single結果なし)"))
-        return mo.vstack(blocks), entries
+        panel.note("(single結果なし)")
+        return panel.done()
 
     eval_comp = str(draw_ui["eval_comp"].value)
-    tag = f"{pair},{eval_comp}"
+    suffix = f"{pair},{eval_comp}"
     html, figs, dfs = analysis_single.view_result(draw_ui["single"], res, eval_comp)
-    blocks += [mo.md("### 波形評価 (single)"), html]
-    entries += [_entry(f"{name}({tag})", fig) for name, fig in figs]
-    entries.append(_entry(f"metrics({tag})", dfs["metrics"]))
-    entries.append(_entry(f"metrics_scalar({tag})", dfs["metrics(scalar)"]))
-    return mo.vstack(blocks), entries
+    panel.section("波形評価 (single)", html)
+    for name, fig in figs:
+        panel.save(f"{name}({suffix})", fig)
+    panel.save(f"metrics({suffix})", dfs["metrics"])
+    panel.save(f"metrics_scalar({suffix})", dfs["metrics(scalar)"])
+    return panel.done()
 
 
 def view_sweep(
@@ -297,12 +311,13 @@ def view_sweep(
     """先頭に評価サマリ表 (選択 run 静的) → 続けて sweep 結果 (res ゲート)。"""
     pair = _pair(base_ui)
     summary = _eval_df(loaded)
-    blocks: list[mo.Html] = [mo.md("### 評価サマリ (preprocessor / OpCost)"), summary]
-    entries = [_entry(f"eval_summary({pair})", summary)]
+    panel = _Panel()
+    panel.section("評価サマリ (preprocessor / OpCost)", summary)
+    panel.save(f"eval_summary({pair})", summary)
 
     if res is None or "sweep" not in draw_ui:
-        blocks.append(mo.md("(sweep結果なし)"))
-        return mo.vstack(blocks), entries
+        panel.note("(sweep結果なし)")
+        return panel.done()
 
     eval_comp = str(draw_ui["eval_comp"].value)
     ylim_ui = draw_ui["sweep"]["ylim"]
@@ -312,8 +327,8 @@ def view_sweep(
         else (float(ylim_ui["min"].value), float(ylim_ui["max"].value))
     )
     trace_html, trace_fig = analysis_sweep.plot_sweep_traces(res, eval_comp)
-    blocks += [mo.md("### Sweep 波形 (列=amp / 行=各run vs orig)"), trace_html]
-    entries.append(_entry(f"sweep_traces({pair},{eval_comp})", trace_fig))
+    panel.section("Sweep 波形 (列=amp / 行=各run vs orig)", trace_html)
+    panel.save(f"sweep_traces({pair},{eval_comp})", trace_fig)
 
     html, fig = analysis_sweep.plot_sweep(
         res,
@@ -321,9 +336,9 @@ def view_sweep(
         metric_key=draw_ui["sweep"]["metric"].value,
         ylim=ylim,
     )
-    blocks += [mo.md("### Sweep メトリクス"), html]
-    entries.append(_entry(f"sweep({pair},{eval_comp})", fig))
-    return mo.vstack(blocks), entries
+    panel.section("Sweep メトリクス", html)
+    panel.save(f"sweep({pair},{eval_comp})", fig)
+    return panel.done()
 
 
 def plot_preview(

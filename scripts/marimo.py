@@ -48,9 +48,9 @@ def _(analysis, base_ui, setting_ui):
 
 
 @app.cell
-def _(save_current, save_model, save_single, save_sweep):
+def _(save_current, save_single, save_sweep):
     # 各表示セルが「表示に使った fig」を返す → 保存も同一 object を使う
-    save_items = save_model + save_current + save_single + save_sweep
+    save_items = save_current + save_single + save_sweep
     return (save_items,)
 
 
@@ -68,13 +68,6 @@ def _(analysis, save_items, save_panel):
 
 
 @app.cell(column=1)
-def _(analysis, base_ui, loaded_single):
-    html_model, save_model = analysis.render_model_info(loaded_single, base_ui)
-    html_model  # noqa: B018
-    return (save_model,)
-
-
-@app.cell
 def _(analysis, base_ui, draw_ui, loaded_single, res_single):
     html_single, save_single = analysis.view_single(
         loaded_single, base_ui, res_single, draw_ui
@@ -134,8 +127,8 @@ def _(analysis, setting_ui):
 
 @app.cell
 def _(analysis, setting_ui):
-    # single 用 run 選択の surrogate (model_info neurograph + single heatmap で共有)
-    loaded_single = analysis.load_selected(setting_ui["sim"])
+    # single 用 run 選択の surrogate (neurograph + heatmap + 波形評価で共有)
+    loaded_single = analysis.load_single(setting_ui["sim"])
     return (loaded_single,)
 
 
