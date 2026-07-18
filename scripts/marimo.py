@@ -7,7 +7,7 @@ app = marimo.App(width="columns")
 @app.cell(column=0)
 def _():
     import marimo as mo
-    from analysis import panel
+    from analysis import panel, view
     from analysis import ui as analysis
     from mlflow_io import get_runs_df
 
@@ -23,7 +23,7 @@ def _():
     runs_df = get_runs_df()
     base_ui = analysis.make_base_ui(runs_df, TARGET_MODEL)
     base_ui  # noqa: B018
-    return SWEEP_DEFAULTS, analysis, base_ui, mo, panel, runs_df
+    return SWEEP_DEFAULTS, analysis, base_ui, mo, panel, runs_df, view
 
 
 @app.cell
@@ -42,8 +42,8 @@ def _(analysis, base_ui):
 
 
 @app.cell
-def _(analysis, base_ui, setting_ui):
-    html_current, save_current = analysis.plot_preview(base_ui, setting_ui)
+def _(base_ui, setting_ui, view):
+    html_current, save_current = view.plot_preview(base_ui, setting_ui)
     html_current  # noqa: B018
     return (save_current,)
 
@@ -69,8 +69,8 @@ def _(panel, save_items, save_panel):
 
 
 @app.cell(column=1)
-def _(analysis, base_ui, draw_ui, loaded_single, res_single):
-    html_single, save_single = analysis.view_single(
+def _(base_ui, draw_ui, loaded_single, res_single, view):
+    html_single, save_single = view.view_single(
         loaded_single, base_ui, res_single, draw_ui
     )
     html_single  # noqa: B018
@@ -78,10 +78,8 @@ def _(analysis, base_ui, draw_ui, loaded_single, res_single):
 
 
 @app.cell
-def _(analysis, base_ui, draw_ui, loaded_sweep, res_sweep):
-    html_sweep, save_sweep = analysis.view_sweep(
-        loaded_sweep, base_ui, res_sweep, draw_ui
-    )
+def _(base_ui, draw_ui, loaded_sweep, res_sweep, view):
+    html_sweep, save_sweep = view.view_sweep(loaded_sweep, base_ui, res_sweep, draw_ui)
     html_sweep  # noqa: B018
     return (save_sweep,)
 
