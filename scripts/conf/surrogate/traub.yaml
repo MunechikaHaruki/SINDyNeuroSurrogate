@@ -1,6 +1,8 @@
 # @package _global_
 surrogate:
+  type: sindy
   init:
+    n_components: 1  # 潜在方程式の次元
     datasets:
       model_name: traub
       current_type: train

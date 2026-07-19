@@ -3,13 +3,12 @@ defaults:
   - surrogate: hh
 
 
+# type / init.n_components は各 surrogate preset が保持 (ansatz 固有のため config には置かない)
 surrogate:
-  type: sindy
   init:
     datasets:
       dt: 0.01
     train_comp_identifier: soma
-    n_components: 1 # 潜在方程式の次元 (preset で上書き)
   fit:
     optimizer:
       type: stlsq
