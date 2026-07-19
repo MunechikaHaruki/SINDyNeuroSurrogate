@@ -21,10 +21,3 @@ hydra:
     dir: hydra-outputs/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
     dir: hydra-multiruns/${now:%Y-%m-%d_%H-%M-%S}
-  sweeper:
-    # --multirun 既定 = hh/traub × type × n_components × preprocessor の直積 (16 run)
-    # 単発実行では無効 (sweeper は multirun 時のみ効く)
-    params:
-      surrogate.type: sindy,hybrid
-      surrogate.init.n_components: 1,2
-      surrogate.init.preprocessor.type: pca,ae

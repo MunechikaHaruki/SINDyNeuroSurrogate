@@ -1,13 +1,13 @@
 # @package _global_
 surrogate:
-  type: sindy
+  type: hybrid
   init:
-    n_components: 1  # 潜在方程式の次元
+    n_components: 3  # 潜在方程式の次元
     datasets:
       model_name: traub
       current_type: train
     preprocessor:
-      type: pca
+      type: ae
   fit:
     library_specs:
       - type: traub_gate_forward
@@ -16,8 +16,9 @@ surrogate:
       - type: traub_gate_backward_product
       - type: basis
 
-# preset ローカル sweep = ここに hydra.sweeper.params を書くと config.yaml の global を差分上書き
-# hydra:
-#   sweeper:
-#     params:
-#       surrogate.init.n_components: 1,2
+hydra:
+  sweeper:
+    params:
+      surrogate.type: sindy,hybrid
+      surrogate.init.n_components: 1,2
+      surrogate.init.preprocessor.type: pca,ae
