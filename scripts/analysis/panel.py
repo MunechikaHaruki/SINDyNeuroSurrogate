@@ -86,7 +86,10 @@ def make_save_panel(groups: dict[str, list[SaveEntry]]) -> mo.ui.dictionary:
 
 
 def make_save_dirs(groups: dict[str, list[SaveEntry]]) -> mo.ui.dictionary:
-    """current 以外の group ごとに保存先ディレクトリ入力を生成 (single/sweep 個別指定)。"""
+    """current 以外の group ごとに保存先ディレクトリ入力を生成。
+
+    single/sweep を個別指定する。
+    """
     return mo.ui.dictionary(
         {
             name: mo.ui.text(value=f"_{name}", label=f"{name} 保存先")
@@ -107,8 +110,11 @@ def render_save_panel(panel: mo.ui.dictionary, save_dirs: mo.ui.dictionary) -> m
 
 
 def _dest(name: str, result_dir: Path, save_dirs: dict[str, str]) -> Path:
-    """保存先ルート。dir 入力を持つ group (single/sweep) は `result_dir/<入力>/` 直下
-    (fig と meta.json を同階層)。持たない current は従来どおり `result_dir/current/`。"""
+    """保存先ルート。
+
+    dir 入力を持つ group (single/sweep) は `result_dir/<入力>/` 直下
+    (fig と meta.json を同階層)。持たない current は従来どおり `result_dir/current/`。
+    """
     if name in save_dirs:
         return result_dir / save_dirs[name]
     return result_dir / name
@@ -121,8 +127,11 @@ def save(
     save_dirs: dict[str, str],
     meta: dict,
 ) -> mo.Html:
-    """押されたグループを一括保存。dir 入力を持つ group (single/sweep) は入力ディレクトリ
-    直下に fig と `meta.json` (setting_ui の値) を同階層で置く。"""
+    """押されたグループを一括保存。
+
+    dir 入力を持つ group (single/sweep) は入力ディレクトリ直下に fig と `meta.json`
+    (base/setting/draw UI の値) を同階層で置く。
+    """
     msgs: list[mo.Html] = []
     for name, entries in groups.items():
         if not save_panel[name].value:

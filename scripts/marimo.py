@@ -79,6 +79,7 @@ def _(panel, save_current, save_single, save_sweep):
 @app.cell
 def _(
     RESULT_DIR,
+    base_ui,
     draw_ui,
     panel,
     save_dirs,
@@ -91,7 +92,7 @@ def _(
         save_groups,
         RESULT_DIR,
         save_dirs.value,
-        {"setting": setting_ui.value, "draw": draw_ui.value},
+        {"base": base_ui.value, "setting": setting_ui.value, "draw": draw_ui.value},
     )
     return
 
