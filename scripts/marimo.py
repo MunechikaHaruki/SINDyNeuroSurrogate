@@ -6,9 +6,13 @@ app = marimo.App(width="columns")
 
 @app.cell(column=0)
 def _():
+    from pathlib import Path
+
     import marimo as mo
     from analysis import actions, panel, ui, view
     from mlflow_io import get_runs_df
+
+    RESULT_DIR = Path(__file__).resolve().parent.parent / "docs" / "poster" / "pic" / "result"
 
     # current_type → (amp_start, amp_stop, amp_steps)
     # 未登録 current は fallback (-5.0, 20.0, 10)
@@ -22,7 +26,17 @@ def _():
     runs_df = get_runs_df()
     base_ui = ui.make_base_ui(runs_df, TARGET_MODEL)
     base_ui  # noqa: B018
-    return SWEEP_DEFAULTS, actions, base_ui, mo, panel, runs_df, ui, view
+    return (
+        RESULT_DIR,
+        SWEEP_DEFAULTS,
+        actions,
+        base_ui,
+        mo,
+        panel,
+        runs_df,
+        ui,
+        view,
+    )
 
 
 @app.cell
@@ -62,8 +76,8 @@ def _(panel, save_items):
 
 
 @app.cell
-def _(panel, save_items, save_panel):
-    panel.save(save_panel, save_items)
+def _(RESULT_DIR, panel, save_items, save_panel):
+    panel.save(save_panel, save_items, RESULT_DIR)
     return
 
 

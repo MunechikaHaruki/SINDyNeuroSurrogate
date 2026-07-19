@@ -8,10 +8,6 @@ import marimo as mo
 import pandas as pd
 from matplotlib.figure import Figure
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-RESULT_DIR = REPO_ROOT / "scripts" / "conf" / "surrogate" / "result"
-
-
 # ---------------------------------------------------------------------------
 # Save Entry
 # ---------------------------------------------------------------------------
@@ -113,14 +109,16 @@ def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
     return mo.vstack([mo.md("### 画像保存パネル (docs/result/ 配下)"), *rows])
 
 
-def save(save_panel: mo.ui.dictionary, entries: list[SaveEntry]) -> mo.Html:
+def save(
+    save_panel: mo.ui.dictionary, entries: list[SaveEntry], result_dir: Path
+) -> mo.Html:
     msgs: list[mo.Html] = []
     for e in entries:
         ctrl = save_panel[e.name]
         if not ctrl["save"].value:
             continue
-        path = RESULT_DIR / str(ctrl["path"].value).strip()
+        path = result_dir / str(ctrl["path"].value).strip()
         path.parent.mkdir(parents=True, exist_ok=True)
         SAVERS[type(e.obj)](e.obj, path)
-        msgs.append(mo.md(f"✅ {e.name}: `{path.relative_to(REPO_ROOT)}`"))
+        msgs.append(mo.md(f"✅ {e.name}: `{path.relative_to(result_dir)}`"))
     return mo.vstack(msgs) if msgs else mo.md("(未保存)")
