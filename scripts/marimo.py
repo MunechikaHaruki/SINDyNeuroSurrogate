@@ -12,7 +12,9 @@ def _():
     from analysis import actions, panel, ui, view
     from mlflow_io import get_runs_df
 
-    RESULT_DIR = Path(__file__).resolve().parent.parent / "docs" / "poster" / "pic" / "result"
+    RESULT_DIR = (
+        Path(__file__).resolve().parent.parent / "docs" / "poster" / "pic" / "result"
+    )
 
     # current_type → (amp_start, amp_stop, amp_steps)
     # 未登録 current は fallback (-5.0, 20.0, 10)
@@ -62,22 +64,35 @@ def _(base_ui, setting_ui, view):
 
 
 @app.cell
-def _(save_current, save_single, save_sweep):
-    # 各表示セルが「表示に使った fig」を返す → 保存も同一 object を使う
-    save_items = save_current + save_single + save_sweep
-    return (save_items,)
+def _(panel, save_current, save_single, save_sweep):
+    save_groups = {
+        "current": save_current,
+        "single": save_single,
+        "sweep": save_sweep,
+    }
+    save_dirs = panel.make_save_dirs(save_groups)
+    save_panel = panel.make_save_panel(save_groups)
+    panel.render_save_panel(save_panel, save_dirs)
+    return save_dirs, save_groups, save_panel
 
 
 @app.cell
-def _(panel, save_items):
-    save_panel = panel.make_save_panel(save_items)
-    panel.render_save_panel(save_panel)
-    return (save_panel,)
-
-
-@app.cell
-def _(RESULT_DIR, panel, save_items, save_panel):
-    panel.save(save_panel, save_items, RESULT_DIR)
+def _(
+    RESULT_DIR,
+    draw_ui,
+    panel,
+    save_dirs,
+    save_groups,
+    save_panel,
+    setting_ui,
+):
+    panel.save(
+        save_panel,
+        save_groups,
+        RESULT_DIR,
+        save_dirs.value,
+        {"setting": setting_ui.value, "draw": draw_ui.value},
+    )
     return
 
 
@@ -91,8 +106,8 @@ def _(base_ui, draw_ui, loaded_single, res_single, view):
 
 
 @app.cell
-def _(base_ui, draw_ui, loaded_sweep, res_sweep, view):
-    html_sweep, save_sweep = view.view_sweep(loaded_sweep, base_ui, res_sweep, draw_ui)
+def _(draw_ui, loaded_sweep, res_sweep, view):
+    html_sweep, save_sweep = view.view_sweep(loaded_sweep, res_sweep, draw_ui)
     html_sweep  # noqa: B018
     return (save_sweep,)
 

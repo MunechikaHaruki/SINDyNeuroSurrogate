@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import typing
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,12 +29,6 @@ def entry(name: str, obj: SaveItem) -> SaveEntry:
     最終的な表示名を組む。"""
     ext = ".csv" if isinstance(obj, pd.DataFrame) else ".png"
     return SaveEntry(name, obj, f"{name}{ext}")
-
-
-def pair(base_ui: mo.ui.dictionary) -> str:
-    """選択ペアのタグ文字列 (例 'hh→hh')。既定保存名に使う。"""
-    train, target = base_ui["model_pair"].value
-    return f"{train}→{target}"
 
 
 # ---------------------------------------------------------------------------
@@ -83,42 +78,64 @@ SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
 }
 
 
-def make_save_panel(entries: list[SaveEntry]) -> mo.ui.dictionary:
-    """SaveEntry から各 name の path入力＋保存ボタンを生成。"""
+def make_save_panel(groups: dict[str, list[SaveEntry]]) -> mo.ui.dictionary:
+    """グループ (current/single/sweep) ごとに一括保存ボタン1個を生成。"""
+    return mo.ui.dictionary(
+        {name: mo.ui.run_button(label=f"save {name}") for name in groups}
+    )
+
+
+def make_save_dirs(groups: dict[str, list[SaveEntry]]) -> mo.ui.dictionary:
+    """current 以外の group ごとに保存先ディレクトリ入力を生成 (single/sweep 個別指定)。"""
     return mo.ui.dictionary(
         {
-            e.name: mo.ui.dictionary(
-                {
-                    "path": mo.ui.text(value=e.path, label=e.name),
-                    "save": mo.ui.run_button(label="save"),
-                }
-            )
-            for e in entries
+            name: mo.ui.text(value=f"_{name}", label=f"{name} 保存先")
+            for name in groups
+            if name != "current"
         }
     )
 
 
-def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
+def render_save_panel(panel: mo.ui.dictionary, save_dirs: mo.ui.dictionary) -> mo.Html:
     rows = [
-        mo.hstack(
-            [item["path"], item["save"]],
-            justify="start",
-        )
-        for item in panel.values()
+        mo.hstack([save_dirs[name], button], justify="start")
+        if name in save_dirs
+        else button
+        for name, button in panel.items()
     ]
-    return mo.vstack([mo.md("### 画像保存パネル (docs/result/ 配下)"), *rows])
+    return mo.vstack([mo.md("### 画像保存パネル"), *rows])
+
+
+def _dest(name: str, result_dir: Path, save_dirs: dict[str, str]) -> Path:
+    """保存先ルート。dir 入力を持つ group (single/sweep) は `result_dir/<入力>/` 直下
+    (fig と meta.json を同階層)。持たない current は従来どおり `result_dir/current/`。"""
+    if name in save_dirs:
+        return result_dir / save_dirs[name]
+    return result_dir / name
 
 
 def save(
-    save_panel: mo.ui.dictionary, entries: list[SaveEntry], result_dir: Path
+    save_panel: mo.ui.dictionary,
+    groups: dict[str, list[SaveEntry]],
+    result_dir: Path,
+    save_dirs: dict[str, str],
+    meta: dict,
 ) -> mo.Html:
+    """押されたグループを一括保存。dir 入力を持つ group (single/sweep) は入力ディレクトリ
+    直下に fig と `meta.json` (setting_ui の値) を同階層で置く。"""
     msgs: list[mo.Html] = []
-    for e in entries:
-        ctrl = save_panel[e.name]
-        if not ctrl["save"].value:
+    for name, entries in groups.items():
+        if not save_panel[name].value:
             continue
-        path = result_dir / str(ctrl["path"].value).strip()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        SAVERS[type(e.obj)](e.obj, path)
-        msgs.append(mo.md(f"✅ {e.name}: `{path.relative_to(result_dir)}`"))
+        dest = _dest(name, result_dir, save_dirs)
+        dest.mkdir(parents=True, exist_ok=True)
+        if name in save_dirs:
+            (dest / "meta.json").write_text(
+                json.dumps(meta, indent=2, ensure_ascii=False, default=str)
+            )
+        for e in entries:
+            SAVERS[type(e.obj)](e.obj, dest / e.path)
+            msgs.append(
+                mo.md(f"✅ {e.name}: `{(dest / e.path).relative_to(result_dir)}`")
+            )
     return mo.vstack(msgs) if msgs else mo.md("(未保存)")
