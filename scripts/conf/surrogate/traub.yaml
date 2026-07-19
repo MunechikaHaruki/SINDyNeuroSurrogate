@@ -19,6 +19,5 @@ surrogate:
 hydra:
   sweeper:
     params:
-      surrogate.type: sindy,hybrid
-      surrogate.init.n_components: 1,2
+      surrogate.init.n_components: 2,3
       surrogate.init.preprocessor.type: pca,ae
