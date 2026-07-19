@@ -202,32 +202,69 @@
       #set text(size: body-size)
 
       #grid(
-        columns: (1.15fr, 1fr),
-        gutter: 0.6em,
+        columns: (1fr, 1fr),
+        gutter: 0.8em,
+        // ---- Column ①: single HH proof of concept ----
         [
-          *① Proof of concept — single HH neuron*
-          #figure(
-            image("pic/result/hh_hybrid_ae_n2.png", width: 100%),
-            caption: [HH surrogate (AE, $n=2$, hybrid): membrane potential $V$, the two AE latents, and the original 3 gates. Original (blue) and surrogate (red) overlap almost exactly.],
-            numbering: none,
-            supplement: none,
+          *① Proof of concept — single HH soma*
+          #grid(
+            columns: (1.35fr, 1fr),
+            gutter: 0.6em,
+            [
+              #figure(
+                image("pic/result/hh_single/diff.png", width: 100%),
+                caption: [HH surrogate (AE, $n=2$, hybrid): $V$, the two AE latents $g_1, g_2$, and the original 3 gates. Original (blue) vs. surrogate (red, dashed) overlap almost exactly.],
+                numbering: none,
+                supplement: none,
+              )
+            ],
+            [
+              #mini-box(title: "Waveform match", color: rgb("#2a7f2a"))[
+                #set text(size: 21pt)
+                - spike-shape corr = *1.000*
+                - AP amplitude err = *0.5 mV*
+                - RMSE = *1.0 mV*
+              ]
+              #v(0.3em)
+              #figure(
+                image("pic/result/hh_sweep/sweep.png", width: 100%),
+                caption: [Spike count vs. input amplitude — matches the original over the whole range (not overfit to one stimulus).],
+                numbering: none,
+                supplement: none,
+              )
+            ],
           )
-          #v(0.3em)
-          - *3 gates $->$ 2 latents*: the AE compresses $(m,h,n)$ into a 2-D latent while the surrogate reproduces the spike with *near-zero error*.
+          #v(0.2em)
+          - *3 gates $(m,h,n) ->$ 2 latents*: the AE compresses the gates into a 2-D latent, yet the surrogate reproduces the spike with *near-zero error*.
           - The hybrid ansatz retains the ionic physics, so the identified latent dynamics stay compact and stable.
         ],
+        // ---- Column ②: scale-up to Traub 19-compartment ----
         [
-          *② Scaling up — Traub 19-compartment*
-          #figure(
-            image("pic/result/traub_n3_excerpt.png", width: 100%),
-            caption: [Traub19 soma replaced by the surrogate (AE, $n=3$, hybrid). Amplitude sweep of a steady input current; original (black) vs. surrogate (red).],
-            numbering: none,
-            supplement: none,
+          *② Scaling up — Traub 19-compartment (soma replaced)*
+          #grid(
+            columns: (1.15fr, 1fr),
+            gutter: 0.6em,
+            [
+              #figure(
+                image("pic/result/traub_single/diff.png", width: 100%),
+                caption: [Traub19 soma replaced (AE, $n=3$, hybrid). $V$, the 3 latents, and the original soma gates. Original (blue) vs. surrogate (red, dashed).],
+                numbering: none,
+                supplement: none,
+              )
+            ],
+            [
+              #figure(
+                image("pic/result/traub_sweep/sweep.png", width: 100%),
+                caption: [Spike count across surrogate variants. Only *AE + $n=3$* tracks the original; PCA and $n=2$ collapse — motivating the nonlinear AE and the $n=3$ latent.],
+                numbering: none,
+                supplement: none,
+              )
+            ],
           )
-          #v(0.3em)
-          - The *same AE + hybrid framework* transfers to a realistic multi-compartment model *without diverging*.
+          #v(0.2em)
+          - The *same AE + hybrid framework* transfers to a realistic multi-compartment model *without diverging*, firing in bursts and tracking the input-driven *spike count* (spike-shape corr = 1.000).
           - It captures the *qualitative structure* — firing threshold and burst onset shift with input amplitude, as in the original.
-          - *Remaining gap*: the post-burst *decay/termination* is not yet reproduced (the surrogate keeps oscillating).
+          - *Remaining gap*: the post-burst *decay/termination* is not yet reproduced — the surrogate keeps oscillating.
         ],
       )
     ]

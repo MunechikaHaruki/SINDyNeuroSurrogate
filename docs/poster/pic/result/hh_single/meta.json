@@ -1,0 +1,35 @@
+{
+  "setting": {
+    "sim": {
+      "run_selector": "         tags.mlflow.runName                            run_id\n4  hh n_components=2 type=ae  b832855d00df49aba92e965ca4b49ea2",
+      "current_params": {
+        "value": 10.0
+      }
+    },
+    "run_sim": false,
+    "sweep": {
+      "run_selector": "         tags.mlflow.runName                            run_id\n4  hh n_components=2 type=ae  b832855d00df49aba92e965ca4b49ea2",
+      "amp_start": 0,
+      "amp_stop": 20.0,
+      "amp_steps": 10
+    },
+    "run_sweep": false
+  },
+  "draw": {
+    "eval_comp": "soma",
+    "single": {
+      "spike": {
+        "orig": 0,
+        "surr": 0
+      }
+    },
+    "sweep": {
+      "metric": "spike_count",
+      "ylim": {
+        "auto": true,
+        "min": 0.0,
+        "max": 1.0
+      }
+    }
+  }
+}
