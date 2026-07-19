@@ -1,13 +1,21 @@
-init:
-  datasets:
-    model_name: traub
-    current_type: train
-  preprocessor:
-    type: pca
-fit:
-  library_specs:
-    - type: traub_gate_forward
-    - type: traub_gate_backward
-    - type: traub_gate_forward_product
-    - type: traub_gate_backward_product
-    - type: basis
+# @package _global_
+surrogate:
+  init:
+    datasets:
+      model_name: traub
+      current_type: train
+    preprocessor:
+      type: pca
+  fit:
+    library_specs:
+      - type: traub_gate_forward
+      - type: traub_gate_backward
+      - type: traub_gate_forward_product
+      - type: traub_gate_backward_product
+      - type: basis
+
+# preset ローカル sweep = ここに hydra.sweeper.params を書くと config.yaml の global を差分上書き
+# hydra:
+#   sweeper:
+#     params:
+#       surrogate.init.n_components: 1,2

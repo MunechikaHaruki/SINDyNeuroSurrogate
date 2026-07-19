@@ -1,13 +1,15 @@
-init:
-  datasets:
-    model_name: hh
-    current_type: train
-  preprocessor:
-    type: pca
-fit:
-  library_specs:
-    - type: gate_poly_volt  # latent の高次項・V 積 (1次は basis)
-    - type: hh_gate_forward
-    - type: hh_gate_forward_product
-    - type: hh_gate_backward_product
-    - type: basis
+# @package _global_
+surrogate:
+  init:
+    datasets:
+      model_name: hh
+      current_type: train
+    preprocessor:
+      type: pca
+  fit:
+    library_specs:
+      - type: gate_poly_volt  # latent の高次項・V 積 (1次は basis)
+      - type: hh_gate_forward
+      - type: hh_gate_forward_product
+      - type: hh_gate_backward_product
+      - type: basis
