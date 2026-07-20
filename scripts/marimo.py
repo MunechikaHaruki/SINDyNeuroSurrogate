@@ -64,11 +64,10 @@ def _(base_ui, setting_ui, view):
 
 
 @app.cell
-def _(panel, save_current, save_single, save_sweep):
+def _(panel, save_current, save_result):
     save_groups = {
         "current": save_current,
-        "single": save_single,
-        "sweep": save_sweep,
+        "result": save_result,
     }
     save_dirs = panel.make_save_dirs(save_groups)
     save_panel = panel.make_save_panel(save_groups)
@@ -98,19 +97,23 @@ def _(
 
 
 @app.cell(column=1)
-def _(base_ui, draw_ui, loaded_single, res_single, view):
+def _(
+    base_ui,
+    draw_ui,
+    loaded_single,
+    loaded_sweep,
+    mo,
+    res_single,
+    res_sweep,
+    view,
+):
     html_single, save_single = view.view_single(
         loaded_single, base_ui, res_single, draw_ui
     )
-    html_single  # noqa: B018
-    return (save_single,)
-
-
-@app.cell
-def _(draw_ui, loaded_sweep, res_sweep, view):
     html_sweep, save_sweep = view.view_sweep(loaded_sweep, res_sweep, draw_ui)
-    html_sweep  # noqa: B018
-    return (save_sweep,)
+    save_result = save_single + save_sweep
+    mo.vstack([html_single, html_sweep])
+    return (save_result,)
 
 
 @app.cell(column=2)
