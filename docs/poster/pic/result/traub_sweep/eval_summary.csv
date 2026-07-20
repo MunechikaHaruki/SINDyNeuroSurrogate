@@ -1,5 +1,0 @@
-run_name,run_id,nnz,nnz_ratio,ae/reconstruction_mse,ae/reconstruction_mse_ratio,cost/surrogate/exp,cost/surrogate/div,cost/surrogate/pm,cost/surrogate/mul,cost/original/exp,cost/original/div,cost/original/pm,cost/original/mul,cost/diff/exp,cost/diff/div,cost/diff/pm,cost/diff/mul,pca/explained_variance_ratio,pca/explained_variance,pca/reconstruction_mse,pca/reconstruction_mse_ratio
-traub n_components=3 type=ae,ebd954ea,187,0.9033816425120773,0.00014284555653860853,0.0009686722715187653,88,147,626,508,0,0,0,0,88,147,626,508,,,,
-traub n_components=3 type=pca,c8859f20,150,0.7246376811594203,,,69,125,389,291,0,0,0,0,69,125,389,291,0.84416594686493,0.11399304625283915,0.0003398979618754613,0.0023049350556838054
-traub n_components=2 type=ae,b3e09445,99,0.9519230769230769,0.0003675445596375943,0.002492413709573699,71,116,473,378,0,0,0,0,71,116,473,378,,,,
-traub n_components=2 type=pca,f481aeda,93,0.8942307692307693,,,54,99,281,203,0,0,0,0,54,99,281,203,0.84416594686493,0.11399304625283915,0.0006911791382690333,0.004687062601856199

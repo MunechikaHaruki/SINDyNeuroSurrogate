@@ -1,4 +1,13 @@
 {
+  "base": {
+    "plt_style": "presentation",
+    "sim_current_type": "lin&steady&pulse",
+    "dt": 0.01,
+    "model_pair": [
+      "hh",
+      "hh"
+    ]
+  },
   "setting": {
     "sim": {
       "run_selector": "         tags.mlflow.runName                            run_id\n4  hh n_components=2 type=ae  b832855d00df49aba92e965ca4b49ea2",
@@ -8,10 +17,10 @@
     },
     "run_sim": false,
     "sweep": {
-      "run_selector": "         tags.mlflow.runName                            run_id\n4  hh n_components=2 type=ae  b832855d00df49aba92e965ca4b49ea2",
+      "run_selector": "          tags.mlflow.runName                            run_id\n4   hh n_components=2 type=ae  b832855d00df49aba92e965ca4b49ea2\n5  hh n_components=2 type=pca  4e8c8933757f41ec882b93f2d6505ecc\n6   hh n_components=1 type=ae  6a5319a13c544b1f8ac05f1faad4f07d\n7  hh n_components=1 type=pca  7c49af6c729e4e37967e11b4d4005c67",
       "amp_start": 0,
       "amp_stop": 20.0,
-      "amp_steps": 10
+      "amp_steps": 3
     },
     "run_sweep": false
   },

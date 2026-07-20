@@ -1,16 +1,25 @@
 {
+  "base": {
+    "plt_style": "presentation",
+    "sim_current_type": "periodic&sinousoidal",
+    "dt": 0.01,
+    "model_pair": [
+      "hh",
+      "hh"
+    ]
+  },
   "setting": {
     "sim": {
       "run_selector": "         tags.mlflow.runName                            run_id\n4  hh n_components=2 type=ae  b832855d00df49aba92e965ca4b49ea2",
       "current_params": {
-        "value": 10.0
+        "frequency": 50.0
       }
     },
     "run_sim": false,
     "sweep": {
-      "run_selector": "         tags.mlflow.runName                            run_id\n4  hh n_components=2 type=ae  b832855d00df49aba92e965ca4b49ea2",
+      "run_selector": "          tags.mlflow.runName                            run_id\n4   hh n_components=2 type=ae  b832855d00df49aba92e965ca4b49ea2\n5  hh n_components=2 type=pca  4e8c8933757f41ec882b93f2d6505ecc",
       "amp_start": 0,
-      "amp_stop": 20.0,
+      "amp_stop": 200.0,
       "amp_steps": 10
     },
     "run_sweep": false

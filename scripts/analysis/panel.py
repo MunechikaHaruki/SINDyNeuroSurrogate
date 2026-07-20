@@ -79,9 +79,24 @@ SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
 
 
 def make_save_panel(groups: dict[str, list[SaveEntry]]) -> mo.ui.dictionary:
-    """グループ (current/single/sweep) ごとに一括保存ボタン1個を生成。"""
+    """グループ (current/result) ごとに「対象 entry の複数選択 + 保存ボタン」を生成。
+
+    multiselect 既定は全選択 (従来の一括保存と同挙動)。選択を外した entry は保存対象外。
+    """
     return mo.ui.dictionary(
-        {name: mo.ui.run_button(label=f"save {name}") for name in groups}
+        {
+            name: mo.ui.dictionary(
+                {
+                    "select": mo.ui.multiselect(
+                        options=[e.name for e in entries],
+                        value=[e.name for e in entries],
+                        label="対象",
+                    ),
+                    "run": mo.ui.run_button(label=f"save {name}"),
+                }
+            )
+            for name, entries in groups.items()
+        }
     )
 
 
@@ -100,12 +115,11 @@ def make_save_dirs(groups: dict[str, list[SaveEntry]]) -> mo.ui.dictionary:
 
 
 def render_save_panel(panel: mo.ui.dictionary, save_dirs: mo.ui.dictionary) -> mo.Html:
-    rows = [
-        mo.hstack([save_dirs[name], button], justify="start")
-        if name in save_dirs
-        else button
-        for name, button in panel.items()
-    ]
+    rows = []
+    for name, ctrl in panel.items():
+        parts = [save_dirs[name]] if name in save_dirs else []
+        parts += [ctrl["select"], ctrl["run"]]
+        rows.append(mo.vstack(parts))
     return mo.vstack([mo.md("### 画像保存パネル"), *rows])
 
 
@@ -134,8 +148,10 @@ def save(
     """
     msgs: list[mo.Html] = []
     for name, entries in groups.items():
-        if not save_panel[name].value:
+        ctrl = save_panel[name]
+        if not ctrl["run"].value:
             continue
+        selected = set(ctrl["select"].value)
         dest = _dest(name, result_dir, save_dirs)
         dest.mkdir(parents=True, exist_ok=True)
         if name in save_dirs:
@@ -143,6 +159,8 @@ def save(
                 json.dumps(meta, indent=2, ensure_ascii=False, default=str)
             )
         for e in entries:
+            if e.name not in selected:
+                continue
             SAVERS[type(e.obj)](e.obj, dest / e.path)
             msgs.append(
                 mo.md(f"✅ {e.name}: `{(dest / e.path).relative_to(result_dir)}`")

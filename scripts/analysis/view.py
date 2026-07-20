@@ -61,8 +61,12 @@ def view_sweep(
     draw_ui: mo.ui.dictionary,
 ) -> tuple[mo.Html, list[SaveEntry]]:
     """先頭に評価サマリ表 (選択 run 静的) → 続けて sweep 結果 (res ゲート)。"""
-    summary = _eval_df(loaded)
     panel = Panel()
+    if not loaded:
+        panel.note("(sweep Run 未選択)")
+        return panel.done()
+
+    summary = _eval_df(loaded)
     panel.section("評価サマリ (preprocessor / OpCost)", summary)
     panel.save("eval_summary", summary)
 

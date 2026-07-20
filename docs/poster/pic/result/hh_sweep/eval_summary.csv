@@ -1,2 +1,0 @@
-run_name,run_id,nnz,nnz_ratio,ae/reconstruction_mse,ae/reconstruction_mse_ratio,cost/surrogate/exp,cost/surrogate/div,cost/surrogate/pm,cost/surrogate/mul,cost/original/exp,cost/original/div,cost/original/pm,cost/original/mul,cost/diff/exp,cost/diff/div,cost/diff/pm,cost/diff/mul
-hh n_components=2 type=ae,b832855d,41,0.9318181818181818,6.104209627491831e-05,0.001076501086150956,34,35,192,187,6,7,26,25,28,28,166,162

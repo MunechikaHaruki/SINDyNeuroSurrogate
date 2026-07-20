@@ -1,9 +1,18 @@
 {
+  "base": {
+    "plt_style": "presentation",
+    "sim_current_type": "lin&steady",
+    "dt": 0.01,
+    "model_pair": [
+      "traub",
+      "traub19"
+    ]
+  },
   "setting": {
     "sim": {
       "run_selector": "            tags.mlflow.runName                            run_id\n0  traub n_components=3 type=ae  ebd954ea050e456f82119c7a19ac81ff",
       "current_params": {
-        "value": 3.0120481927710845
+        "value": 10.0
       }
     },
     "run_sim": false,
