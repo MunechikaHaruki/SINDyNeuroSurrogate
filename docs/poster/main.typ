@@ -180,63 +180,67 @@
 #pop.column-box(heading: "Results and Discussion")[
   #set text(size: 24pt)
   #grid(
-    columns: (2fr, 1fr),
+    columns: (1fr, 1fr, 1fr),
     gutter: 1em,
-    // ======== LEFT 2/3 : HH ========
+    // ======== ① MODEL SELECTION : amp sweep -> freq sweep -> hybrid/n2/ae ========
     [
-      #grid(
-        columns: (1fr, 1fr),
-        gutter: 0.7em,
-        // ---- ① single HH proof of concept ----
-        [
-          *① Proof of concept — single HH soma*
-          #figure(
-            image("pic/result/HH/diff.png", width: 90%),
-            caption: [AE, $n=2$, hybrid under a 10 ms pulse: $V$, the 2 AE latents $g_1, g_2$, and the 3 original gates. Original (blue) vs. surrogate (red, dashed) overlap.],
-            numbering: none,
-            supplement: none,
-          )
-          #mini-box(title: "Waveform match", color: rgb("#2a7f2a"))[
-            #set text(size: 21pt)
-            - RMSE *1.0 mV*, MAE *0.4 mV*, AP amp err *0.5 mV*
-            - spike count & latency *exact*
-          ]
-          // 訳: 3ゲート → 2潜在で、スパイクをほぼ誤差ゼロで再現。
-          - *3 gates $-> $ 2 latents*, spike reproduced with *near-zero error*.
-        ],
-        // ---- ② generalization ----
-        [
-          *② Generalization to unseen stimuli*
-          #figure(
-            image("pic/result/HH/sweep_traces.png", width: 82%),
-            caption: [Amplitude sweep: *$n=2$* spikes, *$n=1$* collapses.],
-            numbering: none,
-            supplement: none,
-          )
-          #figure(
-            image("pic/result/HH_sinousoidal/sweep.png", width: 88%),
-            caption: [Frequency sweep under a *sinusoidal* drive unseen in training.],
-            numbering: none,
-            supplement: none,
-          )
-          // 訳: パルスのみで学習→未学習の正弦波へ汎化。過学習でない。
-          - Trained on pulses, *generalizes* to a sinusoidal drive (0–200 Hz); $n=2$ is the minimum latent dim.
-        ],
+      *① Model selection — why hybrid/n2/ae?*
+      // 訳: 変数選択を2つの sweep で絞り込む。まず amp sweep で潜在次元、次に freq sweep で preprocessor。
+      #v(0.2em)
+      #figure(
+        image("pic/result/HH/sweep_traces.png", width: 60%),
+        caption: [Amplitude sweep across variants. *$n=2$* (ae, pca) reproduces the spike; *$n=1$* collapses.],
+        numbering: none,
+        supplement: none,
       )
+      // 訳: 潜在次元 → n=2 が必須。n=1 は発火できない。
+      - *Latent dim*: $n=2$ is required — $n=1$ cannot fire $-> $ drop $n=1$.
+      #v(0.2em)
+      #figure(
+        image("pic/result/HH_sinousoidal/sweep.png", width: 85%),
+        caption: [Frequency sweep (*sinusoidal* drive, unseen). *ae* tracks the original; *pca* mis-fires at $f=0$ and dips near 110 Hz.],
+        numbering: none,
+        supplement: none,
+      )
+      // 訳: preprocessor → AE。非線形エンコーダが 0–200 Hz を追従、PCA は失敗。
+      - *Preprocessor*: AE over PCA — the nonlinear encoder tracks 0–200 Hz $-> $ drop pca.
+      #v(0.2em)
+      #mini-box(title: "Selected", color: rgb("#2a7f2a"))[
+        #set text(size: 24pt)
+        // 訳: 2つの sweep から hybrid / n=2 / AE を選択。
+        $-> $ *hybrid / $n=2$ / AE*
+      ]
+    ],
+    // ======== ② SINGLE HH : accuracy + interpretability ========
+    [
+      *② Single HH — accurate & interpretable*
+      #figure(
+        image("pic/result/HH/diff.png", width: 74%),
+        caption: [hybrid/n2/ae under a 10 ms pulse: $V$, the 2 AE latents $g_1, g_2$, and the 3 original gates. Original (blue) vs. surrogate (red, dashed) overlap.],
+        numbering: none,
+        supplement: none,
+      )
+      #mini-box(title: "Waveform match", color: rgb("#2a7f2a"))[
+        #set text(size: 21pt)
+        - RMSE *1.0 mV*, MAE *0.4 mV*, AP amp err *0.5 mV*
+        - spike count & latency *exact*
+      ]
+      // 訳: 3ゲート → 2潜在で、スパイクをほぼ誤差ゼロで再現。
+      - *3 gates $-> $ 2 latents*, spike reproduced with *near-zero error*.
       #v(0.2em)
       // 訳: hybrid はスパースで解釈可能な潜在方程式を同定 (HH レート関数の少数項)。
       #figure(
-        image("pic/result/HH/model.png", width: 72%),
+        image("pic/result/HH/model.png", width: 100%),
         caption: [*Sparse, interpretable* identified model: each $dot(g)_i$ is a few HH-rate-function terms.],
         numbering: none,
         supplement: none,
       )
     ],
-    // ======== RIGHT 1/3 : Traub + Conclusion + Code ========
+    // ======== ③ SCALE-UP : Traub + Conclusion + Code ========
     [
       *③ Scaling up — Traub 19-compartment*
       #figure(
-        image("pic/result/Traub/sweep_traces.png", width: 100%),
+        image("pic/result/Traub/sweep_traces.png", width: 82%),
         caption: [Spike count vs. amplitude, surrogate variants (soma replaced).],
         numbering: none,
         supplement: none,
