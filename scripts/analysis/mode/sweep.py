@@ -3,7 +3,14 @@ from collections import Counter
 
 import marimo as mo
 import pandas as pd
-from analysis.access import current_of, dt_of, eval_comp_of, target_of, valid_or
+from analysis.access import (
+    current_of,
+    dt_of,
+    eval_comp_of,
+    sim_current_params_of,
+    target_of,
+    valid_or,
+)
 from analysis.save.panel import SaveEntry, entry
 
 from neurosurrogate.currents import CURRENT_MAP
@@ -117,6 +124,7 @@ def calc_sweep(
         amp_start=sweep_ui["amp_start"].value,
         amp_stop=sweep_ui["amp_stop"].value,
         amp_steps=sweep_ui["amp_steps"].value,
+        base_params=sim_current_params_of(setting_ui),
     )
     # label は掃引結果の識別キー。同 label 複数選択は dict 上書きで silent に
     # 1 run へ潰れ、summary 表と掃引図が食い違う → fail first で弾く。

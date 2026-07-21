@@ -2,7 +2,7 @@
 並走シミュし、comp/metric 単位で掃引メトリクスを抽出。marimo/mlflow 非依存の
 純粋ドメイン層 (UI/ラベル引き出しは analysis 側)。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -18,13 +18,16 @@ from .wave import DynamicMetrics, extract_metric
 
 @dataclass(frozen=True)
 class CurrentSweepConfig:
-    """current の sweep_param を amp 範囲で amp_steps 分割掃引する仕様。"""
+    """current の sweep_param を amp 範囲で amp_steps 分割掃引する仕様。
+    base_params は sweep_param 以外 (duration 等) の固定値、single 側 UI 値を
+    引き継ぐための単一源。"""
 
     current_type: str
     sweep_param: str
     amp_start: float
     amp_stop: float
     amp_steps: int
+    base_params: dict = field(default_factory=dict)
 
     @property
     def amp_values(self) -> np.ndarray:
@@ -74,7 +77,7 @@ def evaluate_sweep(
             model_name=model_name,
             dt=dt,
             current_type=cfg.current_type,
-            current_params={cfg.sweep_param: float(amp)},
+            current_params={**cfg.base_params, cfg.sweep_param: float(amp)},
             net=net,
         )
         surr_datasets = {
