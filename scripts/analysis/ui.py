@@ -7,6 +7,7 @@ from typing import Literal
 import marimo as mo
 import matplotlib.pyplot as plt
 import pandas as pd
+from analysis.access import current_of, target_of, train_of
 from analysis.mode import single as analysis_single
 from analysis.mode import sweep as analysis_sweep
 from mlflow_io import setup_mlflow
@@ -16,7 +17,6 @@ from neurosurrogate.models import MCMODELS
 
 CurrentList: list = list(CURRENT_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
-MCNameList = list(MCMODELS.keys())
 
 setup_mlflow()
 
@@ -27,7 +27,9 @@ setup_mlflow()
 
 
 def make_base_ui(
-    runs_df: pd.DataFrame, target_model: dict[str, list[str]]
+    runs_df: pd.DataFrame,
+    target_model: dict[str, list[str]],
+    preset: dict | None = None,
 ) -> mo.ui.dictionary:
     # 学習 train_model × 適用候補 target_model の有効ペアを 1 dropdown で列挙。
     # 未登録 train_model は自身のみを候補とする。label→(train,target) を .value で得る。
@@ -37,28 +39,28 @@ def make_base_ui(
         for tgt in target_model.get(train, [train])
     }
     plt_options = list(typing.get_args(MplStyle))
+    # preset (復元) 値で初期値上書き。無効値 (run 集合変化等) は既定へフォールバック。
+    b = (preset or {}).get("base", {})
+    pair = tuple(b["model_pair"]) if "model_pair" in b else None
+    pair_label = next((k for k, v in pairs.items() if v == pair), next(iter(pairs)))
+    current = b.get("sim_current_type", "lin&steady&pulse")
     return mo.ui.dictionary(
         {
-            "plt_style": mo.ui.radio(options=plt_options, value=plt_options[1]),
-            "sim_current_type": mo.ui.dropdown(CurrentList, value="lin&steady&pulse"),
-            "dt": mo.ui.number(value=0.01, step=0.001),
+            "plt_style": mo.ui.radio(
+                options=plt_options, value=b.get("plt_style", plt_options[1])
+            ),
+            "sim_current_type": mo.ui.dropdown(
+                CurrentList,
+                value=current if current in CurrentList else "lin&steady&pulse",
+            ),
+            "dt": mo.ui.number(value=b.get("dt", 0.01), step=0.001),
             "model_pair": mo.ui.dropdown(
                 options=pairs,
-                value=next(iter(pairs)),
+                value=pair_label,
                 label="モデルペア (train→target)",
             ),
         }
     )
-
-
-def target_of(base_ui: mo.ui.dictionary) -> str:
-    """選択ペアの適用先 MC モデル名。"""
-    return str(base_ui["model_pair"].value[1])
-
-
-def train_of(base_ui: mo.ui.dictionary) -> str:
-    """選択ペアの学習元 train_model 名。"""
-    return str(base_ui["model_pair"].value[0])
 
 
 # ---------------------------------------------------------------------------
@@ -73,13 +75,20 @@ def setup_mpl(matplotlib_style: str):
 
 
 def _run_selector(
-    runs: pd.DataFrame, label: str, selection: Literal["single", "multi"] = "multi"
+    runs: pd.DataFrame,
+    label: str,
+    selection: Literal["single", "multi"] = "multi",
+    selected_ids: list[str] | None = None,
 ) -> mo.ui.table:
+    # preset 復元時は run_id → 表示行位置へ写像。無指定は既定 (先頭 1 件)。
+    ids = list(runs["run_id"])
+    if selected_ids is not None:
+        wanted = set(selected_ids)
+        initial = [i for i, r in enumerate(ids) if r in wanted]
+    else:
+        initial = [0] if ids else []
     return mo.ui.table(
-        runs,
-        label=label,
-        selection=selection,
-        initial_selection=[0] if len(runs) else [],
+        runs, label=label, selection=selection, initial_selection=initial
     )
 
 
@@ -87,8 +96,9 @@ def make_setting_ui(
     runs_df: pd.DataFrame,
     base_ui: mo.ui.dictionary,
     sweep_defaults: analysis_sweep.SweepDefaults,
+    preset: dict | None = None,
 ) -> mo.ui.dictionary:
-    current_type = str(base_ui["sim_current_type"].value)
+    current_type = current_of(base_ui)
     # 選択 train_model の run のみを提示。run_selector は sim/sweep 各キーへ個別に
     # 埋め、single (1件必須) と sweep (複数可) で選択状態を分離する。
     runs = pd.DataFrame(
@@ -96,14 +106,21 @@ def make_setting_ui(
             ["tags.mlflow.runName", "run_id"]
         ]
     )
+    sim_p = (preset or {}).get("sim", {})
+    sweep_p = (preset or {}).get("sweep", {})
     d: dict = {
         "sim": analysis_single.make_sim_ui(
-            current_type, _run_selector(runs, "single Run (1件)", "single")
+            current_type,
+            _run_selector(runs, "single Run (1件)", "single", sim_p.get("run_ids")),
+            sim_p.get("current_params"),
         ),
         "run_sim": mo.ui.run_button(label="single 実行"),
     }
     sweep = analysis_sweep.make_sweep_ui(
-        current_type, sweep_defaults, _run_selector(runs, "sweep Run (複数可)")
+        current_type,
+        sweep_defaults,
+        _run_selector(runs, "sweep Run (複数可)", selected_ids=sweep_p.get("run_ids")),
+        sweep_p,
     )
     if sweep is not None:
         d["sweep"] = sweep
@@ -116,16 +133,22 @@ def make_setting_ui(
 # ---------------------------------------------------------------------------
 
 
-def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary:
+def make_draw_ui(
+    base_ui: mo.ui.dictionary, preset: dict | None = None
+) -> mo.ui.dictionary:
     net = MCMODELS[target_of(base_ui)]
+    p = (preset or {}).get("draw", {})
+    eval_comp = p.get("eval_comp", "soma")
     d: dict = {
         # 既定=soma (全モデルが細胞体を "soma" と命名する共通規約)。
         "eval_comp": mo.ui.dropdown(
-            options=net.names, value="soma", label="評価対象comp"
+            options=net.names,
+            value=eval_comp if eval_comp in net.names else "soma",
+            label="評価対象comp",
         ),
-        "single": analysis_single.make_draw_ui(),
+        "single": analysis_single.make_draw_ui(p.get("spike")),
     }
-    sweep = analysis_sweep.make_draw_ui(base_ui)
+    sweep = analysis_sweep.make_draw_ui(base_ui, p.get("sweep"))
     if sweep is not None:
         d["sweep"] = sweep
     return mo.ui.dictionary(d)

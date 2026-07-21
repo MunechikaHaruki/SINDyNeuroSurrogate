@@ -4,6 +4,7 @@ from typing import Literal, cast
 
 import marimo as mo
 import pandas as pd
+from analysis.access import current_of, target_of
 from matplotlib.figure import Figure
 from mlflow_io import load_surrogate_model
 
@@ -37,31 +38,47 @@ def _make_ui_element(name: str, annotation, default):
     elif annotation is bool:
         return mo.ui.checkbox(value=bool(default), label=name)
     elif annotation is list:
-        return mo.ui.array([mo.ui.number(value=0.0, step=0.1)], label=name)
+        vals = default if isinstance(default, list) and default else [0.0]
+        return mo.ui.array(
+            [mo.ui.number(value=float(v), step=0.1) for v in vals], label=name
+        )
     else:
         raise NotImplementedError(f"{name}: {annotation} は未対応の型です")
 
 
-def make_draw_ui() -> mo.ui.dictionary:
+def make_draw_ui(spike: dict | None = None) -> mo.ui.dictionary:
+    s = spike or {}
     return mo.ui.dictionary(
         {
             "spike": mo.ui.dictionary(
                 {
-                    "orig": mo.ui.number(value=0, step=1, label="spike orig #"),
-                    "surr": mo.ui.number(value=0, step=1, label="spike surr #"),
+                    "orig": mo.ui.number(
+                        value=int(s.get("orig", 0)), step=1, label="spike orig #"
+                    ),
+                    "surr": mo.ui.number(
+                        value=int(s.get("surr", 0)), step=1, label="spike surr #"
+                    ),
                 }
             ),
         }
     )
 
 
-def make_sim_ui(current_type: str, run_selector: mo.ui.table) -> mo.ui.dictionary:
+def make_sim_ui(
+    current_type: str,
+    run_selector: mo.ui.table,
+    current_params: dict | None = None,
+) -> mo.ui.dictionary:
+    cp = current_params or {}
     current_params_ui = mo.ui.dictionary(
         {
             name: _make_ui_element(
                 name,
                 param.annotation,
-                0 if param.default is inspect.Parameter.empty else param.default,
+                cp.get(
+                    name,
+                    0 if param.default is inspect.Parameter.empty else param.default,
+                ),
             )
             for name, param in inspect.signature(
                 CURRENT_MAP[current_type]
@@ -90,9 +107,9 @@ def calc_eval(
             f"single モードでは Run を 1 件だけ選択。現在: {len(run_ids)} 件"
         )
     dataset_cfg = DatasetConfig.build_dataset(
-        model_name=str(base_ui["model_pair"].value[1]),
+        model_name=target_of(base_ui),
         dt=float(base_ui["dt"].value),
-        current_type=str(base_ui["sim_current_type"].value),
+        current_type=current_of(base_ui),
         current_params=setting_ui["sim"]["current_params"].value or {},
     )
     return evaluate(load_surrogate_model(str(run_ids[0])), dataset_cfg)

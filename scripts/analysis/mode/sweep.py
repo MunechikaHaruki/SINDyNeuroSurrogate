@@ -1,6 +1,7 @@
 import inspect
 
 import marimo as mo
+from analysis.access import current_of, target_of
 from matplotlib.figure import Figure
 from mlflow_io import LoadedRun
 
@@ -35,37 +36,57 @@ _SWEEP_FALLBACK = (-5.0, 20.0, 10)
 
 
 def make_sweep_ui(
-    current_type: str, defaults: SweepDefaults, run_selector: mo.ui.table
+    current_type: str,
+    defaults: SweepDefaults,
+    run_selector: mo.ui.table,
+    preset: dict | None = None,
 ) -> mo.ui.dictionary | None:
     if not _is_sweepable(current_type):
         return None
     start, stop, steps = defaults.get(current_type, _SWEEP_FALLBACK)
+    p = preset or {}
     return mo.ui.dictionary(
         {
             "run_selector": run_selector,
-            "amp_start": mo.ui.number(value=start, step=1.0, label="amp_start"),
-            "amp_stop": mo.ui.number(value=stop, step=1.0, label="amp_stop"),
-            "amp_steps": mo.ui.number(value=steps, step=1, label="steps"),
+            "amp_start": mo.ui.number(
+                value=p.get("amp_start", start), step=1.0, label="amp_start"
+            ),
+            "amp_stop": mo.ui.number(
+                value=p.get("amp_stop", stop), step=1.0, label="amp_stop"
+            ),
+            "amp_steps": mo.ui.number(
+                value=p.get("amp_steps", steps), step=1, label="steps"
+            ),
         }
     )
 
 
-def make_draw_ui(base_ui: mo.ui.dictionary) -> mo.ui.dictionary | None:
-    current_type = str(base_ui["sim_current_type"].value)
+def make_draw_ui(
+    base_ui: mo.ui.dictionary, preset: dict | None = None
+) -> mo.ui.dictionary | None:
+    current_type = current_of(base_ui)
     if not _is_sweepable(current_type):
         return None
+    p = preset or {}
+    ylim = p.get("ylim", {})
+    metric = p.get("metric", "spike_count")
+    options = DF_ROW_METRICS + SCALAR_METRICS
     return mo.ui.dictionary(
         {
             "metric": mo.ui.dropdown(
-                options=DF_ROW_METRICS + SCALAR_METRICS,
-                value="spike_count",
+                options=options,
+                value=metric if metric in options else "spike_count",
                 label="metric",
             ),
             "ylim": mo.ui.dictionary(
                 {
-                    "auto": mo.ui.checkbox(value=True, label="auto"),
-                    "min": mo.ui.number(value=0.0, step=1.0, label="ymin"),
-                    "max": mo.ui.number(value=1.0, step=1.0, label="ymax"),
+                    "auto": mo.ui.checkbox(value=ylim.get("auto", True), label="auto"),
+                    "min": mo.ui.number(
+                        value=ylim.get("min", 0.0), step=1.0, label="ymin"
+                    ),
+                    "max": mo.ui.number(
+                        value=ylim.get("max", 1.0), step=1.0, label="ymax"
+                    ),
                 }
             ),
         }
@@ -85,7 +106,7 @@ def calc_sweep(
     """UI 値 + ロード済 run を evaluate_sweep へ委譲。raw sim データを返す。
     surrogate/runName は loaded (load_selected 由来) を単一源とし再取得しない。"""
     sweep_ui = setting_ui["sweep"]
-    current_type = base_ui["sim_current_type"].value
+    current_type = current_of(base_ui)
     cfg = CurrentSweepConfig(
         current_type=current_type,
         sweep_param=_sweep_param_of(current_type),
@@ -95,7 +116,7 @@ def calc_sweep(
     )
     sweep_eval = evaluate_sweep(
         {r.run_id: r.surrogate for r in loaded},
-        model_name=str(base_ui["model_pair"].value[1]),
+        model_name=target_of(base_ui),
         dt=float(base_ui["dt"].value),
         cfg=cfg,
     )

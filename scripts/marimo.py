@@ -9,12 +9,11 @@ def _():
     from pathlib import Path
 
     import marimo as mo
-    from analysis import actions, panel, ui, view
+    from analysis import actions, ui, view
+    from analysis.save import panel, restore
     from mlflow_io import get_runs_df
 
-    RESULT_DIR = (
-        Path(__file__).resolve().parent.parent / "docs" / "poster" / "pic" / "result"
-    )
+    RESULT_DIR = Path(__file__).resolve().parent / "conf" / "surrogate" / "result"
 
     # current_type → (amp_start, amp_stop, amp_steps)
     # 未登録 current は fallback (-5.0, 20.0, 10)
@@ -26,15 +25,14 @@ def _():
     TARGET_MODEL = {"hh": ["hh", "phhhp"], "traub": ["traub19", "traub"]}
 
     runs_df = get_runs_df()
-    base_ui = ui.make_base_ui(runs_df, TARGET_MODEL)
-    base_ui  # noqa: B018
     return (
         RESULT_DIR,
         SWEEP_DEFAULTS,
+        TARGET_MODEL,
         actions,
-        base_ui,
         mo,
         panel,
+        restore,
         runs_df,
         ui,
         view,
@@ -42,16 +40,38 @@ def _():
 
 
 @app.cell
-def _(SWEEP_DEFAULTS, base_ui, runs_df, ui):
+def _(RESULT_DIR, restore):
+    # meta.json 復元パネル。dropdown 選択で即 preset をロード → 下流 UI を再構築。
+    restore_html, restore_dd = restore.make_panel(RESULT_DIR)
+    restore_html  # noqa: B018
+    return (restore_dd,)
+
+
+@app.cell
+def _(restore, restore_dd):
+    # 選択 meta を preset に。空選択 → None → 既定値。
+    preset = restore.load(restore_dd.value)
+    return (preset,)
+
+
+@app.cell
+def _(TARGET_MODEL, preset, runs_df, ui):
+    base_ui = ui.make_base_ui(runs_df, TARGET_MODEL, preset)
+    base_ui  # noqa: B018
+    return (base_ui,)
+
+
+@app.cell
+def _(SWEEP_DEFAULTS, base_ui, preset, runs_df, ui):
     ui.setup_mpl(base_ui["plt_style"].value)
-    setting_ui = ui.make_setting_ui(runs_df, base_ui, SWEEP_DEFAULTS)
+    setting_ui = ui.make_setting_ui(runs_df, base_ui, SWEEP_DEFAULTS, preset)
     setting_ui  # noqa: B018
     return (setting_ui,)
 
 
 @app.cell
-def _(base_ui, ui):
-    draw_ui = ui.make_draw_ui(base_ui)
+def _(base_ui, preset, ui):
+    draw_ui = ui.make_draw_ui(base_ui, preset)
     draw_ui  # noqa: B018
     return (draw_ui,)
 
@@ -81,6 +101,7 @@ def _(
     base_ui,
     draw_ui,
     panel,
+    restore,
     save_dirs,
     save_groups,
     save_panel,
@@ -91,7 +112,7 @@ def _(
         save_groups,
         RESULT_DIR,
         save_dirs.value,
-        {"base": base_ui.value, "setting": setting_ui.value, "draw": draw_ui.value},
+        restore.to_meta(base_ui, setting_ui, draw_ui),
     )
     return
 
@@ -102,17 +123,14 @@ def _(
     draw_ui,
     loaded_single,
     loaded_sweep,
-    mo,
     res_single,
     res_sweep,
     view,
 ):
-    html_single, save_single = view.view_single(
-        loaded_single, base_ui, res_single, draw_ui
+    html, save_result = view.view_result(
+        loaded_single, loaded_sweep, base_ui, res_single, res_sweep, draw_ui
     )
-    html_sweep, save_sweep = view.view_sweep(loaded_sweep, res_sweep, draw_ui)
-    save_result = save_single + save_sweep
-    mo.vstack([html_single, html_sweep])
+    html  # noqa: B018
     return (save_result,)
 
 
