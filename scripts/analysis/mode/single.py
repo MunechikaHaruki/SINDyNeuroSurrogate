@@ -5,13 +5,14 @@ from typing import Literal, cast
 import marimo as mo
 import pandas as pd
 from analysis.access import current_of, target_of
+from analysis.save.panel import SaveEntry, entry
 from matplotlib.figure import Figure
-from mlflow_io import load_surrogate_model
+from mlflow_io import LoadedRun, load_surrogate_model
 
 from neurosurrogate.core.network import DatasetConfig, NeuronGraph
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult, evaluate
-from neurosurrogate.metrics.wave import WaveReport
+from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
 from neurosurrogate.surrogate.replace import replaced_names
 from neurosurrogate.view.model import view_model, view_neuron_graph
@@ -122,81 +123,41 @@ def calc_eval(
 
 def model_figs(
     net: NeuronGraph, surrogate: NeuroSurrogateBase
-) -> list[tuple[str, str, Figure]]:
-    """single mode の静的モデル図。(section 見出し, save 名, fig) 列。"""
+) -> list[tuple[str, Figure]]:
+    """single mode の静的モデル図。(save 名, fig) 列。"""
     return [
-        (
-            "NeuronGraph",
-            "neurograph",
-            view_neuron_graph(net, replaced_names(surrogate, net)),
-        ),
-        ("SINDy 係数", "model", view_model(surrogate.sindy_bundle)),
+        ("neurograph", view_neuron_graph(net, replaced_names(surrogate, net))),
+        ("model", view_model(surrogate.sindy_bundle)),
     ]
 
 
 # ---------------------------------------------------------------------------
-# View Result
+# View Result (save entry 列。表示は panel.render が担う)
 # ---------------------------------------------------------------------------
 
 
-def _stat_cards(d: dict) -> mo.Html:
-    return mo.hstack(
-        [
-            mo.stat(label=k, value=f"{v:.4f}" if isinstance(v, float) else str(v))
-            for k, v in d.items()
-        ],
-        wrap=True,
-    )
-
-
-def _metrics_html(rep: WaveReport, spike_orig: int, spike_surr: int) -> mo.Html:
-    """WaveReport をメトリクス表示 UI に組み立てる。"""
-    parts: list = [
-        mo.md("#### 波形誤差スカラー"),
-        _stat_cards(rep.waveform_scalar),
-    ]
-    if rep.has_spikes:
-        parts += [
-            mo.md(
-                f"#### 動的指標（orig / surr / orig-surr）"
-                f" — spike orig: {spike_orig} / surr: {spike_surr}"
-            ),
-            rep.df_metrics,
-            mo.md("#### スパイク波形相関（spike_shape_corr）"),
-            _stat_cards(rep.spike_shape_corr),
-        ]
-    else:
-        parts.append(
-            mo.md(
-                f"（スパイク指標なし: orig {spike_orig}/{rep.n_orig}"
-                f" surr {spike_surr}/{rep.n_surr}）"
-            )
-        )
-    return mo.vstack(parts)
-
-
-def view_result(
+def view(
+    run: LoadedRun | None,
+    base_ui: mo.ui.dictionary,
+    res: EvalResult | None,
     draw_ui: mo.ui.dictionary,
-    result: EvalResult,
-    eval_comp_name: str,
-) -> tuple[mo.Html, list[tuple[str, Figure]], dict[str, pd.DataFrame]]:
-    target_comp_id = result.dataset.net.name_to_idx(eval_comp_name)
-    spike_orig = int(draw_ui["spike"]["orig"].value)
-    spike_surr = int(draw_ui["spike"]["surr"].value)
-    rep = result.wave_report(target_comp_id, spike_orig, spike_surr)
+) -> list[SaveEntry]:
+    """静的モデル図 (選択 run) → 波形図 + メトリクス df (res ゲート)。"""
+    if run is None:
+        return []
+    net = MCMODELS[target_of(base_ui)]
+    entries = [entry(name, fig) for name, fig in model_figs(net, run.surrogate)]
+    if res is None:
+        return entries
 
-    figs = draw_all(result, target_comp_id)
-    fig_html = [
-        part
-        for name, fig in figs
-        for part in (mo.md(f"##### {name}"), mo.mpl.interactive(fig))
+    target_comp_id = res.dataset.net.name_to_idx(str(draw_ui["eval_comp"].value))
+    spike_orig = int(draw_ui["single"]["spike"]["orig"].value)
+    spike_surr = int(draw_ui["single"]["spike"]["surr"].value)
+    rep = res.wave_report(target_comp_id, spike_orig, spike_surr)
+
+    entries += [entry(name, fig) for name, fig in draw_all(res, target_comp_id)]
+    entries += [
+        entry("metrics", rep.df_metrics),
+        entry("metrics_scalar", rep.df_scalar),
     ]
-
-    return (
-        mo.vstack([_metrics_html(rep, spike_orig, spike_surr), *fig_html]),
-        figs,
-        {
-            "metrics": rep.df_metrics,
-            "metrics(scalar)": rep.df_scalar,
-        },
-    )
+    return entries

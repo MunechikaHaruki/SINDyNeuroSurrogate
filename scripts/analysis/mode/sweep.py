@@ -1,8 +1,9 @@
 import inspect
 
 import marimo as mo
+import pandas as pd
 from analysis.access import current_of, target_of
-from matplotlib.figure import Figure
+from analysis.save.panel import SaveEntry, entry
 from mlflow_io import LoadedRun
 
 from neurosurrogate.currents import CURRENT_MAP
@@ -128,37 +129,49 @@ def calc_sweep(
 
 
 # ---------------------------------------------------------------------------
-# Draw
+# View Result (save entry 列。表示は panel.render が担う)
 # ---------------------------------------------------------------------------
 
 
-def plot_sweep(
-    sweep_raw: dict,
-    eval_comp_name: str,
-    metric_key: str,
-    ylim: tuple[float, float] | None = None,
-) -> tuple[mo.Html, Figure]:
-    """描画層: SweepEval からメトリクス計算 → 描画。シミュ再走なし。"""
-    data = sweep_raw["sweep_eval"].metrics_df(eval_comp_name, metric_key)
-    fig = sweep_fig(
-        data,
-        sweep_raw["cfg"],
-        eval_comp_name,
-        metric_key,
-        sweep_raw["run_labels"],
-        ylim=ylim,
-    )
-    return mo.vstack([mo.mpl.interactive(fig), mo.ui.table(data)]), fig
+def _eval_df(loaded: list[LoadedRun]) -> pd.DataFrame:
+    rows = [
+        {"run_name": r.run_name, "run_id": r.run_id[:8], **r.surrogate.metrics()}
+        for r in loaded
+    ]
+    return pd.DataFrame(rows).set_index("run_name")
 
 
-def plot_sweep_traces(
-    sweep_raw: dict,
-    eval_comp_name: str,
-) -> tuple[mo.Html, Figure]:
-    """列=掃引 amp の波形格子 (行1=I_ext / 行2以降=各 run vs orig)。再走なし。"""
-    fig = sweep_trace_grid_fig(
-        sweep_raw["sweep_eval"],
-        eval_comp_name,
-        sweep_raw["run_labels"],
+def view(
+    loaded: list[LoadedRun],
+    res: dict | None,
+    draw_ui: mo.ui.dictionary,
+) -> list[SaveEntry]:
+    """評価サマリ表 (選択 run) → sweep 波形格子 + メトリクス図 (res ゲート)。"""
+    if not loaded:
+        return []
+    entries = [entry("eval_summary", _eval_df(loaded))]
+    if res is None or "sweep" not in draw_ui:
+        return entries
+
+    eval_comp = str(draw_ui["eval_comp"].value)
+    ylim_ui = draw_ui["sweep"]["ylim"]
+    ylim = (
+        None
+        if ylim_ui["auto"].value
+        else (float(ylim_ui["min"].value), float(ylim_ui["max"].value))
     )
-    return mo.mpl.interactive(fig), fig
+    metric_key = draw_ui["sweep"]["metric"].value
+    data = res["sweep_eval"].metrics_df(eval_comp, metric_key)
+    entries += [
+        entry(
+            "sweep_traces",
+            sweep_trace_grid_fig(res["sweep_eval"], eval_comp, res["run_labels"]),
+        ),
+        entry(
+            "sweep",
+            sweep_fig(
+                data, res["cfg"], eval_comp, metric_key, res["run_labels"], ylim=ylim
+            ),
+        ),
+    ]
+    return entries

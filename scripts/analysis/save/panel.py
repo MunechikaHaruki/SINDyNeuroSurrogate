@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import typing
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import marimo as mo
@@ -32,39 +32,21 @@ def entry(name: str, obj: SaveItem) -> SaveEntry:
 
 
 # ---------------------------------------------------------------------------
-# Panel (表示 blocks + 保存 entries)
+# Render (save entry 列 → 表示。fig→interactive / df→table, 見出し=entry 名)
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class Panel:
-    """表示 blocks と保存 entries を同時に積む。`figs` が「表示した fig をそのまま
-    save entry に載せる」不変条件を1箇所に閉じ、view 関数を上から順に読める形に保つ。"""
-
-    blocks: list[mo.Html] = field(default_factory=list)
-    entries: list[SaveEntry] = field(default_factory=list)
-
-    def note(self, md: str) -> None:
-        """保存対象でない見出し/注記のみ追加。"""
-        self.blocks.append(mo.md(md))
-
-    def section(self, title: str, body: mo.Html) -> None:
-        """### 見出し + 完成済み body (html/df) を表示。保存は別途 `save`。"""
-        self.blocks += [mo.md(f"### {title}"), body]
-
-    def figs(self, title: str, named: list[tuple[str, Figure]]) -> None:
-        """### 見出し下に各 fig を表示し、同一 object を save entry へ登録。"""
-        self.blocks.append(mo.md(f"### {title}"))
-        for name, fig in named:
-            self.blocks += [mo.md(f"##### {name}"), mo.mpl.interactive(fig)]
-            self.entries.append(entry(name, fig))
-
-    def save(self, name: str, obj: SaveItem) -> None:
-        """表示済み (or 表示不要) の obj を save entry のみ登録。"""
-        self.entries.append(entry(name, obj))
-
-    def done(self) -> tuple[mo.Html, list[SaveEntry]]:
-        return mo.vstack(self.blocks), self.entries
+def render(entries: list[SaveEntry]) -> mo.Html:
+    """save 対象をそのまま表示に流す (display と save の単一源)。"""
+    blocks: list[mo.Html] = []
+    for e in entries:
+        body = (
+            mo.mpl.interactive(e.obj)
+            if isinstance(e.obj, Figure)
+            else mo.ui.table(e.obj)
+        )
+        blocks += [mo.md(f"##### {e.name}"), body]
+    return mo.vstack(blocks)
 
 
 # ---------------------------------------------------------------------------

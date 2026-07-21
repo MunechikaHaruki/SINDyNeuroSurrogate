@@ -77,9 +77,9 @@ def _(base_ui, preset, ui):
 
 
 @app.cell
-def _(base_ui, setting_ui, view):
-    html_current, save_current = view.plot_preview(base_ui, setting_ui)
-    html_current  # noqa: B018
+def _(base_ui, panel, setting_ui, view):
+    save_current = view.plot_preview(base_ui, setting_ui)
+    panel.render(save_current)
     return (save_current,)
 
 
@@ -123,14 +123,15 @@ def _(
     draw_ui,
     loaded_single,
     loaded_sweep,
+    panel,
     res_single,
     res_sweep,
     view,
 ):
-    html, save_result = view.view_result(
+    save_result = view.view_result(
         loaded_single, loaded_sweep, base_ui, res_single, res_sweep, draw_ui
     )
-    html  # noqa: B018
+    panel.render(save_result)
     return (save_result,)
 
 
