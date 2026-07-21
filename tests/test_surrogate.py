@@ -53,8 +53,9 @@ def fit_surrogate(
 
 @pytest.fixture(scope="module")
 def sindy() -> NeuroSurrogateBase:
-    """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。"""
-    return fit_surrogate("hh", REPRESENTATIVE_DIM)
+    """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。
+    type は preset default が sweep 軸で振れる → sindy を明示 override。"""
+    return fit_surrogate("hh", REPRESENTATIVE_DIM, extra=["surrogate.type=sindy"])
 
 
 @pytest.fixture(scope="module")
@@ -65,7 +66,7 @@ def sindy_eval(sindy: NeuroSurrogateBase) -> EvalResult:
 @pytest.mark.parametrize("n_components", LATENT_DIMS)
 def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     """列構造 [V, g1..gN, u] は latent 次元によらず置換シミュまで通る。"""
-    surrogate = fit_surrogate("hh", n_components)
+    surrogate = fit_surrogate("hh", n_components, extra=["surrogate.type=sindy"])
     assert surrogate.sindy_bundle.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
@@ -113,8 +114,14 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments() -> None:
     """hybrid traub は Ca サブ系 (XI/Q) を physics へ分離し純電位依存ゲートのみ学習 →
     Ca params (phi_area/g_Ca) がノード毎に違う traub19 全 comp を 1 サロゲートで置換
     できる (compatible=True)。学習は 8 電位依存ゲートのみ、surr state は latent+[XI,Q]。
-    新 kernel の XI/Q 積分が置換シミュまで有限に走ることも確認する。"""
-    surrogate = fit_surrogate("traub", 5, extra=["surrogate.type=hybrid"])
+    新 kernel の XI/Q 積分が置換シミュまで有限に走ることも確認する。
+    preprocessor は AE の乱数初期化で fit 品質 (=有限性) がブレる → 決定的な pca に固定
+    (主眼は XI/Q physics 積分経路であり AE 再構成品質ではない)。"""
+    surrogate = fit_surrogate(
+        "traub",
+        5,
+        extra=["surrogate.type=hybrid", "surrogate.init.preprocessor.type=pca"],
+    )
     assert surrogate.surr_comp_type.gate_names[-2:] == ["XI", "Q"]
 
     traub19 = DatasetConfig.build_dataset(
