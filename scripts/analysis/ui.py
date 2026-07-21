@@ -111,7 +111,9 @@ def make_setting_ui(
     d: dict = {
         "sim": analysis_single.make_sim_ui(
             current_type,
-            _run_selector(runs, "single Run (1件)", "single", sim_p.get("run_ids")),
+            _run_selector(
+                runs, "single Run (1件)", "single", sim_p.get("run_selector")
+            ),
             sim_p.get("current_params"),
         ),
         "run_sim": mo.ui.run_button(label="single 実行"),
@@ -119,7 +121,9 @@ def make_setting_ui(
     sweep = analysis_sweep.make_sweep_ui(
         current_type,
         sweep_defaults,
-        _run_selector(runs, "sweep Run (複数可)", selected_ids=sweep_p.get("run_ids")),
+        _run_selector(
+            runs, "sweep Run (複数可)", selected_ids=sweep_p.get("run_selector")
+        ),
         sweep_p,
     )
     if sweep is not None:
@@ -146,7 +150,7 @@ def make_draw_ui(
             value=eval_comp if eval_comp in net.names else "soma",
             label="評価対象comp",
         ),
-        "single": analysis_single.make_draw_ui(p.get("spike")),
+        "single": analysis_single.make_draw_ui(p.get("single", {}).get("spike")),
     }
     sweep = analysis_sweep.make_draw_ui(base_ui, p.get("sweep"))
     if sweep is not None:

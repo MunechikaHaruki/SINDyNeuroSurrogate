@@ -78,21 +78,16 @@ def _(base_ui, preset, ui):
 
 @app.cell
 def _(base_ui, panel, setting_ui, view):
-    save_current = view.plot_preview(base_ui, setting_ui)
-    panel.render(save_current)
-    return (save_current,)
+    # current preview は表示のみ (保存は mo.mpl.interactive の標準ボタンで足りる)。
+    panel.render(view.plot_preview(base_ui, setting_ui))
+    return
 
 
 @app.cell
-def _(panel, save_current, save_result):
-    save_groups = {
-        "current": save_current,
-        "result": save_result,
-    }
-    save_dirs = panel.make_save_dirs(save_groups)
-    save_panel = panel.make_save_panel(save_groups)
-    panel.render_save_panel(save_panel, save_dirs)
-    return save_dirs, save_groups, save_panel
+def _(panel, save_result):
+    save_panel = panel.make_save_panel(save_result)
+    panel.render_save_panel(save_panel)
+    return (save_panel,)
 
 
 @app.cell
@@ -102,16 +97,14 @@ def _(
     draw_ui,
     panel,
     restore,
-    save_dirs,
-    save_groups,
     save_panel,
+    save_result,
     setting_ui,
 ):
     panel.save(
         save_panel,
-        save_groups,
+        save_result,
         RESULT_DIR,
-        save_dirs.value,
         restore.to_meta(base_ui, setting_ui, draw_ui),
     )
     return

@@ -60,91 +60,49 @@ SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
 }
 
 
-def make_save_panel(groups: dict[str, list[SaveEntry]]) -> mo.ui.dictionary:
-    """グループ (current/result) ごとに「対象 entry の複数選択 + 保存ボタン」を生成。
+def make_save_panel(entries: list[SaveEntry]) -> mo.ui.dictionary:
+    """result entry の「保存先 + 対象複数選択 + 保存ボタン」を生成。
 
     multiselect 既定は全選択 (従来の一括保存と同挙動)。選択を外した entry は保存対象外。
     """
     return mo.ui.dictionary(
         {
-            name: mo.ui.dictionary(
-                {
-                    "select": mo.ui.multiselect(
-                        options=[e.name for e in entries],
-                        value=[e.name for e in entries],
-                        label="対象",
-                    ),
-                    "run": mo.ui.run_button(label=f"save {name}"),
-                }
-            )
-            for name, entries in groups.items()
+            "dir": mo.ui.text(value="_result", label="保存先"),
+            "select": mo.ui.multiselect(
+                options=[e.name for e in entries],
+                value=[e.name for e in entries],
+                label="対象",
+            ),
+            "run": mo.ui.run_button(label="save"),
         }
     )
 
 
-def make_save_dirs(groups: dict[str, list[SaveEntry]]) -> mo.ui.dictionary:
-    """current 以外の group ごとに保存先ディレクトリ入力を生成。
-
-    single/sweep を個別指定する。
-    """
-    return mo.ui.dictionary(
-        {
-            name: mo.ui.text(value=f"_{name}", label=f"{name} 保存先")
-            for name in groups
-            if name != "current"
-        }
+def render_save_panel(panel: mo.ui.dictionary) -> mo.Html:
+    return mo.vstack(
+        [mo.md("### 画像保存パネル"), panel["dir"], panel["select"], panel["run"]]
     )
-
-
-def render_save_panel(panel: mo.ui.dictionary, save_dirs: mo.ui.dictionary) -> mo.Html:
-    rows = []
-    for name, ctrl in panel.items():
-        parts = [save_dirs[name]] if name in save_dirs else []
-        parts += [ctrl["select"], ctrl["run"]]
-        rows.append(mo.vstack(parts))
-    return mo.vstack([mo.md("### 画像保存パネル"), *rows])
-
-
-def _dest(name: str, result_dir: Path, save_dirs: dict[str, str]) -> Path:
-    """保存先ルート。
-
-    dir 入力を持つ group (single/sweep) は `result_dir/<入力>/` 直下
-    (fig と meta.json を同階層)。持たない current は従来どおり `result_dir/current/`。
-    """
-    if name in save_dirs:
-        return result_dir / save_dirs[name]
-    return result_dir / name
 
 
 def save(
     save_panel: mo.ui.dictionary,
-    groups: dict[str, list[SaveEntry]],
+    entries: list[SaveEntry],
     result_dir: Path,
-    save_dirs: dict[str, str],
     meta: dict,
 ) -> mo.Html:
-    """押されたグループを一括保存。
-
-    dir 入力を持つ group (single/sweep) は入力ディレクトリ直下に fig と `meta.json`
-    (base/setting/draw UI の値) を同階層で置く。
-    """
+    """選択 entry を `result_dir/<入力>/` 直下へ保存 (fig と `meta.json` を同階層)。"""
+    if not save_panel["run"].value:
+        return mo.md("(未保存)")
+    selected = set(save_panel["select"].value)
+    dest = result_dir / save_panel["dir"].value
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "meta.json").write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False, default=str)
+    )
     msgs: list[mo.Html] = []
-    for name, entries in groups.items():
-        ctrl = save_panel[name]
-        if not ctrl["run"].value:
+    for e in entries:
+        if e.name not in selected:
             continue
-        selected = set(ctrl["select"].value)
-        dest = _dest(name, result_dir, save_dirs)
-        dest.mkdir(parents=True, exist_ok=True)
-        if name in save_dirs:
-            (dest / "meta.json").write_text(
-                json.dumps(meta, indent=2, ensure_ascii=False, default=str)
-            )
-        for e in entries:
-            if e.name not in selected:
-                continue
-            SAVERS[type(e.obj)](e.obj, dest / e.path)
-            msgs.append(
-                mo.md(f"✅ {e.name}: `{(dest / e.path).relative_to(result_dir)}`")
-            )
+        SAVERS[type(e.obj)](e.obj, dest / e.path)
+        msgs.append(mo.md(f"✅ {e.name}: `{(dest / e.path).relative_to(result_dir)}`"))
     return mo.vstack(msgs) if msgs else mo.md("(未保存)")
