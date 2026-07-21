@@ -52,6 +52,12 @@ def load_runs(run_ids: list[str]) -> list[NeuroSurrogateBase]:
     return [load_surrogate_model(rid) for rid in run_ids]
 
 
+def load_from_selector(selection: pd.DataFrame) -> list[NeuroSurrogateBase]:
+    """run_selector の選択 DataFrame → run_id 抽出 → load_runs。
+    single (1件) / sweep (複数) 共通の UI ロード経路。"""
+    return load_runs(cast(pd.DataFrame, selection)["run_id"].tolist())
+
+
 def get_runs_df():
     experiment = mlflow.get_experiment_by_name(TARGET_EXP)
     if experiment is None:

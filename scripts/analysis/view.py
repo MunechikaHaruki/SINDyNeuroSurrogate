@@ -4,7 +4,7 @@ import marimo as mo
 from analysis.access import current_of
 from analysis.mode import single as analysis_single
 from analysis.mode import sweep as analysis_sweep
-from analysis.save.panel import SaveEntry, entry
+from analysis.save.panel import SaveEntry
 
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
@@ -29,9 +29,8 @@ def plot_preview(
     base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary
 ) -> list[SaveEntry]:
     current_type = current_of(base_ui)
-    fig = current_preview_fig(
+    return current_preview_fig(
         current_type,
         float(base_ui["dt"].value),
         setting_ui["sim"]["current_params"].value or {},
     )
-    return [entry(f"current({current_type})", fig)]

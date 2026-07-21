@@ -9,9 +9,11 @@ def _():
     from pathlib import Path
 
     import marimo as mo
-    from analysis import actions, ui, view
+    from analysis import ui, view
+    from analysis.mode import single as m_single
+    from analysis.mode import sweep as m_sweep
     from analysis.save import panel, restore
-    from mlflow_io import get_runs_df
+    from mlflow_io import get_runs_df, load_from_selector
 
     RESULT_DIR = Path(__file__).resolve().parent / "conf" / "surrogate" / "result"
 
@@ -29,7 +31,9 @@ def _():
         RESULT_DIR,
         SWEEP_DEFAULTS,
         TARGET_MODEL,
-        actions,
+        load_from_selector,
+        m_single,
+        m_sweep,
         mo,
         panel,
         restore,
@@ -77,9 +81,9 @@ def _(base_ui, preset, ui):
 
 
 @app.cell
-def _(base_ui, panel, setting_ui, view):
+def _(base_ui, setting_ui, view):
     # current preview は表示のみ (保存は mo.mpl.interactive の標準ボタンで足りる)。
-    panel.render(view.plot_preview(base_ui, setting_ui))
+    view.plot_preview(base_ui, setting_ui)
     return
 
 
@@ -144,34 +148,36 @@ def _(get_res_single, get_res_sweep):
 
 
 @app.cell
-def _(actions, base_ui, set_res_single, setting_ui):
-    _new = actions.calc_single(base_ui, setting_ui)
-    if _new is not None:
-        set_res_single(_new)
+def _(base_ui, m_single, set_res_single, setting_ui):
+    if setting_ui["run_sim"].value:
+        set_res_single(m_single.calc_eval(base_ui, setting_ui))
     return
 
 
 @app.cell
-def _(actions, base_ui, loaded_sweep, set_res_sweep, setting_ui):
-    _new = actions.calc_sweep(base_ui, setting_ui, loaded_sweep)
-    if _new is not None:
-        set_res_sweep(_new)
+def _(base_ui, loaded_sweep, m_sweep, set_res_sweep, setting_ui):
+    if "run_sweep" in setting_ui and setting_ui["run_sweep"].value:
+        set_res_sweep(m_sweep.calc_sweep(base_ui, setting_ui, loaded_sweep))
     return
 
 
 @app.cell
-def _(actions, setting_ui):
+def _(load_from_selector, setting_ui):
     # sweep 用 run 選択の surrogate (評価サマリ + sweep で共有)。sweep 無効時は空。
     loaded_sweep = (
-        actions.load_selected(setting_ui["sweep"]) if "sweep" in setting_ui else []
+        load_from_selector(setting_ui["sweep"]["run_selector"].value)
+        if "sweep" in setting_ui
+        else []
     )
     return (loaded_sweep,)
 
 
 @app.cell
-def _(actions, setting_ui):
-    # single 用 run 選択の surrogate (neurograph + heatmap + 波形評価で共有)
-    loaded_single = actions.load_single(setting_ui["sim"])
+def _(load_from_selector, setting_ui):
+    # single 用 run 選択の surrogate (neurograph + heatmap + 波形評価で共有)。
+    # run_selector (単一選択) の 0/1 件を 1 run or None に畳む。
+    _loaded = load_from_selector(setting_ui["sim"]["run_selector"].value)
+    loaded_single = _loaded[0] if _loaded else None
     return (loaded_single,)
 
 
