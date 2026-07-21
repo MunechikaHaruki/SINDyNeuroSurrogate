@@ -3,7 +3,7 @@ from collections import Counter
 
 import marimo as mo
 import pandas as pd
-from analysis.access import current_of, target_of
+from analysis.access import current_of, target_of, valid_or
 from analysis.save.panel import SaveEntry, entry
 
 from neurosurrogate.currents import CURRENT_MAP
@@ -71,13 +71,12 @@ def make_draw_ui(
         return None
     p = preset or {}
     ylim = p.get("ylim", {})
-    metric = p.get("metric", "spike_count")
     options = DF_ROW_METRICS + SCALAR_METRICS
     return mo.ui.dictionary(
         {
             "metric": mo.ui.dropdown(
                 options=options,
-                value=metric if metric in options else "spike_count",
+                value=valid_or(p.get("metric"), options, "spike_count"),
                 label="metric",
             ),
             "ylim": mo.ui.dictionary(

@@ -23,3 +23,9 @@ def train_of(base_ui: mo.ui.dictionary) -> str:
 def current_of(base_ui: mo.ui.dictionary) -> str:
     """選択電流タイプ名。"""
     return str(base_ui["sim_current_type"].value)
+
+
+def valid_or(value: object, options: object, default: object) -> object:
+    """preset 復元値が現 options に含まれれば採用、無ければ default。
+    run 集合変化などで無効化した選択 (dropdown 値) を既定へ吸収する共通規約。"""
+    return value if value in options else default  # type: ignore[operator]

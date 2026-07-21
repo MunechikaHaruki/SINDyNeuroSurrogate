@@ -7,7 +7,7 @@ from typing import Literal
 import marimo as mo
 import matplotlib.pyplot as plt
 import pandas as pd
-from analysis.access import current_of, target_of, train_of
+from analysis.access import current_of, target_of, train_of, valid_or
 from analysis.mode import single as analysis_single
 from analysis.mode import sweep as analysis_sweep
 from mlflow_io import setup_mlflow
@@ -40,10 +40,12 @@ def make_base_ui(
     }
     plt_options = list(typing.get_args(MplStyle))
     # preset (復元) 値で初期値上書き。無効値 (run 集合変化等) は既定へフォールバック。
+    # model_pair は json で list 化するので options(tuple) と list 比較で照合。
     b = (preset or {}).get("base", {})
-    pair = tuple(b["model_pair"]) if "model_pair" in b else None
-    pair_label = next((k for k, v in pairs.items() if v == pair), next(iter(pairs)))
-    current = b.get("sim_current_type", "lin&steady&pulse")
+    pair_label = next(
+        (k for k, v in pairs.items() if list(v) == b.get("model_pair")),
+        next(iter(pairs)),
+    )
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(
@@ -51,7 +53,9 @@ def make_base_ui(
             ),
             "sim_current_type": mo.ui.dropdown(
                 CurrentList,
-                value=current if current in CurrentList else "lin&steady&pulse",
+                value=valid_or(
+                    b.get("sim_current_type"), CurrentList, "lin&steady&pulse"
+                ),
             ),
             "dt": mo.ui.number(value=b.get("dt", 0.01), step=0.001),
             "model_pair": mo.ui.dropdown(
@@ -142,12 +146,11 @@ def make_draw_ui(
 ) -> mo.ui.dictionary:
     net = MCMODELS[target_of(base_ui)]
     p = (preset or {}).get("draw", {})
-    eval_comp = p.get("eval_comp", "soma")
     d: dict = {
         # 既定=soma (全モデルが細胞体を "soma" と命名する共通規約)。
         "eval_comp": mo.ui.dropdown(
             options=net.names,
-            value=eval_comp if eval_comp in net.names else "soma",
+            value=valid_or(p.get("eval_comp"), net.names, "soma"),
             label="評価対象comp",
         ),
         "single": analysis_single.make_draw_ui(p.get("single", {}).get("spike")),
