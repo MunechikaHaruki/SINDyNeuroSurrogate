@@ -1,10 +1,16 @@
 import inspect
 import typing
-from typing import Literal, cast
+from typing import Literal
 
 import marimo as mo
-import pandas as pd
-from analysis.access import current_of, target_of
+from analysis.access import (
+    current_of,
+    dt_of,
+    eval_comp_of,
+    sim_current_params_of,
+    sim_run_selection_of,
+    target_of,
+)
 from analysis.save.panel import SaveEntry, entry
 from matplotlib.figure import Figure
 from mlflow_io import load_surrogate_model
@@ -100,18 +106,16 @@ def calc_eval(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
 ) -> EvalResult:
-    run_ids = cast(pd.DataFrame, setting_ui["sim"]["run_selector"].value)[
-        "run_id"
-    ].tolist()
+    run_ids = sim_run_selection_of(setting_ui)["run_id"].tolist()
     if len(run_ids) != 1:
         raise ValueError(
             f"single モードでは Run を 1 件だけ選択。現在: {len(run_ids)} 件"
         )
     dataset_cfg = DatasetConfig.build_dataset(
         model_name=target_of(base_ui),
-        dt=float(base_ui["dt"].value),
+        dt=dt_of(base_ui),
         current_type=current_of(base_ui),
-        current_params=setting_ui["sim"]["current_params"].value or {},
+        current_params=sim_current_params_of(setting_ui),
     )
     return evaluate(load_surrogate_model(str(run_ids[0])), dataset_cfg)
 
@@ -150,7 +154,7 @@ def view(
     if res is None:
         return entries
 
-    target_comp_id = res.dataset.net.name_to_idx(str(draw_ui["eval_comp"].value))
+    target_comp_id = res.dataset.net.name_to_idx(eval_comp_of(draw_ui))
     spike_orig = int(draw_ui["single"]["spike"]["orig"].value)
     spike_surr = int(draw_ui["single"]["spike"]["surr"].value)
     rep = res.wave_report(target_comp_id, spike_orig, spike_surr)

@@ -58,7 +58,7 @@ def current_generator(fn: Callable) -> Callable:
 
 
 @current_generator
-def _generate_steady(value: float = 10):
+def generate_steady(value: float = 10):
     """一定の電流を生成する。value [μA/cm²]"""
 
     def apply(active: np.ndarray, _dt: float) -> None:
@@ -68,7 +68,7 @@ def _generate_steady(value: float = 10):
 
 
 @current_generator
-def _generate_ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
+def generate_ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
     """線形に増加・減少する電流を生成する。amplitude [μA/cm²]"""
 
     def apply(active: np.ndarray, _dt: float) -> None:
@@ -78,22 +78,9 @@ def _generate_ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up
     return apply
 
 
-def steady(value: float = 10):
-    return _generate_steady(value, silence_duration=10, duration=120)
-
-
-def single_pulse(value: float = 10):
-    return _generate_steady(value, silence_duration=10, duration=30)
-
-
-def ramp(amplitude: float = 20, direction: Literal["up", "down"] = "up"):
-    return _generate_ramp(amplitude, direction, silence_duration=0, duration=100)
-
-
 LINEAR_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
-    "lin&steady": steady,
-    "lin&steady&pulse": single_pulse,
-    "lin&ramp": ramp,
+    "lin&steady": generate_steady,
+    "lin&ramp": generate_ramp,
 }
 
 
@@ -103,7 +90,7 @@ LINEAR_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
 
 
 @current_generator
-def _generate_sinousoidal(
+def generate_sinousoidal(
     amplitude: float = 7.5,
     frequency: float = 10.0,
     baseline: float = 7.5,
@@ -137,18 +124,8 @@ def generate_chirp(
     return apply
 
 
-def sinousoidal(frequency: float = 50):
-    return _generate_sinousoidal(
-        amplitude=7.5,
-        frequency=frequency,
-        baseline=7.5,
-        silence_duration=10,
-        duration=520,
-    )
-
-
 PERIODIC_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
-    "periodic&sinousoidal": sinousoidal,
+    "periodic&sinousoidal": generate_sinousoidal,
     "periodic&chirp": generate_chirp,
 }
 
@@ -284,7 +261,7 @@ def traub_soma_dc(value: float = 1e-4 / 3.320e-5):
     一定注入 (silence 無し, T=200ms)。MC 規約では soma の stim_area_scale=area[soma]
     が kernel の /area を打ち消す → builder 値=soma 密度 [μA/cm²] がそのまま流入。
     既定値=1e-4/area[soma] (area[soma]=3.320e-5 [cm²], traub19 SOMA_IDX)。"""
-    return _generate_steady(value, silence_duration=0, duration=200)
+    return generate_steady(value, silence_duration=0, duration=200)
 
 
 OTHER_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {

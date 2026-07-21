@@ -9,7 +9,12 @@ def _():
     from pathlib import Path
 
     import marimo as mo
-    from analysis import ui, view
+    from analysis import ui
+    from analysis.access import (
+        plt_style_of,
+        sim_run_selection_of,
+        sweep_run_selection_of,
+    )
     from analysis.mode import single as m_single
     from analysis.mode import sweep as m_sweep
     from analysis.save import panel, restore
@@ -17,29 +22,23 @@ def _():
 
     RESULT_DIR = Path(__file__).resolve().parent / "conf" / "surrogate" / "result"
 
-    # current_type → (amp_start, amp_stop, amp_steps)
-    # 未登録 current は fallback (-5.0, 20.0, 10)
-    SWEEP_DEFAULTS = {
-        "lin&steady&pulse": (0, 20.0, 10),  # value [μA/cm²]
-        "periodic&sinousoidal": (0, 200.0, 10),  # frequency [Hz]
-    }
-
     TARGET_MODEL = {"hh": ["hh", "phhhp"], "traub": ["traub19", "traub"]}
 
     runs_df = get_runs_df()
     return (
         RESULT_DIR,
-        SWEEP_DEFAULTS,
         TARGET_MODEL,
         load_from_selector,
         m_single,
         m_sweep,
         mo,
         panel,
+        plt_style_of,
         restore,
         runs_df,
+        sim_run_selection_of,
+        sweep_run_selection_of,
         ui,
-        view,
     )
 
 
@@ -66,9 +65,9 @@ def _(TARGET_MODEL, preset, runs_df, ui):
 
 
 @app.cell
-def _(SWEEP_DEFAULTS, base_ui, preset, runs_df, ui):
-    ui.setup_mpl(base_ui["plt_style"].value)
-    setting_ui = ui.make_setting_ui(runs_df, base_ui, SWEEP_DEFAULTS, preset)
+def _(base_ui, plt_style_of, preset, runs_df, ui):
+    ui.setup_mpl(plt_style_of(base_ui))
+    setting_ui = ui.make_setting_ui(runs_df, base_ui, preset)
     setting_ui  # noqa: B018
     return (setting_ui,)
 
@@ -81,9 +80,9 @@ def _(base_ui, preset, ui):
 
 
 @app.cell
-def _(base_ui, setting_ui, view):
+def _(base_ui, setting_ui, ui):
     # current preview は表示のみ (保存は mo.mpl.interactive の標準ボタンで足りる)。
-    view.plot_preview(base_ui, setting_ui)
+    ui.plot_preview(base_ui, setting_ui)
     return
 
 
@@ -123,9 +122,9 @@ def _(
     panel,
     res_single,
     res_sweep,
-    view,
+    ui,
 ):
-    save_result = view.view_result(
+    save_result = ui.view_result(
         loaded_single, loaded_sweep, base_ui, res_single, res_sweep, draw_ui
     )
     panel.render(save_result)
@@ -162,21 +161,18 @@ def _(base_ui, loaded_sweep, m_sweep, set_res_sweep, setting_ui):
 
 
 @app.cell
-def _(load_from_selector, setting_ui):
+def _(load_from_selector, setting_ui, sweep_run_selection_of):
     # sweep 用 run 選択の surrogate (評価サマリ + sweep で共有)。sweep 無効時は空。
-    loaded_sweep = (
-        load_from_selector(setting_ui["sweep"]["run_selector"].value)
-        if "sweep" in setting_ui
-        else []
-    )
+    _sel = sweep_run_selection_of(setting_ui)
+    loaded_sweep = load_from_selector(_sel) if _sel is not None else []
     return (loaded_sweep,)
 
 
 @app.cell
-def _(load_from_selector, setting_ui):
+def _(load_from_selector, setting_ui, sim_run_selection_of):
     # single 用 run 選択の surrogate (neurograph + heatmap + 波形評価で共有)。
     # run_selector (単一選択) の 0/1 件を 1 run or None に畳む。
-    _loaded = load_from_selector(setting_ui["sim"]["run_selector"].value)
+    _loaded = load_from_selector(sim_run_selection_of(setting_ui))
     loaded_single = _loaded[0] if _loaded else None
     return (loaded_single,)
 

@@ -3,7 +3,7 @@ from collections import Counter
 
 import marimo as mo
 import pandas as pd
-from analysis.access import current_of, target_of, valid_or
+from analysis.access import current_of, dt_of, eval_comp_of, target_of, valid_or
 from analysis.save.panel import SaveEntry, entry
 
 from neurosurrogate.currents import CURRENT_MAP
@@ -17,39 +17,41 @@ from neurosurrogate.view.utils import sweep_fig, sweep_trace_grid_fig
 # ---------------------------------------------------------------------------
 
 
-def _sweep_param_of(current_type: str) -> str | None:
-    """掃引軸に使う単一 numeric パラメータ名を返す。
-    掃引軸が一意に定まらない (numeric param が 0 個 or 複数) 場合は
-    None = 掃引 UI 非対応。"""
-    numeric_params = [
+def _numeric_params_of(current_type: str) -> list[str]:
+    """掃引対象候補となる numeric パラメータ名列。silence_duration/duration は
+    掃引意図の対象でないため除外。0 件 = 掃引 UI 非対応。"""
+    return [
         name
         for name, p in inspect.signature(CURRENT_MAP[current_type]).parameters.items()
-        if p.annotation in (int, float)
+        if p.annotation in (int, float) and name not in ("silence_duration", "duration")
     ]
-    return numeric_params[0] if len(numeric_params) == 1 else None
 
 
 def _is_sweepable(current_type: str) -> bool:
-    return _sweep_param_of(current_type) is not None
+    return len(_numeric_params_of(current_type)) > 0
 
 
-SweepDefaults = dict[str, tuple[float, float, int]]
 _SWEEP_FALLBACK = (-5.0, 20.0, 10)
 
 
 def make_sweep_ui(
     current_type: str,
-    defaults: SweepDefaults,
     run_selector: mo.ui.table,
     preset: dict | None = None,
 ) -> mo.ui.dictionary | None:
-    if not _is_sweepable(current_type):
+    params = _numeric_params_of(current_type)
+    if not params:
         return None
-    start, stop, steps = defaults.get(current_type, _SWEEP_FALLBACK)
+    start, stop, steps = _SWEEP_FALLBACK
     p = preset or {}
     return mo.ui.dictionary(
         {
             "run_selector": run_selector,
+            "sweep_param": mo.ui.dropdown(
+                options=params,
+                value=valid_or(p.get("sweep_param"), params, params[0]),
+                label="sweep param",
+            ),
             "amp_start": mo.ui.number(
                 value=p.get("amp_start", start), step=1.0, label="amp_start"
             ),
@@ -111,7 +113,7 @@ def calc_sweep(
     current_type = current_of(base_ui)
     cfg = CurrentSweepConfig(
         current_type=current_type,
-        sweep_param=_sweep_param_of(current_type),
+        sweep_param=sweep_ui["sweep_param"].value,
         amp_start=sweep_ui["amp_start"].value,
         amp_stop=sweep_ui["amp_stop"].value,
         amp_steps=sweep_ui["amp_steps"].value,
@@ -124,7 +126,7 @@ def calc_sweep(
     sweep_eval = evaluate_sweep(
         {s.meta.label: s for s in loaded},
         model_name=target_of(base_ui),
-        dt=float(base_ui["dt"].value),
+        dt=dt_of(base_ui),
         cfg=cfg,
     )
     return {"sweep_eval": sweep_eval, "cfg": cfg}
@@ -153,7 +155,7 @@ def view(
         return entries
     labels = [s.meta.label for s in loaded]
 
-    eval_comp = str(draw_ui["eval_comp"].value)
+    eval_comp = eval_comp_of(draw_ui)
     ylim_ui = draw_ui["sweep"]["ylim"]
     ylim = (
         None

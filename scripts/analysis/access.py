@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from typing import cast
+
 import marimo as mo
+import pandas as pd
 
 # ---------------------------------------------------------------------------
-# base_ui read 規約の集約 (leaf: marimo のみ依存)。
+# base_ui/setting_ui/draw_ui read 規約の集約 (leaf: marimo のみ依存)。
 #
-# ui/mode/view が共有する base_ui の掘削をここへ一元化。ui.py に置くと
+# ui/mode が共有する UI dict の掘削をここへ一元化。ui.py に置くと
 # ui→mode の import と衝突し mode 側が使えない (循環) ため独立 module に切出す。
 # ---------------------------------------------------------------------------
 
@@ -23,6 +26,38 @@ def train_of(base_ui: mo.ui.dictionary) -> str:
 def current_of(base_ui: mo.ui.dictionary) -> str:
     """選択電流タイプ名。"""
     return str(base_ui["sim_current_type"].value)
+
+
+def dt_of(base_ui: mo.ui.dictionary) -> float:
+    """シミュ刻み幅 dt。"""
+    return float(base_ui["dt"].value)
+
+
+def plt_style_of(base_ui: mo.ui.dictionary) -> str:
+    """matplotlib style 名。"""
+    return str(base_ui["plt_style"].value)
+
+
+def eval_comp_of(draw_ui: mo.ui.dictionary) -> str:
+    """評価対象 comp 名。"""
+    return str(draw_ui["eval_comp"].value)
+
+
+def sim_current_params_of(setting_ui: mo.ui.dictionary) -> dict:
+    """single モード current_params 値。"""
+    return setting_ui["sim"]["current_params"].value or {}
+
+
+def sim_run_selection_of(setting_ui: mo.ui.dictionary) -> pd.DataFrame:
+    """single モード選択 run の DataFrame (run_id 列を含む)。"""
+    return cast(pd.DataFrame, setting_ui["sim"]["run_selector"].value)
+
+
+def sweep_run_selection_of(setting_ui: mo.ui.dictionary) -> pd.DataFrame | None:
+    """sweep モード選択 run の DataFrame。sweep UI 非対応時は None。"""
+    if "sweep" not in setting_ui:
+        return None
+    return cast(pd.DataFrame, setting_ui["sweep"]["run_selector"].value)
 
 
 def valid_or(value: object, options: object, default: object) -> object:

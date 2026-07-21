@@ -7,13 +7,24 @@ from typing import Literal
 import marimo as mo
 import matplotlib.pyplot as plt
 import pandas as pd
-from analysis.access import current_of, target_of, train_of, valid_or
+from analysis.access import (
+    current_of,
+    dt_of,
+    sim_current_params_of,
+    target_of,
+    train_of,
+    valid_or,
+)
 from analysis.mode import single as analysis_single
 from analysis.mode import sweep as analysis_sweep
+from analysis.save.panel import SaveEntry
 from mlflow_io import setup_mlflow
 
 from neurosurrogate.currents import CURRENT_MAP
+from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
+from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
+from neurosurrogate.view.utils import current_preview_fig
 
 CurrentList: list = list(CURRENT_MAP.keys())
 MplStyle = Literal["paper", "presentation"]
@@ -53,9 +64,7 @@ def make_base_ui(
             ),
             "sim_current_type": mo.ui.dropdown(
                 CurrentList,
-                value=valid_or(
-                    b.get("sim_current_type"), CurrentList, "lin&steady&pulse"
-                ),
+                value=valid_or(b.get("sim_current_type"), CurrentList, "lin&steady"),
             ),
             "dt": mo.ui.number(value=b.get("dt", 0.01), step=0.001),
             "model_pair": mo.ui.dropdown(
@@ -99,7 +108,6 @@ def _run_selector(
 def make_setting_ui(
     runs_df: pd.DataFrame,
     base_ui: mo.ui.dictionary,
-    sweep_defaults: analysis_sweep.SweepDefaults,
     preset: dict | None = None,
 ) -> mo.ui.dictionary:
     current_type = current_of(base_ui)
@@ -124,7 +132,6 @@ def make_setting_ui(
     }
     sweep = analysis_sweep.make_sweep_ui(
         current_type,
-        sweep_defaults,
         _run_selector(
             runs, "sweep Run (複数可)", selected_ids=sweep_p.get("run_selector")
         ),
@@ -159,3 +166,33 @@ def make_draw_ui(
     if sweep is not None:
         d["sweep"] = sweep
     return mo.ui.dictionary(d)
+
+
+# ---------------------------------------------------------------------------
+# View (計算済 save entry の合成・プレビュー)
+# ---------------------------------------------------------------------------
+
+
+def view_result(
+    loaded_single: NeuroSurrogateBase | None,
+    loaded_sweep: list[NeuroSurrogateBase],
+    base_ui: mo.ui.dictionary,
+    res_single: EvalResult | None,
+    res_sweep: dict | None,
+    draw_ui: mo.ui.dictionary,
+) -> list[SaveEntry]:
+    """single / sweep の save entry 列を連結 (表示は panel.render)。"""
+    return analysis_single.view(
+        loaded_single, base_ui, res_single, draw_ui
+    ) + analysis_sweep.view(loaded_sweep, res_sweep, draw_ui)
+
+
+def plot_preview(
+    base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary
+) -> list[SaveEntry]:
+    current_type = current_of(base_ui)
+    return current_preview_fig(
+        current_type,
+        dt_of(base_ui),
+        sim_current_params_of(setting_ui),
+    )
