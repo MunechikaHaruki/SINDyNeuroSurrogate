@@ -8,6 +8,7 @@ VIRTUAL_ENV := "uv run"
 
 MLFLOW_PORT := "5100"
 MLFLOW_URI := "sqlite:///./mlflow.db"
+SMOKE_EXP := "smoke_test"  # just test の main.py run 隔離先 (clean-test が丸ごと削除)
 
 # Delete all compiled Python files
 clean-cache:
@@ -26,6 +27,11 @@ clean-log:
 # Delete all MLflow runs (DB/experiment 構造は保持、artifact ごと物理削除)
 clean-run:
     {{ VIRTUAL_ENV }} python -c "import mlflow; mlflow.set_tracking_uri('{{ MLFLOW_URI }}'); c = mlflow.MlflowClient(); [c.delete_run(r.info.run_id) for e in c.search_experiments() for r in c.search_runs(e.experiment_id, run_view_type=1)]"
+    {{ VIRTUAL_ENV }} python -m mlflow gc --backend-store-uri {{ MLFLOW_URI }} --tracking-uri {{ MLFLOW_URI }}
+
+# just test が smoke_test experiment に残した run を experiment ごと削除 (本番 run は不変)
+clean-test:
+    {{ VIRTUAL_ENV }} python -c "import mlflow; mlflow.set_tracking_uri('{{ MLFLOW_URI }}'); c = mlflow.MlflowClient(); e = c.get_experiment_by_name('{{ SMOKE_EXP }}'); [c.delete_run(r.info.run_id) for r in c.search_runs(e.experiment_id, run_view_type=1)] if e else None; c.delete_experiment(e.experiment_id) if e else None"
     {{ VIRTUAL_ENV }} python -m mlflow gc --backend-store-uri {{ MLFLOW_URI }} --tracking-uri {{ MLFLOW_URI }}
 
 # Format source code with ruff
@@ -63,7 +69,7 @@ radon:
 # Smoke test: pytest (ドメイン層) + Hydra entry + marimo notebook (cell error -> exit 1)
 test:
     {{ VIRTUAL_ENV }} pytest -q
-    {{ VIRTUAL_ENV }} python scripts/main.py +surrogate.init.datasets.current_params.duration=180
+    MLFLOW_EXPERIMENT={{ SMOKE_EXP }} {{ VIRTUAL_ENV }} python scripts/main.py +surrogate.init.datasets.current_params.duration=180
 
 # activate logging server
 mlflow:
