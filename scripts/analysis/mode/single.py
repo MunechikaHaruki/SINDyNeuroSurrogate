@@ -7,7 +7,7 @@ import pandas as pd
 from analysis.access import current_of, target_of
 from analysis.save.panel import SaveEntry, entry
 from matplotlib.figure import Figure
-from mlflow_io import LoadedRun, load_surrogate_model
+from mlflow_io import load_surrogate_model
 
 from neurosurrogate.core.network import DatasetConfig, NeuronGraph
 from neurosurrogate.currents import CURRENT_MAP
@@ -137,16 +137,16 @@ def model_figs(
 
 
 def view(
-    run: LoadedRun | None,
+    surrogate: NeuroSurrogateBase | None,
     base_ui: mo.ui.dictionary,
     res: EvalResult | None,
     draw_ui: mo.ui.dictionary,
 ) -> list[SaveEntry]:
     """静的モデル図 (選択 run) → 波形図 + メトリクス df (res ゲート)。"""
-    if run is None:
+    if surrogate is None:
         return []
     net = MCMODELS[target_of(base_ui)]
-    entries = [entry(name, fig) for name, fig in model_figs(net, run.surrogate)]
+    entries = [entry(name, fig) for name, fig in model_figs(net, surrogate)]
     if res is None:
         return entries
 

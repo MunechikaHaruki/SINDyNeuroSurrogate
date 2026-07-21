@@ -1,14 +1,15 @@
 import inspect
+from collections import Counter
 
 import marimo as mo
 import pandas as pd
 from analysis.access import current_of, target_of
 from analysis.save.panel import SaveEntry, entry
-from mlflow_io import LoadedRun
 
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval_sweep import CurrentSweepConfig, evaluate_sweep
 from neurosurrogate.metrics.wave import DF_ROW_METRICS, SCALAR_METRICS
+from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
 from neurosurrogate.view.utils import sweep_fig, sweep_trace_grid_fig
 
 # ---------------------------------------------------------------------------
@@ -102,10 +103,11 @@ def make_draw_ui(
 def calc_sweep(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
-    loaded: list[LoadedRun],
+    loaded: list[NeuroSurrogateBase],
 ) -> dict:
-    """UI 値 + ロード済 run を evaluate_sweep へ委譲。raw sim データを返す。
-    surrogate/runName は loaded (load_selected 由来) を単一源とし再取得しない。"""
+    """UI 値 + ロード済 surrogate を evaluate_sweep へ委譲。raw sim データを返す。
+    surrogate は loaded (load_selected 由来) を単一源とし再取得しない。
+    掃引結果の識別キーは meta.label。"""
     sweep_ui = setting_ui["sweep"]
     current_type = current_of(base_ui)
     cfg = CurrentSweepConfig(
@@ -115,17 +117,18 @@ def calc_sweep(
         amp_stop=sweep_ui["amp_stop"].value,
         amp_steps=sweep_ui["amp_steps"].value,
     )
+    # label は掃引結果の識別キー。同 label 複数選択は dict 上書きで silent に
+    # 1 run へ潰れ、summary 表と掃引図が食い違う → fail first で弾く。
+    dup = [lbl for lbl, n in Counter(s.meta.label for s in loaded).items() if n > 1]
+    if dup:
+        raise ValueError(f"sweep 対象の meta.label 重複: {dup}。異なる config を選択。")
     sweep_eval = evaluate_sweep(
-        {r.run_id: r.surrogate for r in loaded},
+        {s.meta.label: s for s in loaded},
         model_name=target_of(base_ui),
         dt=float(base_ui["dt"].value),
         cfg=cfg,
     )
-    return {
-        "sweep_eval": sweep_eval,
-        "run_labels": {r.run_id: r.surrogate.meta.label for r in loaded},
-        "cfg": cfg,
-    }
+    return {"sweep_eval": sweep_eval, "cfg": cfg}
 
 
 # ---------------------------------------------------------------------------
@@ -133,16 +136,13 @@ def calc_sweep(
 # ---------------------------------------------------------------------------
 
 
-def _eval_df(loaded: list[LoadedRun]) -> pd.DataFrame:
-    rows = [
-        {"run_name": r.run_name, "run_id": r.run_id[:8], **r.surrogate.metrics()}
-        for r in loaded
-    ]
-    return pd.DataFrame(rows).set_index("run_name")
+def _eval_df(loaded: list[NeuroSurrogateBase]) -> pd.DataFrame:
+    rows = [{"label": s.meta.label, **s.metrics()} for s in loaded]
+    return pd.DataFrame(rows).set_index("label")
 
 
 def view(
-    loaded: list[LoadedRun],
+    loaded: list[NeuroSurrogateBase],
     res: dict | None,
     draw_ui: mo.ui.dictionary,
 ) -> list[SaveEntry]:
@@ -152,6 +152,7 @@ def view(
     entries = [entry("eval_summary", _eval_df(loaded))]
     if res is None or "sweep" not in draw_ui:
         return entries
+    labels = [s.meta.label for s in loaded]
 
     eval_comp = str(draw_ui["eval_comp"].value)
     ylim_ui = draw_ui["sweep"]["ylim"]
@@ -165,13 +166,11 @@ def view(
     entries += [
         entry(
             "sweep_traces",
-            sweep_trace_grid_fig(res["sweep_eval"], eval_comp, res["run_labels"]),
+            sweep_trace_grid_fig(res["sweep_eval"], eval_comp, labels),
         ),
         entry(
             "sweep",
-            sweep_fig(
-                data, res["cfg"], eval_comp, metric_key, res["run_labels"], ylim=ylim
-            ),
+            sweep_fig(data, res["cfg"], eval_comp, metric_key, labels, ylim=ylim),
         ),
     ]
     return entries

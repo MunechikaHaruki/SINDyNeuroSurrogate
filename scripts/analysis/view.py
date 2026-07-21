@@ -5,15 +5,15 @@ from analysis.access import current_of
 from analysis.mode import single as analysis_single
 from analysis.mode import sweep as analysis_sweep
 from analysis.save.panel import SaveEntry, entry
-from mlflow_io import LoadedRun
 
 from neurosurrogate.metrics.eval import EvalResult
+from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
 from neurosurrogate.view.utils import current_preview_fig
 
 
 def view_result(
-    loaded_single: LoadedRun | None,
-    loaded_sweep: list[LoadedRun],
+    loaded_single: NeuroSurrogateBase | None,
+    loaded_sweep: list[NeuroSurrogateBase],
     base_ui: mo.ui.dictionary,
     res_single: EvalResult | None,
     res_sweep: dict | None,

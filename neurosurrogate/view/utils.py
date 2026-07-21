@@ -37,20 +37,20 @@ def sweep_fig(
     cfg: CurrentSweepConfig,
     comp_name: str,
     metric_key: str,
-    run_labels: dict[str, str],
+    labels: list[str],
     ylim: tuple[float, float] | None = None,
 ) -> Figure:
     """sweep メトリクス折れ線 (Original + surrogate 各 run)。marimo 非依存。
-    run_labels は rid→表示名 (順序=描画順、keys=run_ids)。"""
+    labels は data の surrogate 列名 (= meta.label、順序=描画順)。"""
     fig, ax = plt.subplots()
     if "original" in data.columns:
         ax.plot(data["amplitude"], data["original"], "k-o", label="Original", zorder=3)
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for idx, (rid, label) in enumerate(run_labels.items()):
+    for idx, label in enumerate(labels):
         ax.plot(
             data["amplitude"],
-            data[rid],
+            data[label],
             marker="s",
             linestyle="--",
             color=colors[idx % len(colors)],
@@ -70,13 +70,13 @@ def sweep_fig(
 def sweep_trace_grid_fig(
     sweep: SweepEval,
     comp_name: str,
-    run_labels: dict[str, str],
+    labels: list[str],
 ) -> Figure:
     """列=掃引 amp の波形格子。行1=I_ext、行2以降=各 run の V 波形 (orig 重畳)。
-    run_labels は rid→表示名 (順序=行順、keys=run_ids)。marimo 非依存。"""
+    labels は surr_datasets のキー (= meta.label、順序=行順)。marimo 非依存。"""
     comp_id = MCMODELS[sweep.model_name].name_to_idx(comp_name)
     n_col = len(sweep.amp_datasets)
-    n_row = 1 + len(run_labels)
+    n_row = 1 + len(labels)
     fig, axes = plt.subplots(
         n_row,
         n_col,
@@ -97,7 +97,7 @@ def sweep_trace_grid_fig(
     for c, (amp, orig_ds, surr_datasets) in enumerate(sweep.amp_datasets):
         axes[0][c].plot(*access.i_ext(orig_ds), lw=0.8, color="tab:gray")
         axes[0][c].set_title(f"amp={amp:.3g}")
-        for r, rid in enumerate(run_labels, start=1):
+        for r, label in enumerate(labels, start=1):
             ax = axes[r][c]
             ax.set_ylim(*v_ylim)
             ax.plot(
@@ -107,7 +107,7 @@ def sweep_trace_grid_fig(
                 lw=0.7,
                 label="Original",
             )
-            surr_v = access.potential(surr_datasets[rid], comp_id)
+            surr_v = access.potential(surr_datasets[label], comp_id)
             if not np.all(np.isfinite(surr_v)) or float(np.abs(surr_v).max()) > 1e4:
                 ax.text(
                     0.5,
@@ -120,7 +120,7 @@ def sweep_trace_grid_fig(
                 )
                 continue
             ax.plot(
-                access.time(surr_datasets[rid]),
+                access.time(surr_datasets[label]),
                 surr_v,
                 "--",
                 lw=0.7,
@@ -128,7 +128,7 @@ def sweep_trace_grid_fig(
                 label="surrogate",
             )
     axes[0][0].set_ylabel("I_ext")
-    for r, label in enumerate(run_labels.values(), start=1):
+    for r, label in enumerate(labels, start=1):
         axes[r][0].set_ylabel(label)
     for c in range(n_col):
         axes[-1][c].set_xlabel("t [ms]")
