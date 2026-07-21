@@ -19,8 +19,10 @@ class CompartmentType:
     kernel: Callable  # (params, u_t, v, state) -> (dv, dstate)
     param_cls: "type | None"  # HHParams / PassiveParams / TraubParams / None (surr)
     gate_names: list[str]
-    default_gate_inits: list[float]
-    v_init: float = -65
+    # params -> [V, *gates] 初期状態。初期値は params からの導出量 (Traub の Ca 濃度
+    # XI は phi_area/g_Ca 依存、静止電位は V_LEAK/E_REST) なので型に定数で焼かず、
+    # ノード自身の params で毎回解く。module 関数で束縛 (meta が pickle される)。
+    inits: Callable[..., list[float]]
     opcost: "OpCost | None" = None
 
     # --- 変数構造 (V + gates 組立)、type だけで決まる ---
@@ -32,10 +34,6 @@ class CompartmentType:
     def gate(self) -> list[bool]:
         return [False] + [True] * len(self.gate_names)
 
-    @property
-    def init(self) -> list[float]:
-        return [self.v_init] + self.default_gate_inits
-
 
 @dataclass(frozen=True)
 class Compartment:
@@ -46,6 +44,25 @@ class Compartment:
     name: str
     type: CompartmentType
     params: "tuple | None" = None
+
+    @property
+    def resolved_params(self) -> "tuple | None":
+        """実効 params: 明示 params、無ければ型 default (param_cls())。
+
+        置換の params 一致判定 (surrogate/replace.py) と初期状態の解決に使う共通基準。
+        surr のように param_cls=None の型は params を持たず None。
+        """
+        if self.params is not None:
+            return self.params
+        return self.type.param_cls() if self.type.param_cls is not None else None
+
+    @property
+    def init(self) -> list[float]:
+        """このノードの初期状態 [V, *gates]。type × 自身の params から毎回解く。
+
+        導出量なのでフィールドに保存しない (replace の type 差替で stale 化する)。
+        """
+        return self.type.inits(self.resolved_params)
 
     def to_dict(self) -> dict:
         d: dict = {"name": self.name, "type": self.type.name}

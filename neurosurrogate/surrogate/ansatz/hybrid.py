@@ -12,7 +12,6 @@ from ...compartments.traub import (
     TRAUB_DV_COST,
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_LEARNED_GATE_NAMES,
-    TRAUB_V_INIT,
     TraubParams,
     traub_calcium_step,
     traub_dv,
@@ -22,7 +21,6 @@ from ...core import access
 from ...core.network import Compartment, CompartmentType
 from ...core.opcost import OpCost
 from ..bundle import SINDyBundle
-from ..replace import resolved_params
 from .base import NeuroSurrogateBase
 from .roles import Roles
 
@@ -53,7 +51,7 @@ class HybridPhysics:
 
     dv           : (params, u_t, v, gates) -> dv。gates は dv 用の全ゲート。
     dv_cost      : dv の演算コスト。
-    v_init       : 置換後 surrogate の初期電位。
+    v_init       : (params) -> 置換後 surrogate の初期電位 (ノード自身の静止電位)。
     n_learned    : 学習 latent が圧縮する (先頭) ゲート数。
     extra        : physics で解く追加状態 (無ければ None → 学習ゲート=全ゲート)。
     compatible   : (train_params, node_params) -> 置換両立か。物理 dv も extra も
@@ -63,7 +61,7 @@ class HybridPhysics:
     param_cls: type
     dv: Callable
     dv_cost: OpCost
-    v_init: float
+    v_init: Callable[[Any], float]
     n_learned: int
     extra: ExtraPhysics | None
     compatible: Callable[[tuple, tuple], bool]
@@ -76,7 +74,7 @@ HYBRID_PHYSICS: dict[str, HybridPhysics] = {
         param_cls=HHParams,
         dv=hh_dv,
         dv_cost=HH_DV_COST,
-        v_init=-65.0,
+        v_init=lambda p: p.E_REST,
         n_learned=3,
         extra=None,
         compatible=lambda a, b: bool(a.E_REST == b.E_REST),  # type: ignore[attr-defined]
@@ -90,7 +88,7 @@ HYBRID_PHYSICS: dict[str, HybridPhysics] = {
         param_cls=TraubParams,
         dv=traub_dv,
         dv_cost=TRAUB_DV_COST,
-        v_init=TRAUB_V_INIT,
+        v_init=lambda p: p.V_LEAK,
         n_learned=len(TRAUB_LEARNED_GATE_NAMES),
         extra=ExtraPhysics(
             names=TRAUB_EXTRA_GATE_NAMES,
@@ -142,8 +140,8 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
 
     def params_compatible(self, comp: Compartment) -> bool:
         return self._physics.compatible(
-            resolved_params(self.meta.train_comp),  # type: ignore[arg-type]
-            resolved_params(comp),  # type: ignore[arg-type]
+            self.meta.train_comp.resolved_params,  # type: ignore[arg-type]
+            comp.resolved_params,  # type: ignore[arg-type]
         )
 
     @property
@@ -167,17 +165,23 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             dlatent = xi @ compute_theta(*state[:n_latent], v)
             return dv, dlatent if dextra is None else jnp.concatenate([dlatent, dextra])
 
-        extra_inits = (
-            [] if extra is None else extra.inits(resolved_params(self.meta.train_comp))
-        )
-        extra_names = [] if extra is None else extra.names
+        def node_inits(p) -> list[float]:
+            # 置換先ノード自身の params で解く。latent は params-free ゲートの射影で
+            # 全 comp 共通だが、静止電位 (V_LEAK/E_REST) と Ca サブ系 XI/Q
+            # (phi_area/g_Ca 依存) はノードごとに違う。
+            return (
+                [phys.v_init(p)]
+                + self.preprocessor.gate_inits
+                + ([] if extra is None else extra.inits(p))
+            )
+
         return CompartmentType(
             name="hybrid_surr",
             kernel=hybrid_kernel,
             param_cls=phys.param_cls,
-            gate_names=access.latent_vars(n_latent) + extra_names,
-            default_gate_inits=self.preprocessor.gate_inits + extra_inits,
-            v_init=phys.v_init,
+            gate_names=access.latent_vars(n_latent)
+            + ([] if extra is None else extra.names),
+            inits=node_inits,
             opcost=None,
         )
 

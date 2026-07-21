@@ -7,7 +7,6 @@ from ...core.coords import transform_gate
 from ...core.network import Compartment, CompartmentType
 from ...core.opcost import OpCost
 from ..bundle import SINDyBundle
-from ..replace import resolved_params
 from .base import NeuroSurrogateBase
 from .roles import Roles
 
@@ -43,7 +42,7 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
     def params_compatible(self, comp: Compartment) -> bool:
         # surr は param_cls=None → simulator がノード params を捨て、学習モデルが
         # V+gate 全体を train params 込みで再現。→ 全 params 完全一致が必須。
-        return resolved_params(self.meta.train_comp) == resolved_params(comp)
+        return self.meta.train_comp.resolved_params == comp.resolved_params
 
     @property
     def surr_comp_type(self) -> CompartmentType:
@@ -61,8 +60,11 @@ class SINDyNeuroSurrogate(NeuroSurrogateBase):
             kernel=surr_kernel,
             param_cls=None,
             gate_names=access.latent_vars(n_latent),
-            default_gate_inits=self.preprocessor.gate_inits,
-            v_init=-65,
+            # surr は params を持たない (param_cls=None) → 学習元ノードの初期状態を
+            # そのまま引き継ぐ。置換は params 完全一致のノードにしか起きない。
+            inits=lambda _: (
+                [self.meta.train_comp.init[0]] + self.preprocessor.gate_inits
+            ),
             opcost=None,
         )
 

@@ -112,10 +112,19 @@ _HH_OPCOST = (
 )
 
 
-V_REL = (-65) - (-65)  # V_INIT - E_REST
+PASSIVE_V_INIT = -65.0  # passive は静止電位を規定する params を持たない (E_LEAK≠静止)
 
 
 # --- CompartmentType (物理の型) ---
+
+
+def hh_inits(p: HHParams) -> list[float]:
+    """[V, M, H, N] 初期状態。V を自身の E_REST に置くので v_rel=0 で定常。"""
+    return [p.E_REST, float(m_inf(0.0)), float(h_inf(0.0)), float(n_inf(0.0))]
+
+
+def passive_inits(_: PassiveParams) -> list[float]:
+    return [PASSIVE_V_INIT]
 
 
 HH_TYPE = CompartmentType(
@@ -123,8 +132,7 @@ HH_TYPE = CompartmentType(
     kernel=calc_hh_channel,
     param_cls=HHParams,
     gate_names=["M", "H", "N"],
-    default_gate_inits=[float(m_inf(V_REL)), float(h_inf(V_REL)), float(n_inf(V_REL))],
-    v_init=-65,
+    inits=hh_inits,
     opcost=_HH_OPCOST,
 )
 
@@ -134,7 +142,6 @@ PASSIVE_TYPE = CompartmentType(
     kernel=calc_passive_channel,
     param_cls=PassiveParams,
     gate_names=[],
-    default_gate_inits=[],
-    v_init=-65,
+    inits=passive_inits,
     opcost=OpCost(div=1, pm=2, mul=1),
 )

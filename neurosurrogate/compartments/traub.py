@@ -215,7 +215,7 @@ TRAUB_CA_COST = (
 )
 
 
-def _traub_state_inits(p: TraubParams):
+def _traub_state_inits(p: TraubParams) -> list[float]:
     v0 = p.V_LEAK
     m = float(_traub_inf_v("M", v0))
     s = float(_traub_inf_v("S", v0))
@@ -273,7 +273,9 @@ TRAUB_DV_COST = (
 )
 
 
-_TRAUB_DEFAULT_PARAMS = TraubParams()
+def traub_inits(p: TraubParams) -> list[float]:
+    """[V, *TRAUB_STATE_NAMES] 初期状態。静止電位 = 自身の V_LEAK。"""
+    return [p.V_LEAK] + _traub_state_inits(p)
 
 
 TRAUB_TYPE = CompartmentType(
@@ -281,7 +283,6 @@ TRAUB_TYPE = CompartmentType(
     kernel=calc_traub_channel,
     param_cls=TraubParams,
     gate_names=TRAUB_STATE_NAMES,
-    default_gate_inits=_traub_state_inits(_TRAUB_DEFAULT_PARAMS),
-    v_init=TRAUB_V_INIT,
+    inits=traub_inits,
     opcost=OpCost(),  # TODO: 実測 or 積算
 )

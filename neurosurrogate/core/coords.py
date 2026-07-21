@@ -46,7 +46,7 @@ def collect_state_coords(
     # [Pass 1] 電位変数
     for i, comp in enumerate(nodes):
         t = comp.type
-        acc.add(i, [t.vars[0]], [t.gate[0]], [t.init[0]])
+        acc.add(i, [t.vars[0]], [t.gate[0]], [comp.init[0]])
 
     # [Pass 2] ゲート/状態変数
     current_offset = N
@@ -54,7 +54,7 @@ def collect_state_coords(
         t = comp.type
         if len(t.vars) > 1:
             gate_offsets[i] = current_offset
-            acc.add(i, t.vars[1:], t.gate[1:], t.init[1:])
+            acc.add(i, t.vars[1:], t.gate[1:], comp.init[1:])
             current_offset += len(t.vars) - 1
 
     return acc, gate_offsets

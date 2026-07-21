@@ -15,17 +15,6 @@ if TYPE_CHECKING:
     from .ansatz.base import NeuroSurrogateBase
 
 
-def resolved_params(comp: Compartment) -> "tuple | None":
-    """comp の実効 params: 明示 params、無ければ型 default (param_cls())。
-
-    params 一致判定 (置換ドメイン) の基準。surr のように param_cls=None の型は
-    params を持たず None。default は param_cls() が生む NamedTuple デフォルト。
-    """
-    if comp.params is not None:
-        return comp.params
-    return comp.type.param_cls() if comp.type.param_cls is not None else None
-
-
 def replaceable(surrogate: "NeuroSurrogateBase", comp: Compartment) -> bool:
     """comp が surrogate に置換されるか (学習型一致 かつ params 両立)。
 
@@ -53,8 +42,8 @@ def replaceables(surrogate: "NeuroSurrogateBase", dataset: DatasetConfig) -> set
         raise ValueError(
             f"型 {train.type.name!r} 一致だが params 非両立のノード "
             f"{[n.name for n in mismatched]}: 学習ドメイン外。\n"
-            f"  train({train.name}): {resolved_params(train)}\n"
-            + "\n".join(f"  node({n.name}): {resolved_params(n)}" for n in mismatched)
+            f"  train({train.name}): {train.resolved_params}\n"
+            + "\n".join(f"  node({n.name}): {n.resolved_params}" for n in mismatched)
         )
     if not targets:
         raise ValueError(
