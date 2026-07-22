@@ -55,16 +55,6 @@ class LibraryEntry:
     args: tuple[sp.Symbol, ...]
     func: Callable = field(compare=False)  # lambdify 結果 (jax-ready、束縛時1回)
 
-    @property
-    def arity(self) -> int:
-        return len(self.args)
-
-    @property
-    def argnames(self) -> tuple[str, ...]:
-        """args のシンボル名 (V/g/u)。この項が何の列を要求するかを表す = 列束縛の
-        キーであり、展開規則 (g→latent 複製 / u→u 無し ansatz で脱落) の判定源。"""
-        return tuple(s.name for s in self.args)
-
     def bound_expr(self, *cols: sp.Symbol) -> sp.Expr:
         """位置引数を列シンボルへ束縛した式。この式が feature の同一性そのもので、
         コストも (op_cost で) ここから出る。文字列化は表示と pysindy 境界のみ。"""
@@ -75,14 +65,14 @@ class LibraryEntry:
         return str(self.bound_expr(*map(sp.Symbol, names)))
 
 
-def _group_by_argnames(
+def _group_by_args(
     entries: list[LibraryEntry],
-) -> dict[tuple[str, ...], list[LibraryEntry]]:
-    """argnames が同じ項をまとめる (挿入順保持)。argnames が同じ = 束縛先の列も
-    arity も同じ → まとめて 1 束 (= SubLibrary 1 つ) に収まる。"""
-    groups: defaultdict[tuple[str, ...], list[LibraryEntry]] = defaultdict(list)
+) -> dict[tuple[sp.Symbol, ...], list[LibraryEntry]]:
+    """args が同じ項をまとめる (挿入順保持)。args が同じ = 束縛先の列も arity も
+    同じ → まとめて 1 束 (= SubLibrary 1 つ) に収まる。"""
+    groups: defaultdict[tuple[sp.Symbol, ...], list[LibraryEntry]] = defaultdict(list)
     for e in entries:
-        groups[e.argnames].append(e)
+        groups[e.args].append(e)
     return groups
 
 
@@ -97,28 +87,20 @@ class SubLibrary:
     def expand(cls, spec: dict, roles: "Roles") -> list["SubLibrary"]:
         """1 library_spec を役割 (roles) で列に束縛して解決。spec = {type, latents?}
         のみ: 手書き index も役割名も不要で、指定できる番号は latent (隠れ変数) の
-        序数だけ (spec["latents"]、既定=全 latent)。展開の仕方は項の args シンボル名
-        が決める: g を持つ項は選択 latent ごとに複製、持たない項は latent 非依存で
-        1 束、u を持つ項は u の無い ansatz では落ちる。未知 type はエラー。"""
+        序数だけ (spec["latents"]、既定=全 latent)。1 束あたり何本に展開されるか
+        (latent 複製 / u 無し ansatz での脱落) は項の args を見て roles が決める。
+        未知 type はエラー。"""
         from .catalog import LIB_ENTRIES
 
         if (t := spec["type"]) not in LIB_ENTRIES:
             raise ValueError(
                 f"未知 library type: {t!r}。対応 type: {sorted(LIB_ENTRIES)}"
             )
-        latents = spec.get("latents", range(len(roles.g)))
-        subs: list[SubLibrary] = []
-        for argnames, group in _group_by_argnames(LIB_ENTRIES[t]).items():
-            if "u" in argnames and roles.u is None:
-                continue
-            if "g" in argnames:
-                subs += [
-                    cls(entries=group, inputs=roles.bind(argnames, roles.g[k]))
-                    for k in latents
-                ]
-            else:
-                subs.append(cls(entries=group, inputs=roles.bind(argnames, None)))
-        return subs
+        return [
+            cls(entries=group, inputs=inputs)
+            for args, group in _group_by_args(LIB_ENTRIES[t]).items()
+            for inputs in roles.bindings(args, spec.get("latents"))
+        ]
 
     def to_ps_library(self) -> ps.CustomLibrary:
         return ps.CustomLibrary(
