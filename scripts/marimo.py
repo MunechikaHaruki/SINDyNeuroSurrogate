@@ -55,19 +55,15 @@ def _(RESULT_DIR, restore):
 
 
 @app.cell
-def _(restore, restore_dd):
-    # 選択 meta を preset に。空選択 → None → 既定値。
-    preset = restore.load(restore_dd.value)
-    return (preset,)
-
-
-@app.cell
-def _(preset, runs_df, ui):
+def _(restore, restore_dd, runs_df, ui):
     # preset (yaml) 絞り込み。base_ui より上流に置く → 選択に整合する model_pair /
     # run 一覧だけが下流で組まれる。
+    # 選択 meta を preset に。空選択 → None → 既定値。
+    preset = restore.load(restore_dd.value)
+
     preset_ui = ui.make_preset_ui(runs_df, preset)
     preset_ui  # noqa: B018
-    return (preset_ui,)
+    return preset, preset_ui
 
 
 @app.cell
