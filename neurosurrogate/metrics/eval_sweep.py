@@ -11,7 +11,7 @@ import xarray as xr
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
 from ..models import MCMODELS
-from ..surrogate.ansatz import NeuroSurrogateBase
+from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.replace import apply_surrogate
 from .wave import DynamicMetrics, extract_metric
 
@@ -63,7 +63,7 @@ class SweepEval:
 
 
 def evaluate_sweep(
-    surrogates: dict[str, NeuroSurrogateBase],
+    surrogates: dict[str, SurrogateBundle],
     *,
     model_name: str,
     dt: float,

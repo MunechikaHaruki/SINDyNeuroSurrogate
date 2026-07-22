@@ -8,13 +8,13 @@ import xarray as xr
 from ..core.coords import transform_gate
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
-from ..surrogate.ansatz import NeuroSurrogateBase
+from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.replace import apply_surrogate, replaceable
 from .wave import DynamicMetrics, WaveReport, wave_report
 
 
 def preprocessed_latent(
-    surrogate: NeuroSurrogateBase,
+    surrogate: SurrogateBundle,
     dataset: DatasetConfig,
     sim_ds: xr.Dataset,
     comp_id: int,
@@ -34,7 +34,7 @@ def preprocessed_latent(
 class EvalResult:
     """置換シミュ結果 (original/surr) と comp 単位の指標アクセサ。"""
 
-    surrogate: NeuroSurrogateBase
+    surrogate: SurrogateBundle
     dataset: DatasetConfig
     original_ds: xr.Dataset
     surr_ds: xr.Dataset
@@ -52,7 +52,7 @@ class EvalResult:
         return wave_report(dm, spike_orig=spike_orig, spike_surr=spike_surr)
 
 
-def evaluate(surrogate: NeuroSurrogateBase, dataset: DatasetConfig) -> EvalResult:
+def evaluate(surrogate: SurrogateBundle, dataset: DatasetConfig) -> EvalResult:
     """dataset を原系とサロゲート置換系で並走シミュし EvalResult を返す。"""
     return EvalResult(
         surrogate=surrogate,

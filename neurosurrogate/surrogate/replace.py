@@ -12,27 +12,41 @@ from typing import TYPE_CHECKING
 from ..core.network import Compartment, CompartmentType, DatasetConfig, NeuronGraph
 
 if TYPE_CHECKING:
-    from .ansatz.base import NeuroSurrogateBase
+    from .bundle import SurrogateBundle
 
 
-def replaceable(surrogate: "NeuroSurrogateBase", comp: Compartment) -> bool:
-    """comp が surrogate に置換されるか (学習型一致 かつ params 両立)。
+# ---------------------------------------------------------------------------
+# params 両立基準は surrogate_type ごとに違う: 学習モデルがどの物理 params を自分の
+# 中へ焼き込むかで決まる。方程式の定式化 (ansatz) でなく置換ドメインの関心事なので
+# ここに集約する。
+# ---------------------------------------------------------------------------
+_PARAMS_MATCH: dict[str, Callable[[tuple | None, tuple | None], bool]] = {
+    # sindy: surr は param_cls=None → simulator がノード params を捨て、学習モデルが
+    # V+gate 全体を train params 込みで再現する → 全 params 完全一致が必須。
+    "sindy": lambda train, node: train == node,
+    # hybrid: 物理 dv も Ca サブ系も置換先ノード自身の params で解く → params 自由
+    # (型一致のみで置換可)。
+    "hybrid": lambda train, node: True,
+}
 
-    params 両立の基準は surrogate 固有 (surrogate.params_compatible が担う)。
-    """
-    return comp.type == surrogate.meta.train_comp.type and surrogate.params_compatible(
-        comp
+
+def replaceable(bundle: "SurrogateBundle", comp: Compartment) -> bool:
+    """comp が surrogate に置換されるか (学習型一致 かつ params 両立)。"""
+    if comp.type != bundle.meta.train_comp.type:
+        return False
+    return _PARAMS_MATCH[bundle.meta.surrogate_type](
+        bundle.meta.train_comp.resolved_params, comp.resolved_params
     )
 
 
-def replaceables(surrogate: "NeuroSurrogateBase", dataset: DatasetConfig) -> set[str]:
+def replaceables(bundle: "SurrogateBundle", dataset: DatasetConfig) -> set[str]:
     """dataset 内の置換対象ノード名を返す (fail first)。
 
     - 学習型一致 だが params 非両立のノードが1つでもあれば即エラー (疑わしい)
     - 置換対象が皆無なら即エラー (モデルとデータが噛み合わず)
     """
-    train = surrogate.meta.train_comp
-    targets = {n.name for n in dataset.net.nodes if replaceable(surrogate, n)}
+    train = bundle.meta.train_comp
+    targets = {n.name for n in dataset.net.nodes if replaceable(bundle, n)}
 
     # 学習型一致 だが未置換 = params 非両立 → 疑わしい (置換不可)
     mismatched = [
@@ -53,12 +67,12 @@ def replaceables(surrogate: "NeuroSurrogateBase", dataset: DatasetConfig) -> set
     return targets
 
 
-def replaced_names(surrogate: "NeuroSurrogateBase", net: NeuronGraph) -> set[str]:
+def replaced_names(bundle: "SurrogateBundle", net: NeuronGraph) -> set[str]:
     """net 内で surrogate が置換するノード名集合を返す (非raise, 診断用)。
 
     replaceables と違い params 非両立/皆無でも例外を投げず、描画等の情報表示に使う。
     """
-    return {n.name for n in net.nodes if replaceable(surrogate, n)}
+    return {n.name for n in net.nodes if replaceable(bundle, n)}
 
 
 def replace_nodes(
@@ -72,12 +86,12 @@ def replace_nodes(
 
 
 def apply_surrogate(
-    surrogate: "NeuroSurrogateBase",
+    bundle: "SurrogateBundle",
     dataset: DatasetConfig,
 ) -> DatasetConfig:
     """学習ドメインに属す全ノードを surrogate に置換 (検証は replaceables が担う)。"""
-    targets = replaceables(surrogate, dataset)
+    targets = replaceables(bundle, dataset)
     new_net = replace_nodes(
-        dataset.net, surrogate.surr_comp_type, lambda n: n.name in targets
+        dataset.net, bundle.surr_comp_type, lambda n: n.name in targets
     )
     return dc_replace(dataset, net=new_net)

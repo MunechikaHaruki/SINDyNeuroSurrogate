@@ -16,7 +16,7 @@ from analysis.save.panel import SaveEntry, entry
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval_sweep import CurrentSweepConfig, evaluate_sweep
 from neurosurrogate.metrics.wave import DF_ROW_METRICS, SCALAR_METRICS
-from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
+from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.view.utils import sweep_fig, sweep_trace_grid_fig
 
 # ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ def make_draw_ui(
 def calc_sweep(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
-    loaded: list[NeuroSurrogateBase],
+    loaded: list[SurrogateBundle],
 ) -> dict:
     """UI 値 + ロード済 surrogate を evaluate_sweep へ委譲。raw sim データを返す。
     surrogate は loaded (load_selected 由来) を単一源とし再取得しない。
@@ -145,13 +145,13 @@ def calc_sweep(
 # ---------------------------------------------------------------------------
 
 
-def _eval_df(loaded: list[NeuroSurrogateBase]) -> pd.DataFrame:
+def _eval_df(loaded: list[SurrogateBundle]) -> pd.DataFrame:
     rows = [{"label": s.meta.label, **s.metrics()} for s in loaded]
     return pd.DataFrame(rows).set_index("label")
 
 
 def view(
-    loaded: list[NeuroSurrogateBase],
+    loaded: list[SurrogateBundle],
     res: dict | None,
     draw_ui: mo.ui.dictionary,
 ) -> list[SaveEntry]:

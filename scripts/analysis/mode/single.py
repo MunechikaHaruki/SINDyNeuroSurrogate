@@ -19,7 +19,7 @@ from neurosurrogate.core.network import DatasetConfig, NeuronGraph
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult, evaluate
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
+from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.replace import replaced_names
 from neurosurrogate.view.model import view_model, view_neuron_graph
 from neurosurrogate.view.specs import draw_all
@@ -126,7 +126,7 @@ def calc_eval(
 
 
 def model_figs(
-    net: NeuronGraph, surrogate: NeuroSurrogateBase
+    net: NeuronGraph, surrogate: SurrogateBundle
 ) -> list[tuple[str, Figure]]:
     """single mode の静的モデル図。(save 名, fig) 列。"""
     return [
@@ -141,7 +141,7 @@ def model_figs(
 
 
 def view(
-    surrogate: NeuroSurrogateBase | None,
+    surrogate: SurrogateBundle | None,
     base_ui: mo.ui.dictionary,
     res: EvalResult | None,
     draw_ui: mo.ui.dictionary,

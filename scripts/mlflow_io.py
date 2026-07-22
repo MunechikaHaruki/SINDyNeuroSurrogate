@@ -9,7 +9,7 @@ import mlflow.artifacts
 import pandas as pd
 from tqdm import tqdm
 
-from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase, load_surrogate
+from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 TARGET_EXP = "test_static_params"
 
@@ -29,13 +29,13 @@ def setup_mlflow() -> None:
 SURR_ARTIFACT_DIR = "surrogate"
 
 
-def log_surrogate_model(surrogate: NeuroSurrogateBase) -> None:
+def log_surrogate_model(surrogate: SurrogateBundle) -> None:
     with tempfile.TemporaryDirectory() as tmp_str:
         surrogate.save(tmp_str)
         mlflow.log_artifacts(tmp_str, artifact_path=SURR_ARTIFACT_DIR)
 
 
-def load_surrogate_model(run_id: str) -> NeuroSurrogateBase:
+def load_surrogate_model(run_id: str) -> SurrogateBundle:
     logger.debug(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
@@ -43,16 +43,16 @@ def load_surrogate_model(run_id: str) -> NeuroSurrogateBase:
                 f"runs:/{run_id}/{SURR_ARTIFACT_DIR}", dst_path=tmp_str
             )
         )
-        return load_surrogate(local)
+        return SurrogateBundle.load(local)
 
 
-def load_runs(run_ids: list[str]) -> list[NeuroSurrogateBase]:
+def load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
     """run_id 列 → surrogate ロード。run 選択の唯一のロード経路
     (sweep 複数 / single 1件 共通)。表示名は meta.label (runName 非依存)。"""
     return [load_surrogate_model(rid) for rid in run_ids]
 
 
-def load_from_selector(selection: pd.DataFrame) -> list[NeuroSurrogateBase]:
+def load_from_selector(selection: pd.DataFrame) -> list[SurrogateBundle]:
     """run_selector の選択 DataFrame → run_id 抽出 → load_runs。
     single (1件) / sweep (複数) 共通の UI ロード経路。"""
     return load_runs(cast(pd.DataFrame, selection)["run_id"].tolist())

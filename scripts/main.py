@@ -7,7 +7,7 @@ from hydra.core.hydra_config import HydraConfig
 from mlflow_io import log_surrogate_model, setup_mlflow
 from omegaconf import DictConfig, OmegaConf
 
-from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
+from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
     cfg_surr = OmegaConf.to_container(cfg, resolve=True)["surrogate"]
     assert isinstance(cfg_surr, dict)
-    surrogate = NeuroSurrogateBase.build(type=cfg_surr["type"], init=cfg_surr["init"])
+    surrogate = SurrogateBundle.setup(type=cfg_surr["type"], **cfg_surr["init"])
     run_name = _make_run_name()
     with mlflow.start_run(run_name=run_name):
         logger.info(f"[{run_name}] fit 開始")

@@ -15,10 +15,8 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.metrics.eval import EvalResult, evaluate
-from neurosurrogate.surrogate.ansatz import (
-    HybridSINDyNeuroSurrogate,
-    NeuroSurrogateBase,
-)
+from neurosurrogate.surrogate.ansatz import HybridAnsatz
+from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
 from neurosurrogate.surrogate.sindy.entry import FeatureLibrary
 from neurosurrogate.view.model import equation_texs
@@ -32,7 +30,7 @@ REPRESENTATIVE_DIM = 3  # 式構造/描画テストの代表。latent 複数の�
 
 def fit_surrogate(
     preset: str, n_components: int, extra: list[str] | None = None
-) -> NeuroSurrogateBase:
+) -> SurrogateBundle:
     """Hydra プリセットを短縮電流で fit。テストの唯一の surrogate 生成口。"""
     with initialize_config_dir(config_dir=str(CONF_DIR), version_base=None):
         cfg = compose(
@@ -46,20 +44,20 @@ def fit_surrogate(
         )
     c = OmegaConf.to_container(cfg.surrogate, resolve=True)
     assert isinstance(c, dict)
-    surrogate = NeuroSurrogateBase.build(type=c["type"], init=c["init"])
+    surrogate = SurrogateBundle.setup(type=c["type"], **c["init"])
     surrogate.fit(**c["fit"])
     return surrogate
 
 
 @pytest.fixture(scope="module")
-def sindy() -> NeuroSurrogateBase:
+def sindy() -> SurrogateBundle:
     """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。
     type は preset default が sweep 軸で振れる → sindy を明示 override。"""
     return fit_surrogate("hh", REPRESENTATIVE_DIM, extra=["surrogate.type=sindy"])
 
 
 @pytest.fixture(scope="module")
-def sindy_eval(sindy: NeuroSurrogateBase) -> EvalResult:
+def sindy_eval(sindy: SurrogateBundle) -> EvalResult:
     return evaluate(sindy, sindy.meta.dataset)
 
 
@@ -84,12 +82,12 @@ def test_sindy_draws_all_figs(sindy_eval: EvalResult) -> None:
     ]
 
 
-def test_feature_exprs_align_with_xi_columns(sindy: NeuroSurrogateBase) -> None:
+def test_feature_exprs_align_with_xi_columns(sindy: SurrogateBundle) -> None:
     """feature 式列は xi の列と 1:1 (fit が pysindy 名との一致を検証済み)。"""
     assert len(sindy.sindy_bundle.feature_exprs) == sindy.sindy_bundle.xi.shape[1]
 
 
-def test_duplicate_library_types_are_rejected(sindy: NeuroSurrogateBase) -> None:
+def test_duplicate_library_types_are_rejected(sindy: SurrogateBundle) -> None:
     """library type は互いに素 → 同 type 2 回で feature 式が重複しエラー。"""
     bundle = sindy.sindy_bundle
     library = FeatureLibrary.build(
@@ -99,7 +97,7 @@ def test_duplicate_library_types_are_rejected(sindy: NeuroSurrogateBase) -> None
         library.bound_exprs(bundle.columns)
 
 
-def test_equations_render_as_tex(sindy: NeuroSurrogateBase) -> None:
+def test_equations_render_as_tex(sindy: SurrogateBundle) -> None:
     texs = equation_texs(sindy.sindy_bundle)
     assert len(texs) == len(sindy.sindy_bundle.targets)  # 1 target = 1 式
     assert all(t.startswith("$") and t.endswith("$") for t in texs)
@@ -146,10 +144,13 @@ def test_hybrid_opcost_includes_decode() -> None:
         3,
         extra=["surrogate.type=hybrid", "surrogate.init.preprocessor.type=pca"],
     )
-    assert isinstance(surrogate, HybridSINDyNeuroSurrogate)  # _physics は hybrid 固有
+    ansatz = surrogate.ansatz
+    assert isinstance(ansatz, HybridAnsatz)  # _physics は hybrid 固有
     decode_cost = surrogate.preprocessor.opcost()
     # PCA decode: gate ごとに latent 数の積 + 同数の加減 (3 latent x 3 gate)
     assert (decode_cost.mul, decode_cost.pm) == (9, 9)
     assert surrogate.opcost == (
-        decode_cost + surrogate._physics.dv_cost + surrogate.sindy_bundle.opcost()
+        decode_cost
+        + ansatz._physics(surrogate).dv_cost
+        + surrogate.sindy_bundle.opcost()
     )

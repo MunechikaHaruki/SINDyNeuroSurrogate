@@ -1,155 +1,44 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
-import joblib
 import numpy as np
 
-from ...core.network import Compartment, CompartmentType, DatasetConfig
+from ...core.network import CompartmentType
 from ...core.opcost import OpCost
-from ...core.simulator import unified_simulator
-from ..preprocessor import Preprocessor, build_preprocessor
 from ..sindy import SINDyBundle
 
-BUNDLE_FILE = "surrogate.joblib"
+if TYPE_CHECKING:
+    from ..bundle import SurrogateBundle
 
 
-@dataclass(frozen=True)
-class SurrogateMeta:
-    surrogate_type: str
-    dataset: DatasetConfig
-    train_comp_id: int
-    n_components: int
-    preprocessor_kind: str  # pca/ae
+class Ansatz(ABC):
+    """方程式の定式化: 列構造・kernel・演算コストをどう組むか。
 
-    @classmethod
-    def build(
-        cls,
-        surrogate_type: str,
-        datasets: dict,
-        train_comp_identifier: str,
-        n_components: int,
-        preprocessor_kind: str,
-    ) -> "SurrogateMeta":
-        dataset = DatasetConfig.build_dataset(**datasets)
-        return cls(
-            surrogate_type=surrogate_type,
-            dataset=dataset,
-            train_comp_id=dataset.net.name_to_idx(train_comp_identifier),
-            n_components=n_components,
-            preprocessor_kind=preprocessor_kind,
-        )
+    **状態を持たない**。学習設定も成果物も SurrogateBundle が持ち、ansatz は bundle
+    を受け取って計算するだけのストラテジ (1 インスタンスを bundle が使い回す)。
+    「方程式の形を知るのが ansatz、データと成果物を持つのが bundle」の分担。
+    """
 
-    @property
-    def label(self) -> str:
-        """図表示用の簡約名。例 hybrid/n2/ae。runName 文字列に非依存。"""
-        return f"{self.surrogate_type}/n{self.n_components}/{self.preprocessor_kind}"
-
-    @property
-    def train_comp(self) -> Compartment:
-        return self.dataset.net.nodes[self.train_comp_id]
-
-    @property
-    def train_comp_type(self) -> CompartmentType:
-        """学習元コンパートメントの物理型 (= 置換対象)。"""
-        return self.train_comp.type
-
-    @property
-    def original_opcost(self) -> OpCost | None:
-        return self.train_comp.type.opcost
-
-    def simulate(self):
-        return unified_simulator(self.dataset)
-
-
-class NeuroSurrogateBase(ABC):
     SURROGATE_TYPE: ClassVar[str]
-    _meta: SurrogateMeta
-    _sindy_bundle: SINDyBundle
-    _preprocessor: Preprocessor
-
-    def __init__(
-        self,
-        datasets: dict,
-        train_comp_identifier: str,
-        n_components: int,
-        preprocessor: dict,
-    ):
-        # 学習構造 (n_components / preprocessor 種別) は meta が単一源で保持し save で
-        # 永続化。preprocessor は学習ゲート (ansatz が _train_gate で列選択) から即
-        # ビルドし、fit は残りの SINDy 同定のみを担う。
-        self._meta = SurrogateMeta.build(
-            surrogate_type=self.SURROGATE_TYPE,
-            datasets=datasets,
-            train_comp_identifier=train_comp_identifier,
-            n_components=n_components,
-            preprocessor_kind=preprocessor["type"],
-        )
-        self._train_xr = self._meta.simulate()
-        self._preprocessor = build_preprocessor(
-            {**preprocessor, "n_components": self._meta.n_components},
-            self._train_gate(),
-        )
-
-    @classmethod
-    def build(cls, type: str, init: dict) -> "NeuroSurrogateBase":
-        from . import SURR_CLS
-
-        return SURR_CLS[type](**init)
-
-    @property
-    def meta(self) -> SurrogateMeta:
-        return self._meta
 
     @abstractmethod
-    def _train_gate(self) -> np.ndarray:
-        """preprocessor 学習に使うゲート行列 (ansatz が列選択)。__init__ で参照。"""
+    def train_gate(self, bundle: "SurrogateBundle") -> np.ndarray:
+        """preprocessor 学習に使うゲート行列 (ansatz が列選択)。setup が参照する。"""
         ...
 
     @abstractmethod
-    def fit(self, optimizer, library_specs: list[dict]) -> None: ...
+    def fit(
+        self, bundle: "SurrogateBundle", optimizer: dict, library_specs: list[dict]
+    ) -> SINDyBundle:
+        """SINDy 同定 (列構造は ansatz が Roles で決める)。"""
+        ...
 
-    @property
     @abstractmethod
-    def surr_comp_type(self) -> CompartmentType:
+    def surr_comp_type(self, bundle: "SurrogateBundle") -> CompartmentType:
         """置換後の surrogate CompartmentType (学習結果から構築)。"""
         ...
 
     @abstractmethod
-    def params_compatible(self, comp: Compartment) -> bool:
-        """comp (型は学習型と一致済) の params が学習ドメインと両立するか。
-
-        surrogate ごとに異なる: 学習モデルがどの物理 params を焼込むかで決まる。
-        両立しなければ replace は MISMATCH と判定し置換を拒否する。
-        """
+    def opcost(self, bundle: "SurrogateBundle") -> OpCost:
+        """置換後 kernel 1 ステップの演算コスト (構成が定式化ごとに違う)。"""
         ...
-
-    @property
-    @abstractmethod
-    def opcost(self) -> OpCost: ...
-
-    @property
-    def sindy_bundle(self) -> SINDyBundle:
-        return self._sindy_bundle
-
-    @property
-    def preprocessor(self) -> Preprocessor:
-        return self._preprocessor
-
-    def metrics(self) -> dict:
-        return {
-            **self.sindy_bundle.xi_metrics(),
-            **self.preprocessor.metrics(),
-            **self.opcost.diff_dict(self._meta.original_opcost),
-        }
-
-    def save(self, dir: Path | str) -> None:
-        joblib.dump(
-            {
-                "meta": self._meta,
-                "sindy_bundle": self.sindy_bundle,
-                "preprocessor": self.preprocessor,
-            },
-            Path(dir) / BUNDLE_FILE,
-        )

@@ -4,28 +4,14 @@
 - hybrid  : 構造保存 (HH 物理 dV/dt を残しゲート dynamics のみ学習)
 - (将来) neuralode : 構造なし (完全データ駆動 RHS)
 
-各 ansatz は NeuroSurrogateBase を継承し、SURR_CLS で type 名解決する。
+各 ansatz は Ansatz を継承した状態なしストラテジで、SurrogateBundle が
+SURR_CLS で type 名解決して使う。
 """
 
-from pathlib import Path
+from .base import Ansatz
+from .hybrid import HybridAnsatz
+from .sindy import SINDyAnsatz
 
-import joblib
-
-from .base import BUNDLE_FILE, NeuroSurrogateBase, SurrogateMeta
-from .hybrid import HybridSINDyNeuroSurrogate
-from .sindy import SINDyNeuroSurrogate
-
-SURR_CLS: dict[str, type[NeuroSurrogateBase]] = {
-    cls.SURROGATE_TYPE: cls for cls in (SINDyNeuroSurrogate, HybridSINDyNeuroSurrogate)
+SURR_CLS: dict[str, type[Ansatz]] = {
+    cls.SURROGATE_TYPE: cls for cls in (SINDyAnsatz, HybridAnsatz)
 }
-
-
-def load_surrogate(dir: Path | str) -> NeuroSurrogateBase:
-    data = joblib.load(Path(dir) / BUNDLE_FILE)
-    meta: SurrogateMeta = data["meta"]
-    cls = SURR_CLS[meta.surrogate_type]
-    surrogate = cls.__new__(cls)
-    surrogate._meta = meta
-    surrogate._sindy_bundle = data["sindy_bundle"]
-    surrogate._preprocessor = data["preprocessor"]
-    return surrogate

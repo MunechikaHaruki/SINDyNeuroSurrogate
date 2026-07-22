@@ -23,7 +23,7 @@ from mlflow_io import setup_mlflow
 from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
-from neurosurrogate.surrogate.ansatz import NeuroSurrogateBase
+from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.view.utils import current_preview_fig
 
 CurrentList: list = list(CURRENT_MAP.keys())
@@ -174,8 +174,8 @@ def make_draw_ui(
 
 
 def view_result(
-    loaded_single: NeuroSurrogateBase | None,
-    loaded_sweep: list[NeuroSurrogateBase],
+    loaded_single: SurrogateBundle | None,
+    loaded_sweep: list[SurrogateBundle],
     base_ui: mo.ui.dictionary,
     res_single: EvalResult | None,
     res_sweep: dict | None,

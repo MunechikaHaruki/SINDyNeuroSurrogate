@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -18,12 +18,15 @@ from ...compartments.traub import (
     traub_extra_inits,
 )
 from ...core import access
-from ...core.network import Compartment, CompartmentType
+from ...core.network import CompartmentType
 from ...core.opcost import OpCost
 from ..replace import replaceable
 from ..sindy import SINDyBundle
-from .base import NeuroSurrogateBase
+from .base import Ansatz
 from .roles import Roles
+
+if TYPE_CHECKING:
+    from ..bundle import SurrogateBundle
 
 
 @dataclass(frozen=True)
@@ -31,8 +34,8 @@ class ExtraPhysics:
     """学習 latent から外し physics で解く追加状態 (Traub の Ca サブ系 XI/Q)。
 
     これらの dynamics は params を陽に読む (置換先ノード自身の p で解く) → 学習には
-    含めない。含めれば params が latent へ焼込まれ compatible が params 一致を要求
-    してしまう。physics 化することで学習は純 params-free ゲートのみになる。
+    含めない。含めれば params が latent へ焼込まれ、置換に params 一致を要求すること
+    になる。physics 化することで学習は純 params-free ゲートのみになる。
 
     names : surr state で latent の後へ付く状態名 (gate_names 追加分・init 順)。
     step  : (p, v, gates_learned, extra_state) -> (dv 用の全ゲート, d(extra))。
@@ -55,8 +58,6 @@ class HybridPhysics:
     v_init       : (params) -> 置換後 surrogate の初期電位 (ノード自身の静止電位)。
     n_learned    : 学習 latent が圧縮する (先頭) ゲート数。
     extra        : physics で解く追加状態 (無ければ None → 学習ゲート=全ゲート)。
-    compatible   : (train_params, node_params) -> 置換両立か。物理 dv も extra も
-                   params を陽に読むため、latent へ焼込まれる params のみ一致必須。
     """
 
     param_cls: type
@@ -65,12 +66,11 @@ class HybridPhysics:
     v_init: Callable[[Any], float]
     n_learned: int
     extra: ExtraPhysics | None
-    compatible: Callable[[tuple, tuple], bool]
 
 
 HYBRID_PHYSICS: dict[str, HybridPhysics] = {
-    # HH: 3 ゲート全てが純電位依存 (Ca 無し) → extra 無し。gate rate は v_rel=v-E_REST
-    # 依存 → E_REST のみ一致必須。G_*/E_*/C は dv が陽に読むため自由。
+    # HH: 3 ゲート全てが純電位依存 (Ca 無し) → extra 無し。G_*/E_*/C は dv が陽に読む
+    # → 置換先ノード自身の params で解ける。
     "hh": HybridPhysics(
         param_cls=HHParams,
         dv=hh_dv,
@@ -78,13 +78,12 @@ HYBRID_PHYSICS: dict[str, HybridPhysics] = {
         v_init=lambda p: p.E_REST,
         n_learned=3,
         extra=None,
-        compatible=lambda a, b: bool(a.E_REST == b.E_REST),  # type: ignore[attr-defined]
     ),
     # Traub: 学習は純電位依存 8 ゲート [M,S,N,C,A,H,R,B] (定数 TRAUB_V_LEAK 基準で
     # params 非依存)。Ca サブ系 XI/Q は extra(physics) へ分離し、dXI/i_ca が読む
     # {phi_area,g_Ca,V_Ca,Beta} は置換先ノード自身の p で解く。→ latent に params が
-    # 一切焼込まれず compatible=True。1 サロゲートを traub19 全 comp へ (各々の
-    # Ca params/area で) 移植可能。
+    # 一切焼込まれない。1 サロゲートを traub19 全 comp へ (各々の Ca params/area で)
+    # 移植可能。
     "traub": HybridPhysics(
         param_cls=TraubParams,
         dv=traub_dv,
@@ -97,12 +96,11 @@ HYBRID_PHYSICS: dict[str, HybridPhysics] = {
             inits=traub_extra_inits,
             cost=TRAUB_CA_COST,
         ),
-        compatible=lambda a, b: True,
     ),
 }
 
 
-class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
+class HybridAnsatz(Ansatz):
     """Hybrid: 物理回路方程式 (params 陽) + 学習ゲート dynamics。
       dV/dt   = 学習型の物理式 (HYBRID_PHYSICS[train_type].dv)
       gates   = decode(latent)                        (線形/AE decoder)
@@ -113,12 +111,10 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
 
     SURROGATE_TYPE = "hybrid"
 
-    @property
-    def _physics(self) -> HybridPhysics:
-        return HYBRID_PHYSICS[self.meta.train_comp_type.name]
+    def _physics(self, bundle: "SurrogateBundle") -> HybridPhysics:
+        return HYBRID_PHYSICS[bundle.meta.train_comp_type.name]
 
-    @property
-    def _train_comp_ids(self) -> list[int]:
+    def _train_comp_ids(self, bundle: "SurrogateBundle") -> list[int]:
         """学習データ源の comp id 列 = 置換対象になるノード全部 (comp_id 昇順)。
 
         「置換する comp の軌道で学習する」ことで訓練分布を評価分布に一致させる。
@@ -129,55 +125,56 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
         """
         return [
             i
-            for i, comp in enumerate(self._meta.dataset.net.nodes)
-            if replaceable(self, comp)
+            for i, comp in enumerate(bundle.meta.dataset.net.nodes)
+            if replaceable(bundle, comp)
         ]
 
-    def _comp_gate(self, comp_id: int) -> np.ndarray:
+    def _comp_gate(self, bundle: "SurrogateBundle", comp_id: int) -> np.ndarray:
         # 学習は先頭 n_learned ゲートのみ (extra=Ca サブ系は physics へ分離)。
-        return access.gate_matrix(self._train_xr, comp_id)[:, : self._physics.n_learned]
+        return access.gate_matrix(bundle.train_xr, comp_id)[
+            :, : self._physics(bundle).n_learned
+        ]
 
-    def _train_gate(self) -> np.ndarray:
+    def train_gate(self, bundle: "SurrogateBundle") -> np.ndarray:
         # preprocessor は時間微分を取らない → 全 comp を縦連結してよい。gate_inits
         # は先頭行 = 最小 comp_id の t=0 潜在だが、初期ゲートは V_LEAK 定常で解かれ
         # params-free → 全 comp 同値。
         return np.concatenate(
-            [self._comp_gate(i) for i in self._train_comp_ids], axis=0
+            [self._comp_gate(bundle, i) for i in self._train_comp_ids(bundle)], axis=0
         )
 
-    def fit(self, optimizer, library_specs: list[dict]) -> None:
-        comp_ids = self._train_comp_ids
-        self._sindy_bundle = SINDyBundle.from_sindy(
+    def fit(
+        self, bundle: "SurrogateBundle", optimizer: dict, library_specs: list[dict]
+    ) -> SINDyBundle:
+        comp_ids = self._train_comp_ids(bundle)
+        return SINDyBundle.from_sindy(
             library_specs=library_specs,
             optimizer_spec=optimizer,
             # comp ごとに 1 軌道のリストで渡す。SINDy は t から時間微分を数値推定する
-            # ため、_train_gate のように縦連結すると境界に偽の微分が入る。
-            x=[self.preprocessor.encode(self._comp_gate(i)) for i in comp_ids],
-            u=[access.potential(self._train_xr, i)[:, None] for i in comp_ids],
-            t=[access.time(self._train_xr)] * len(comp_ids),
-            targets=[sp.Symbol(v) for v in access.latent_vars(self._meta.n_components)],
+            # ため、train_gate のように縦連結すると境界に偽の微分が入る。
+            x=[
+                bundle.preprocessor.encode(self._comp_gate(bundle, i)) for i in comp_ids
+            ],
+            u=[access.potential(bundle.train_xr, i)[:, None] for i in comp_ids],
+            t=[access.time(bundle.train_xr)] * len(comp_ids),
+            targets=[
+                sp.Symbol(v) for v in access.latent_vars(bundle.meta.n_components)
+            ],
             inputs=[sp.Symbol(access.POTENTIAL_VAR)],
             # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
             roles=Roles(
-                V=self._meta.n_components,
-                g=list(range(self._meta.n_components)),
+                V=bundle.meta.n_components,
+                g=list(range(bundle.meta.n_components)),
             ),
         )
 
-    def params_compatible(self, comp: Compartment) -> bool:
-        return self._physics.compatible(
-            self.meta.train_comp.resolved_params,  # type: ignore[arg-type]
-            comp.resolved_params,  # type: ignore[arg-type]
-        )
-
-    @property
-    def surr_comp_type(self) -> CompartmentType:
-        phys = self._physics
+    def surr_comp_type(self, bundle: "SurrogateBundle") -> CompartmentType:
+        phys = self._physics(bundle)
         extra = phys.extra
-        xi = jnp.asarray(self.sindy_bundle.xi)
-        decode = self.preprocessor.decode
-        compute_theta = self.sindy_bundle.compute_theta()
-        n_latent = self._meta.n_components
+        xi = jnp.asarray(bundle.sindy_bundle.xi)
+        decode = bundle.preprocessor.decode
+        compute_theta = bundle.sindy_bundle.compute_theta()
+        n_latent = bundle.meta.n_components
 
         # surr state = [latent₁..latentₙ, *extra]。extra は physics で解く追加状態
         # (Ca サブ系)、無ければ学習ゲート=dv 用の全ゲート。
@@ -197,7 +194,7 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             # (phi_area/g_Ca 依存) はノードごとに違う。
             return (
                 [phys.v_init(p)]
-                + self.preprocessor.gate_inits
+                + bundle.preprocessor.gate_inits
                 + ([] if extra is None else extra.inits(p))
             )
 
@@ -211,15 +208,13 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
             opcost=None,
         )
 
-    @property
-    def opcost(self) -> OpCost:
+    def opcost(self, bundle: "SurrogateBundle") -> OpCost:
         # kernel の 1 ステップ = decode(latent→gate) + Ca サブ系 physics (あれば) +
         # 物理 dV/dt + SINDy 潜在方程式。
-        extra = self._physics.extra
-        extra_cost = OpCost() if extra is None else extra.cost
+        phys = self._physics(bundle)
         return (
-            self.preprocessor.opcost()
-            + extra_cost
-            + self._physics.dv_cost
-            + self.sindy_bundle.opcost()
+            bundle.preprocessor.opcost()
+            + (OpCost() if phys.extra is None else phys.extra.cost)
+            + phys.dv_cost
+            + bundle.sindy_bundle.opcost()
         )
