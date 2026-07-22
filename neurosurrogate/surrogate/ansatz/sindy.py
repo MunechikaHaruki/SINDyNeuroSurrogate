@@ -7,16 +7,14 @@ from ...core import access
 from ...core.coords import transform_gate
 from ...core.network import CompartmentType
 from ...core.opcost import OpCost
+from ..closure.sindy import SINDyBundle
+from ..closure.sindy.roles import Roles
 from ..meta import SurrogateMeta
-from ..preprocessor import Preprocessor
-from ..sindy import SINDyBundle
+from ..preprocessor.base import Preprocessor
 from .base import Ansatz
-from .roles import Roles
 
 
-class SINDyAnsatz(Ansatz):
-    SURROGATE_TYPE = "sindy"
-
+class SINDyAnsatz(Ansatz[SINDyBundle]):
     def train_gate(self, meta: SurrogateMeta, train_xr: xr.Dataset) -> np.ndarray:
         return access.gate_matrix(train_xr, meta.train_comp_id)
 
@@ -25,15 +23,14 @@ class SINDyAnsatz(Ansatz):
         meta: SurrogateMeta,
         train_xr: xr.Dataset,
         preprocessor: Preprocessor,
-        optimizer: dict,
-        library_specs: list[dict],
+        spec: dict,
     ) -> SINDyBundle:
         preprocessed_xr = transform_gate(
             preprocessor, train_xr, comp_id=meta.train_comp_id
         )
         return SINDyBundle.from_sindy(
-            library_specs=library_specs,
-            optimizer_spec=optimizer,
+            library_specs=spec["library_specs"],
+            optimizer_spec=spec["optimizer"],
             x=access.comp_matrix(preprocessed_xr, meta.train_comp_id),
             u=access.i_ext_values(preprocessed_xr),
             t=access.time(train_xr),
@@ -51,10 +48,10 @@ class SINDyAnsatz(Ansatz):
         self,
         meta: SurrogateMeta,
         preprocessor: Preprocessor,
-        sindy_bundle: SINDyBundle,
+        closure: SINDyBundle,
     ) -> CompartmentType:
-        xi = jnp.asarray(sindy_bundle.xi)
-        compute_theta = sindy_bundle.compute_theta()
+        xi = jnp.asarray(closure.xi)
+        compute_theta = closure.compute_theta()
         n_latent = meta.n_components
 
         def surr_kernel(params, i_t, v, state):
@@ -77,6 +74,6 @@ class SINDyAnsatz(Ansatz):
         self,
         meta: SurrogateMeta,
         preprocessor: Preprocessor,
-        sindy_bundle: SINDyBundle,
+        closure: SINDyBundle,
     ) -> OpCost:
-        return sindy_bundle.opcost()
+        return closure.opcost()

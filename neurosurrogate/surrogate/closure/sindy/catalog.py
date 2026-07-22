@@ -1,8 +1,8 @@
 import sympy as sp
 
-from ...compartments import hh, traub
-from ..ansatz.roles import G, U, V  # 役割記号: 電位 / ゲート(=隠れ変数) / 外部電流
+from ....compartments import hh, traub
 from .entry import LibraryEntry
+from .roles import G, U, V  # 役割記号: 電位 / ゲート(=隠れ変数) / 外部電流
 
 _RATE_NS = vars(hh) | vars(traub)  # lambdify にレート実装を注入する名前空間
 

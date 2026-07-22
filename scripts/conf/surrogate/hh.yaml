@@ -7,7 +7,7 @@ surrogate:
     datasets:
       model_name: hh
       current_type: train
-  sindy:
+  ansatz:
     library_specs:
       - type: hh_gate_forward
       - type: hh_gate_backward

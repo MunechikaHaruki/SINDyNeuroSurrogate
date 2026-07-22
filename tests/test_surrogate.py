@@ -15,10 +15,11 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.metrics.eval import EvalResult, evaluate
-from neurosurrogate.surrogate.ansatz import HybridAnsatz
+from neurosurrogate.surrogate.ansatz.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.bundle import SurrogateBundle
+from neurosurrogate.surrogate.closure.sindy import SINDyBundle
+from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
-from neurosurrogate.surrogate.sindy.entry import FeatureLibrary
 from neurosurrogate.view.model import equation_texs
 from neurosurrogate.view.specs import draw_all
 
@@ -64,11 +65,19 @@ def sindy_eval(sindy: SurrogateBundle) -> EvalResult:
     return evaluate(sindy, sindy.meta.dataset)
 
 
+@pytest.fixture(scope="module")
+def sindy_closure(sindy: SurrogateBundle) -> SINDyBundle:
+    """ξ / feature 式は SINDy 固有 (bundle.closure は表現非依存の Closure 型)。"""
+    assert isinstance(sindy.closure, SINDyBundle)
+    return sindy.closure
+
+
 @pytest.mark.parametrize("n_components", LATENT_DIMS)
 def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     """列構造 [V, g1..gN, u] は latent 次元によらず置換シミュまで通る。"""
     surrogate = fit_surrogate("hh", n_components, extra=SINDY)
-    assert surrogate.sindy_bundle.xi.shape[0] == n_components + 1  # V + latent
+    assert isinstance(surrogate.closure, SINDyBundle)
+    assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
     result = evaluate(surrogate, surrogate.meta.dataset)
@@ -85,24 +94,23 @@ def test_sindy_draws_all_figs(sindy_eval: EvalResult) -> None:
     ]
 
 
-def test_feature_exprs_align_with_xi_columns(sindy: SurrogateBundle) -> None:
+def test_feature_exprs_align_with_xi_columns(sindy_closure: SINDyBundle) -> None:
     """feature 式列は xi の列と 1:1 (fit が pysindy 名との一致を検証済み)。"""
-    assert len(sindy.sindy_bundle.feature_exprs) == sindy.sindy_bundle.xi.shape[1]
+    assert len(sindy_closure.feature_exprs) == sindy_closure.xi.shape[1]
 
 
-def test_duplicate_library_types_are_rejected(sindy: SurrogateBundle) -> None:
+def test_duplicate_library_types_are_rejected(sindy_closure: SINDyBundle) -> None:
     """library type は互いに素 → 同 type 2 回で feature 式が重複しエラー。"""
-    bundle = sindy.sindy_bundle
     library = FeatureLibrary.build(
-        bundle.library_specs + bundle.library_specs, bundle.roles
+        sindy_closure.library_specs + sindy_closure.library_specs, sindy_closure.roles
     )
     with pytest.raises(ValueError, match="feature 重複"):
-        library.bound_exprs(bundle.columns)
+        library.bound_exprs(sindy_closure.columns)
 
 
-def test_equations_render_as_tex(sindy: SurrogateBundle) -> None:
-    texs = equation_texs(sindy.sindy_bundle)
-    assert len(texs) == len(sindy.sindy_bundle.targets)  # 1 target = 1 式
+def test_equations_render_as_tex(sindy_closure: SINDyBundle) -> None:
+    texs = equation_texs(sindy_closure)
+    assert len(texs) == len(sindy_closure.targets)  # 1 target = 1 式
     assert all(t.startswith("$") and t.endswith("$") for t in texs)
     # 見出しは抜粋 → 先頭数項のみで残りは \cdots に畳む
     assert all(r"+ \cdots" in t for t in texs)
@@ -149,11 +157,12 @@ def test_hybrid_opcost_includes_decode() -> None:
     )
     ansatz = surrogate.ansatz
     assert isinstance(ansatz, HybridAnsatz)  # _physics は hybrid 固有
+    assert isinstance(surrogate.closure, SINDyBundle)  # opcost は表現固有
     decode_cost = surrogate.preprocessor.opcost()
     # PCA decode: gate ごとに latent 数の積 + 同数の加減 (3 latent x 3 gate)
     assert (decode_cost.mul, decode_cost.pm) == (9, 9)
     assert surrogate.opcost == (
         decode_cost
         + ansatz._physics(surrogate.meta).dv_cost
-        + surrogate.sindy_bundle.opcost()
+        + surrogate.closure.opcost()
     )

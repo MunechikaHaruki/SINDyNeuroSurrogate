@@ -11,7 +11,8 @@ import sympy as sp
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
-from ..surrogate.sindy import SINDyBundle
+from ..surrogate.closure.base import Closure
+from ..surrogate.closure.sindy import SINDyBundle
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
@@ -127,6 +128,15 @@ def _latex(e: sp.Basic) -> str:
 def tex(e: sp.Basic) -> str:
     """sympy 式 → インライン数式 (matplotlib mathtext / marimo の md 共通記法)。"""
     return f"${_latex(e)}$"
+
+
+def closure_figs(closure: Closure) -> list[tuple[str, Figure]]:
+    """閉包項の中身図 (識別子付き)。中身の描き方は表現ごとに違い、共通の図は無い
+    (SINDy=ξ heatmap、NN 表現なら重み分布など) → 型で振り分ける。図を持たない表現
+    は空列を返し、呼び出し側は保存/表示に流すだけで済む。"""
+    if isinstance(closure, SINDyBundle):
+        return [("model", view_model(closure))]
+    return []
 
 
 def view_model(result: SINDyBundle, figsize=(15, 3)):

@@ -3,10 +3,13 @@ from dataclasses import dataclass
 import sympy as sp
 
 # ---------------------------------------------------------------------------
-# 方程式の列構造 = ansatz のドメイン。役割記号 V/g/u の定義はここが唯一の源で、
-# 項カタログ (sindy/catalog.py) は式をこの記号で書き、Roles が ansatz ごとの列
-# index へ束縛する。SINDy 入力行列の各列が何か (電位/ゲート/外部電流) は ansatz
-# ごとに順序が違うため、各 ansatz が n_components から fit 内で構築する。
+# 役割記号 V/g/u の唯一の定義源。catalog.py は項の式をこの記号で書き、Roles が
+# SINDy 入力行列の実列 index へ束縛する → **feature 展開の語彙**であり SINDy 固有
+# (NN 表現は連結ベクトルを受けるだけで役割記号を要さない) → closure/sindy/ に置く。
+#
+# 束縛の**値** (どの index が V か) は ansatz が決める: 列順は定式化ごとに違い
+# (sindy=[V,g…,u] / hybrid=[g…,V])、各 ansatz が n_components から fit 内で構築して
+# 渡す。SINDyBundle を ansatz が組み立てるのと同じ関係 (型はここ、引数は ansatz)。
 # ---------------------------------------------------------------------------
 
 V, G, U = sp.symbols("V g u")  # 電位 / ゲート(=隠れ変数) / 外部電流

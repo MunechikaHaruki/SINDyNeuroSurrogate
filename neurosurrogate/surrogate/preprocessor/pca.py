@@ -1,7 +1,5 @@
 """PCA による gate ↔ latent 線形圧縮 preprocessor。"""
 
-from typing import ClassVar
-
 import jax.numpy as jnp
 import numpy as np
 from sklearn.decomposition import PCA
@@ -11,8 +9,6 @@ from .base import Preprocessor
 
 
 class PCAPreprocessor(Preprocessor):
-    kind: ClassVar[str] = "pca"
-
     def __init__(
         self,
         components: np.ndarray,

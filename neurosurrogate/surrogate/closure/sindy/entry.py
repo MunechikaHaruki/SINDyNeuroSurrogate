@@ -7,14 +7,14 @@ import pysindy as ps
 import sympy as sp
 from sympy.core.function import AppliedUndef
 
-from ...compartments.hh import HH_RATE_COST_MAP
-from ...compartments.traub import TRAUB_RATE_COST_MAP
-from ...core.opcost import OpCost
+from ....compartments.hh import HH_RATE_COST_MAP
+from ....compartments.traub import TRAUB_RATE_COST_MAP
+from ....core.opcost import OpCost
 
 _RATE_COST_MAP = HH_RATE_COST_MAP | TRAUB_RATE_COST_MAP
 
 if TYPE_CHECKING:
-    from ..ansatz.roles import Roles
+    from .roles import Roles
 
 # ---------------------------------------------------------------------------
 # ロジック層。項 = 1つの sympy 式。func(lambdify) / name(subs) / cost(op_cost) /

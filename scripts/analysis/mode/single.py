@@ -21,7 +21,7 @@ from neurosurrogate.metrics.eval import EvalResult, evaluate
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.replace import replaced_names
-from neurosurrogate.view.model import view_model, view_neuron_graph
+from neurosurrogate.view.model import closure_figs, view_neuron_graph
 from neurosurrogate.view.specs import draw_all
 
 # ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ def model_figs(
     """single mode の静的モデル図。(save 名, fig) 列。"""
     return [
         ("neurograph", view_neuron_graph(net, replaced_names(surrogate.meta, net))),
-        ("model", view_model(surrogate.sindy_bundle)),
+        *closure_figs(surrogate.closure),
     ]
 
 

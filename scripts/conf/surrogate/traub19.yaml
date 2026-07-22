@@ -11,7 +11,7 @@ surrogate:
       # 短くして総サンプル数を単体モデル (duration=9000) と同程度に揃える。
       current_params:
         duration: 1000
-  sindy:
+  ansatz:
     library_specs:
       - type: traub_gate_forward
       - type: traub_gate_backward

@@ -14,13 +14,14 @@ import numpy as np
 import pysindy as ps
 import sympy as sp
 
-from ...core.opcost import OpCost
+from ....core.opcost import OpCost
+from ..base import Closure
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ..ansatz.roles import Roles
     from .entry import FeatureLibrary
+    from .roles import Roles
 
 OPTIMIZER_CLS: dict[str, type] = {
     "stlsq": ps.optimizers.STLSQ,
@@ -33,7 +34,9 @@ def _instantiate(spec: dict, registry: dict[str, type]):
 
 
 @dataclass
-class SINDyBundle:
+class SINDyBundle(Closure):
+    """閉包項を「ライブラリ項の疎な線形結合」で表す実装 (ξ を疎回帰で同定)。"""
+
     xi: np.ndarray
     targets: list[sp.Symbol]
     inputs: list[sp.Symbol]
@@ -99,7 +102,7 @@ class SINDyBundle:
             raise ValueError(f"pysindy の feature 順が展開結果と不一致: {names}")
         return bundle
 
-    def xi_metrics(self) -> dict[str, float]:
+    def metrics(self) -> dict[str, float]:
         nnz = int((self.xi != 0).sum())
         return {"nnz": nnz, "nnz_ratio": nnz / self.xi.size}
 

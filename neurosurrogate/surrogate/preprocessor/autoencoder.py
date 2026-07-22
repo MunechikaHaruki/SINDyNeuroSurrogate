@@ -1,5 +1,4 @@
 import logging
-from typing import ClassVar
 
 import jax
 import jax.numpy as jnp
@@ -92,8 +91,6 @@ def train_autoencoder(
 
 
 class AEPreprocessor(Preprocessor):
-    kind: ClassVar[str] = "ae"
-
     def __init__(
         self,
         epochs: int,
