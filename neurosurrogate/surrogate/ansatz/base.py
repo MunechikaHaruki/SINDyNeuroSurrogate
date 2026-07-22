@@ -9,8 +9,8 @@ import numpy as np
 from ...core.network import Compartment, CompartmentType, DatasetConfig
 from ...core.opcost import OpCost
 from ...core.simulator import unified_simulator
-from ..bundle import SINDyBundle
 from ..preprocessor import Preprocessor, build_preprocessor
+from ..sindy import SINDyBundle
 
 BUNDLE_FILE = "surrogate.joblib"
 

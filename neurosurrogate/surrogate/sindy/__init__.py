@@ -1,3 +1,10 @@
+"""SINDy 同定層。
+
+同定結果 (`SINDyBundle`: xi/feature 展開/compute_theta/opcost) をここに、項ライブラリ
+を entry.py (ロジック) / catalog.py (データ) に置く。ansatz/ は方程式の列構造を決め、
+この層は「その列構造で何を同定するか」だけを担う。
+"""
+
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -7,13 +14,13 @@ import numpy as np
 import pysindy as ps
 import sympy as sp
 
-from ..core.opcost import OpCost
+from ...core.opcost import OpCost
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .ansatz.roles import Roles
-    from .libraries.entry import FeatureLibrary
+    from ..ansatz.roles import Roles
+    from .entry import FeatureLibrary
 
 OPTIMIZER_CLS: dict[str, type] = {
     "stlsq": ps.optimizers.STLSQ,
@@ -49,7 +56,7 @@ class SINDyBundle:
     def feature_library(self) -> "FeatureLibrary":
         """役割束縛済み FeatureLibrary (compute_theta/opcost 共用)。lambdify 関数は
         pickle 不能 → field でなく cache 化し、__getstate__ で保存対象から除外する。"""
-        from .libraries.entry import FeatureLibrary
+        from .entry import FeatureLibrary
 
         return FeatureLibrary.build(self.library_specs, self.roles)
 
@@ -63,9 +70,10 @@ class SINDyBundle:
         cls,
         library_specs: list[dict],
         optimizer_spec: dict,
-        x: np.ndarray,
-        u: np.ndarray,
-        t: np.ndarray,
+        # list を渡すと pysindy が複数軌道として扱う (軌道跨ぎの微分を取らない)。
+        x: np.ndarray | list[np.ndarray],
+        u: np.ndarray | list[np.ndarray],
+        t: np.ndarray | list[np.ndarray],
         targets: list[sp.Symbol],
         inputs: list[sp.Symbol],
         roles: "Roles",
@@ -110,7 +118,7 @@ class SINDyBundle:
 
     def opcost(self) -> OpCost:
         """ξ の積和コスト + 生き残った feature 式の評価コスト (式木から直接算出)。"""
-        from .libraries.entry import op_cost
+        from .entry import op_cost
 
         nnz = np.count_nonzero(self.xi).item()
         return sum(

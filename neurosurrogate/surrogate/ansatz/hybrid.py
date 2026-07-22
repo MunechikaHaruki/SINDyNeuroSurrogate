@@ -20,7 +20,8 @@ from ...compartments.traub import (
 from ...core import access
 from ...core.network import Compartment, CompartmentType
 from ...core.opcost import OpCost
-from ..bundle import SINDyBundle
+from ..replace import replaceable
+from ..sindy import SINDyBundle
 from .base import NeuroSurrogateBase
 from .roles import Roles
 
@@ -116,19 +117,44 @@ class HybridSINDyNeuroSurrogate(NeuroSurrogateBase):
     def _physics(self) -> HybridPhysics:
         return HYBRID_PHYSICS[self.meta.train_comp_type.name]
 
-    def _train_gate(self) -> np.ndarray:
-        # 学習は先頭 n_learned ゲートのみ (extra=Ca サブ系は physics へ分離)。
-        return access.gate_matrix(self._train_xr, self._meta.train_comp_id)[
-            :, : self._physics.n_learned
+    @property
+    def _train_comp_ids(self) -> list[int]:
+        """学習データ源の comp id 列 = 置換対象になるノード全部 (comp_id 昇順)。
+
+        「置換する comp の軌道で学習する」ことで訓練分布を評価分布に一致させる。
+        単体モデル (MCMODELS["traub"] 等) なら train_comp 1 個で従来と同一。学習
+        データセットに multi-comp を指定すれば全 comp の (V, gate) 軌道が入る。
+        学習ゲートは params-free (V 依存のみ) → 全 comp は同一のゲート多様体上に
+        乗り、増えるのは V の被覆だけ。n_components を増やす必要はない。
+        """
+        return [
+            i
+            for i, comp in enumerate(self._meta.dataset.net.nodes)
+            if replaceable(self, comp)
         ]
 
+    def _comp_gate(self, comp_id: int) -> np.ndarray:
+        # 学習は先頭 n_learned ゲートのみ (extra=Ca サブ系は physics へ分離)。
+        return access.gate_matrix(self._train_xr, comp_id)[:, : self._physics.n_learned]
+
+    def _train_gate(self) -> np.ndarray:
+        # preprocessor は時間微分を取らない → 全 comp を縦連結してよい。gate_inits
+        # は先頭行 = 最小 comp_id の t=0 潜在だが、初期ゲートは V_LEAK 定常で解かれ
+        # params-free → 全 comp 同値。
+        return np.concatenate(
+            [self._comp_gate(i) for i in self._train_comp_ids], axis=0
+        )
+
     def fit(self, optimizer, library_specs: list[dict]) -> None:
+        comp_ids = self._train_comp_ids
         self._sindy_bundle = SINDyBundle.from_sindy(
             library_specs=library_specs,
             optimizer_spec=optimizer,
-            x=self.preprocessor.encode(self._train_gate()),
-            u=access.potential(self._train_xr, self._meta.train_comp_id),
-            t=access.time(self._train_xr),
+            # comp ごとに 1 軌道のリストで渡す。SINDy は t から時間微分を数値推定する
+            # ため、_train_gate のように縦連結すると境界に偽の微分が入る。
+            x=[self.preprocessor.encode(self._comp_gate(i)) for i in comp_ids],
+            u=[access.potential(self._train_xr, i)[:, None] for i in comp_ids],
+            t=[access.time(self._train_xr)] * len(comp_ids),
             targets=[sp.Symbol(v) for v in access.latent_vars(self._meta.n_components)],
             inputs=[sp.Symbol(access.POTENTIAL_VAR)],
             # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。

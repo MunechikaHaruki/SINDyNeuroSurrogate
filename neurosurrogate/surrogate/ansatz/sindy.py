@@ -6,7 +6,7 @@ from ...core import access
 from ...core.coords import transform_gate
 from ...core.network import Compartment, CompartmentType
 from ...core.opcost import OpCost
-from ..bundle import SINDyBundle
+from ..sindy import SINDyBundle
 from .base import NeuroSurrogateBase
 from .roles import Roles
 

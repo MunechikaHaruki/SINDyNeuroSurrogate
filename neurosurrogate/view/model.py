@@ -11,7 +11,7 @@ import sympy as sp
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 
-from ..surrogate.bundle import SINDyBundle
+from ..surrogate.sindy import SINDyBundle
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",

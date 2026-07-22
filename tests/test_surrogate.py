@@ -19,8 +19,8 @@ from neurosurrogate.surrogate.ansatz import (
     HybridSINDyNeuroSurrogate,
     NeuroSurrogateBase,
 )
-from neurosurrogate.surrogate.libraries.entry import FeatureLibrary
 from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
+from neurosurrogate.surrogate.sindy.entry import FeatureLibrary
 from neurosurrogate.view.model import equation_texs
 from neurosurrogate.view.specs import draw_all
 
