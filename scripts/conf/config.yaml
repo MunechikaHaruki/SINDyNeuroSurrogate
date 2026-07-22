@@ -1,6 +1,6 @@
 defaults:
   - _self_ # inline は default 扱い、preset で上書き可能に
-  - surrogate: hh
+  - surrogate: hh_sindy
 
 
 # surrogate 直下の 3 ブロックは SurrogateBundle.setup の宛先そのもの

@@ -1,7 +1,8 @@
 """サロゲート fit → 置換シミュ → 指標/描画の smoke (marimo/MLflow 非依存)。
 
 Hydra プリセットを実設定源として読み、UI/実験ログを介さずドメイン層だけを通す。
-学習電流は smoke 用に短縮 (`TRAIN_DURATION`) — 波形パラメータは本番と同一。
+設定は `conf/surrogate/_test_*.yaml` (素体から library_specs を継承し、学習構造と
+短縮電流だけ固定したテスト専用プリセット) に置き、テスト側は override しない。
 """
 
 from pathlib import Path
@@ -26,38 +27,22 @@ from neurosurrogate.view.specs import draw_all
 from neurosurrogate.view.train import train_figs
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
-TRAIN_DURATION = 180  # [ms] 本番は 9000。smoke は shape/有限性のみ見るので短縮
 LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, g1..gN, u] の両端
-REPRESENTATIVE_DIM = 3  # 式構造/描画テストの代表。latent 複数の方が構造が厳しい
-# preset default の ansatz/preprocessor は sweep 軸で振れる → 明示 override する。
-# preprocessor は決定的で速い pca に固定 (AE は 1000 epoch の学習でテスト時間を
-# 数倍にし、乱数初期化で fit 品質もブレる)。AE 経路自体は AE_SMOKE が薄く踏む。
-SINDY = [
-    "surrogate.meta.surrogate_type=sindy",
-    "surrogate.meta.preprocessor_type=pca",
-]
-HYBRID_PCA = [
-    "surrogate.meta.surrogate_type=hybrid",
-    "surrogate.meta.preprocessor_type=pca",
-]
-AE_SMOKE = [
-    "surrogate.meta.preprocessor_type=ae",
-    "+surrogate.preprocessor.epochs=20",  # 収束は見ない (経路が通ることだけ)
-]
 
 
-def fit_surrogate(
-    preset: str, n_components: int, extra: list[str] | None = None
-) -> SurrogateBundle:
-    """Hydra プリセットを短縮電流で fit。テストの唯一の surrogate 生成口。"""
+def fit_surrogate(preset: str, n_components: int | None = None) -> SurrogateBundle:
+    """テスト専用プリセットを fit。テストの唯一の surrogate 生成口。
+    n_components だけは preset 既定を上書きできる (列構造を振るテストのため)。"""
     with initialize_config_dir(config_dir=str(CONF_DIR), version_base=None):
         cfg = compose(
             config_name="config",
             overrides=[
                 f"surrogate={preset}",
-                f"surrogate.meta.n_components={n_components}",
-                f"+surrogate.meta.datasets.current_params.duration={TRAIN_DURATION}",
-                *(extra or []),
+                *(
+                    []
+                    if n_components is None
+                    else [f"surrogate.meta.n_components={n_components}"]
+                ),
             ],
         )
     c = OmegaConf.to_container(cfg.surrogate, resolve=True)
@@ -74,7 +59,7 @@ def _train_comp(surrogate: SurrogateBundle) -> int:
 @pytest.fixture(scope="module")
 def sindy() -> SurrogateBundle:
     """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。"""
-    return fit_surrogate("hh", REPRESENTATIVE_DIM, extra=SINDY)
+    return fit_surrogate("_test_hh_sindy")
 
 
 @pytest.fixture(scope="module")
@@ -92,7 +77,7 @@ def sindy_closure(sindy: SurrogateBundle) -> SINDyBundle:
 @pytest.mark.parametrize("n_components", LATENT_DIMS)
 def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     """列構造 [V, g1..gN, u] は latent 次元によらず置換シミュまで通る。"""
-    surrogate = fit_surrogate("hh", n_components, extra=SINDY)
+    surrogate = fit_surrogate("_test_hh_sindy", n_components)
     assert isinstance(surrogate.closure, SINDyBundle)
     assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
@@ -152,7 +137,7 @@ def test_train_inputs_match_identified_columns(sindy: SurrogateBundle) -> None:
 def test_hybrid_train_source_covers_all_replaceable_comps() -> None:
     """hybrid は置換対象 comp 全部の軌道で学習 → train_source がそれを記録し、
     学習ゲートは physics 分離後の先頭 n_learned 本に限られる。"""
-    surrogate = fit_surrogate("traub", 5, extra=HYBRID_PCA)
+    surrogate = fit_surrogate("_test_traub_hybrid")
     source = surrogate.ansatz.train_source(surrogate.meta)
     assert source.comp_ids == [
         i
@@ -167,7 +152,7 @@ def test_hybrid_train_source_covers_all_replaceable_comps() -> None:
 def test_ae_preprocessor_path_runs() -> None:
     """AE 経路の smoke (pca 固定の他テストが踏まない encode/decode を通す)。
     epochs を切り詰めるので再構成品質は問わない — 形状と潜在次元の整合のみ。"""
-    surrogate = fit_surrogate("hh", 2, extra=AE_SMOKE)
+    surrogate = fit_surrogate("_test_hh_ae")
     source = surrogate.ansatz.train_source(surrogate.meta)
     gate = source.gate(surrogate.train_xr, _train_comp(surrogate))
     latent = surrogate.preprocessor.encode(gate)
@@ -210,11 +195,7 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments() -> None:
     新 kernel の XI/Q 積分が置換シミュまで有限に走ることも確認する。
     preprocessor は AE の乱数初期化で fit 品質 (=有限性) がブレる → 決定的な pca に固定
     (主眼は XI/Q physics 積分経路であり AE 再構成品質ではない)。"""
-    surrogate = fit_surrogate(
-        "traub",
-        5,
-        extra=HYBRID_PCA,
-    )
+    surrogate = fit_surrogate("_test_traub_hybrid")
     assert surrogate.surr_comp_type.gate_names[-2:] == ["XI", "Q"]
 
     traub19 = DatasetConfig.build_dataset(
@@ -234,11 +215,7 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments() -> None:
 
 def test_hybrid_opcost_includes_decode() -> None:
     """hybrid の kernel は毎ステップ decode を呼ぶ → OpCost に計上されている。"""
-    surrogate = fit_surrogate(
-        "hh",
-        3,
-        extra=HYBRID_PCA,
-    )
+    surrogate = fit_surrogate("_test_hh_hybrid")
     ansatz = surrogate.ansatz
     assert isinstance(ansatz, HybridAnsatz)  # _physics は hybrid 固有
     assert isinstance(surrogate.closure, SINDyBundle)  # opcost は表現固有

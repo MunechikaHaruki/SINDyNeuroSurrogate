@@ -1,0 +1,15 @@
+# @package _global_
+# 教師データ = 19-comp MC の soma 1 ノードだけの軌道。
+# 置換対象は traub 型 comp 全部 (= 19 comp) のまま → 学習分布 (soma の V 被覆) と
+# 評価分布 (樹状突起含む全 comp) がズレる。全 comp 学習 (useMC19Comp) との対照群。
+defaults:
+  - traub_useMC19CompForTeachingData
+
+surrogate:
+  meta:
+    train_comp_identifier: soma # 学習を 1 ノードへ絞る (既定 null = 置換対象全部)
+    datasets:
+      # 学習軌道が 1 本になる → 総サンプル数を単体 comp 教師と揃えて長く取る
+      # (useMC19Comp は 19 comp × duration 1000 で稼いでいる)。
+      current_params:
+        duration: 9000

@@ -1,4 +1,5 @@
 # @package _global_
+# 教師データ = 単体 traub モデル (1 comp) の軌道。
 surrogate:
   meta:
     comp_type: traub  # 置換対象のコンパートメント種類

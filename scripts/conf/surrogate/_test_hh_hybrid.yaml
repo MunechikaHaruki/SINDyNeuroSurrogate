@@ -1,0 +1,13 @@
+# @package _global_
+# テスト専用プリセット (test_hh_sindy の hybrid 版)。
+defaults:
+  - hh_hybrid
+
+surrogate:
+  meta:
+    surrogate_type: hybrid
+    preprocessor_type: pca # 決定的で速い pca に固定 (AE 経路は test_hh_ae)
+    n_components: 3 # hybrid の既定潜在次元
+    datasets:
+      current_params:
+        duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮

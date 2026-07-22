@@ -1,4 +1,5 @@
 # @package _global_
+# 教師データ = 19-comp MC の全 comp 軌道 (置換対象 = traub 型 comp 全部)。
 surrogate:
   meta:
     comp_type: traub  # 置換対象のコンパートメント種類

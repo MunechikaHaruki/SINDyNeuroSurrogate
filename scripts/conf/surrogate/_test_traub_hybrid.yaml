@@ -1,0 +1,14 @@
+# @package _global_
+# テスト専用プリセット。素体 (単体 traub 教師) から library_specs を継承。
+# Ca サブ系 (XI/Q) の physics 分離と traub19 への移植を踏む経路。
+defaults:
+  - traub_useSingleCompForTeachingData
+
+surrogate:
+  meta:
+    surrogate_type: hybrid
+    preprocessor_type: pca # 決定的で速い pca に固定 (AE は乱数初期化で品質がブレる)
+    n_components: 5
+    datasets:
+      current_params:
+        duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮

@@ -1,0 +1,16 @@
+# @package _global_
+# テスト専用プリセット。素体 hh から library_specs を継承し、smoke 用に
+# 学習構造 (sweep 軸で振れる ansatz/preprocessor) と電流長を固定する。
+defaults:
+  - hh_sindy
+
+surrogate:
+  meta:
+    surrogate_type: sindy
+    # 決定的で速い pca に固定 (AE は 1000 epoch でテスト時間が数倍、乱数初期化で
+    # fit 品質もブレる)。AE 経路自体は test_hh_ae が薄く踏む。
+    preprocessor_type: pca
+    n_components: 3 # 式構造/描画の代表。latent 複数の方が列構造が厳しい
+    datasets:
+      current_params:
+        duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮

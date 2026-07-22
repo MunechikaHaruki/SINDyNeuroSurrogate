@@ -1,0 +1,16 @@
+# @package _global_
+# テスト専用プリセット。pca 固定の他テストが踏まない AE の encode/decode を通す。
+# epochs を切り詰めるので再構成品質は問わない (経路が通ることだけ)。
+defaults:
+  - hh_hybrid
+
+surrogate:
+  meta:
+    surrogate_type: hybrid
+    preprocessor_type: ae
+    n_components: 2
+    datasets:
+      current_params:
+        duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮
+  preprocessor:
+    epochs: 20 # 収束は見ない
