@@ -32,8 +32,13 @@ _PARAMS_MATCH: dict[str, Callable[[tuple | None, tuple | None], bool]] = {
 
 
 def replaceable(meta: SurrogateMeta, comp: Compartment) -> bool:
-    """comp が surrogate に置換されるか (学習型一致 かつ params 両立)。"""
-    if comp.type != meta.train_comp.type:
+    """comp が surrogate に置換されるか (**種類一致** かつ params 両立)。
+
+    サロゲートは「コンパートメントの種類 → それを置換するモデル」の対応 → 種類は
+    meta.comp_type と直接照合する (学習元ノード経由で導出しない)。params 両立だけが
+    学習元ノードとの比較になる (sindy は学習時 params を焼き込むため)。
+    """
+    if comp.type != meta.comp_type:
         return False
     return _PARAMS_MATCH[meta.surrogate_type](
         meta.train_comp.resolved_params, comp.resolved_params
@@ -43,26 +48,28 @@ def replaceable(meta: SurrogateMeta, comp: Compartment) -> bool:
 def replaceables(meta: SurrogateMeta, dataset: DatasetConfig) -> set[str]:
     """dataset 内の置換対象ノード名を返す (fail first)。
 
-    - 学習型一致 だが params 非両立のノードが1つでもあれば即エラー (疑わしい)
+    - 種類一致 だが params 非両立のノードが1つでもあれば即エラー (疑わしい)
     - 置換対象が皆無なら即エラー (モデルとデータが噛み合わず)
     """
-    train = meta.train_comp
     targets = {n.name for n in dataset.net.nodes if replaceable(meta, n)}
 
-    # 学習型一致 だが未置換 = params 非両立 → 疑わしい (置換不可)
+    # 種類一致 だが未置換 = params 非両立 → 疑わしい (置換不可)
     mismatched = [
-        n for n in dataset.net.nodes if n.type == train.type and n.name not in targets
+        n
+        for n in dataset.net.nodes
+        if n.type == meta.comp_type and n.name not in targets
     ]
     if mismatched:
+        train = meta.train_comp
         raise ValueError(
-            f"型 {train.type.name!r} 一致だが params 非両立のノード "
+            f"種類 {meta.comp_type.name!r} 一致だが params 非両立のノード "
             f"{[n.name for n in mismatched]}: 学習ドメイン外。\n"
             f"  train({train.name}): {train.resolved_params}\n"
             + "\n".join(f"  node({n.name}): {n.resolved_params}" for n in mismatched)
         )
     if not targets:
         raise ValueError(
-            f"学習型 {train.type.name!r} のノードが dataset "
+            f"種類 {meta.comp_type.name!r} のノードが dataset "
             f"{dataset.model_name!r} に存在しない → 置換対象ゼロ。適用不可"
         )
     return targets

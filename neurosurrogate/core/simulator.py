@@ -5,6 +5,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
+import xarray as xr
 
 from .coords import collect_state_coords, set_coords, set_i_internal
 from .network import Compartment, CompartmentType, DatasetConfig, NeuronGraph
@@ -122,7 +123,7 @@ def generic_euler_solver(init, u, dt, model_args):
     return np.array(jnp.concatenate([x_history_prefix, final_x[None]], axis=0))
 
 
-def unified_simulator(cfg: DatasetConfig):
+def unified_simulator(cfg: DatasetConfig) -> xr.Dataset:
     """cfg.net の各 Compartment が kernel を保持している前提。surrogate も
     surr_comp_type で kernel 埋込済み CompartmentType を replace.apply で挿入する"""
     net = cfg.net

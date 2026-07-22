@@ -108,6 +108,26 @@ def make_draw_ui(
 # ---------------------------------------------------------------------------
 
 
+def sweep_labels(loaded: list[SurrogateBundle]) -> list[str]:
+    """掃引結果の識別キー列 (選択順)。
+
+    `meta.label` は学習構造 + 学習データまでしか区別しない → library_specs 違いや
+    同 config の再実行は同じ label になる。掃引結果は label キーの dict なので、
+    そのままだと silent に 1 run へ潰れ summary 表と掃引図が食い違う。衝突した
+    label にだけ選択順の連番を付けて潰れを防ぐ (選択を拒否せず全部見せる)。
+    """
+    counts = Counter(s.meta.label for s in loaded)
+    seen: Counter[str] = Counter()
+    labels = []
+    for s in loaded:
+        seen[s.meta.label] += 1
+        n = seen[s.meta.label]
+        labels.append(
+            s.meta.label if counts[s.meta.label] == 1 else f"{s.meta.label}#{n}"
+        )
+    return labels
+
+
 def calc_sweep(
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
@@ -126,13 +146,8 @@ def calc_sweep(
         amp_steps=sweep_ui["amp_steps"].value,
         base_params=sim_current_params_of(setting_ui),
     )
-    # label は掃引結果の識別キー。同 label 複数選択は dict 上書きで silent に
-    # 1 run へ潰れ、summary 表と掃引図が食い違う → fail first で弾く。
-    dup = [lbl for lbl, n in Counter(s.meta.label for s in loaded).items() if n > 1]
-    if dup:
-        raise ValueError(f"sweep 対象の label 重複: {dup}。異なる config を選択。")
     sweep_eval = evaluate_sweep(
-        {s.meta.label: s for s in loaded},
+        dict(zip(sweep_labels(loaded), loaded, strict=True)),
         model_name=target_of(base_ui),
         dt=dt_of(base_ui),
         cfg=cfg,
@@ -146,7 +161,10 @@ def calc_sweep(
 
 
 def _eval_df(loaded: list[SurrogateBundle]) -> pd.DataFrame:
-    rows = [{"label": s.meta.label, **s.metrics()} for s in loaded]
+    rows = [
+        {"label": lbl, **s.metrics()}
+        for lbl, s in zip(sweep_labels(loaded), loaded, strict=True)
+    ]
     return pd.DataFrame(rows).set_index("label")
 
 
@@ -161,7 +179,7 @@ def view(
     entries = [entry("eval_summary", _eval_df(loaded))]
     if res is None or "sweep" not in draw_ui:
         return entries
-    labels = [s.meta.label for s in loaded]
+    labels = sweep_labels(loaded)  # calc_sweep が dict キーに使ったものと同一規則
 
     eval_comp = eval_comp_of(draw_ui)
     ylim_ui = draw_ui["sweep"]["ylim"]

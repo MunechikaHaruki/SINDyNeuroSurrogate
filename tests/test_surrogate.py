@@ -22,6 +22,7 @@ from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
 from neurosurrogate.view.model import equation_texs
 from neurosurrogate.view.specs import draw_all
+from neurosurrogate.view.train import train_figs
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
 TRAIN_DURATION = 180  # [ms] 本番は 9000。smoke は shape/有限性のみ見るので短縮
@@ -92,6 +93,52 @@ def test_sindy_draws_all_figs(sindy_eval: EvalResult) -> None:
         "simple",
         "attractor",
     ]
+
+
+def test_train_figs_render_from_reloaded_surrogate(
+    sindy: SurrogateBundle, tmp_path: Path
+) -> None:
+    """学習データ図は save/load を跨いで描ける: 軌道は保存されず meta +
+    closure.train_source から再生成される (marimo が run ロード毎に描く経路)。"""
+    sindy.save(tmp_path)
+    reloaded = SurrogateBundle.load(tmp_path)
+    source = reloaded.closure.train_source
+    assert source.comp_ids == [sindy.meta.train_comp_id]  # sindy は学習元 1 comp
+    assert source.n_gate == len(sindy.meta.comp_type.gate_names)  # 全ゲート
+
+    names = [name for name, _ in train_figs(reloaded)]
+    assert names == [
+        "train_raw",
+        "train_preprocessed",
+        "train_recon",
+        "train_v_coverage",
+        "train_manifold",
+    ]
+
+
+def test_train_inputs_match_identified_columns(sindy: SurrogateBundle) -> None:
+    """train_preprocessed 図が描くのは fit が同定器へ渡したものと同一 — 列名/軌道数が
+    閉包項の列構造と一致することで担保する (view は fit と同じ関数を呼ぶ)。"""
+    inputs = sindy.ansatz.train_inputs(sindy.meta, sindy.train_xr, sindy.preprocessor)
+    assert isinstance(sindy.closure, SINDyBundle)
+    assert [str(s) for s in sindy.closure.columns] == inputs.x_names + inputs.u_names
+    assert [x.shape[1] for x in inputs.x] == [len(inputs.x_names)] * len(inputs.x)
+    assert len(inputs.u) == len(inputs.x) == len(inputs.comp_ids)
+
+
+def test_hybrid_train_source_covers_all_replaceable_comps() -> None:
+    """hybrid は置換対象 comp 全部の軌道で学習 → train_source がそれを記録し、
+    学習ゲートは physics 分離後の先頭 n_learned 本に限られる。"""
+    surrogate = fit_surrogate("traub", 5, extra=HYBRID_PCA)
+    source = surrogate.closure.train_source
+    assert source.comp_ids == [
+        i
+        for i, comp in enumerate(surrogate.meta.dataset.net.nodes)
+        if comp.type == surrogate.meta.comp_type
+    ]
+    # Ca サブ系 (XI/Q) は学習に含めない
+    assert source.n_gate == len(surrogate.meta.comp_type.gate_names) - 2
+    assert source.stacked_gate(surrogate.train_xr).shape[1] == source.n_gate
 
 
 def test_feature_exprs_align_with_xi_columns(sindy_closure: SINDyBundle) -> None:

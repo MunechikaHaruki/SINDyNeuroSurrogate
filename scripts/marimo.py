@@ -22,6 +22,8 @@ def _():
 
     RESULT_DIR = Path(__file__).resolve().parent / "conf" / "surrogate" / "result"
 
+    # 置換対象のコンパートメント種類 → 適用先 MC モデル候補 (モデルペアの右側)。
+    # 実際に選べる run は replace の互換判定でさらに絞られる (ui.make_setting_ui)。
     TARGET_MODEL = {"hh": ["hh", "phhhp"], "traub": ["traub19", "traub"]}
 
     runs_df = get_runs_df()

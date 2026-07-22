@@ -58,11 +58,14 @@ class PanelSpec:
 
 def draw_engine(
     spec: list[PanelSpec],
+    figsize: tuple[float, float] | None = None,
 ) -> Figure:
     panels = [*spec[:-1], spec[-1].with_xlabel("Time [ms]")] if spec else spec
 
     n_rows = len(panels)
-    fig = plt.figure()
+    # figsize 未指定は matplotlib 既定。パネル数が多い図 (ゲート/潜在ごとに 1 段) は
+    # 呼び出し側が段数に応じた寸法を渡す。
+    fig = plt.figure(figsize=figsize)
     axs = fig.subplots(nrows=n_rows, ncols=1, sharex=True)
     if n_rows == 1:
         axs = [axs]

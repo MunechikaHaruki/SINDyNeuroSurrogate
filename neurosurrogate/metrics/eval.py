@@ -25,7 +25,7 @@ def preprocessed_latent(
     if not replaceable(surrogate.meta, comp):
         raise ValueError(
             f"comp {comp.name!r} は学習ドメイン外 → latent 比較不可 "
-            f"(学習型 {surrogate.meta.train_comp_type.name!r})"
+            f"(学習型 {surrogate.meta.comp_type.name!r})"
         )
     return transform_gate(surrogate.preprocessor, sim_ds, comp_id)
 

@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import jax.numpy as jnp
-import numpy as np
 import sympy as sp
 import xarray as xr
 
@@ -21,12 +20,13 @@ from ...compartments.traub import (
 from ...core import access
 from ...core.network import CompartmentType
 from ...core.opcost import OpCost
+from ..closure.base import TrainSource
 from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
 from ..replace import replaceable
-from .base import Ansatz
+from .base import Ansatz, TrainInputs
 
 
 @dataclass(frozen=True)
@@ -114,10 +114,11 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
     """
 
     def _physics(self, meta: SurrogateMeta) -> HybridPhysics:
-        return HYBRID_PHYSICS[meta.train_comp_type.name]
+        return HYBRID_PHYSICS[meta.comp_type.name]
 
-    def _train_comp_ids(self, meta: SurrogateMeta) -> list[int]:
-        """学習データ源の comp id 列 = 置換対象になるノード全部 (comp_id 昇順)。
+    def train_source(self, meta: SurrogateMeta) -> TrainSource:
+        """学習データ源 = 置換対象になるノード全部 (comp_id 昇順) の先頭 n_learned
+        ゲート (extra=Ca サブ系は physics へ分離)。
 
         「置換する comp の軌道で学習する」ことで訓練分布を評価分布に一致させる。
         単体モデル (MCMODELS["traub"] 等) なら train_comp 1 個で従来と同一。学習
@@ -125,25 +126,31 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
         学習ゲートは params-free (V 依存のみ) → 全 comp は同一のゲート多様体上に
         乗り、増えるのは V の被覆だけ。n_components を増やす必要はない。
         """
-        return [
-            i
-            for i, comp in enumerate(meta.dataset.net.nodes)
-            if replaceable(meta, comp)
-        ]
+        return TrainSource(
+            comp_ids=[
+                i
+                for i, comp in enumerate(meta.dataset.net.nodes)
+                if replaceable(meta, comp)
+            ],
+            n_gate=self._physics(meta).n_learned,
+        )
 
-    def _comp_gate(
-        self, meta: SurrogateMeta, train_xr: xr.Dataset, comp_id: int
-    ) -> np.ndarray:
-        # 学習は先頭 n_learned ゲートのみ (extra=Ca サブ系は physics へ分離)。
-        return access.gate_matrix(train_xr, comp_id)[:, : self._physics(meta).n_learned]
-
-    def train_gate(self, meta: SurrogateMeta, train_xr: xr.Dataset) -> np.ndarray:
-        # preprocessor は時間微分を取らない → 全 comp を縦連結してよい。gate_inits
-        # は先頭行 = 最小 comp_id の t=0 潜在だが、初期ゲートは V_LEAK 定常で解かれ
-        # params-free → 全 comp 同値。
-        return np.concatenate(
-            [self._comp_gate(meta, train_xr, i) for i in self._train_comp_ids(meta)],
-            axis=0,
+    def train_inputs(
+        self,
+        meta: SurrogateMeta,
+        train_xr: xr.Dataset,
+        preprocessor: Preprocessor,
+    ) -> TrainInputs:
+        # 状態は潜在のみ (V は物理式で解くので同定せず、入力として与える)。comp ごと
+        # に 1 軌道で分ける — SINDy は t から時間微分を数値推定するため、stacked_gate
+        # のように縦連結すると境界に偽の微分が入る。
+        source = self.train_source(meta)
+        return TrainInputs(
+            x_names=access.latent_vars(meta.n_components),
+            u_names=[access.POTENTIAL_VAR],
+            comp_ids=source.comp_ids,
+            x=[preprocessor.encode(source.gate(train_xr, i)) for i in source.comp_ids],
+            u=[access.potential(train_xr, i)[:, None] for i in source.comp_ids],
         )
 
     def fit(
@@ -153,25 +160,21 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
         preprocessor: Preprocessor,
         spec: dict,
     ) -> SINDyBundle:
-        comp_ids = self._train_comp_ids(meta)
+        inputs = self.train_inputs(meta, train_xr, preprocessor)
         return SINDyBundle.from_sindy(
             library_specs=spec["library_specs"],
             optimizer_spec=spec["optimizer"],
-            # comp ごとに 1 軌道のリストで渡す。SINDy は t から時間微分を数値推定する
-            # ため、train_gate のように縦連結すると境界に偽の微分が入る。
-            x=[
-                preprocessor.encode(self._comp_gate(meta, train_xr, i))
-                for i in comp_ids
-            ],
-            u=[access.potential(train_xr, i)[:, None] for i in comp_ids],
-            t=[access.time(train_xr)] * len(comp_ids),
-            targets=[sp.Symbol(v) for v in access.latent_vars(meta.n_components)],
-            inputs=[sp.Symbol(access.POTENTIAL_VAR)],
+            x=inputs.x,
+            u=inputs.u,
+            t=[access.time(train_xr)] * len(inputs.x),
+            targets=[sp.Symbol(v) for v in inputs.x_names],
+            inputs=[sp.Symbol(v) for v in inputs.u_names],
             # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
             roles=Roles(
                 V=meta.n_components,
                 g=list(range(meta.n_components)),
             ),
+            train_source=self.train_source(meta),
         )
 
     def _dlatent(self, closure: SINDyBundle) -> Callable:

@@ -1,5 +1,4 @@
 import jax.numpy as jnp
-import numpy as np
 import sympy as sp
 import xarray as xr
 
@@ -7,16 +6,41 @@ from ...core import access
 from ...core.coords import transform_gate
 from ...core.network import CompartmentType
 from ...core.opcost import OpCost
+from ..closure.base import TrainSource
 from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
-from .base import Ansatz
+from .base import Ansatz, TrainInputs
 
 
 class SINDyAnsatz(Ansatz[SINDyBundle]):
-    def train_gate(self, meta: SurrogateMeta, train_xr: xr.Dataset) -> np.ndarray:
-        return access.gate_matrix(train_xr, meta.train_comp_id)
+    def train_source(self, meta: SurrogateMeta) -> TrainSource:
+        # 学習元ノード 1 個の全ゲート (V+gate 全体を丸ごと同定する定式化 → physics
+        # へ分離する列が無い)。
+        return TrainSource(
+            comp_ids=[meta.train_comp_id],
+            n_gate=len(meta.comp_type.gate_names),
+        )
+
+    def train_inputs(
+        self,
+        meta: SurrogateMeta,
+        train_xr: xr.Dataset,
+        preprocessor: Preprocessor,
+    ) -> TrainInputs:
+        # 状態は学習元 comp の [V, g1..gN] 丸ごと (V も同定対象)、入力はそのノードへの
+        # 流入電流 (transform_gate が I_internal を u 列へ置く)。
+        preprocessed_xr = transform_gate(
+            preprocessor, train_xr, comp_id=meta.train_comp_id
+        )
+        return TrainInputs(
+            x_names=list(preprocessed_xr.variable.values),
+            u_names=["u"],
+            comp_ids=[meta.train_comp_id],
+            x=[access.comp_matrix(preprocessed_xr, meta.train_comp_id)],
+            u=[access.i_ext_values(preprocessed_xr)[:, None]],
+        )
 
     def fit(
         self,
@@ -25,23 +49,22 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
         preprocessor: Preprocessor,
         spec: dict,
     ) -> SINDyBundle:
-        preprocessed_xr = transform_gate(
-            preprocessor, train_xr, comp_id=meta.train_comp_id
-        )
+        inputs = self.train_inputs(meta, train_xr, preprocessor)
         return SINDyBundle.from_sindy(
             library_specs=spec["library_specs"],
             optimizer_spec=spec["optimizer"],
-            x=access.comp_matrix(preprocessed_xr, meta.train_comp_id),
-            u=access.i_ext_values(preprocessed_xr),
-            t=access.time(train_xr),
-            targets=[sp.Symbol(v) for v in preprocessed_xr.variable.values],
-            inputs=[sp.Symbol("u")],
+            x=inputs.x,
+            u=inputs.u,
+            t=[access.time(train_xr)] * len(inputs.x),
+            targets=[sp.Symbol(v) for v in inputs.x_names],
+            inputs=[sp.Symbol(v) for v in inputs.u_names],
             # 列構造: [V, g1..gN, u]。V=0, gate 群, 末尾に外部電流。
             roles=Roles(
                 V=0,
                 g=list(range(1, 1 + meta.n_components)),
                 u=1 + meta.n_components,
             ),
+            train_source=self.train_source(meta),
         )
 
     def surr_comp_type(

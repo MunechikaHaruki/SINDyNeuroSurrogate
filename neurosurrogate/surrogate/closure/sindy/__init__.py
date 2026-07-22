@@ -15,7 +15,7 @@ import pysindy as ps
 import sympy as sp
 
 from ....core.opcost import OpCost
-from ..base import Closure
+from ..base import Closure, TrainSource
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -33,6 +33,13 @@ def _instantiate(spec: dict, registry: dict[str, type]):
     return registry[spec.pop("type")](**spec)
 
 
+def _unwrap_single(v: np.ndarray | list[np.ndarray]) -> np.ndarray | list[np.ndarray]:
+    """1 軌道だけの list は剥がす。pysindy の複数軌道経路は単一軌道でも目に見えて
+    遅く、境界を跨がない以上あちらを通す意味がない (ansatz は軌道数に関わらず list
+    で組む — 単軌道か否かで列構造を分岐させないため)。"""
+    return v[0] if isinstance(v, list) and len(v) == 1 else v
+
+
 @dataclass
 class SINDyBundle(Closure):
     """閉包項を「ライブラリ項の疎な線形結合」で表す実装 (ξ を疎回帰で同定)。"""
@@ -42,6 +49,7 @@ class SINDyBundle(Closure):
     inputs: list[sp.Symbol]
     library_specs: list[dict]
     roles: "Roles"
+    train_source: TrainSource
 
     @property
     def columns(self) -> list[sp.Symbol]:
@@ -80,6 +88,7 @@ class SINDyBundle(Closure):
         targets: list[sp.Symbol],
         inputs: list[sp.Symbol],
         roles: "Roles",
+        train_source: TrainSource,
     ) -> "SINDyBundle":
         bundle = cls(
             xi=np.empty(0),
@@ -87,12 +96,18 @@ class SINDyBundle(Closure):
             inputs=inputs,
             library_specs=library_specs,
             roles=roles,
+            train_source=train_source,
         )
         sindy = ps.SINDy(
             feature_library=bundle.feature_library.library,
             optimizer=_instantiate(optimizer_spec, OPTIMIZER_CLS),
         )
-        sindy.fit(x, u=u, t=t, feature_names=[str(s) for s in bundle.columns])
+        sindy.fit(
+            _unwrap_single(x),
+            u=_unwrap_single(u),
+            t=_unwrap_single(t),
+            feature_names=[str(s) for s in bundle.columns],
+        )
         bundle.xi = sindy.coefficients()
         # xi の列は pysindy が並べたもの、feature_exprs は自前展開。両者が同順・同表記
         # であることが opcost/compute_theta/描画すべての前提 → fit 時に照合する。

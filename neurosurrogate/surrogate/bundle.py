@@ -6,7 +6,8 @@ ansatz は状態を持たないストラテジで、**bundle 自身ではなく 
 closure を受け取る** (オーケストレーターへ依存を張り返さない)。
 
 学習 (`setup`: simulate → preprocessor build → 閉包項の同定) と `load` が別経路
-なので、load は保存された 3 点を戻すだけで済み simulate は走らない。
+なので、load は保存された 3 点を戻すだけで済む。学習データは保存せず meta から
+lazy に再現する (`train_xr`) → load 後でも触れて、参照しなければ simulate は走らない。
 """
 
 from functools import cached_property
@@ -44,15 +45,21 @@ PREPROCESSOR_CLS: dict[str, type[Preprocessor]] = {
 class SurrogateBundle:
     """サロゲート本体。meta / preprocessor / closure を持ち ansatz へ委譲する。
 
-    属性は 4 つとも setup / load が代入して埋める (`__init__` 引数は取らない —
+    属性は 3 つとも setup / load が代入して埋める (`__init__` 引数は取らない —
     埋まる時点が違うだけで meta も他と同格)。未設定のまま参照すれば AttributeError
-    で早期に気付く。train_xr は学習にしか要らないので保存せず load 経路では未設定。
+    で早期に気付く。
     """
 
     meta: SurrogateMeta
     preprocessor: Preprocessor
     closure: Closure
-    train_xr: xr.Dataset
+
+    @cached_property
+    def train_xr(self) -> xr.Dataset:
+        """学習データ。実体は保存せず meta から決定的に再現する (dataset/電流/dt が
+        meta に揃っている)。→ load 経路でも参照でき、marimo は run をロードするたび
+        に `closure.train_source` と合わせて学習入力を組み直して描ける。"""
+        return self.meta.simulate()
 
     @cached_property
     def ansatz(self) -> Ansatz[Any]:
@@ -79,9 +86,8 @@ class SurrogateBundle:
         """
         bundle = cls()
         bundle.meta = SurrogateMeta.build(**cfg["meta"])
-        bundle.train_xr = bundle.meta.simulate()
         bundle.preprocessor = bundle.preprocessor_cls.fit(
-            bundle.ansatz.train_gate(bundle.meta, bundle.train_xr),
+            bundle.ansatz.train_source(bundle.meta).stacked_gate(bundle.train_xr),
             bundle.meta.n_components,
             cfg["preprocessor"],
         )

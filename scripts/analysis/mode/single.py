@@ -23,6 +23,7 @@ from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.replace import replaced_names
 from neurosurrogate.view.model import closure_figs, view_neuron_graph
 from neurosurrogate.view.specs import draw_all
+from neurosurrogate.view.train import train_figs
 
 # ---------------------------------------------------------------------------
 # Sim UI
@@ -128,10 +129,15 @@ def calc_eval(
 def model_figs(
     net: NeuronGraph, surrogate: SurrogateBundle
 ) -> list[tuple[str, Figure]]:
-    """single mode の静的モデル図。(save 名, fig) 列。"""
+    """single mode の静的モデル図。(save 名, fig) 列。
+
+    学習データ図 (train_figs) もここに入る: run のロードだけで描け、置換シミュ結果
+    に依らない (学習データは meta + closure.train_source から再生成される)。
+    """
     return [
         ("neurograph", view_neuron_graph(net, replaced_names(surrogate.meta, net))),
         *closure_figs(surrogate.closure),
+        *train_figs(surrogate),
     ]
 
 

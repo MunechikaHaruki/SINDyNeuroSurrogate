@@ -8,11 +8,11 @@ import marimo as mo
 import matplotlib.pyplot as plt
 import pandas as pd
 from analysis.access import (
+    comp_type_of,
     current_of,
     dt_of,
     sim_current_params_of,
     target_of,
-    train_of,
     valid_or,
 )
 from analysis.mode import single as analysis_single
@@ -24,6 +24,7 @@ from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate.bundle import SurrogateBundle
+from neurosurrogate.surrogate.replace import replaced_names
 from neurosurrogate.view.utils import current_preview_fig
 
 CurrentList: list = list(CURRENT_MAP.keys())
@@ -42,12 +43,14 @@ def make_base_ui(
     target_model: dict[str, list[str]],
     preset: dict | None = None,
 ) -> mo.ui.dictionary:
-    # 学習 train_model × 適用候補 target_model の有効ペアを 1 dropdown で列挙。
-    # 未登録 train_model は自身のみを候補とする。label→(train,target) を .value で得る。
+    # モデルペア = **置換対象のコンパートメント種類 → 適用先 MC モデル**。サロゲート
+    # は「種類 → それを置換するモデル」の対応 (replace.replaceable) なので、左は学習
+    # データの MC モデル名ではなく comp_type を取る。右は target_model が種類ごとに
+    # 定義する適用先一覧。label→(comp_type,target) を .value で得る。
     pairs = {
-        f"{train}→{tgt}": (train, tgt)
-        for train in sorted(runs_df["train_model"].unique())
-        for tgt in target_model.get(train, [train])
+        f"{comp_type}→{tgt}": (comp_type, tgt)
+        for comp_type in sorted(runs_df["comp_type"].unique())
+        for tgt in target_model.get(comp_type, [])
     }
     plt_options = list(typing.get_args(MplStyle))
     # preset (復元) 値で初期値上書き。無効値 (run 集合変化等) は既定へフォールバック。
@@ -111,12 +114,16 @@ def make_setting_ui(
     preset: dict | None = None,
 ) -> mo.ui.dictionary:
     current_type = current_of(base_ui)
-    # 選択 train_model の run のみを提示。run_selector は sim/sweep 各キーへ個別に
-    # 埋め、single (1件必須) と sweep (複数可) で選択状態を分離する。
+    # 選んだペア (種類 → 適用先) に**実際に置換できる** run だけを提示。互換基準は
+    # replace ドメインの判定 (種類一致 + params 両立) をそのまま使い、UI 側に複製
+    # しない。run_selector は sim/sweep 各キーへ個別に埋め、single (1件必須) と
+    # sweep (複数可) で選択状態を分離する。
+    net = MCMODELS[target_of(base_ui)]
     runs = pd.DataFrame(
-        runs_df[runs_df["train_model"] == train_of(base_ui)][
-            ["tags.mlflow.runName", "run_id"]
-        ]
+        runs_df[
+            (runs_df["comp_type"] == comp_type_of(base_ui))
+            & runs_df["meta"].map(lambda m: bool(replaced_names(m, net)))
+        ][["tags.mlflow.runName", "run_id"]]
     )
     sim_p = (preset or {}).get("sim", {})
     sweep_p = (preset or {}).get("sweep", {})

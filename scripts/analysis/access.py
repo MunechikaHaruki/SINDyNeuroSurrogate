@@ -18,8 +18,8 @@ def target_of(base_ui: mo.ui.dictionary) -> str:
     return str(base_ui["model_pair"].value[1])
 
 
-def train_of(base_ui: mo.ui.dictionary) -> str:
-    """学習元 train_model 名 (model_pair の train)。"""
+def comp_type_of(base_ui: mo.ui.dictionary) -> str:
+    """置換対象のコンパートメント種類名 (model_pair の左)。"""
     return str(base_ui["model_pair"].value[0])
 
 

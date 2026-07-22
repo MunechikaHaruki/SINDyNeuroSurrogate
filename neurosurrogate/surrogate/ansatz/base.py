@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 import numpy as np
@@ -6,11 +7,30 @@ import xarray as xr
 
 from ...core.network import CompartmentType
 from ...core.opcost import OpCost
-from ..closure.base import Closure
+from ..closure.base import Closure, TrainSource
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
 
 C = TypeVar("C", bound=Closure)
+
+
+@dataclass(frozen=True)
+class TrainInputs:
+    """同定器へ渡す**直前**の入力一式 (列順 = ansatz が組んだ列構造そのもの)。
+
+    fit がこれを作って同定器へ流し、view は同じものを描く → 図と学習入力が食い違わ
+    ない (fit のローカルを view が組み直さない)。軌道は comp ごとに分けたまま持つ
+    (縦連結すると境界に偽の時間微分が入る)。時間軸は train_xr と共通なので持たない。
+
+    x_names/u_names : 列の表示名 (状態列 / 入力列)。
+    comp_ids        : 軌道の出所 comp (x/u と同順・同数)。
+    """
+
+    x_names: list[str]
+    u_names: list[str]
+    comp_ids: list[int]
+    x: list[np.ndarray]  # 各 (time, len(x_names))
+    u: list[np.ndarray]  # 各 (time, len(u_names))
 
 
 class Ansatz(ABC, Generic[C]):
@@ -28,8 +48,22 @@ class Ansatz(ABC, Generic[C]):
     """
 
     @abstractmethod
-    def train_gate(self, meta: SurrogateMeta, train_xr: xr.Dataset) -> np.ndarray:
-        """preprocessor 学習に使うゲート行列 (ansatz が列選択)。setup が参照する。"""
+    def train_source(self, meta: SurrogateMeta) -> TrainSource:
+        """学習入力の列選択 (どの comp の・先頭何ゲートを食わせるか)。
+
+        meta だけで決まる → preprocessor 学習前 (setup) にも fit 内にも同じものが
+        引ける。fit はこれを閉包項へ載せ、load 後の再生成規則として残す。
+        """
+        ...
+
+    @abstractmethod
+    def train_inputs(
+        self,
+        meta: SurrogateMeta,
+        train_xr: xr.Dataset,
+        preprocessor: Preprocessor,
+    ) -> TrainInputs:
+        """同定器へ渡す直前の (x, u) を組む。fit がそのまま流し、view が描く。"""
         ...
 
     @abstractmethod

@@ -10,6 +10,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from neurosurrogate.surrogate.bundle import SurrogateBundle
+from neurosurrogate.surrogate.meta import SurrogateMeta
 
 TARGET_EXP = "test_static_params"
 
@@ -76,22 +77,25 @@ def get_runs_df():
         ["tags.mlflow.runName", "run_id", "start_time"]
         + [c for c in runs_df.columns if "metrics" in c or "params" in c]
     ]
-    # サロゲートの学習元 MC モデルを純粋な dataframe 列として付与
-    # (mlflow params に依存せず meta から直接読む)。個別 DL バーは
-    # 抑制し、読込ループ全体を 1 本の進捗バーに集約。
+    # 各 run の同定情報を dataframe 列として付与 (mlflow params に依存せず meta から
+    # 直接読む)。`meta` 列があれば UI は置換互換を replace ドメインの判定関数で直接
+    # 効かせられる (互換基準を UI 側に複製しない) → 表示列には含めず絞り込みにのみ使う。
+    # `comp_type` は置換対象のコンパートメント種類 = モデルペアの左側。
+    # 個別 DL バーは抑制し、読込ループ全体を 1 本の進捗バーに集約。
     # 旧形式など読込不可の run は選択対象から除外。
-    runs_df["train_model"] = [
-        _safe_train_model(rid)
-        for rid in tqdm(runs_df["run_id"], desc="surrogate meta 読込")
+    runs_df["meta"] = [
+        _safe_meta(rid) for rid in tqdm(runs_df["run_id"], desc="surrogate meta 読込")
     ]
-    excluded = int(runs_df["train_model"].isna().sum())
+    excluded = int(runs_df["meta"].isna().sum())
     if excluded:
         logger.info(f"surrogate 読込不可の {excluded} 件を選択対象外")
-    return runs_df[runs_df["train_model"].notna()].reset_index(drop=True)
+    runs_df = runs_df[runs_df["meta"].notna()].reset_index(drop=True)
+    runs_df["comp_type"] = [m.comp_type.name for m in runs_df["meta"]]
+    return runs_df
 
 
-def _safe_train_model(run_id: str) -> str | None:
+def _safe_meta(run_id: str) -> SurrogateMeta | None:
     try:
-        return load_surrogate_model(run_id).meta.dataset.model_name
+        return load_surrogate_model(run_id).meta
     except Exception:
         return None
