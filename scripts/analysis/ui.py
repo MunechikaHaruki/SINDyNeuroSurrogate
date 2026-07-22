@@ -47,11 +47,22 @@ def make_base_ui(
     # は「種類 → それを置換するモデル」の対応 (replace.replaceable) なので、左は学習
     # データの MC モデル名ではなく comp_type を取る。右は target_model が種類ごとに
     # 定義する適用先一覧。label→(comp_type,target) を .value で得る。
+    comp_types = sorted(runs_df["comp_type"].unique())
     pairs = {
         f"{comp_type}→{tgt}": (comp_type, tgt)
-        for comp_type in sorted(runs_df["comp_type"].unique())
+        for comp_type in comp_types
         for tgt in target_model.get(comp_type, [])
     }
+    # ペアが 1 つも組めない = 選べる run が無い。空 dropdown を作って下流を
+    # StopIteration/KeyError で落とさず、原因 (run 側か TARGET_MODEL 側か) を示す。
+    if not pairs:
+        raise ValueError(
+            "選択可能なモデルペアが無い。"
+            f"読込めた run の comp_type={comp_types or '(なし)'} / "
+            f"TARGET_MODEL のキー={list(target_model)}。"
+            "run が 0 件なら surrogate の pickle スキーマ変更で旧 run が読めていない "
+            "(再学習が要る)。comp_type が TARGET_MODEL に無いなら適用先を定義する。"
+        )
     plt_options = list(typing.get_args(MplStyle))
     # preset (復元) 値で初期値上書き。無効値 (run 集合変化等) は既定へフォールバック。
     # model_pair は json で list 化するので options(tuple) と list 比較で照合。

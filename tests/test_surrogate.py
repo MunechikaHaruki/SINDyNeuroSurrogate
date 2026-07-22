@@ -102,7 +102,7 @@ def test_train_figs_render_from_reloaded_surrogate(
     closure.train_source から再生成される (marimo が run ロード毎に描く経路)。"""
     sindy.save(tmp_path)
     reloaded = SurrogateBundle.load(tmp_path)
-    source = reloaded.closure.train_source
+    source = reloaded.ansatz.train_source(reloaded.meta)
     assert source.comp_ids == [sindy.meta.train_comp_id]  # sindy は学習元 1 comp
     assert source.n_gate == len(sindy.meta.comp_type.gate_names)  # 全ゲート
 
@@ -123,14 +123,19 @@ def test_train_inputs_match_identified_columns(sindy: SurrogateBundle) -> None:
     assert isinstance(sindy.closure, SINDyBundle)
     assert [str(s) for s in sindy.closure.columns] == inputs.x_names + inputs.u_names
     assert [x.shape[1] for x in inputs.x] == [len(inputs.x_names)] * len(inputs.x)
-    assert len(inputs.u) == len(inputs.x) == len(inputs.comp_ids)
+    # 軌道数は選択規則 (TrainSource.comp_ids) と一致 — 出所 comp は片方だけが持つ
+    assert (
+        len(inputs.u)
+        == len(inputs.x)
+        == len(sindy.ansatz.train_source(sindy.meta).comp_ids)
+    )
 
 
 def test_hybrid_train_source_covers_all_replaceable_comps() -> None:
     """hybrid は置換対象 comp 全部の軌道で学習 → train_source がそれを記録し、
     学習ゲートは physics 分離後の先頭 n_learned 本に限られる。"""
     surrogate = fit_surrogate("traub", 5, extra=HYBRID_PCA)
-    source = surrogate.closure.train_source
+    source = surrogate.ansatz.train_source(surrogate.meta)
     assert source.comp_ids == [
         i
         for i, comp in enumerate(surrogate.meta.dataset.net.nodes)

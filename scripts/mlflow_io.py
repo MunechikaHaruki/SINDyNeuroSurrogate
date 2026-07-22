@@ -90,12 +90,22 @@ def get_runs_df():
     if excluded:
         logger.info(f"surrogate 読込不可の {excluded} 件を選択対象外")
     runs_df = runs_df[runs_df["meta"].notna()].reset_index(drop=True)
+    # 全 run が読込不可 = pickle スキーマ変更で experiment 丸ごと死んでいる。空の
+    # dataframe を下流へ流すと UI 構築が意味不明な例外で落ちるのでここで止める。
+    if runs_df.empty:
+        raise ValueError(
+            f"Experiment '{TARGET_EXP}' の {excluded} 件すべてが読込不可 "
+            "(surrogate の pickle スキーマ変更)。再学習が要る: uv run scripts/main.py"
+        )
     runs_df["comp_type"] = [m.comp_type.name for m in runs_df["meta"]]
     return runs_df
 
 
 def _safe_meta(run_id: str) -> SurrogateMeta | None:
+    """run の surrogate から meta だけ取り出す。旧スキーマなど読込不可は None
+    (選択対象から外す。1 件の失敗で experiment 全体を見られなくしない)。"""
     try:
         return load_surrogate_model(run_id).meta
-    except Exception:
+    except Exception as e:
+        logger.debug(f"run {run_id} の surrogate 読込失敗: {e}")
         return None

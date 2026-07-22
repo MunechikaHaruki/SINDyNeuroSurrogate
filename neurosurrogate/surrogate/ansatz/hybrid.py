@@ -20,13 +20,12 @@ from ...compartments.traub import (
 from ...core import access
 from ...core.network import CompartmentType
 from ...core.opcost import OpCost
-from ..closure.base import TrainSource
 from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
 from ..replace import replaceable
-from .base import Ansatz, TrainInputs
+from .base import Ansatz, TrainInputs, TrainSource
 
 
 @dataclass(frozen=True)
@@ -148,7 +147,6 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
         return TrainInputs(
             x_names=access.latent_vars(meta.n_components),
             u_names=[access.POTENTIAL_VAR],
-            comp_ids=source.comp_ids,
             x=[preprocessor.encode(source.gate(train_xr, i)) for i in source.comp_ids],
             u=[access.potential(train_xr, i)[:, None] for i in source.comp_ids],
         )
@@ -174,7 +172,6 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
                 V=meta.n_components,
                 g=list(range(meta.n_components)),
             ),
-            train_source=self.train_source(meta),
         )
 
     def _dlatent(self, closure: SINDyBundle) -> Callable:

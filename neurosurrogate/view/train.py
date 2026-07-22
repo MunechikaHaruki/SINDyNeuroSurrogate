@@ -1,7 +1,7 @@
 """学習データの可視化: 閉包項に「何を食わせたか」を描く。
 
 学習データの実体は保存されていない — `SurrogateMeta` (dataset/電流/dt) と
-`Closure.train_source` (どの comp の・先頭何ゲートか) から `bundle.train_xr` を
+`Ansatz.train_source` (どの comp の・先頭何ゲートか) から `bundle.train_xr` を
 再生成し、そこから図を組む。→ MLflow から load した run でも同じ図が出る。
 
 evaluate 後の比較図 (specs.py) と違い、**surrogate 単体にしか依存しない** ので
@@ -18,8 +18,8 @@ import xarray as xr
 from matplotlib.figure import Figure
 
 from ..core import access
+from ..surrogate.ansatz.base import TrainSource
 from ..surrogate.bundle import SurrogateBundle
-from ..surrogate.closure.base import TrainSource
 from ..surrogate.preprocessor.base import Preprocessor
 from .engine import PanelSpec, TraceSpec, draw_engine, error_fig
 
@@ -37,7 +37,7 @@ def _figsize(n_rows: int) -> tuple[float, float]:
 def _names(bundle: SurrogateBundle) -> list[str]:
     """学習 comp の表示名 (comp_id 昇順、train_source と同順)。"""
     nodes = bundle.meta.dataset.net.nodes
-    return [nodes[i].name for i in bundle.closure.train_source.comp_ids]
+    return [nodes[i].name for i in bundle.ansatz.train_source(bundle.meta).comp_ids]
 
 
 def _labels(bundle: SurrogateBundle) -> list[str | None]:
@@ -63,7 +63,7 @@ def train_raw_fig(bundle: SurrogateBundle) -> Figure:
     (全 comp 分を重ねると本数が comp×gate で潰れる。他 comp のゲートは同一多様体上
     に乗る前提なので、被覆のズレは coverage 図が受け持つ)。
     """
-    source = bundle.closure.train_source
+    source = bundle.ansatz.train_source(bundle.meta)
     return draw_engine(
         [
             PanelSpec("I_ext", [TraceSpec(*access.i_ext(bundle.train_xr))]),
@@ -127,7 +127,7 @@ def train_recon_fig(bundle: SurrogateBundle) -> Figure:
 
     「潜在に落とした時点で何を捨てたか」= 閉包項の同定より手前で決まる誤差の下限。
     """
-    source = bundle.closure.train_source
+    source = bundle.ansatz.train_source(bundle.meta)
     latents = _latents(source, bundle.preprocessor, bundle.train_xr)
     return draw_engine(
         [
@@ -166,7 +166,7 @@ def train_v_coverage_fig(bundle: SurrogateBundle) -> Figure:
     している → comp 間で V 分布がどれだけ重なる/ずれるかを見る。評価時にこの範囲を
     外れた電位は外挿になる。
     """
-    source = bundle.closure.train_source
+    source = bundle.ansatz.train_source(bundle.meta)
     fig = Figure()
     ax = fig.subplots()
     for i, name in zip(source.comp_ids, _names(bundle), strict=True):
@@ -191,7 +191,7 @@ def train_manifold_fig(bundle: SurrogateBundle) -> Figure:
     学習ゲートは params-free なので comp が違っても同一多様体に乗るはず → 軌道が
     重ならなければ multi-comp 学習の前提が崩れている (潜在次元不足か params 混入)。
     """
-    source = bundle.closure.train_source
+    source = bundle.ansatz.train_source(bundle.meta)
     latents = _latents(source, bundle.preprocessor, bundle.train_xr)
     latent_names = access.latent_vars(bundle.meta.n_components)
     if bundle.meta.n_components < 2:

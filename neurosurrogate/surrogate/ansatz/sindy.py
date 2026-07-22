@@ -6,12 +6,11 @@ from ...core import access
 from ...core.coords import transform_gate
 from ...core.network import CompartmentType
 from ...core.opcost import OpCost
-from ..closure.base import TrainSource
 from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
-from .base import Ansatz, TrainInputs
+from .base import Ansatz, TrainInputs, TrainSource
 
 
 class SINDyAnsatz(Ansatz[SINDyBundle]):
@@ -37,7 +36,6 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
         return TrainInputs(
             x_names=list(preprocessed_xr.variable.values),
             u_names=["u"],
-            comp_ids=[meta.train_comp_id],
             x=[access.comp_matrix(preprocessed_xr, meta.train_comp_id)],
             u=[access.i_ext_values(preprocessed_xr)[:, None]],
         )
@@ -64,7 +62,6 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
                 g=list(range(1, 1 + meta.n_components)),
                 u=1 + meta.n_components,
             ),
-            train_source=self.train_source(meta),
         )
 
     def surr_comp_type(

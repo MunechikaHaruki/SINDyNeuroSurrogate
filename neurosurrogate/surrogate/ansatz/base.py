@@ -5,13 +5,40 @@ from typing import Generic, TypeVar
 import numpy as np
 import xarray as xr
 
+from ...core import access
 from ...core.network import CompartmentType
 from ...core.opcost import OpCost
-from ..closure.base import Closure, TrainSource
+from ..closure.base import Closure
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
 
 C = TypeVar("C", bound=Closure)
+
+
+@dataclass(frozen=True)
+class TrainSource:
+    """学習入力の**選択規則** (どの comp の・先頭何本のゲートを食わせるか)。
+
+    meta だけで決まるので保存しない — 学習成果物 (closure) に焼き付けなくても
+    `Ansatz.train_source(meta)` でいつでも引き直せる。preprocessor 学習は encode
+    前のゲートを要るので、encode 済みの `TrainInputs` では代替できない (両者は
+    「規則」と「同定器へ渡す実体」の関係)。
+
+    comp_ids : 軌道を取る comp (comp_id 昇順)。
+    n_gate   : 先頭から何本のゲートを学習するか (残りは physics 側が解く)。
+    """
+
+    comp_ids: list[int]
+    n_gate: int
+
+    def gate(self, train_xr: xr.Dataset, comp_id: int) -> np.ndarray:
+        """comp_id の学習ゲート行列 (time, n_gate)。"""
+        return access.gate_matrix(train_xr, comp_id)[:, : self.n_gate]
+
+    def stacked_gate(self, train_xr: xr.Dataset) -> np.ndarray:
+        """全 comp を縦連結した学習ゲート行列 (preprocessor 学習用。preprocessor は
+        時間微分を取らないので連結してよい — 閉包項の同定は軌道を分けて渡す)。"""
+        return np.concatenate([self.gate(train_xr, i) for i in self.comp_ids], axis=0)
 
 
 @dataclass(frozen=True)
@@ -21,15 +48,15 @@ class TrainInputs:
     fit がこれを作って同定器へ流し、view は同じものを描く → 図と学習入力が食い違わ
     ない (fit のローカルを view が組み直さない)。軌道は comp ごとに分けたまま持つ
     (縦連結すると境界に偽の時間微分が入る)。時間軸は train_xr と共通なので持たない。
+    軌道の出所 comp も持たない — 選択規則は `TrainSource.comp_ids` が唯一の源で、
+    ここは「その規則で組んだ実体」に徹する (同じ列を 2 か所に置かない)。
 
     x_names/u_names : 列の表示名 (状態列 / 入力列)。
-    comp_ids        : 軌道の出所 comp (x/u と同順・同数)。
     """
 
     x_names: list[str]
     u_names: list[str]
-    comp_ids: list[int]
-    x: list[np.ndarray]  # 各 (time, len(x_names))
+    x: list[np.ndarray]  # 各 (time, len(x_names))。TrainSource.comp_ids と同順
     u: list[np.ndarray]  # 各 (time, len(u_names))
 
 
@@ -51,8 +78,8 @@ class Ansatz(ABC, Generic[C]):
     def train_source(self, meta: SurrogateMeta) -> TrainSource:
         """学習入力の列選択 (どの comp の・先頭何ゲートを食わせるか)。
 
-        meta だけで決まる → preprocessor 学習前 (setup) にも fit 内にも同じものが
-        引ける。fit はこれを閉包項へ載せ、load 後の再生成規則として残す。
+        meta だけで決まる → setup (preprocessor 学習) も fit も view も、必要な
+        ときに引き直せば同じものが得られる (成果物に保存しない)。
         """
         ...
 

@@ -18,16 +18,20 @@ from ..core.simulator import unified_simulator
 class SurrogateMeta:
     """何を学習したかの同定情報 (学習構造・置換対象の種類・学習データ)。
 
-    surrogate_type / preprocessor_type は実装を解決する dispatch kー、
+    surrogate_type / preprocessor_type は実装を解決する dispatch キー、
     n_components は潜在次元。**学習構造の単一源**で、実装側 (ansatz/preprocessor)
     は自分がどう選ばれたかを知らない。
 
-    置換対象は `comp_type` (**コンパートメントの種類**) が持つ — サロゲートは
-    「種類 → それを置換するモデル」の対応であって、MC ネットワーク名やノード名に
-    紐づくものではない。yaml が渡すノード名は build の入口で種類へ解決して捨て、
-    以降の判定 (replace) と dispatch (hybrid の physics) は種類だけを見る。
-    `train_comp_id` は残るが意味は「学習軌道を取った代表ノード」に限られる
-    (params/初期値の参照先。種類の同一性はここを経由しない)。
+    置換対象を指す 2 フィールドは役割が別で、重複していない:
+      `comp_type`     … **コンパートメントの種類**。サロゲートは「種類 → それを
+                        置換するモデル」の対応であって MC ネットワーク名やノード名
+                        には紐づかない → 置換判定 (replace の型一致) と実装 dispatch
+                        (hybrid の physics) はここだけを見る。yaml が渡すノード名は
+                        build の入口で種類へ解決して捨てる。
+      `train_comp_id` … **学習軌道を取った代表ノード**。sindy は学習時 params を
+                        モデルへ焼き込む定式化なので、params 両立の比較対象
+                        (replace の `_PARAMS_MATCH`) と置換後の初期電位の出所として
+                        実ノードが要る。種類の同一性はここを経由しない。
     """
 
     surrogate_type: str  # sindy/hybrid
