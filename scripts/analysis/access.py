@@ -18,6 +18,19 @@ def target_of(base_ui: mo.ui.dictionary) -> str:
     return str(base_ui["model_pair"].value[1])
 
 
+ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
+
+
+def preset_of(preset_ui: mo.ui.dropdown) -> str:
+    """選択中の preset (surrogate/*.yaml)。ALL_PRESETS なら絞り込まない。
+
+    base_ui の外に置く: preset を変えると model_pair の選択肢自体が変わる (整合的な
+    ペアだけを出す) ため、base_ui より **上流**の独立 UI でなければならない
+    (marimo は自分自身に依存するセルを再実行できない)。
+    """
+    return str(preset_ui.value)
+
+
 def comp_type_of(base_ui: mo.ui.dictionary) -> str:
     """置換対象のコンパートメント種類名 (model_pair の左)。"""
     return str(base_ui["model_pair"].value[0])

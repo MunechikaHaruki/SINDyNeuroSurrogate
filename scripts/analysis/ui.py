@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import typing
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import marimo as mo
 import matplotlib.pyplot as plt
 import pandas as pd
 from analysis.access import (
+    ALL_PRESETS,
     comp_type_of,
     current_of,
     dt_of,
+    preset_of,
     sim_current_params_of,
     target_of,
     valid_or,
@@ -38,16 +40,37 @@ setup_mlflow()
 # ---------------------------------------------------------------------------
 
 
+def make_preset_ui(runs_df: pd.DataFrame, preset: dict | None = None) -> mo.ui.dropdown:
+    """出自 preset (surrogate/*.yaml) の絞り込み dropdown。**base_ui より上流**の
+    独立 UI — これを変えると下流の model_pair / run 一覧が組み直される。"""
+    options = [ALL_PRESETS, *sorted(runs_df["preset"].dropna().unique())]
+    return mo.ui.dropdown(
+        options=options,
+        value=valid_or((preset or {}).get("preset"), options, ALL_PRESETS),
+        label="preset (yaml)",
+    )
+
+
+def preset_runs(runs_df: pd.DataFrame, preset_ui: mo.ui.dropdown) -> pd.DataFrame:
+    """選択 preset の run だけに絞った runs_df (ALL_PRESETS なら素通し)。"""
+    if preset_of(preset_ui) == ALL_PRESETS:
+        return runs_df
+    return cast(pd.DataFrame, runs_df[runs_df["preset"] == preset_of(preset_ui)])
+
+
 def make_base_ui(
     runs_df: pd.DataFrame,
     target_model: dict[str, list[str]],
+    preset_ui: mo.ui.dropdown,
     preset: dict | None = None,
 ) -> mo.ui.dictionary:
     # モデルペア = **置換対象のコンパートメント種類 → 適用先 MC モデル**。サロゲート
     # は「種類 → それを置換するモデル」の対応 (replace.replaceable) なので、左は学習
     # データの MC モデル名ではなく comp_type を取る。右は target_model が種類ごとに
     # 定義する適用先一覧。label→(comp_type,target) を .value で得る。
-    comp_types = sorted(runs_df["comp_type"].unique())
+    # **選択 preset に実在する comp_type だけ**からペアを組む → 整合しない
+    # model_pair を選べない (選んだ瞬間に run 0 件になる状態を作らない)。
+    comp_types = sorted(preset_runs(runs_df, preset_ui)["comp_type"].unique())
     pairs = {
         f"{comp_type}→{tgt}": (comp_type, tgt)
         for comp_type in comp_types
@@ -57,7 +80,7 @@ def make_base_ui(
     # StopIteration/KeyError で落とさず、原因 (run 側か TARGET_MODEL 側か) を示す。
     if not pairs:
         raise ValueError(
-            "選択可能なモデルペアが無い。"
+            f"選択可能なモデルペアが無い (preset={preset_of(preset_ui)})。"
             f"読込めた run の comp_type={comp_types or '(なし)'} / "
             f"TARGET_MODEL のキー={list(target_model)}。"
             "run が 0 件なら surrogate の pickle スキーマ変更で旧 run が読めていない "
@@ -122,6 +145,7 @@ def _run_selector(
 def make_setting_ui(
     runs_df: pd.DataFrame,
     base_ui: mo.ui.dictionary,
+    preset_ui: mo.ui.dropdown,
     preset: dict | None = None,
 ) -> mo.ui.dictionary:
     current_type = current_of(base_ui)
@@ -130,12 +154,11 @@ def make_setting_ui(
     # しない。run_selector は sim/sweep 各キーへ個別に埋め、single (1件必須) と
     # sweep (複数可) で選択状態を分離する。
     net = MCMODELS[target_of(base_ui)]
-    runs = pd.DataFrame(
-        runs_df[
-            (runs_df["comp_type"] == comp_type_of(base_ui))
-            & runs_df["meta"].map(lambda m: bool(replaced_names(m, net)))
-        ][["tags.mlflow.runName", "run_id"]]
-    )
+    in_preset = preset_runs(runs_df, preset_ui)
+    selected = (in_preset["comp_type"] == comp_type_of(base_ui)) & in_preset[
+        "meta"
+    ].map(lambda m: bool(replaced_names(m, net)))
+    runs = pd.DataFrame(in_preset[selected][["tags.mlflow.runName", "run_id"]])
     sim_p = (preset or {}).get("sim", {})
     sweep_p = (preset or {}).get("sweep", {})
     d: dict = {

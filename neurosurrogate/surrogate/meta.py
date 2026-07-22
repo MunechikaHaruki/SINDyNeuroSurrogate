@@ -65,6 +65,28 @@ class SurrogateMeta:
             ),
         )
 
+    def to_dict(self) -> dict:
+        """JSON 保存形。型を文字列/素データへ落とす唯一の境界。"""
+        return {
+            "surrogate_type": self.surrogate_type,
+            "preprocessor_type": self.preprocessor_type,
+            "n_components": self.n_components,
+            "comp_type": self.comp_type.name,
+            "dataset": self.dataset.to_dict(),
+            "train_comp_id": self.train_comp_id,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SurrogateMeta":
+        return cls(
+            surrogate_type=d["surrogate_type"],
+            preprocessor_type=d["preprocessor_type"],
+            n_components=d["n_components"],
+            dataset=DatasetConfig.from_dict(d["dataset"]),
+            comp_type=COMPARTMENT_TYPES[d["comp_type"]],
+            train_comp_id=d["train_comp_id"],
+        )
+
     @property
     def label(self) -> str:
         """図表示用の簡約名。例 hybrid/n2/ae@traub19。runName 文字列に非依存。

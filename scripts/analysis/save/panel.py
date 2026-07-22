@@ -7,6 +7,7 @@ from pathlib import Path
 
 import marimo as mo
 import pandas as pd
+from analysis.access import ALL_PRESETS
 from matplotlib.figure import Figure
 
 # ---------------------------------------------------------------------------
@@ -60,14 +61,22 @@ SAVERS: dict[type, typing.Callable[[typing.Any, Path], None]] = {
 }
 
 
-def make_save_panel(entries: list[SaveEntry]) -> mo.ui.dictionary:
+def _default_dir(preset: str) -> str:
+    """保存先の既定名。preset で絞っていれば yaml 名を冠して実験群ごとに分ける
+    (絞っていないときは冠する名前が無いので従来どおり)。"""
+    return "_result" if preset == ALL_PRESETS else f"{preset}_result"
+
+
+def make_save_panel(entries: list[SaveEntry], preset: str) -> mo.ui.dictionary:
     """result entry の「保存先 + 対象複数選択 + 保存ボタン」を生成。
 
+    保存先の既定名は出自 preset (surrogate/*.yaml) 入り — 実験群ごとに別ディレクトリ
+    へ落ち、後から「どの設定の図か」が名前だけで分かる。
     multiselect 既定は全選択 (従来の一括保存と同挙動)。選択を外した entry は保存対象外。
     """
     return mo.ui.dictionary(
         {
-            "dir": mo.ui.text(value="_result", label="保存先"),
+            "dir": mo.ui.text(value=_default_dir(preset), label="保存先"),
             "select": mo.ui.multiselect(
                 options=[e.name for e in entries],
                 value=[e.name for e in entries],

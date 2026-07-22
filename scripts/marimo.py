@@ -12,6 +12,7 @@ def _():
     from analysis import ui
     from analysis.access import (
         plt_style_of,
+        preset_of,
         sim_run_selection_of,
         sweep_run_selection_of,
     )
@@ -36,6 +37,7 @@ def _():
         mo,
         panel,
         plt_style_of,
+        preset_of,
         restore,
         runs_df,
         sim_run_selection_of,
@@ -60,16 +62,25 @@ def _(restore, restore_dd):
 
 
 @app.cell
-def _(TARGET_MODEL, preset, runs_df, ui):
-    base_ui = ui.make_base_ui(runs_df, TARGET_MODEL, preset)
+def _(preset, runs_df, ui):
+    # preset (yaml) 絞り込み。base_ui より上流に置く → 選択に整合する model_pair /
+    # run 一覧だけが下流で組まれる。
+    preset_ui = ui.make_preset_ui(runs_df, preset)
+    preset_ui  # noqa: B018
+    return (preset_ui,)
+
+
+@app.cell
+def _(TARGET_MODEL, preset, preset_ui, runs_df, ui):
+    base_ui = ui.make_base_ui(runs_df, TARGET_MODEL, preset_ui, preset)
     base_ui  # noqa: B018
     return (base_ui,)
 
 
 @app.cell
-def _(base_ui, plt_style_of, preset, runs_df, ui):
+def _(base_ui, plt_style_of, preset, preset_ui, runs_df, ui):
     ui.setup_mpl(plt_style_of(base_ui))
-    setting_ui = ui.make_setting_ui(runs_df, base_ui, preset)
+    setting_ui = ui.make_setting_ui(runs_df, base_ui, preset_ui, preset)
     setting_ui  # noqa: B018
     return (setting_ui,)
 
@@ -89,8 +100,8 @@ def _(base_ui, setting_ui, ui):
 
 
 @app.cell
-def _(panel, save_result):
-    save_panel = panel.make_save_panel(save_result)
+def _(panel, preset_of, preset_ui, save_result):
+    save_panel = panel.make_save_panel(save_result, preset_of(preset_ui))
     panel.render_save_panel(save_panel)
     return (save_panel,)
 
@@ -101,6 +112,7 @@ def _(
     base_ui,
     draw_ui,
     panel,
+    preset_ui,
     restore,
     save_panel,
     save_result,
@@ -110,7 +122,7 @@ def _(
         save_panel,
         save_result,
         RESULT_DIR,
-        restore.to_meta(base_ui, setting_ui, draw_ui),
+        restore.to_meta(preset_ui, base_ui, setting_ui, draw_ui),
     )
     return
 

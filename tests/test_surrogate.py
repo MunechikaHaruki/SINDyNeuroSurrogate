@@ -117,6 +117,8 @@ def test_train_figs_render_from_reloaded_surrogate(
     """学習データ図は save/load を跨いで描ける: 軌道は保存されず meta +
     ansatz.train_source から再生成される (marimo が run ロード毎に描く経路)。"""
     sindy.save(tmp_path)
+    # meta は JSON で別ファイル → 一覧側は pickle を開かずに同定情報を読める
+    assert SurrogateBundle.load_meta(tmp_path) == sindy.meta
     reloaded = SurrogateBundle.load(tmp_path)
     source = reloaded.ansatz.train_source(reloaded.meta)
     assert source.comp_ids == [_train_comp(sindy)]  # 単体 hh モデル → 1 comp

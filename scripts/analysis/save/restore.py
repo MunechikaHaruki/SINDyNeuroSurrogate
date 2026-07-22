@@ -25,12 +25,18 @@ def _snapshot(value: object) -> object:
 
 
 def to_meta(
+    preset_ui: mo.ui.dropdown,
     base_ui: mo.ui.dictionary,
     setting_ui: mo.ui.dictionary,
     draw_ui: mo.ui.dictionary,
 ) -> dict:
-    """base/sim/sweep/draw UI 値を復元可能 snapshot に (make_*_ui preset と対)。"""
+    """preset/base/sim/sweep/draw UI 値を復元可能 snapshot に (make_*_ui preset と対)。
+
+    preset (yaml 絞り込み) は base_ui の外にある独立 UI なので個別に積む — 復元時は
+    これが先に効き、整合する model_pair / run 一覧が組まれる。
+    """
     meta: dict = {
+        "preset": preset_ui.value,
         "base": _snapshot(base_ui.value),
         "sim": _snapshot(setting_ui["sim"].value),
         "draw": _snapshot(draw_ui.value),
