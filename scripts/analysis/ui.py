@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import typing
-from pathlib import Path
 from typing import Literal, cast
 
 import marimo as mo
-import matplotlib.pyplot as plt
 import pandas as pd
 from analysis.access import (
     ALL_PRESETS,
@@ -20,6 +17,7 @@ from analysis.access import (
 from analysis.mode import single as analysis_single
 from analysis.mode import sweep as analysis_sweep
 from analysis.save.panel import SaveEntry
+from analysis.style import STYLES
 from mlflow_io import setup_mlflow
 
 from neurosurrogate.currents import CURRENT_MAP
@@ -30,7 +28,6 @@ from neurosurrogate.surrogate.replace import replaced_names
 from neurosurrogate.view.utils import current_preview_fig
 
 CurrentList: list = list(CURRENT_MAP.keys())
-MplStyle = Literal["paper", "presentation"]
 
 setup_mlflow()
 
@@ -86,7 +83,6 @@ def make_base_ui(
             "run が 0 件なら surrogate の pickle スキーマ変更で旧 run が読めていない "
             "(再学習が要る)。comp_type が TARGET_MODEL に無いなら適用先を定義する。"
         )
-    plt_options = list(typing.get_args(MplStyle))
     # preset (復元) 値で初期値上書き。無効値 (run 集合変化等) は既定へフォールバック。
     # model_pair は json で list 化するので options(tuple) と list 比較で照合。
     b = (preset or {}).get("base", {})
@@ -97,7 +93,7 @@ def make_base_ui(
     return mo.ui.dictionary(
         {
             "plt_style": mo.ui.radio(
-                options=plt_options, value=b.get("plt_style", plt_options[1])
+                options=STYLES, value=b.get("plt_style", STYLES[1])
             ),
             "sim_current_type": mo.ui.dropdown(
                 CurrentList,
@@ -116,12 +112,6 @@ def make_base_ui(
 # ---------------------------------------------------------------------------
 # Setting UI (集約)
 # ---------------------------------------------------------------------------
-
-
-def setup_mpl(matplotlib_style: str):
-    style_dir = Path(__file__).resolve().parents[1] / "conf" / "style"
-    plt.style.use(style_dir / "base.mplstyle")
-    plt.style.use(style_dir / f"{matplotlib_style}.mplstyle")
 
 
 def _run_selector(

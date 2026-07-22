@@ -71,6 +71,20 @@ test:
     {{ VIRTUAL_ENV }} pytest -q
     MLFLOW_EXPERIMENT={{ SMOKE_EXP }} {{ VIRTUAL_ENV }} python scripts/main.py +surrogate.meta.datasets.current_params.duration=180
 
+# traub 系 preset (conf/surrogate/traub_*.yaml) を順に --multirun 実行
+traub:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in scripts/conf/surrogate/traub_*.yaml; do
+        preset=$(basename "$f" .yaml)
+        echo "=== $preset ==="
+        {{ VIRTUAL_ENV }} python scripts/main.py --multirun surrogate="$preset"
+    done
+
+# 定常電流 0/10/20 [μA/cm²] (lin&steady を 3 点掃引) の波形図。引数無し = 全 preset
+sweep-traces *presets:
+    {{ VIRTUAL_ENV }} python scripts/sweep_traces.py {{ if presets == "" { "" } else { "-p " + presets } }} --current "lin&steady" --amp-start 0 --amp-stop 20 --steps 3 --current-param duration=200
+
 # activate logging server
 mlflow:
     @lsof -t -i:{{ MLFLOW_PORT }} | xargs kill -9 || true

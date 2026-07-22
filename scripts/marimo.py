@@ -19,13 +19,11 @@ def _():
     from analysis.mode import single as m_single
     from analysis.mode import sweep as m_sweep
     from analysis.save import panel, restore
+    from analysis.style import setup_mpl
+    from analysis.targets import TARGET_MODEL
     from mlflow_io import get_runs_df, load_from_selector
 
     RESULT_DIR = Path(__file__).resolve().parent / "conf" / "surrogate" / "result"
-
-    # 置換対象のコンパートメント種類 → 適用先 MC モデル候補 (モデルペアの右側)。
-    # 実際に選べる run は replace の互換判定でさらに絞られる (ui.make_setting_ui)。
-    TARGET_MODEL = {"hh": ["hh", "phhhp"], "traub": ["traub19", "traub"]}
 
     runs_df = get_runs_df()
     return (
@@ -40,6 +38,7 @@ def _():
         preset_of,
         restore,
         runs_df,
+        setup_mpl,
         sim_run_selection_of,
         sweep_run_selection_of,
         ui,
@@ -74,8 +73,8 @@ def _(TARGET_MODEL, preset, preset_ui, runs_df, ui):
 
 
 @app.cell
-def _(base_ui, plt_style_of, preset, preset_ui, runs_df, ui):
-    ui.setup_mpl(plt_style_of(base_ui))
+def _(base_ui, plt_style_of, preset, preset_ui, runs_df, setup_mpl, ui):
+    setup_mpl(plt_style_of(base_ui))
     setting_ui = ui.make_setting_ui(runs_df, base_ui, preset_ui, preset)
     setting_ui  # noqa: B018
     return (setting_ui,)

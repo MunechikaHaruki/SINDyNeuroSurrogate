@@ -1,6 +1,3 @@
-import inspect
-from collections import Counter
-
 import marimo as mo
 import pandas as pd
 from analysis.access import (
@@ -13,8 +10,12 @@ from analysis.access import (
 )
 from analysis.save.panel import SaveEntry, entry
 
-from neurosurrogate.currents import CURRENT_MAP
-from neurosurrogate.metrics.eval_sweep import CurrentSweepConfig, evaluate_sweep
+from neurosurrogate.metrics.eval_sweep import (
+    CurrentSweepConfig,
+    evaluate_sweep,
+    sweep_labels,
+    sweepable_params,
+)
 from neurosurrogate.metrics.wave import DF_ROW_METRICS, SCALAR_METRICS
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.view.utils import sweep_fig, sweep_trace_grid_fig
@@ -24,18 +25,8 @@ from neurosurrogate.view.utils import sweep_fig, sweep_trace_grid_fig
 # ---------------------------------------------------------------------------
 
 
-def _numeric_params_of(current_type: str) -> list[str]:
-    """掃引対象候補となる numeric パラメータ名列。silence_duration/duration は
-    掃引意図の対象でないため除外。0 件 = 掃引 UI 非対応。"""
-    return [
-        name
-        for name, p in inspect.signature(CURRENT_MAP[current_type]).parameters.items()
-        if p.annotation in (int, float) and name not in ("silence_duration", "duration")
-    ]
-
-
 def _is_sweepable(current_type: str) -> bool:
-    return len(_numeric_params_of(current_type)) > 0
+    return len(sweepable_params(current_type)) > 0
 
 
 _SWEEP_FALLBACK = (-5.0, 20.0, 10)
@@ -46,7 +37,7 @@ def make_sweep_ui(
     run_selector: mo.ui.table,
     preset: dict | None = None,
 ) -> mo.ui.dictionary | None:
-    params = _numeric_params_of(current_type)
+    params = sweepable_params(current_type)
     if not params:
         return None
     start, stop, steps = _SWEEP_FALLBACK
@@ -106,26 +97,6 @@ def make_draw_ui(
 # ---------------------------------------------------------------------------
 # Calc
 # ---------------------------------------------------------------------------
-
-
-def sweep_labels(loaded: list[SurrogateBundle]) -> list[str]:
-    """掃引結果の識別キー列 (選択順)。
-
-    `meta.label` は学習構造 + 学習データまでしか区別しない → library_specs 違いや
-    同 config の再実行は同じ label になる。掃引結果は label キーの dict なので、
-    そのままだと silent に 1 run へ潰れ summary 表と掃引図が食い違う。衝突した
-    label にだけ選択順の連番を付けて潰れを防ぐ (選択を拒否せず全部見せる)。
-    """
-    counts = Counter(s.meta.label for s in loaded)
-    seen: Counter[str] = Counter()
-    labels = []
-    for s in loaded:
-        seen[s.meta.label] += 1
-        n = seen[s.meta.label]
-        labels.append(
-            s.meta.label if counts[s.meta.label] == 1 else f"{s.meta.label}#{n}"
-        )
-    return labels
 
 
 def calc_sweep(
