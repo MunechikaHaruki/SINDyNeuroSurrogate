@@ -1,6 +1,7 @@
 # @package _global_
 surrogate:
   meta:
+    comp_type: traub  # 置換対象のコンパートメント種類
     surrogate_type: sindy
     preprocessor_type: pca
     n_components: 1  # 潜在方程式の次元

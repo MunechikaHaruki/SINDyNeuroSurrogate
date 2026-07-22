@@ -24,8 +24,7 @@ from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
-from ..replace import replaceable
-from .base import Ansatz, TrainInputs, TrainSource
+from .base import Ansatz, TrainInputs
 
 
 @dataclass(frozen=True)
@@ -115,24 +114,9 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
     def _physics(self, meta: SurrogateMeta) -> HybridPhysics:
         return HYBRID_PHYSICS[meta.comp_type.name]
 
-    def train_source(self, meta: SurrogateMeta) -> TrainSource:
-        """学習データ源 = 置換対象になるノード全部 (comp_id 昇順) の先頭 n_learned
-        ゲート (extra=Ca サブ系は physics へ分離)。
-
-        「置換する comp の軌道で学習する」ことで訓練分布を評価分布に一致させる。
-        単体モデル (MCMODELS["traub"] 等) なら train_comp 1 個で従来と同一。学習
-        データセットに multi-comp を指定すれば全 comp の (V, gate) 軌道が入る。
-        学習ゲートは params-free (V 依存のみ) → 全 comp は同一のゲート多様体上に
-        乗り、増えるのは V の被覆だけ。n_components を増やす必要はない。
-        """
-        return TrainSource(
-            comp_ids=[
-                i
-                for i, comp in enumerate(meta.dataset.net.nodes)
-                if replaceable(meta, comp)
-            ],
-            n_gate=self._physics(meta).n_learned,
-        )
+    def n_train_gate(self, meta: SurrogateMeta) -> int:
+        """純電位依存ゲートのみ学習 (extra=Ca サブ系は physics へ分離)。"""
+        return self._physics(meta).n_learned
 
     def train_inputs(
         self,
@@ -219,7 +203,7 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
             )
 
         return CompartmentType(
-            name="hybrid_surr",
+            name=meta.surr_type_name,
             kernel=hybrid_kernel,
             param_cls=phys.param_cls,
             gate_names=access.latent_vars(n_latent)

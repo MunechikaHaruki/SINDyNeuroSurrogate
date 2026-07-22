@@ -45,6 +45,20 @@ def replaceable(meta: SurrogateMeta, comp: Compartment) -> bool:
     )
 
 
+def train_comp_ids(meta: SurrogateMeta) -> list[int]:
+    """学習軌道を取る comp id 列 (comp_id 昇順)。**定式化に依らない共通規則**。
+
+    既定は「置換対象になるノード全部」= 置換する comp の軌道で学習する
+    (訓練分布を評価分布に一致させる)。`meta.train_comp_id` の指定があるときだけ
+    その 1 ノードへ絞る。置換の関心事 (replaceable) が選択基準なのでここに置く。
+    """
+    if meta.train_comp_id is not None:
+        return [meta.train_comp_id]
+    return [
+        i for i, comp in enumerate(meta.dataset.net.nodes) if replaceable(meta, comp)
+    ]
+
+
 def replaceables(meta: SurrogateMeta, dataset: DatasetConfig) -> set[str]:
     """dataset 内の置換対象ノード名を返す (fail first)。
 

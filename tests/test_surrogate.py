@@ -65,6 +65,12 @@ def fit_surrogate(
     return SurrogateBundle.setup(c)
 
 
+def _train_comp(surrogate: SurrogateBundle) -> int:
+    """学習 comp の先頭 (代表)。既定では置換対象ノード全部で学習するので、
+    単体モデルではこれが唯一の comp。"""
+    return surrogate.ansatz.train_source(surrogate.meta).comp_ids[0]
+
+
 @pytest.fixture(scope="module")
 def sindy() -> SurrogateBundle:
     """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。"""
@@ -92,7 +98,7 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
     result = evaluate(surrogate, surrogate.meta.dataset)
-    v = access.potential(result.surr_ds, surrogate.meta.train_comp_id)
+    v = access.potential(result.surr_ds, _train_comp(surrogate))
     assert v.shape == access.time(result.original_ds).shape
     assert np.isfinite(v[0])
 
@@ -113,7 +119,7 @@ def test_train_figs_render_from_reloaded_surrogate(
     sindy.save(tmp_path)
     reloaded = SurrogateBundle.load(tmp_path)
     source = reloaded.ansatz.train_source(reloaded.meta)
-    assert source.comp_ids == [sindy.meta.train_comp_id]  # sindy は学習元 1 comp
+    assert source.comp_ids == [_train_comp(sindy)]  # 単体 hh モデル → 1 comp
     assert source.n_gate == len(sindy.meta.comp_type.gate_names)  # 全ゲート
 
     names = [name for name, _ in train_figs(reloaded)]
@@ -161,7 +167,7 @@ def test_ae_preprocessor_path_runs() -> None:
     epochs を切り詰めるので再構成品質は問わない — 形状と潜在次元の整合のみ。"""
     surrogate = fit_surrogate("hh", 2, extra=AE_SMOKE)
     source = surrogate.ansatz.train_source(surrogate.meta)
-    gate = source.gate(surrogate.train_xr, surrogate.meta.train_comp_id)
+    gate = source.gate(surrogate.train_xr, _train_comp(surrogate))
     latent = surrogate.preprocessor.encode(gate)
     assert latent.shape == (gate.shape[0], 2)
     assert np.asarray(surrogate.preprocessor.decode(jnp.asarray(latent))).shape == (
@@ -219,7 +225,7 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments() -> None:
     # 置換シミュ (XI/Q を各ノード params で physics 積分) が有限に走る。
     v = access.potential(
         unified_simulator(apply_surrogate(surrogate, surrogate.meta.dataset)),
-        surrogate.meta.train_comp_id,
+        _train_comp(surrogate),
     )
     assert np.isfinite(v).all()
 

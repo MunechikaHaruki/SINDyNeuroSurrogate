@@ -59,7 +59,7 @@ def _latents(
 def train_raw_fig(bundle: SurrogateBundle) -> Figure:
     """生の学習軌道: 注入電流・学習 comp 全部の V・学習元 comp のゲート。
 
-    どの comp の軌道を食わせたかを V パネルで見る。ゲートは学習元 comp のみ
+    どの comp の軌道を食わせたかを V パネルで見る。ゲートは学習 comp の先頭 1 個のみ
     (全 comp 分を重ねると本数が comp×gate で潰れる。他 comp のゲートは同一多様体上
     に乗る前提なので、被覆のズレは coverage 図が受け持つ)。
     """
@@ -78,11 +78,11 @@ def train_raw_fig(bundle: SurrogateBundle) -> Figure:
                 ],
             ),
             PanelSpec(
-                f"gates ({bundle.meta.train_comp.name})",
+                f"gates ({_names(bundle)[0]})",
                 [
                     TraceSpec(
                         access.time(bundle.train_xr),
-                        source.gate(bundle.train_xr, bundle.meta.train_comp_id)[:, k],
+                        source.gate(bundle.train_xr, source.comp_ids[0])[:, k],
                         label=name,
                     )
                     for k, name in enumerate(

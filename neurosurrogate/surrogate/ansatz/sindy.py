@@ -10,17 +10,14 @@ from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
-from .base import Ansatz, TrainInputs, TrainSource
+from .base import Ansatz, TrainInputs
 
 
 class SINDyAnsatz(Ansatz[SINDyBundle]):
-    def train_source(self, meta: SurrogateMeta) -> TrainSource:
-        # 学習元ノード 1 個の全ゲート (V+gate 全体を丸ごと同定する定式化 → physics
-        # へ分離する列が無い)。
-        return TrainSource(
-            comp_ids=[meta.train_comp_id],
-            n_gate=len(meta.comp_type.gate_names),
-        )
+    def n_train_gate(self, meta: SurrogateMeta) -> int:
+        """全ゲートを学習する (V+gate 全体を丸ごと同定する定式化 → physics へ分離
+        する列が無い)。"""
+        return len(meta.comp_type.gate_names)
 
     def train_inputs(
         self,
@@ -28,16 +25,21 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
         train_xr: xr.Dataset,
         preprocessor: Preprocessor,
     ) -> TrainInputs:
-        # 状態は学習元 comp の [V, g1..gN] 丸ごと (V も同定対象)、入力はそのノードへの
-        # 流入電流 (transform_gate が I_internal を u 列へ置く)。
-        preprocessed_xr = transform_gate(
-            preprocessor, train_xr, comp_id=meta.train_comp_id
-        )
+        # 状態は [V, g1..gN] 丸ごと (V も同定対象)、入力は各ノードへの流入電流
+        # (transform_gate が I_internal を u 列へ置く)。comp ごとに 1 軌道で分ける
+        # — 縦連結すると境界に偽の時間微分が入る。
+        comp_ids = self.train_source(meta).comp_ids
+        preprocessed = [
+            transform_gate(preprocessor, train_xr, comp_id=i) for i in comp_ids
+        ]
         return TrainInputs(
-            x_names=list(preprocessed_xr.variable.values),
+            x_names=[access.POTENTIAL_VAR, *access.latent_vars(meta.n_components)],
             u_names=["u"],
-            x=[access.comp_matrix(preprocessed_xr, meta.train_comp_id)],
-            u=[access.i_ext_values(preprocessed_xr)[:, None]],
+            x=[
+                access.comp_matrix(pre, i)
+                for pre, i in zip(preprocessed, comp_ids, strict=True)
+            ],
+            u=[access.i_ext_values(pre)[:, None] for pre in preprocessed],
         )
 
     def fit(
@@ -80,7 +82,7 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
             return xi[0] @ theta, xi[1:] @ theta
 
         return CompartmentType(
-            name="surr",
+            name=meta.surr_type_name,
             kernel=surr_kernel,
             param_cls=None,
             gate_names=access.latent_vars(n_latent),

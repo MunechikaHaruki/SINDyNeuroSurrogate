@@ -11,6 +11,7 @@ from ...core.opcost import OpCost
 from ..closure.base import Closure
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
+from ..replace import train_comp_ids
 
 C = TypeVar("C", bound=Closure)
 
@@ -75,13 +76,23 @@ class Ansatz(ABC, Generic[C]):
     """
 
     @abstractmethod
+    def n_train_gate(self, meta: SurrogateMeta) -> int:
+        """先頭から何本のゲートを学習するか (残りは physics 側が解く)。
+
+        定式化ごとに違う唯一の学習範囲。**どの comp から取るかは定式化に依らない**
+        (置換対象全部 or 指定 1 ノード) ので `train_source` が共通で組む。
+        """
+        ...
+
     def train_source(self, meta: SurrogateMeta) -> TrainSource:
         """学習入力の列選択 (どの comp の・先頭何ゲートを食わせるか)。
 
         meta だけで決まる → setup (preprocessor 学習) も fit も view も、必要な
         ときに引き直せば同じものが得られる (成果物に保存しない)。
         """
-        ...
+        return TrainSource(
+            comp_ids=train_comp_ids(meta), n_gate=self.n_train_gate(meta)
+        )
 
     @abstractmethod
     def train_inputs(
