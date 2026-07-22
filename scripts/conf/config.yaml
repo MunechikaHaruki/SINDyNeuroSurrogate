@@ -13,6 +13,8 @@ surrogate:
       dt: 0.01
     # 学習を 1 ノードへ絞る指定 (省略/null = 置換対象ノード全部で学習)。
     train_comp_identifier: null
+    # 学習/physics 分割の変種 (hybrid の HYBRID_PHYSICS キー。null = comp_type 名)。
+    physics_type: null
   preprocessor: {} # 種別固有 hyperparams のみ (ae: epochs/lr)。既定値は実装側
   ansatz:
     optimizer:

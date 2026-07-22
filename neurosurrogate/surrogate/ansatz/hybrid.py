@@ -12,10 +12,15 @@ from ...compartments.traub import (
     TRAUB_DV_COST,
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_LEARNED_GATE_NAMES,
+    TRAUB_SR_CA_COST,
+    TRAUB_SR_EXTRA_GATE_NAMES,
+    TRAUB_SR_LEARNED_GATE_NAMES,
     TraubParams,
     traub_calcium_step,
     traub_dv,
     traub_extra_inits,
+    traub_sr_calcium_step,
+    traub_sr_extra_inits,
 )
 from ...core import access
 from ...core.network import CompartmentType
@@ -66,6 +71,8 @@ class HybridPhysics:
     extra: ExtraPhysics | None
 
 
+# キー = meta.physics_type (既定は comp_type 名)。同じ置換対象でも「どこまでを学習
+# ゲートにし、どこから physics で解くか」を preset で振れる = アブレーションの軸。
 HYBRID_PHYSICS: dict[str, HybridPhysics] = {
     # HH: 3 ゲート全てが純電位依存 (Ca 無し) → extra 無し。G_*/E_*/C は dv が陽に読む
     # → 置換先ノード自身の params で解ける。
@@ -95,6 +102,22 @@ HYBRID_PHYSICS: dict[str, HybridPhysics] = {
             cost=TRAUB_CA_COST,
         ),
     ),
+    # Ca 電流のゲート S,R も physics へ回す (学習は 6 ゲート)。i_ca = g_Ca·S²·R は
+    # XI の積分器を駆動するので、decode 誤差が 2 乗で増幅されバイアスとして溜まる
+    # 経路を断つ狙い。"traub" との差は学習/physics の分割位置だけ。
+    "traub_sr_physics": HybridPhysics(
+        param_cls=TraubParams,
+        dv=traub_dv,
+        dv_cost=TRAUB_DV_COST,
+        v_init=lambda p: p.V_LEAK,
+        n_learned=len(TRAUB_SR_LEARNED_GATE_NAMES),
+        extra=ExtraPhysics(
+            names=TRAUB_SR_EXTRA_GATE_NAMES,
+            step=traub_sr_calcium_step,
+            inits=traub_sr_extra_inits,
+            cost=TRAUB_SR_CA_COST,
+        ),
+    ),
 }
 
 
@@ -112,7 +135,7 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
     """
 
     def _physics(self, meta: SurrogateMeta) -> HybridPhysics:
-        return HYBRID_PHYSICS[meta.comp_type.name]
+        return HYBRID_PHYSICS[meta.physics_type or meta.comp_type.name]
 
     def n_train_gate(self, meta: SurrogateMeta) -> int:
         """純電位依存ゲートのみ学習 (extra=Ca サブ系は physics へ分離)。"""

@@ -1,0 +1,9 @@
+# @package _global_
+# 対照群: traub_useMC19CompForTeachingData の S,R physics 版。
+# 詳細は traub_srPhysics_useSingleCompForTeachingData.yaml を参照。
+defaults:
+  - traub_useMC19CompForTeachingData
+
+surrogate:
+  meta:
+    physics_type: traub_sr_physics

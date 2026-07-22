@@ -1,0 +1,11 @@
+# @package _global_
+# 対照群: traub_useSingleCompForTeachingData から **Ca ゲート S,R を学習から外し
+# physics で解く** 点だけを変えた条件 (学習ゲート 8 → 6)。
+# i_ca = g_Ca·S²·R が XI の積分器を駆動する → S,R の圧縮誤差が 2 乗で増幅され
+# AHP (バースト終息) を狂わせる、という仮説の検証用。
+defaults:
+  - traub_useSingleCompForTeachingData
+
+surrogate:
+  meta:
+    physics_type: traub_sr_physics

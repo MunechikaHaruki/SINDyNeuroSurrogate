@@ -1,0 +1,9 @@
+# @package _global_
+# テスト専用プリセット。_test_traub_hybrid の S,R physics 版 (学習ゲート 8 → 6)。
+# physics 分割を preset で振れること = 状態次元/初期値/置換が両分割で通ることを踏む。
+defaults:
+  - _test_traub_hybrid
+
+surrogate:
+  meta:
+    physics_type: traub_sr_physics

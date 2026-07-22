@@ -142,7 +142,7 @@ class TraubParams(NamedTuple):
 
 def traub_dv(p: TraubParams, u_t, v, states):
     """Traub 物理 dV/dt。states=10次元 (hybrid では decode 済 latent)。"""
-    M, S, N, C, A, H, R, B, Q, XI = [states[i] for i in range(10)]
+    M, N, C, A, H, B, S, R, Q, XI = [states[i] for i in range(10)]
     i_leak = p.g_leak * (v - p.V_LEAK)
     i_na = p.g_Na * M * M * H * (v - p.V_Na)
     i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
@@ -157,79 +157,105 @@ def traub_dv(p: TraubParams, u_t, v, states):
 
 def calc_traub_channel(p: TraubParams, u_t, v, states):
     """Traub: (dv, dstates 10次元) を返す"""
-    M, S, N, C, A, H, R, B, Q, XI = [states[i] for i in range(10)]
+    M, N, C, A, H, B, S, R, Q, XI = [states[i] for i in range(10)]
     dv = traub_dv(p, u_t, v, states)
 
     dM = _traub_dstate_v("M", v, M)
-    dS = _traub_dstate_v("S", v, S)
     dN = _traub_dstate_v("N", v, N)
     dC = _traub_dstate_v("C", v, C)
     dA = _traub_dstate_v("A", v, A)
     dH = _traub_dstate_v("H", v, H)
-    dR = _traub_dstate_v("R", v, R)
     dB = _traub_dstate_v("B", v, B)
+    dS = _traub_dstate_v("S", v, S)
+    dR = _traub_dstate_v("R", v, R)
     dQ = alpha_q_traub(XI) * (1.0 - Q) - beta_q_traub(XI) * Q
     i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
     dXI = -p.phi_area * i_ca - p.Beta * XI
 
-    return dv, jnp.stack([dM, dS, dN, dC, dA, dH, dR, dB, dQ, dXI])
+    return dv, jnp.stack([dM, dN, dC, dA, dH, dB, dS, dR, dQ, dXI])
 
 
-# 状態順序: [M, S, N, C, A, H, R, B, Q, XI]
-TRAUB_STATE_NAMES = ["M", "S", "N", "C", "A", "H", "R", "B", "Q", "XI"]
+# 状態順序: [M, N, C, A, H, B, S, R, Q, XI]。hybrid の学習ゲートは「先頭 n 本」規約
+# (TrainSource.gate) なので、学習するものを先頭へ並べる = この順序が分割位置を決める。
+TRAUB_STATE_NAMES = ["M", "N", "C", "A", "H", "B", "S", "R", "Q", "XI"]
 
-# hybrid での学習/physics 分割 (params 依存性による):
-#   学習 = 純電位依存ゲート (定数 TRAUB_V_LEAK 基準 → params 非依存)
-#   extra(physics) = Ca サブ系 XI(濃度)/Q。dXI が phi_area/g_Ca/V_Ca/Beta を、
-#   i_kc/i_kahp が XI/Q を陽に読む → 各ノード自身の params で解けば任意 comp へ移植可。
-TRAUB_LEARNED_GATE_NAMES = ["M", "S", "N", "C", "A", "H", "R", "B"]
-TRAUB_EXTRA_GATE_NAMES = ["XI", "Q"]  # surr state に latent の後へ付く physics 状態
+# hybrid での学習/physics 分割は 2 通りあり、preset (meta.physics_type) が選ぶ。
+# どちらも「学習ゲート = 先頭 n 本、残りが extra」という TrainSource の規約に乗る
+# ので、状態順序が分割位置をそのまま決める。
+#
+# 既定: 純電位依存 8 ゲートを学習し、Ca サブ系の濃度 XI と Q だけ physics。
+TRAUB_LEARNED_GATE_NAMES = ["M", "N", "C", "A", "H", "B", "S", "R"]
+TRAUB_EXTRA_GATE_NAMES = ["Q", "XI"]
+# S,R も physics へ回す版: i_ca = g_Ca·S²·R が XI の積分器を駆動するため、S,R の
+# decode 誤差が S の 2 乗で増幅され XI へバイアスとして蓄積する。XI は i_kahp/i_kc
+# (AHP = バースト終息機構) を駆動するので、そのずれが発火パターンの崩壊に直結する。
+# S,R は純電位依存 (レート関数だけで解ける = params-free) なので physics 側へ回して
+# も 1 サロゲートを任意 comp へ移植できる性質は保たれる。
+TRAUB_SR_LEARNED_GATE_NAMES = ["M", "N", "C", "A", "H", "B"]
+TRAUB_SR_EXTRA_GATE_NAMES = ["S", "R", "XI", "Q"]
 
 
 def traub_calcium_step(p: TraubParams, v, gates8, extra):
-    """Ca サブ系 physics step。gates8=decode 済 [M,S,N,C,A,H,R,B]、extra=[XI,Q]。
-    traub_dv 用の全 10 状態 [M..B,Q,XI] と d(extra)=[dXI,dQ] を返す。"""
-    XI, Q = extra[0], extra[1]
-    S, R = gates8[1], gates8[6]
+    """Ca サブ系 physics step。gates8=decode 済 [M,N,C,A,H,B,S,R]、extra=[Q,XI]。
+    traub_dv 用の全 10 状態と d(extra)=[dQ,dXI] を返す。"""
+    Q, XI = extra[0], extra[1]
+    S, R = gates8[6], gates8[7]
     i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
-    dXI = -p.phi_area * i_ca - p.Beta * XI
     dQ = alpha_q_traub(XI) * (1.0 - Q) - beta_q_traub(XI) * Q
-    full = jnp.concatenate([gates8, jnp.stack([Q, XI])])
-    return full, jnp.stack([dXI, dQ])
+    dXI = -p.phi_area * i_ca - p.Beta * XI
+    return jnp.concatenate([gates8, extra]), jnp.stack([dQ, dXI])
 
 
 def traub_extra_inits(p: TraubParams) -> list[float]:
-    """[XI, Q] 初期値を params から算出 (V_LEAK 定常)。params のみ依存 → load 後も
-    train_comp params から再現可 (train データ不要)。"""
+    """[Q, XI] 初期値 (V_LEAK 定常)。params のみ依存 → load 後も再現可。"""
+    xi = _traub_xi_init(p)
+    return [float(_traub_inf_q(jnp.asarray(xi))), xi]
+
+
+def traub_sr_calcium_step(p: TraubParams, v, gates6, extra):
+    """S,R も physics で解く版。gates6=[M,N,C,A,H,B]、extra=[S,R,XI,Q]。"""
+    S, R, XI, Q = extra[0], extra[1], extra[2], extra[3]
+    i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
+    dXI = -p.phi_area * i_ca - p.Beta * XI
+    dQ = alpha_q_traub(XI) * (1.0 - Q) - beta_q_traub(XI) * Q
+    full = jnp.concatenate([gates6, jnp.stack([S, R, Q, XI])])
+    return full, jnp.stack(
+        [_traub_dstate_v("S", v, S), _traub_dstate_v("R", v, R), dXI, dQ]
+    )
+
+
+def traub_sr_extra_inits(p: TraubParams) -> list[float]:
+    """[S, R, XI, Q] 初期値 (V_LEAK 定常)。"""
+    return [
+        float(_traub_inf_v("S", p.V_LEAK)),
+        float(_traub_inf_v("R", p.V_LEAK)),
+        _traub_xi_init(p),
+        float(_traub_inf_q(jnp.asarray(_traub_xi_init(p)))),
+    ]
+
+
+def _traub_xi_init(p: TraubParams) -> float:
+    """V_LEAK 定常 (dXI/dt = 0) の Ca 濃度。"""
     s = _traub_inf_v("S", p.V_LEAK)
     r = _traub_inf_v("R", p.V_LEAK)
-    xi = float(-p.phi_area * (p.g_Ca * s * s * r * (p.V_LEAK - p.V_Ca)) / p.Beta)
-    return [xi, float(_traub_inf_q(jnp.asarray(xi)))]
-
-
-# Ca サブ系 physics の演算コスト (i_ca + dXI + dQ)。
-TRAUB_CA_COST = (
-    OpCost(pm=1, mul=4)  # i_ca = g_Ca·S·S·R·(v-V_Ca)
-    + OpCost(pm=1, mul=2)  # dXI = -phi_area·i_ca - Beta·XI
-    + OpCost(pm=2, mul=3)  # dQ = alpha_q·(1-Q) - beta_q·Q (min/const は無視)
-)
+    return float(-p.phi_area * (p.g_Ca * s * s * r * (p.V_LEAK - p.V_Ca)) / p.Beta)
 
 
 def _traub_state_inits(p: TraubParams) -> list[float]:
     v0 = p.V_LEAK
     m = float(_traub_inf_v("M", v0))
-    s = float(_traub_inf_v("S", v0))
     n = float(_traub_inf_v("N", v0))
     c = float(_traub_inf_v("C", v0))
     a = float(_traub_inf_v("A", v0))
     h = float(_traub_inf_v("H", v0))
-    r = float(_traub_inf_v("R", v0))
     b = float(_traub_inf_v("B", v0))
+    s = float(_traub_inf_v("S", v0))
+    r = float(_traub_inf_v("R", v0))
     # i_Ca(v0) を用いて XI 初期値を求める (定常: dXI/dt = 0)
     i_ca0 = p.g_Ca * s * s * r * (v0 - p.V_Ca)
     xi = float(-p.phi_area * i_ca0 / p.Beta)
     q = float(_traub_inf_q(jnp.asarray(xi)))
-    return [m, s, n, c, a, h, r, b, q, xi]
+    return [m, n, c, a, h, b, s, r, q, xi]
 
 
 def _traub_dstate_v(name, v, x):
@@ -257,6 +283,25 @@ TRAUB_RATE_COST_MAP: dict[str, OpCost] = {
     "alpha_b_traub": OpCost(exp=1, div=1, pm=2, mul=1),
     "beta_b_traub": OpCost(exp=1, div=2, pm=3),
 }
+
+
+# Ca サブ系 physics の演算コスト (i_ca + dXI + dQ)。
+TRAUB_CA_COST = (
+    OpCost(pm=1, mul=4)  # i_ca = g_Ca·S·S·R·(v-V_Ca)
+    + OpCost(pm=1, mul=2)  # dXI = -phi_area·i_ca - Beta·XI
+    + OpCost(pm=2, mul=3)  # dQ = alpha_q·(1-Q) - beta_q·Q (min/const は無視)
+)
+
+# S,R も physics で解く版のコスト = 上記 + S,R のレート積分 2 本。
+TRAUB_SR_CA_COST = (
+    TRAUB_CA_COST
+    + TRAUB_RATE_COST_MAP["alpha_s_traub"]
+    + TRAUB_RATE_COST_MAP["beta_s_traub"]
+    + OpCost(pm=2, mul=2)  # dS = alpha_s·(1-S) - beta_s·S
+    + TRAUB_RATE_COST_MAP["alpha_r_traub"]
+    + TRAUB_RATE_COST_MAP["beta_r_traub"]
+    + OpCost(pm=2, mul=2)  # dR = alpha_r·(1-R) - beta_r·R
+)
 
 
 # 物理 dV/dt 演算コスト (traub_dv): 7イオン電流 + i_ion 総和 + dv/dt

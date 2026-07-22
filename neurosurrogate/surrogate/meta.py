@@ -32,6 +32,9 @@ class SurrogateMeta:
       `train_comp_id` … **学習軌道を 1 ノードへ絞る指定** (yaml の
                         `train_comp_identifier`、既定 None)。None なら種類一致の
                         置換対象ノード全部で学習する (訓練分布=評価分布)。
+      `physics_type`  … **どこまでを学習ゲートにするかの選択** (hybrid の
+                        `HYBRID_PHYSICS` キー、既定 None = comp_type 名)。
+                        同じ置換対象でも学習/physics の分割位置を変えられる。
     """
 
     surrogate_type: str  # sindy/hybrid
@@ -40,6 +43,7 @@ class SurrogateMeta:
     dataset: DatasetConfig
     comp_type: CompartmentType  # 置換対象の種類 (hh/traub…)
     train_comp_id: int | None  # 学習を絞るノード。None = 種類一致ノード全部
+    physics_type: str | None  # 学習/physics 分割の変種。None = comp_type 名
 
     @classmethod
     def build(
@@ -50,6 +54,7 @@ class SurrogateMeta:
         datasets: dict,
         comp_type: str,
         train_comp_identifier: str | None = None,
+        physics_type: str | None = None,
     ) -> "SurrogateMeta":
         dataset = DatasetConfig.build_dataset(**datasets)
         return cls(
@@ -63,6 +68,7 @@ class SurrogateMeta:
                 if train_comp_identifier is None
                 else dataset.net.name_to_idx(train_comp_identifier)
             ),
+            physics_type=physics_type,
         )
 
     def to_dict(self) -> dict:
@@ -74,6 +80,7 @@ class SurrogateMeta:
             "comp_type": self.comp_type.name,
             "dataset": self.dataset.to_dict(),
             "train_comp_id": self.train_comp_id,
+            "physics_type": self.physics_type,
         }
 
     @classmethod
@@ -85,6 +92,7 @@ class SurrogateMeta:
             dataset=DatasetConfig.from_dict(d["dataset"]),
             comp_type=COMPARTMENT_TYPES[d["comp_type"]],
             train_comp_id=d["train_comp_id"],
+            physics_type=d["physics_type"],
         )
 
     @property
@@ -94,6 +102,7 @@ class SurrogateMeta:
         末尾は学習データの MC モデル名。学習構造が同じでも学習データが違えば別物
         (traub 単体で学習 vs traub19 の全 comp で学習) → sweep はこれを識別キーに
         するので、データ名まで含めないと別 run が silent に 1 本へ潰れる。
+        physics 変種も同じ理由で付ける (既定は付けない = 従来表示のまま)。
         """
         return f"{self.surrogate_type}/n{self.n_components}/{self.preprocessor_type}"
 
