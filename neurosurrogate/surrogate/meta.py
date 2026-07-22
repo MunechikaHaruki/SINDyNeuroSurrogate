@@ -97,14 +97,28 @@ class SurrogateMeta:
 
     @property
     def label(self) -> str:
-        """図表示用の簡約名。例 hybrid/n2/ae@traub19。runName 文字列に非依存。
+        """図表示用の簡約名 (凡例が主用途)。runName 文字列に非依存。例:
 
-        末尾は学習データの MC モデル名。学習構造が同じでも学習データが違えば別物
-        (traub 単体で学習 vs traub19 の全 comp で学習) → sweep はこれを識別キーに
-        するので、データ名まで含めないと別 run が silent に 1 本へ潰れる。
-        physics 変種も同じ理由で付ける (既定は付けない = 従来表示のまま)。
+            hybrid/n5/ae
+            +traub_sr_physics
+            @traub19:soma
+
+        条件の軸ごとに改行する — 1 行に連ねると凡例で潰れて読めない。
+        `@` 以降は学習データ (MC モデル名 + 絞り込みノード名)。学習構造が同じでも
+        学習データが違えば別物 (traub 単体 vs traub19 全 comp vs traub19 の soma
+        のみ) → sweep はこれを識別キーにするので、ここまで含めないと別 run が
+        silent に 1 本へ潰れる。physics 変種 (`+…`) も同じ理由で付ける。
+        既定値の軸は行ごと出さない = 条件を振っていなければ従来どおり短いまま。
         """
-        return f"{self.surrogate_type}/n{self.n_components}/{self.preprocessor_type}"
+        return "\n".join(
+            [
+                f"{self.surrogate_type}/n{self.n_components}/{self.preprocessor_type}",
+                *([] if self.physics_type is None else [f"+{self.physics_type}"]),
+                "@"
+                + self.dataset.model_name
+                + ("" if self.train_comp_id is None else f":{self.train_comp.name}"),
+            ]
+        )
 
     @property
     def surr_type_name(self) -> str:

@@ -318,6 +318,17 @@ TRAUB_DV_COST = (
 )
 
 
+# calc_traub_channel 1 ステップ全体。置換前コスト = サロゲートの比較基準になる
+# (`SurrogateMeta.original_opcost`) → 実測でなく実装どおりの積算で揃える。
+# i_ca は dv 内と Ca サブ系で 2 度計算されるが、実装がそうなので両方数える。
+_TRAUB_OPCOST = (
+    sum(TRAUB_RATE_COST_MAP.values(), OpCost())  # V 依存レート 8 ゲート分 (α,β)
+    + TRAUB_DV_COST
+    + OpCost(pm=2, mul=2) * len(_TRAUB_RATE_V)  # dg/dt = α(1-g) - βg
+    + TRAUB_CA_COST  # i_ca + dXI + dQ
+)
+
+
 def traub_inits(p: TraubParams) -> list[float]:
     """[V, *TRAUB_STATE_NAMES] 初期状態。静止電位 = 自身の V_LEAK。"""
     return [p.V_LEAK] + _traub_state_inits(p)
@@ -329,5 +340,5 @@ TRAUB_TYPE = CompartmentType(
     param_cls=TraubParams,
     gate_names=TRAUB_STATE_NAMES,
     inits=traub_inits,
-    opcost=OpCost(),  # TODO: 実測 or 積算
+    opcost=_TRAUB_OPCOST,
 )
