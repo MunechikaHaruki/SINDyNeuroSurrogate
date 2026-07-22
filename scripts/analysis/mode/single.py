@@ -10,6 +10,7 @@ from analysis.access import (
     sim_current_params_of,
     sim_run_selection_of,
     target_of,
+    view_comps_of,
 )
 from analysis.save.panel import SaveEntry, entry
 from matplotlib.figure import Figure
@@ -127,9 +128,10 @@ def calc_eval(
 
 
 def model_figs(
-    net: NeuronGraph, surrogate: SurrogateBundle
+    net: NeuronGraph, surrogate: SurrogateBundle, comps: list[int] | None = None
 ) -> list[tuple[str, Figure]]:
-    """single mode の静的モデル図。(save 名, fig) 列。
+    """single mode の静的モデル図。(save 名, fig) 列。comps=学習データ図に描く
+    comp の制限 (None=学習 comp 全部)。
 
     学習データ図 (train_figs) もここに入る: run のロードだけで描け、置換シミュ結果
     に依らない (学習データは meta + closure.train_source から再生成される)。
@@ -137,7 +139,7 @@ def model_figs(
     return [
         ("neurograph", view_neuron_graph(net, replaced_names(surrogate.meta, net))),
         *closure_figs(surrogate.closure),
-        *train_figs(surrogate),
+        *train_figs(surrogate, comps),
     ]
 
 
@@ -156,7 +158,10 @@ def view(
     if surrogate is None:
         return []
     net = MCMODELS[target_of(base_ui)]
-    entries = [entry(name, fig) for name, fig in model_figs(net, surrogate)]
+    # 表示 comp は UI では名前、view 層は comp_id で受ける (access と同じ規約)。
+    view_comps = view_comps_of(draw_ui)
+    comps = None if view_comps is None else [net.name_to_idx(c) for c in view_comps]
+    entries = [entry(name, fig) for name, fig in model_figs(net, surrogate, comps)]
     if res is None:
         return entries
 
@@ -165,7 +170,7 @@ def view(
     spike_surr = int(draw_ui["single"]["spike"]["surr"].value)
     rep = res.wave_report(target_comp_id, spike_orig, spike_surr)
 
-    entries += [entry(name, fig) for name, fig in draw_all(res, target_comp_id)]
+    entries += [entry(name, fig) for name, fig in draw_all(res, target_comp_id, comps)]
     entries += [
         entry("metrics", rep.df_metrics),
         entry("metrics_scalar", rep.df_scalar),

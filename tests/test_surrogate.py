@@ -23,7 +23,7 @@ from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
 from neurosurrogate.view.model import equation_texs
-from neurosurrogate.view.specs import draw_all
+from neurosurrogate.view.specs import draw_all, spec_simple
 from neurosurrogate.view.train import train_figs
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
@@ -93,6 +93,18 @@ def test_sindy_draws_all_figs(sindy_eval: EvalResult) -> None:
         "diff",
         "simple",
         "attractor",
+    ]
+
+
+def test_view_comps_limit_drawn_traces(
+    sindy_eval: EvalResult, sindy: SurrogateBundle
+) -> None:
+    """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
+    指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
+    ds = sindy_eval.original_ds
+    assert len(spec_simple(ds, comps=[])) < len(spec_simple(ds))
+    assert [name for name, _ in train_figs(sindy, comps=[_train_comp(sindy)])] == [
+        name for name, _ in train_figs(sindy)
     ]
 
 

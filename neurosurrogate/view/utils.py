@@ -9,8 +9,9 @@ from matplotlib.figure import Figure
 
 from ..core import access
 from ..currents import CURRENT_MAP
+from ..metrics.wave import diverged
 from ..models import MCMODELS
-from .engine import error_fig
+from .engine import error_fig, new_figure, place_legend
 
 if TYPE_CHECKING:
     from ..metrics.eval_sweep import CurrentSweepConfig, SweepEval
@@ -23,12 +24,12 @@ def current_preview_fig(current_type: str, dt: float, params: dict) -> Figure:
     except Exception as e:  # noqa: BLE001
         return error_fig(f"build failed: {e}")
     t = np.arange(len(i_ext)) * dt
-    fig, ax = plt.subplots(figsize=(6, 2))
+    fig = new_figure(figsize=(6, 2))
+    ax = fig.subplots()
     ax.plot(t, i_ext, lw=0.8)
     ax.set_xlabel("t [ms]")
     ax.set_ylabel("I_ext [μA/cm²]")
     ax.set_title(f"{current_type} preview")
-    fig.tight_layout()
     return fig
 
 
@@ -42,7 +43,8 @@ def sweep_fig(
 ) -> Figure:
     """sweep メトリクス折れ線 (Original + surrogate 各 run)。marimo 非依存。
     labels は data の surrogate 列名 (= meta.label、順序=描画順)。"""
-    fig, ax = plt.subplots()
+    fig = new_figure()
+    ax = fig.subplots()
     if "original" in data.columns:
         ax.plot(data["amplitude"], data["original"], "k-o", label="Original", zorder=3)
 
@@ -62,8 +64,7 @@ def sweep_fig(
     ax.set_title(f"{cfg.sweep_param} sweep — {metric_key} ({comp_name})")
     if ylim is not None:
         ax.set_ylim(*ylim)
-    ax.legend()
-    fig.tight_layout()
+    place_legend(ax)
     return fig
 
 
@@ -77,13 +78,8 @@ def sweep_trace_grid_fig(
     comp_id = MCMODELS[sweep.model_name].name_to_idx(comp_name)
     n_col = len(sweep.amp_datasets)
     n_row = 1 + len(labels)
-    fig, axes = plt.subplots(
-        n_row,
-        n_col,
-        figsize=(2.6 * n_col, 1.5 * n_row),
-        squeeze=False,
-        sharex=True,
-    )
+    fig = new_figure(figsize=(2.6 * n_col, 1.5 * n_row))
+    axes = fig.subplots(n_row, n_col, squeeze=False, sharex=True)
     # y レンジは発散しない Original 電位の全 amp min/max から決める (ニューロン挙動を
     # 捉えるレンジ)。全 V 行で共有し、発散 surrogate はこのレンジで頭打ちにする。
     orig_vs = [
@@ -108,7 +104,7 @@ def sweep_trace_grid_fig(
                 label="Original",
             )
             surr_v = access.potential(surr_datasets[label], comp_id)
-            if not np.all(np.isfinite(surr_v)) or float(np.abs(surr_v).max()) > 1e4:
+            if diverged(surr_v):
                 ax.text(
                     0.5,
                     0.5,
@@ -132,7 +128,6 @@ def sweep_trace_grid_fig(
         axes[r][0].set_ylabel(label)
     for c in range(n_col):
         axes[-1][c].set_xlabel("t [ms]")
-    axes[1][0].legend(loc="upper right", fontsize="x-small")
+    place_legend(axes[1][-1])
     fig.suptitle(f"amp sweep waveform ({comp_name})")
-    fig.tight_layout()
     return fig

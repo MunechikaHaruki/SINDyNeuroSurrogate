@@ -13,6 +13,7 @@ from matplotlib.figure import Figure
 
 from ..surrogate.closure.base import Closure
 from ..surrogate.closure.sindy import SINDyBundle
+from .engine import new_figure, place_legend
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
@@ -75,7 +76,7 @@ def view_neuron_graph(net, surrogate_nodes=None, figsize=None) -> Figure:
     node_edge_colors = [_STIM_BORDER if n == net.stim else "white" for n in G.nodes]
     node_linewidths = [_STIM_LINEWIDTH if n == net.stim else 1.0 for n in G.nodes]
 
-    fig = Figure(figsize=figsize)
+    fig = new_figure(figsize=figsize)
     ax = fig.subplots()
 
     nx.draw_networkx_nodes(
@@ -111,10 +112,9 @@ def view_neuron_graph(net, surrogate_nodes=None, figsize=None) -> Figure:
             facecolor="white", edgecolor=_STIM_BORDER, linewidth=2, label="stim"
         )
     )
-    ax.legend(handles=legend_handles, loc="best", frameon=True)
+    place_legend(ax, legend_handles)
     ax.set_title("NeuronGraph")
     ax.axis("off")
-    fig.tight_layout()
     return fig
 
 
@@ -141,7 +141,8 @@ def closure_figs(closure: Closure) -> list[tuple[str, Figure]]:
 
 def view_model(result: SINDyBundle, figsize=(15, 3)):
     xi_matrix = np.asarray(result.xi)
-    fig, ax = plt.subplots(figsize=figsize)
+    fig = new_figure(figsize=figsize)
+    ax = fig.subplots()
 
     vmin = np.min(xi_matrix)
     vmax = np.max(xi_matrix)
@@ -182,7 +183,6 @@ def view_model(result: SINDyBundle, figsize=(15, 3)):
         )
         ax.set_xlabel("Library Features")
 
-    fig.tight_layout()
     return fig
 
 

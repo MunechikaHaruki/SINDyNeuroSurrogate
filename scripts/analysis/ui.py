@@ -201,6 +201,13 @@ def make_draw_ui(
             value=valid_or(p.get("eval_comp"), net.names, "soma"),
             label="評価対象comp",
         ),
+        # 全 comp を並べる図 (simple / train_*) の表示制限。空 = 全部 (既定)。
+        # eval_comp (比較対象 1 件) とは別軸: traub19 の 19 本重ねを読める本数へ絞る。
+        "view_comps": mo.ui.multiselect(
+            options=net.names,
+            value=[c for c in p.get("view_comps", []) if c in net.names],
+            label="表示comp (空=全部)",
+        ),
         "single": analysis_single.make_draw_ui(p.get("single", {}).get("spike")),
     }
     sweep = analysis_sweep.make_draw_ui(base_ui, p.get("sweep"))

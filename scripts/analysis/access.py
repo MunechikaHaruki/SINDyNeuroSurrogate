@@ -52,8 +52,13 @@ def plt_style_of(base_ui: mo.ui.dictionary) -> str:
 
 
 def eval_comp_of(draw_ui: mo.ui.dictionary) -> str:
-    """評価対象 comp 名。"""
+    """評価対象 comp 名 (diff/指標の比較対象、1 件)。"""
     return str(draw_ui["eval_comp"].value)
+
+
+def view_comps_of(draw_ui: mo.ui.dictionary) -> list[str] | None:
+    """全 comp を並べる図 (simple/train_*) に描く comp 名。空選択 = 制限なし (None)。"""
+    return [str(c) for c in draw_ui["view_comps"].value] or None
 
 
 def sim_current_params_of(setting_ui: mo.ui.dictionary) -> dict:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 import xarray as xr
@@ -8,14 +8,23 @@ from matplotlib.figure import Figure
 
 from ..core import access
 from ..core.access import POTENTIAL_VAR
-from .engine import PanelSpec, TraceSpec, draw_engine, error_fig
+from .engine import (
+    PanelSpec,
+    TraceSpec,
+    draw_engine,
+    error_fig,
+    new_figure,
+    place_legend,
+)
 
 if TYPE_CHECKING:
     from ..metrics.eval import EvalResult
 
 
-def spec_simple(ds: xr.Dataset) -> list[PanelSpec]:
-    comp_ids = access.comp_ids(ds)
+def spec_simple(ds: xr.Dataset, comps: Sequence[int] | None = None) -> list[PanelSpec]:
+    """全 comp の波形。comps を渡すとその comp だけに絞る (None=全部)。
+    traub19 のような多 comp モデルは全部重ねると読めないため。"""
+    comp_ids = [int(i) for i in access.comp_ids(ds) if comps is None or int(i) in comps]
     multi = len(comp_ids) > 1
     spec: list[PanelSpec] = [
         PanelSpec("I_ext", [TraceSpec(*access.i_ext(ds))]),
@@ -99,13 +108,6 @@ def spec_diff(
             )
             for latent in access.latent_variables(preprocessed)
         ],
-        PanelSpec(
-            "orig gates",
-            [
-                TraceSpec(*access.trace(original, surr_id, name), label=name)
-                for name in access.gate_variables(original, surr_id)
-            ],
-        ),
     ]
 
 
@@ -113,7 +115,7 @@ def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None) -> 
     """相平面重ね描き。orig と surr のダイナミクス一致度可視化。"""
     if state_vars is None:
         state_vars = [access.POTENTIAL_VAR, *access.latent_vars(1)]
-    fig = Figure()
+    fig = new_figure()
     ax = fig.subplots()
 
     def extract_trajectory(ds):
@@ -153,17 +155,20 @@ def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None) -> 
 
     # ランダム電流などの場合、軌道がボヤけるのでグリッドがあると位置関係が追いやすい
     ax.grid(True, linestyle=":", alpha=0.5)
-    ax.legend(loc="upper right", frameon=True)
-
-    fig.tight_layout()
+    place_legend(ax)
 
     return fig
 
 
-def draw_all(result: EvalResult, comp_id: int) -> list[tuple[str, Figure]]:
+def draw_all(
+    result: EvalResult, comp_id: int, comps: Sequence[int] | None = None
+) -> list[tuple[str, Figure]]:
     """EvalResult から全描画を識別子付きで一括生成。analysis 側は種別を知らず
     (id, fig) を保存/表示に流すだけ。学習ドメイン外 comp 等での失敗は error_fig
     に畳み戻り値型を保つ。
+
+    comp_id=比較対象 (diff/attractor は 1 comp の話)、comps=全 comp を並べる図
+    (simple) の表示制限。
 
     latent (preprocessed) は lazy 参照: 学習ドメイン外 comp で preprocessed_latent
     が raise するため diff/attractor でのみ評価する (simple は呼ばない)。
@@ -173,7 +178,7 @@ def draw_all(result: EvalResult, comp_id: int) -> list[tuple[str, Figure]]:
         "diff": lambda: draw_engine(
             spec_diff(original, result.preprocessed_latent(comp_id), surrogate, comp_id)
         ),
-        "simple": lambda: draw_engine(spec_simple(original)),
+        "simple": lambda: draw_engine(spec_simple(original, comps)),
         "attractor": lambda: plot_2d_attractor_comparison(
             result.preprocessed_latent(comp_id), surrogate, comp_id
         ),
