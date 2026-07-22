@@ -3,13 +3,17 @@ defaults:
   - surrogate: hh
 
 
-# type / init.n_components は各 surrogate preset が保持 (ansatz 固有のため config には置かない)
+# surrogate 直下の 3 ブロックは SurrogateBundle.setup の宛先そのもの
+# (meta=SurrogateMeta.build / preprocessor=preprocessor_cls.fit / sindy=ansatz.fit)。
+# 学習構造 (surrogate_type / preprocessor_type / n_components) は meta が単一源で、
+# 値は各 preset が保持する。
 surrogate:
-  init:
+  meta:
     datasets:
       dt: 0.01
     train_comp_identifier: soma
-  fit:
+  preprocessor: {} # 種別固有 hyperparams のみ (ae: epochs/lr)。既定値は実装側
+  sindy:
     optimizer:
       type: stlsq
       threshold: 0.01

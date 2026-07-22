@@ -22,7 +22,7 @@ def preprocessed_latent(
     """comp_id ノードのゲートを preprocessor で latent 圧縮した (V, latent...) xr を返す
     (診断用)。置換対象外 (学習ドメイン外) は latent 比較不可でエラー化。"""
     comp = dataset.net.nodes[comp_id]
-    if not replaceable(surrogate, comp):
+    if not replaceable(surrogate.meta, comp):
         raise ValueError(
             f"comp {comp.name!r} は学習ドメイン外 → latent 比較不可 "
             f"(学習型 {surrogate.meta.train_comp_type.name!r})"

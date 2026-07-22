@@ -26,8 +26,10 @@ class PCAPreprocessor(Preprocessor):
         self.explained_variance_ratio = explained_variance_ratio
 
     @classmethod
-    def fit(cls, train_gate: np.ndarray, spec: dict) -> "PCAPreprocessor":
-        pca = PCA(n_components=spec["n_components"]).fit(train_gate)
+    def fit(
+        cls, train_gate: np.ndarray, n_components: int, spec: dict
+    ) -> "PCAPreprocessor":
+        pca = PCA(n_components=n_components).fit(train_gate)
         inst = cls(
             components=np.asarray(pca.components_),
             mean=np.asarray(pca.mean_),

@@ -111,11 +111,13 @@ class AEPreprocessor(Preprocessor):
         self.x_std = x_std
 
     @classmethod
-    def fit(cls, train_gate: np.ndarray, spec: dict) -> "AEPreprocessor":
+    def fit(
+        cls, train_gate: np.ndarray, n_components: int, spec: dict
+    ) -> "AEPreprocessor":
         epochs = int(spec.get("epochs", 1000))
         lr = float(spec.get("lr", 3e-2))
         params, mean, std = train_autoencoder(
-            train_gate, n_components=spec["n_components"], epochs=epochs, lr=lr
+            train_gate, n_components=n_components, epochs=epochs, lr=lr
         )
         inst = cls(
             epochs=epochs,

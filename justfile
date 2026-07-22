@@ -69,7 +69,7 @@ radon:
 # Smoke test: pytest (ドメイン層) + Hydra entry + marimo notebook (cell error -> exit 1)
 test:
     {{ VIRTUAL_ENV }} pytest -q
-    MLFLOW_EXPERIMENT={{ SMOKE_EXP }} {{ VIRTUAL_ENV }} python scripts/main.py +surrogate.init.datasets.current_params.duration=180
+    MLFLOW_EXPERIMENT={{ SMOKE_EXP }} {{ VIRTUAL_ENV }} python scripts/main.py +surrogate.meta.datasets.current_params.duration=180
 
 # activate logging server
 mlflow:

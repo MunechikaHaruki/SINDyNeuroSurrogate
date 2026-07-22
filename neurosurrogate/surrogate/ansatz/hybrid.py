@@ -1,10 +1,11 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
 import sympy as sp
+import xarray as xr
 
 from ...compartments.hh import HH_DV_COST, HHParams, hh_dv
 from ...compartments.traub import (
@@ -20,13 +21,12 @@ from ...compartments.traub import (
 from ...core import access
 from ...core.network import CompartmentType
 from ...core.opcost import OpCost
+from ..meta import SurrogateMeta
+from ..preprocessor import Preprocessor
 from ..replace import replaceable
 from ..sindy import SINDyBundle
 from .base import Ansatz
 from .roles import Roles
-
-if TYPE_CHECKING:
-    from ..bundle import SurrogateBundle
 
 
 @dataclass(frozen=True)
@@ -111,10 +111,10 @@ class HybridAnsatz(Ansatz):
 
     SURROGATE_TYPE = "hybrid"
 
-    def _physics(self, bundle: "SurrogateBundle") -> HybridPhysics:
-        return HYBRID_PHYSICS[bundle.meta.train_comp_type.name]
+    def _physics(self, meta: SurrogateMeta) -> HybridPhysics:
+        return HYBRID_PHYSICS[meta.train_comp_type.name]
 
-    def _train_comp_ids(self, bundle: "SurrogateBundle") -> list[int]:
+    def _train_comp_ids(self, meta: SurrogateMeta) -> list[int]:
         """学習データ源の comp id 列 = 置換対象になるノード全部 (comp_id 昇順)。
 
         「置換する comp の軌道で学習する」ことで訓練分布を評価分布に一致させる。
@@ -125,56 +125,66 @@ class HybridAnsatz(Ansatz):
         """
         return [
             i
-            for i, comp in enumerate(bundle.meta.dataset.net.nodes)
-            if replaceable(bundle, comp)
+            for i, comp in enumerate(meta.dataset.net.nodes)
+            if replaceable(meta, comp)
         ]
 
-    def _comp_gate(self, bundle: "SurrogateBundle", comp_id: int) -> np.ndarray:
+    def _comp_gate(
+        self, meta: SurrogateMeta, train_xr: xr.Dataset, comp_id: int
+    ) -> np.ndarray:
         # 学習は先頭 n_learned ゲートのみ (extra=Ca サブ系は physics へ分離)。
-        return access.gate_matrix(bundle.train_xr, comp_id)[
-            :, : self._physics(bundle).n_learned
-        ]
+        return access.gate_matrix(train_xr, comp_id)[:, : self._physics(meta).n_learned]
 
-    def train_gate(self, bundle: "SurrogateBundle") -> np.ndarray:
+    def train_gate(self, meta: SurrogateMeta, train_xr: xr.Dataset) -> np.ndarray:
         # preprocessor は時間微分を取らない → 全 comp を縦連結してよい。gate_inits
         # は先頭行 = 最小 comp_id の t=0 潜在だが、初期ゲートは V_LEAK 定常で解かれ
         # params-free → 全 comp 同値。
         return np.concatenate(
-            [self._comp_gate(bundle, i) for i in self._train_comp_ids(bundle)], axis=0
+            [self._comp_gate(meta, train_xr, i) for i in self._train_comp_ids(meta)],
+            axis=0,
         )
 
     def fit(
-        self, bundle: "SurrogateBundle", optimizer: dict, library_specs: list[dict]
+        self,
+        meta: SurrogateMeta,
+        train_xr: xr.Dataset,
+        preprocessor: Preprocessor,
+        optimizer: dict,
+        library_specs: list[dict],
     ) -> SINDyBundle:
-        comp_ids = self._train_comp_ids(bundle)
+        comp_ids = self._train_comp_ids(meta)
         return SINDyBundle.from_sindy(
             library_specs=library_specs,
             optimizer_spec=optimizer,
             # comp ごとに 1 軌道のリストで渡す。SINDy は t から時間微分を数値推定する
             # ため、train_gate のように縦連結すると境界に偽の微分が入る。
             x=[
-                bundle.preprocessor.encode(self._comp_gate(bundle, i)) for i in comp_ids
+                preprocessor.encode(self._comp_gate(meta, train_xr, i))
+                for i in comp_ids
             ],
-            u=[access.potential(bundle.train_xr, i)[:, None] for i in comp_ids],
-            t=[access.time(bundle.train_xr)] * len(comp_ids),
-            targets=[
-                sp.Symbol(v) for v in access.latent_vars(bundle.meta.n_components)
-            ],
+            u=[access.potential(train_xr, i)[:, None] for i in comp_ids],
+            t=[access.time(train_xr)] * len(comp_ids),
+            targets=[sp.Symbol(v) for v in access.latent_vars(meta.n_components)],
             inputs=[sp.Symbol(access.POTENTIAL_VAR)],
             # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
             roles=Roles(
-                V=bundle.meta.n_components,
-                g=list(range(bundle.meta.n_components)),
+                V=meta.n_components,
+                g=list(range(meta.n_components)),
             ),
         )
 
-    def surr_comp_type(self, bundle: "SurrogateBundle") -> CompartmentType:
-        phys = self._physics(bundle)
+    def surr_comp_type(
+        self,
+        meta: SurrogateMeta,
+        preprocessor: Preprocessor,
+        sindy_bundle: SINDyBundle,
+    ) -> CompartmentType:
+        phys = self._physics(meta)
         extra = phys.extra
-        xi = jnp.asarray(bundle.sindy_bundle.xi)
-        decode = bundle.preprocessor.decode
-        compute_theta = bundle.sindy_bundle.compute_theta()
-        n_latent = bundle.meta.n_components
+        xi = jnp.asarray(sindy_bundle.xi)
+        decode = preprocessor.decode
+        compute_theta = sindy_bundle.compute_theta()
+        n_latent = meta.n_components
 
         # surr state = [latent₁..latentₙ, *extra]。extra は physics で解く追加状態
         # (Ca サブ系)、無ければ学習ゲート=dv 用の全ゲート。
@@ -194,7 +204,7 @@ class HybridAnsatz(Ansatz):
             # (phi_area/g_Ca 依存) はノードごとに違う。
             return (
                 [phys.v_init(p)]
-                + bundle.preprocessor.gate_inits
+                + preprocessor.gate_inits
                 + ([] if extra is None else extra.inits(p))
             )
 
@@ -208,13 +218,18 @@ class HybridAnsatz(Ansatz):
             opcost=None,
         )
 
-    def opcost(self, bundle: "SurrogateBundle") -> OpCost:
+    def opcost(
+        self,
+        meta: SurrogateMeta,
+        preprocessor: Preprocessor,
+        sindy_bundle: SINDyBundle,
+    ) -> OpCost:
         # kernel の 1 ステップ = decode(latent→gate) + Ca サブ系 physics (あれば) +
         # 物理 dV/dt + SINDy 潜在方程式。
-        phys = self._physics(bundle)
+        phys = self._physics(meta)
         return (
-            bundle.preprocessor.opcost()
+            preprocessor.opcost()
             + (OpCost() if phys.extra is None else phys.extra.cost)
             + phys.dv_cost
-            + bundle.sindy_bundle.opcost()
+            + sindy_bundle.opcost()
         )

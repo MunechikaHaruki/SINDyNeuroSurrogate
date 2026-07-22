@@ -34,8 +34,10 @@ class Preprocessor(ABC):
 
     @classmethod
     @abstractmethod
-    def fit(cls, train_gate: np.ndarray, spec: dict) -> "Preprocessor":
-        """spec (n_components + 種別固有 hyperparams) で学習した preprocessor。"""
+    def fit(
+        cls, train_gate: np.ndarray, n_components: int, spec: dict
+    ) -> "Preprocessor":
+        """潜在次元 n_components (全種共通) と spec (種別固有 hyperparams) で学習。"""
         ...
 
     @abstractmethod

@@ -36,11 +36,10 @@ def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
     cfg_surr = OmegaConf.to_container(cfg, resolve=True)["surrogate"]
     assert isinstance(cfg_surr, dict)
-    surrogate = SurrogateBundle.setup(type=cfg_surr["type"], **cfg_surr["init"])
     run_name = _make_run_name()
+    logger.info(f"[{run_name}] fit 開始")
     with mlflow.start_run(run_name=run_name):
-        logger.info(f"[{run_name}] fit 開始")
-        surrogate.fit(**cfg_surr["fit"])
+        surrogate = SurrogateBundle.setup(cfg_surr)
         log_surrogate_model(surrogate)
         logger.info(f"[{run_name}] 完了")
 

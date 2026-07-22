@@ -1,14 +1,13 @@
 # @package _global_
 surrogate:
-  type: hybrid
-  init:
+  meta:
+    surrogate_type: hybrid
+    preprocessor_type: ae
     n_components: 3  # 潜在方程式の次元
     datasets:
       model_name: traub
       current_type: train
-    preprocessor:
-      type: ae
-  fit:
+  sindy:
     library_specs:
       - type: traub_gate_forward
       - type: traub_gate_backward
@@ -19,5 +18,5 @@ surrogate:
 hydra:
   sweeper:
     params:
-      surrogate.init.n_components: 2,3,4,5
-      surrogate.init.preprocessor.type: pca,ae
+      surrogate.meta.n_components: 2,3,4,5
+      surrogate.meta.preprocessor_type: pca,ae

@@ -10,6 +10,7 @@ from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING
 
 from ..core.network import Compartment, CompartmentType, DatasetConfig, NeuronGraph
+from .meta import SurrogateMeta
 
 if TYPE_CHECKING:
     from .bundle import SurrogateBundle
@@ -30,23 +31,23 @@ _PARAMS_MATCH: dict[str, Callable[[tuple | None, tuple | None], bool]] = {
 }
 
 
-def replaceable(bundle: "SurrogateBundle", comp: Compartment) -> bool:
+def replaceable(meta: SurrogateMeta, comp: Compartment) -> bool:
     """comp が surrogate に置換されるか (学習型一致 かつ params 両立)。"""
-    if comp.type != bundle.meta.train_comp.type:
+    if comp.type != meta.train_comp.type:
         return False
-    return _PARAMS_MATCH[bundle.meta.surrogate_type](
-        bundle.meta.train_comp.resolved_params, comp.resolved_params
+    return _PARAMS_MATCH[meta.surrogate_type](
+        meta.train_comp.resolved_params, comp.resolved_params
     )
 
 
-def replaceables(bundle: "SurrogateBundle", dataset: DatasetConfig) -> set[str]:
+def replaceables(meta: SurrogateMeta, dataset: DatasetConfig) -> set[str]:
     """dataset 内の置換対象ノード名を返す (fail first)。
 
     - 学習型一致 だが params 非両立のノードが1つでもあれば即エラー (疑わしい)
     - 置換対象が皆無なら即エラー (モデルとデータが噛み合わず)
     """
-    train = bundle.meta.train_comp
-    targets = {n.name for n in dataset.net.nodes if replaceable(bundle, n)}
+    train = meta.train_comp
+    targets = {n.name for n in dataset.net.nodes if replaceable(meta, n)}
 
     # 学習型一致 だが未置換 = params 非両立 → 疑わしい (置換不可)
     mismatched = [
@@ -67,12 +68,12 @@ def replaceables(bundle: "SurrogateBundle", dataset: DatasetConfig) -> set[str]:
     return targets
 
 
-def replaced_names(bundle: "SurrogateBundle", net: NeuronGraph) -> set[str]:
+def replaced_names(meta: SurrogateMeta, net: NeuronGraph) -> set[str]:
     """net 内で surrogate が置換するノード名集合を返す (非raise, 診断用)。
 
     replaceables と違い params 非両立/皆無でも例外を投げず、描画等の情報表示に使う。
     """
-    return {n.name for n in net.nodes if replaceable(bundle, n)}
+    return {n.name for n in net.nodes if replaceable(meta, n)}
 
 
 def replace_nodes(
@@ -89,8 +90,12 @@ def apply_surrogate(
     bundle: "SurrogateBundle",
     dataset: DatasetConfig,
 ) -> DatasetConfig:
-    """学習ドメインに属す全ノードを surrogate に置換 (検証は replaceables が担う)。"""
-    targets = replaceables(bundle, dataset)
+    """学習ドメインに属す全ノードを surrogate に置換 (検証は replaceables が担う)。
+
+    判定 3 関数と違い meta だけでは足りない (差替える型 = 学習成果物から組む
+    `surr_comp_type` が要る) ので、ここだけ bundle を受ける。
+    """
+    targets = replaceables(bundle.meta, dataset)
     new_net = replace_nodes(
         dataset.net, bundle.surr_comp_type, lambda n: n.name in targets
     )

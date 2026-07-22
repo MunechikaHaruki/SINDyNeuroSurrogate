@@ -130,7 +130,7 @@ def model_figs(
 ) -> list[tuple[str, Figure]]:
     """single mode の静的モデル図。(save 名, fig) 列。"""
     return [
-        ("neurograph", view_neuron_graph(net, replaced_names(surrogate, net))),
+        ("neurograph", view_neuron_graph(net, replaced_names(surrogate.meta, net))),
         ("model", view_model(surrogate.sindy_bundle)),
     ]
 

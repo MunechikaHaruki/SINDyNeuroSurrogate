@@ -115,7 +115,7 @@ def calc_sweep(
 ) -> dict:
     """UI 値 + ロード済 surrogate を evaluate_sweep へ委譲。raw sim データを返す。
     surrogate は loaded (load_selected 由来) を単一源とし再取得しない。
-    掃引結果の識別キーは meta.label。"""
+    掃引結果の識別キーは label。"""
     sweep_ui = setting_ui["sweep"]
     current_type = current_of(base_ui)
     cfg = CurrentSweepConfig(
@@ -130,7 +130,7 @@ def calc_sweep(
     # 1 run へ潰れ、summary 表と掃引図が食い違う → fail first で弾く。
     dup = [lbl for lbl, n in Counter(s.meta.label for s in loaded).items() if n > 1]
     if dup:
-        raise ValueError(f"sweep 対象の meta.label 重複: {dup}。異なる config を選択。")
+        raise ValueError(f"sweep 対象の label 重複: {dup}。異なる config を選択。")
     sweep_eval = evaluate_sweep(
         {s.meta.label: s for s in loaded},
         model_name=target_of(base_ui),

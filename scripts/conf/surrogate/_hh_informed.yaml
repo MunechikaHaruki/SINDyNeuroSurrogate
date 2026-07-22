@@ -1,14 +1,13 @@
 # @package _global_
 surrogate:
-  type: sindy
-  init:
+  meta:
+    surrogate_type: sindy
+    preprocessor_type: pca
     n_components: 1  # 潜在方程式の次元
     datasets:
       model_name: hh
       current_type: train
-    preprocessor:
-      type: pca
-  fit:
+  sindy:
     library_specs:
       - type: gate_poly_volt  # latent の高次項・V 積 (1次は basis)
       - type: hh_gate_forward

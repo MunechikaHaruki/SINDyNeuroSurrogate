@@ -1,7 +1,8 @@
 # @package _global_
 surrogate:
-  type: hybrid
-  init:
+  meta:
+    surrogate_type: hybrid
+    preprocessor_type: ae
     n_components: 3  # 潜在方程式の次元
     datasets:
       model_name: traub19
@@ -10,9 +11,7 @@ surrogate:
       # 短くして総サンプル数を単体モデル (duration=9000) と同程度に揃える。
       current_params:
         duration: 1000
-    preprocessor:
-      type: ae
-  fit:
+  sindy:
     library_specs:
       - type: traub_gate_forward
       - type: traub_gate_backward
@@ -23,5 +22,5 @@ surrogate:
 hydra:
   sweeper:
     params:
-      surrogate.init.n_components: 2,3,4,5
-      surrogate.init.preprocessor.type: pca,ae
+      surrogate.meta.n_components: 2,3,4,5
+      surrogate.meta.preprocessor_type: pca,ae

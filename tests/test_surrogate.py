@@ -26,6 +26,12 @@ CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
 TRAIN_DURATION = 180  # [ms] 本番は 9000。smoke は shape/有限性のみ見るので短縮
 LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, g1..gN, u] の両端
 REPRESENTATIVE_DIM = 3  # 式構造/描画テストの代表。latent 複数の方が構造が厳しい
+# preset default の ansatz/preprocessor は sweep 軸で振れる → 明示 override する
+SINDY = ["surrogate.meta.surrogate_type=sindy"]
+HYBRID_PCA = [
+    "surrogate.meta.surrogate_type=hybrid",
+    "surrogate.meta.preprocessor_type=pca",
+]
 
 
 def fit_surrogate(
@@ -37,23 +43,20 @@ def fit_surrogate(
             config_name="config",
             overrides=[
                 f"surrogate={preset}",
-                f"surrogate.init.n_components={n_components}",
-                f"+surrogate.init.datasets.current_params.duration={TRAIN_DURATION}",
+                f"surrogate.meta.n_components={n_components}",
+                f"+surrogate.meta.datasets.current_params.duration={TRAIN_DURATION}",
                 *(extra or []),
             ],
         )
     c = OmegaConf.to_container(cfg.surrogate, resolve=True)
     assert isinstance(c, dict)
-    surrogate = SurrogateBundle.setup(type=c["type"], **c["init"])
-    surrogate.fit(**c["fit"])
-    return surrogate
+    return SurrogateBundle.setup(c)
 
 
 @pytest.fixture(scope="module")
 def sindy() -> SurrogateBundle:
-    """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。
-    type は preset default が sweep 軸で振れる → sindy を明示 override。"""
-    return fit_surrogate("hh", REPRESENTATIVE_DIM, extra=["surrogate.type=sindy"])
+    """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。"""
+    return fit_surrogate("hh", REPRESENTATIVE_DIM, extra=SINDY)
 
 
 @pytest.fixture(scope="module")
@@ -64,7 +67,7 @@ def sindy_eval(sindy: SurrogateBundle) -> EvalResult:
 @pytest.mark.parametrize("n_components", LATENT_DIMS)
 def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     """列構造 [V, g1..gN, u] は latent 次元によらず置換シミュまで通る。"""
-    surrogate = fit_surrogate("hh", n_components, extra=["surrogate.type=sindy"])
+    surrogate = fit_surrogate("hh", n_components, extra=SINDY)
     assert surrogate.sindy_bundle.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
@@ -118,7 +121,7 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments() -> None:
     surrogate = fit_surrogate(
         "traub",
         5,
-        extra=["surrogate.type=hybrid", "surrogate.init.preprocessor.type=pca"],
+        extra=HYBRID_PCA,
     )
     assert surrogate.surr_comp_type.gate_names[-2:] == ["XI", "Q"]
 
@@ -127,7 +130,7 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments() -> None:
     )
     # phi_area/g_Ca が異なる 19 comp すべてが置換対象。pre-B は soma のみ一致で
     # ValueError だった (Ca params が latent に焼込まれ params 一致必須だったため)。
-    assert replaceables(surrogate, traub19) == set(traub19.net.names)
+    assert replaceables(surrogate.meta, traub19) == set(traub19.net.names)
 
     # 置換シミュ (XI/Q を各ノード params で physics 積分) が有限に走る。
     v = access.potential(
@@ -142,7 +145,7 @@ def test_hybrid_opcost_includes_decode() -> None:
     surrogate = fit_surrogate(
         "hh",
         3,
-        extra=["surrogate.type=hybrid", "surrogate.init.preprocessor.type=pca"],
+        extra=HYBRID_PCA,
     )
     ansatz = surrogate.ansatz
     assert isinstance(ansatz, HybridAnsatz)  # _physics は hybrid 固有
@@ -151,6 +154,6 @@ def test_hybrid_opcost_includes_decode() -> None:
     assert (decode_cost.mul, decode_cost.pm) == (9, 9)
     assert surrogate.opcost == (
         decode_cost
-        + ansatz._physics(surrogate).dv_cost
+        + ansatz._physics(surrogate.meta).dv_cost
         + surrogate.sindy_bundle.opcost()
     )
