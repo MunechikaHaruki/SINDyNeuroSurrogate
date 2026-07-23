@@ -1,0 +1,36 @@
+# @package _global_
+# **圧縮ゼロの上限 (基準線)**。潜在次元 = 学習ゲート数 8 (= TRAUB_LEARNED_GATE_NAMES。
+# Ca サブ系 XI/Q は physics 分離済みで学習対象外) を PCA で取る → 8→8 の直交変換は
+# 完全可逆で情報損失ゼロ (実測 再構成 mse 1.5e-32)、かつ SINDy のレート関数
+# ライブラリは真の dg/dt = α(1-g) - βg を厳密に張れる。
+#
+# 「サロゲート化が原理的に可能か」を切り分けるための対照。ここが合わなければ
+# 圧縮以前 (定式化・積分・移植) が壊れているので、何を圧縮しても無駄。
+#
+# 実測 (traub19 全 19 comp 置換、current_type=train duration=500、soma で評価):
+#   n=8 pca (このpreset)  rmse= 3.92  spikes 5->5   形状corr=1.0000  ← ほぼ完全再現
+#   n=5 pca               rmse=10.19  spikes 5->15  形状corr=1.0000
+#   n=3 pca               rmse=23.11  spikes 5->0   形状corr=nan
+# → 骨格 (kernel の結線・Ca physics 分離・Euler 積分・19 comp への移植) は正しく、
+#   壁は圧縮そのもの。しかも n=5 の再構成 mse は 7.4e-05 と十分小さいのに dynamics は
+#   壊れる = **再構成 MSE だけで潜在座標を選ぶのが誤り**という UDE の動機そのもの。
+#
+# 教師データを単体 comp にすると圧縮ゼロでも nan (発散) → 訓練分布=評価分布が
+# 移植の必須条件。この preset も 19 comp 全部の軌道で学習する。
+defaults:
+  - traub_useMC19CompForTeachingData
+
+surrogate:
+  meta:
+    n_components: 8  # = 学習ゲート数。これ以上は増やせない (圧縮率 1.0)
+    preprocessor_type: pca  # 8→8 PCA のみが完全可逆 (AE は tanh/隠れ層で損失が出る)
+    datasets:
+      current_params:
+        duration: 1000
+
+hydra:
+  sweeper:
+    params:
+      # 上限の基準線なので振らない (継承元の n_components/preprocessor_type sweep を潰す)
+      surrogate.meta.n_components: 8
+      surrogate.meta.preprocessor_type: pca

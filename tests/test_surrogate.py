@@ -23,9 +23,12 @@ from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.metrics.eval import EvalResult, evaluate
 from neurosurrogate.surrogate.ansatz.hybrid import HybridAnsatz
+from neurosurrogate.surrogate.ansatz.ude import UDEAnsatz
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
+from neurosurrogate.surrogate.closure.ude import UDEClosure
+from neurosurrogate.surrogate.preprocessor.autoencoder import AEPreprocessor
 from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
 from neurosurrogate.view.model import equation_texs
 from neurosurrogate.view.specs import draw_all, spec_simple
@@ -241,6 +244,58 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments(
         _train_comp(surrogate),
     )
     assert np.isfinite(v).all()
+
+
+def test_ude_joint_fit_updates_the_preprocessor() -> None:
+    """UDE の要: 潜在座標が「先に固定される前処理」でなくなること。
+
+    setup は AE を再構成 MSE で fit してから ansatz.fit を呼ぶ (hybrid と同じ順) が、
+    UDE はその encoder/decoder を初期値として受け取り、軌道ロスで更新して書き戻す。
+    AE 単体の fit は乱数種固定で決定的 → 同じ入力で再現したものと重みが違えば、
+    joint 学習が実際に座標を動かしたことになる。
+    """
+    surrogate = fit_surrogate("_test_traub_ude")
+    assert isinstance(surrogate.closure, UDEClosure)
+    assert isinstance(surrogate.preprocessor, AEPreprocessor)  # ude は ae 固定
+    source = surrogate.ansatz.train_source(surrogate.meta)
+    gate = source.stacked_gate(surrogate.train_xr)
+    ae_only = AEPreprocessor.fit(gate, surrogate.meta.n_components, {"epochs": 20})
+
+    assert not np.allclose(
+        surrogate.preprocessor.dec_params["W2"], ae_only.dec_params["W2"]
+    )
+    # 書き戻し後に再計算される派生物 (kernel の初期潜在・再構成指標) も joint 後の値
+    assert len(surrogate.preprocessor.gate_inits) == surrogate.meta.n_components
+    assert surrogate.preprocessor.reconstruction_mse != ae_only.reconstruction_mse
+
+
+def test_ude_traub_transplants_across_heterogeneous_compartments() -> None:
+    """UDE も hybrid と同じ kernel 骨格に載る (差分は潜在方程式の表現だけ) →
+    Ca サブ系の physics 分離と traub19 全 comp への移植がそのまま成り立つ。"""
+    surrogate = fit_surrogate("_test_traub_ude")
+    assert surrogate.surr_comp_type.gate_names[-len(TRAUB_EXTRA_GATE_NAMES) :] == (
+        TRAUB_EXTRA_GATE_NAMES
+    )
+    traub19 = DatasetConfig.build_dataset(
+        dt=0.01, model_name="traub19", current_type="train", current_params={}
+    )
+    assert replaceables(surrogate.meta, traub19) == set(traub19.net.names)
+
+    v = access.potential(
+        unified_simulator(apply_surrogate(surrogate, surrogate.meta.dataset)),
+        _train_comp(surrogate),
+    )
+    assert np.isfinite(v).all()
+
+
+def test_ude_rejects_non_learnable_preprocessor() -> None:
+    """UDE は encoder/decoder を学習変数として更新する → 更新できない表現 (PCA) を
+    渡されたら黙って前処理固定に退化せず、その場で落ちる。"""
+    pca_based = fit_surrogate("_test_traub_hybrid")  # preprocessor_type=pca の preset
+    with pytest.raises(ValueError, match="preprocessor_type=ae"):
+        UDEAnsatz().fit(
+            pca_based.meta, pca_based.train_xr, pca_based.preprocessor, {"epochs": 1}
+        )
 
 
 def test_hybrid_opcost_includes_decode() -> None:

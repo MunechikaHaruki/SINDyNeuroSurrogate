@@ -1,0 +1,10 @@
+# @package _global_
+# UDE 試行軸: 潜在次元 (本題)。PCA では MC19 教師でも n=8 → rmse 3.92 (ほぼ完全) に
+# 対し n=5 で 10.19 (過剰発火 5->15)、n=3 で 23.11 (発火消失) と崩れる。
+# その n=5 が UDE の座標なら保てるかを見る = 圧縮の上限を押し上げられるかの本題。
+defaults:
+  - traub_ude_useMC19CompForTeachingData
+
+surrogate:
+  meta:
+    n_components: 5

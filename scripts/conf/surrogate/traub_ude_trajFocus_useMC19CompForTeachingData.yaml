@@ -1,0 +1,10 @@
+# @package _global_
+# UDE 試行軸: 再構成アンカーの重み。既定 1.0 は「従来の preprocessor の目的関数」と
+# 同じ重みで軌道ロスと張り合う → 座標が再構成側へ引き戻される。0.1 まで落とし、
+# 座標選択を軌道側に寄せる (w_recon=0 まで落とすと decoder が潜在の外挿で崩れる)。
+defaults:
+  - traub_ude_useMC19CompForTeachingData
+
+surrogate:
+  ansatz:
+    w_recon: 0.1

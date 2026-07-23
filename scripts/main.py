@@ -46,6 +46,10 @@ def main(cfg: DictConfig) -> None:
         # でなく実験メタデータ側へ。MLflow UI でも marimo でも同じキーで絞れる。
         mlflow.log_param("preset", _preset_name())
         surrogate = SurrogateBundle.setup(cfg_surr)
+        # 学習結果の指標 (閉包項のロス / 前処理の再構成 / 置換前後の演算コスト差)。
+        # artifact を開かないと分からない状態だと「学習が進んだのか」を run 一覧で
+        # 判断できない → fit と同じ場所で必ず残す。
+        mlflow.log_metrics(surrogate.metrics())
         log_surrogate_model(surrogate)
         logger.info(f"[{run_name}] 完了")
 

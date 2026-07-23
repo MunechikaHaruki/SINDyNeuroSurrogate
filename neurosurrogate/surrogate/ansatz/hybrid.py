@@ -1,6 +1,7 @@
+from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Generic
 
 import jax.numpy as jnp
 import sympy as sp
@@ -29,7 +30,7 @@ from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
 from ..meta import SurrogateMeta
 from ..preprocessor.base import Preprocessor
-from .base import Ansatz, TrainInputs
+from .base import Ansatz, C, TrainInputs
 
 
 @dataclass(frozen=True)
@@ -121,17 +122,19 @@ HYBRID_PHYSICS: dict[str, HybridPhysics] = {
 }
 
 
-class HybridAnsatz(Ansatz[SINDyBundle]):
+class HybridBase(Ansatz[C], Generic[C]):
     """Hybrid: 物理回路方程式 (params 陽) + 学習ゲート dynamics。
       dV/dt   = 学習型の物理式 (HYBRID_PHYSICS[train_type].dv)
       gates   = decode(latent)                        (線形/AE decoder)
-      d(latent)/dt = f(V, latent) via SINDy
-    SINDy 入力順: (g1, ..., V) → library_specs は index 0=latent, 末尾=V。
+      d(latent)/dt = f(V, latent)                     (閉包項の表現は派生が決める)
     HH/Traub 両対応 (gate 数・param_cls・dv は学習型から解決)。
 
-    潜在方程式 f をどう表現するかは `_dlatent` の 1 点に閉じている (kernel の骨格・
-    physics・初期値は f の表現に依らない)。f を NN + ODE 解経由の学習に替えた
-    もの = UDE で、その差分は `fit`/`_dlatent`/`opcost` の 3 本だけになる。
+    **潜在方程式 f の表現に依らない部分をここに置く** — kernel の骨格・physics 分離・
+    初期値・学習入力の列構造は f が ξ でも NN でも同じ。f がどう評価されるかを知る
+    のは `_dlatent` の 1 点だけで、派生が実装するのは f 固有の 3 本
+    (`fit` / `_dlatent` / `_closure_opcost`) に限られる。
+      `HybridAnsatz` : f = SINDy ライブラリ項の疎な線形結合 (前処理と別々に学習)
+      `UDEAnsatz`    : f = NN、encoder/decoder ごと ODE 解を通して joint 学習
     """
 
     def _physics(self, meta: SurrogateMeta) -> HybridPhysics:
@@ -149,7 +152,7 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
     ) -> TrainInputs:
         # 状態は潜在のみ (V は物理式で解くので同定せず、入力として与える)。comp ごと
         # に 1 軌道で分ける — SINDy は t から時間微分を数値推定するため、stacked_gate
-        # のように縦連結すると境界に偽の微分が入る。
+        # のように縦連結すると境界に偽の微分が入る (UDE も窓を跨がせない)。
         source = self.train_source(meta)
         return TrainInputs(
             x_names=access.latent_vars(meta.n_components),
@@ -158,44 +161,26 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
             u=[access.potential(train_xr, i)[:, None] for i in source.comp_ids],
         )
 
-    def fit(
-        self,
-        meta: SurrogateMeta,
-        train_xr: xr.Dataset,
-        preprocessor: Preprocessor,
-        spec: dict,
-    ) -> SINDyBundle:
-        inputs = self.train_inputs(meta, train_xr, preprocessor)
-        return SINDyBundle.from_sindy(
-            library_specs=spec["library_specs"],
-            optimizer_spec=spec["optimizer"],
-            x=inputs.x,
-            u=inputs.u,
-            t=[access.time(train_xr)] * len(inputs.x),
-            targets=[sp.Symbol(v) for v in inputs.x_names],
-            inputs=[sp.Symbol(v) for v in inputs.u_names],
-            # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
-            roles=Roles(
-                V=meta.n_components,
-                g=list(range(meta.n_components)),
-            ),
-        )
-
-    def _dlatent(self, closure: SINDyBundle) -> Callable:
+    @abstractmethod
+    def _dlatent(self, closure: C) -> Callable:
         """潜在方程式の右辺 `(latent, V) -> d(latent)/dt`。
 
         **閉包項をどう評価するかを知る唯一の場所**。SINDy はライブラリ展開との
-        内積、UDE なら NN 呼び出しに替わる。kernel 側はこの関数しか見ない。
+        内積、UDE は NN 呼び出し。kernel 側はこの関数しか見ない。
         """
-        xi = jnp.asarray(closure.xi)
-        compute_theta = closure.compute_theta()
-        return lambda latent, v: xi @ compute_theta(*latent, v)
+        ...
+
+    @abstractmethod
+    def _closure_opcost(self, closure: C) -> OpCost:
+        """閉包項 1 回の評価コスト。`Closure` の契約には載せない (型を知らない
+        呼び出し側が要求しない) ので、具体型を知る ansatz 側で引き出す。"""
+        ...
 
     def surr_comp_type(
         self,
         meta: SurrogateMeta,
         preprocessor: Preprocessor,
-        closure: SINDyBundle,
+        closure: C,
     ) -> CompartmentType:
         phys = self._physics(meta)
         extra = phys.extra
@@ -239,14 +224,52 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
         self,
         meta: SurrogateMeta,
         preprocessor: Preprocessor,
-        closure: SINDyBundle,
+        closure: C,
     ) -> OpCost:
         # kernel の 1 ステップ = decode(latent→gate) + Ca サブ系 physics (あれば) +
-        # 物理 dV/dt + 潜在方程式。
+        # 物理 dV/dt + 潜在方程式。閉包項の分だけが表現ごとに違う。
         phys = self._physics(meta)
         return (
             preprocessor.opcost()
             + (OpCost() if phys.extra is None else phys.extra.cost)
             + phys.dv_cost
-            + closure.opcost()
+            + self._closure_opcost(closure)
         )
+
+
+class HybridAnsatz(HybridBase[SINDyBundle]):
+    """潜在方程式を SINDy で同定する hybrid (前処理と閉包項を別々に学習する)。
+
+    SINDy 入力順: (g1, ..., V) → library_specs は index 0=latent, 末尾=V。
+    """
+
+    def fit(
+        self,
+        meta: SurrogateMeta,
+        train_xr: xr.Dataset,
+        preprocessor: Preprocessor,
+        spec: dict,
+    ) -> SINDyBundle:
+        inputs = self.train_inputs(meta, train_xr, preprocessor)
+        return SINDyBundle.from_sindy(
+            library_specs=spec["library_specs"],
+            optimizer_spec=spec["optimizer"],
+            x=inputs.x,
+            u=inputs.u,
+            t=[access.time(train_xr)] * len(inputs.x),
+            targets=[sp.Symbol(v) for v in inputs.x_names],
+            inputs=[sp.Symbol(v) for v in inputs.u_names],
+            # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
+            roles=Roles(
+                V=meta.n_components,
+                g=list(range(meta.n_components)),
+            ),
+        )
+
+    def _dlatent(self, closure: SINDyBundle) -> Callable:
+        xi = jnp.asarray(closure.xi)
+        compute_theta = closure.compute_theta()
+        return lambda latent, v: xi @ compute_theta(*latent, v)
+
+    def _closure_opcost(self, closure: SINDyBundle) -> OpCost:
+        return closure.opcost()

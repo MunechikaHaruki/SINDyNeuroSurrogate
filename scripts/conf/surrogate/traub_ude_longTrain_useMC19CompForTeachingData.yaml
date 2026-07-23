@@ -1,0 +1,9 @@
+# @package _global_
+# UDE 試行軸: 学習量。既定 3000 epoch ではロスがまだ振動しており頭打ちか未収束か
+# 判別できない → 3 倍回して収束先を見る。
+defaults:
+  - traub_ude_useMC19CompForTeachingData
+
+surrogate:
+  ansatz:
+    epochs: 10000

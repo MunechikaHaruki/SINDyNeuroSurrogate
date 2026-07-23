@@ -1,0 +1,18 @@
+# @package _global_
+# テスト専用プリセット。素体 (19-comp 教師) から学習構造を継承。
+# joint 学習 (encoder/decoder + 潜在方程式) → Ca physics 分離 → 置換までの経路を踏む。
+defaults:
+  - traub_ude_useMC19CompForTeachingData
+
+surrogate:
+  meta:
+    n_components: 3
+    datasets:
+      current_params:
+        duration: 180 # 本番は 1000。smoke は shape/有限性のみ見るので短縮
+  preprocessor:
+    epochs: 20 # AE は UDE の初期値でしかない (joint 学習が続きを担う)
+  ansatz:
+    epochs: 20 # smoke は「回って有限値が出る」ことだけ見る
+    window: 20 # 短縮電流でも窓が取れる長さ
+    batch: 16

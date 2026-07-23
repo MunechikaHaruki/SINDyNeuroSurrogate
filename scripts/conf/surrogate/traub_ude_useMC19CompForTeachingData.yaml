@@ -1,0 +1,44 @@
+# @package _global_
+# UDE 版: 教師データ = 19-comp MC の全 comp 軌道 (置換対象 = traub 型 comp 全部)。
+# hybrid 版 (traub_useMC19CompForTeachingData) との違いは surrogate_type だけ =
+# 「前処理と潜在方程式を分けて学習するか、同じロスで同時に学習するか」の対照群。
+# library_specs は持たない (潜在方程式が NN なので項ライブラリの語彙が要らない)。
+#
+# **UDE 系 preset の素体** — 他の UDE preset はこれを `defaults` 継承して 1 キーだけ
+# 上書きする (1 preset 1 仮説)。
+#
+# 教師データを単体 comp にした preset は置かない: 置換対象 19 comp 全部の軌道で
+# 学習しないと traub19 へ移植した時点で発散する (実測: 単体教師は圧縮ゼロ
+# n_components=8 でも nan、MC19 教師なら n=8 で rmse 3.92・スパイク数完全一致)。
+# 訓練分布=評価分布が移植の必須条件で、教師データの選び方が圧縮率より支配的。
+surrogate:
+  meta:
+    comp_type: traub  # 置換対象のコンパートメント種類
+    surrogate_type: ude
+    preprocessor_type: ae  # ude は encoder/decoder を学習変数にするので ae 固定
+    n_components: 3  # 潜在方程式の次元 = 8 ゲートを何本に落とせるか (本題の軸)
+    datasets:
+      model_name: traub19
+      current_type: train
+      # 19 comp 全部が学習軌道になる (ansatz/hybrid.py `train_source`) → 1 軌道を
+      # 短くして総サンプル数を単体モデル (duration=9000) と同程度に揃える。
+      current_params:
+        duration: 1000
+  preprocessor:
+    # UDE では AE は joint 学習の初期値でしかない → 19 comp 分 (単体の 19 倍) の点を
+    # 全点一括 GD で 1000 epoch 回すのは時間の無駄。座標の続きは軌道ロスが決める。
+    epochs: 300
+  ansatz:
+    epochs: 3000
+    lr: 3.0e-3
+    window: 100  # 1 窓 = 100 step × dt 0.01 = 1ms ≒ スパイク幅
+    batch: 256  # 小さいとバッチノイズでロスが振動する (128 で振動を確認)
+    hidden: 32
+    depth: 2
+    w_recon: 1.0  # 再構成アンカーの重み (0 に落とすと軌道ロスのみ)
+    pull: 20.0  # 潜在が値域 [-1,1] を出たときの復元力 (closure/ude.py)
+
+hydra:
+  sweeper:
+    params:
+      surrogate.meta.n_components: 2,3,4,5

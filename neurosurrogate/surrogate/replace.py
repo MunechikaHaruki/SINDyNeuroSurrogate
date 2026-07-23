@@ -28,6 +28,9 @@ _PARAMS_MATCH: dict[str, Callable[[tuple | None, tuple | None], bool]] = {
     # hybrid: 物理 dv も Ca サブ系も置換先ノード自身の params で解く → params 自由
     # (型一致のみで置換可)。
     "hybrid": lambda train, node: True,
+    # ude: 学習するのは潜在座標と潜在方程式だけで、hybrid と同じ物理 kernel に載る
+    # → params 両立の条件も同じ。
+    "ude": lambda train, node: True,
 }
 
 

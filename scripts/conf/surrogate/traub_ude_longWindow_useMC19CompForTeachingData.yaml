@@ -1,0 +1,9 @@
+# @package _global_
+# UDE 試行軸: 窓長。既定 100 step (=1ms) はスパイク 1 発ぶんしか見ておらず、
+# スパイク間の緩和 (遅いゲート S/R/Q の時定数) が窓に収まらない。4ms へ伸ばす。
+defaults:
+  - traub_ude_useMC19CompForTeachingData
+
+surrogate:
+  ansatz:
+    window: 400

@@ -1,0 +1,10 @@
+# @package _global_
+# UDE 試行軸: 潜在方程式の NN 容量。非線形に歪んだ潜在座標の上で 8 ゲート分の
+# dynamics を表す → 32x2 で足りているかを見る対照。
+defaults:
+  - traub_ude_useMC19CompForTeachingData
+
+surrogate:
+  ansatz:
+    hidden: 64
+    depth: 3

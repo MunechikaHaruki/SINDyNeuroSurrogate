@@ -23,6 +23,7 @@ from ..core.opcost import OpCost
 from .ansatz.base import Ansatz
 from .ansatz.hybrid import HybridAnsatz
 from .ansatz.sindy import SINDyAnsatz
+from .ansatz.ude import UDEAnsatz
 from .closure.base import Closure
 from .meta import SurrogateMeta
 from .preprocessor.autoencoder import AEPreprocessor
@@ -37,6 +38,7 @@ META_FILE = "meta.json"  # 同定情報。一覧はこれだけ読む
 SURR_CLS: dict[str, type[Ansatz[Any]]] = {
     "sindy": SINDyAnsatz,
     "hybrid": HybridAnsatz,
+    "ude": UDEAnsatz,
 }
 PREPROCESSOR_CLS: dict[str, type[Preprocessor]] = {
     "pca": PCAPreprocessor,
