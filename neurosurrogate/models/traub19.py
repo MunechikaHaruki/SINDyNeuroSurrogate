@@ -11,7 +11,7 @@ C reference: tmp/dataset_utils/traub/traub.c と代数的等価。
 import math
 
 from ..compartments.traub import TRAUB_TYPE, TraubParams
-from ..core.network import Compartment, Edge, NeuronGraph
+from ..core.network import Compartment, CompartmentType, Edge, NeuronGraph
 
 # --- traub.c の per-compartment 定数 (19要素) ---
 
@@ -59,9 +59,20 @@ def _g_axial(i: int) -> float:
     return 2.0 / (r_i + r_ip1)
 
 
-def build_traub19() -> NeuronGraph:
+def build_traub19(dendrite_type: CompartmentType = TRAUB_TYPE) -> NeuronGraph:
+    """19-comp Traub モデル。
+
+    dendrite_type 既定は TRAUB_TYPE (全 comp 同一型)。soma だけ置換対象にしたいときは
+    TRAUB_DUMMY_TYPE を渡す → soma だけ traub 型に残り dendrite が別型 (置換対象外) に
+    なる。comp_type=traub の学習を preset 変更なしで soma 1 ノードだけへ適用できる。
+    中身は同一なので動力学は変わらない。
+    """
     nodes = [
-        Compartment(name=_name_at(i), type=TRAUB_TYPE, params=_params_at(i))
+        Compartment(
+            name=_name_at(i),
+            type=TRAUB_TYPE if i == SOMA_IDX else dendrite_type,
+            params=_params_at(i),
+        )
         for i in range(NC)
     ]
     edges = [Edge(_name_at(i), _name_at(i + 1), _g_axial(i)) for i in range(NC - 1)]

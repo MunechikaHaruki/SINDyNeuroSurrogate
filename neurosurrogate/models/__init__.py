@@ -2,7 +2,7 @@ from collections import Counter
 
 from ..compartments import COMPARTMENT_TYPES
 from ..compartments.hh import HH_TYPE, PASSIVE_TYPE, HHParams
-from ..compartments.traub import TRAUB_TYPE, TraubParams
+from ..compartments.traub import TRAUB_DUMMY_TYPE, TRAUB_TYPE, TraubParams
 from ..core.network import Compartment, Edge, NeuronGraph
 from .traub19 import build_traub19
 
@@ -88,6 +88,10 @@ MCMODELS: dict[str, NeuronGraph] = {
         stim="soma",
     ),
     "traub19": build_traub19(),
+    # soma だけ traub 型に残し dendrite をダミー型 traub_ にした 19-comp。
+    # comp_type=traub の学習をそのまま適用すると soma 1 ノードだけが置換される
+    # (適用先モデル側で置換範囲を絞る → preset/yaml は不変)。
+    "traub19_soma": build_traub19(dendrite_type=TRAUB_DUMMY_TYPE),
     "hh7": NeuronGraph(
         nodes=[
             Compartment(name="p1", type=PASSIVE_TYPE),

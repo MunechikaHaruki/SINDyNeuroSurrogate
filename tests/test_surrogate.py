@@ -275,6 +275,29 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments(
     assert np.isfinite(v).all()
 
 
+def test_traub19_soma_model_replaces_only_soma() -> None:
+    """適用先モデル traub19_soma は soma だけ traub 型に残し dendrite をダミー型に
+    する → comp_type=traub の学習を **preset 変更なし** で soma 1 ノードだけへ適用
+    できる (置換範囲を絞る新軸を meta へ足さず、適用先モデル側で絞る)。dendrite 18 個
+    は置換対象外のまま残り、置換シミュが有限に走る。"""
+    surrogate = fit_surrogate("_test_traub_hybrid")  # comp_type=traub, 単体 traub 教師
+    ds = DatasetConfig.build_dataset(
+        dt=0.01,
+        model_name="traub19_soma",
+        current_type="train",
+        current_params={"duration": 180},  # smoke: 配線確認のみ (本番は長時間)
+    )
+    assert replaceables(surrogate.meta, ds) == {"soma"}
+    # soma だけ traub 型、dendrite はダミー型 traub_ (置換対象外)
+    assert {n.name for n in ds.net.nodes if n.type.name == "traub"} == {"soma"}
+
+    v = access.potential(
+        unified_simulator(apply_surrogate(surrogate, ds)),
+        ds.net.name_to_idx("soma"),
+    )
+    assert np.isfinite(v).all()
+
+
 def test_ude_joint_fit_updates_the_preprocessor() -> None:
     """UDE の要: 潜在座標が「先に固定される前処理」でなくなること。
 

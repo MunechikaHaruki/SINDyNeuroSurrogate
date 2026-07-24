@@ -342,3 +342,19 @@ TRAUB_TYPE = CompartmentType(
     inits=traub_inits,
     opcost=_TRAUB_OPCOST,
 )
+
+# 中身は traub と完全に同一で name だけ違う双子の型 = 「置換対象外」を示すダミー。
+# 動力学を分けたいのではなく、置換したくないノードを comp_type=traub の照合から外す
+# ためだけの識別子。soma だけを traub 型に残し dendrite をこの型にした MC モデル
+# (traub19_soma) を適用先にすれば、既存の comp_type=traub の学習を **preset 変更なし**
+# で soma 1 ノードだけへ適用できる (置換対象を絞る新しい軸を meta へ足さずに済む)。
+# simulator は CompartmentType を type 名でバケット化して各自 kernel を適用するだけ
+# なので、同一 kernel の別名型でも挙動は traub と変わらない。
+TRAUB_DUMMY_TYPE = CompartmentType(
+    name="traub_",
+    kernel=calc_traub_channel,
+    param_cls=TraubParams,
+    gate_names=TRAUB_STATE_NAMES,
+    inits=traub_inits,
+    opcost=_TRAUB_OPCOST,
+)
