@@ -298,6 +298,26 @@ def test_traub19_soma_model_replaces_only_soma() -> None:
     assert np.isfinite(v).all()
 
 
+def test_traub19_soma_dendstim_injects_into_dendrite() -> None:
+    """dend 刺激版も soma だけ置換対象 (traub 型 = soma のみ) だが、電流注入先は
+    dendrite。刺激点が soma でないこと + 置換シミュが有限に走ることを確認。"""
+    surrogate = fit_surrogate("_test_traub_hybrid")
+    ds = DatasetConfig.build_dataset(
+        dt=0.01,
+        model_name="traub19_soma_dendstim",
+        current_type="train",
+        current_params={"duration": 180},
+    )
+    assert ds.net.stim != "soma"  # 注入先は dendrite
+    assert replaceables(surrogate.meta, ds) == {"soma"}
+
+    v = access.potential(
+        unified_simulator(apply_surrogate(surrogate, ds)),
+        ds.net.name_to_idx("soma"),
+    )
+    assert np.isfinite(v).all()
+
+
 def test_ude_joint_fit_updates_the_preprocessor() -> None:
     """UDE の要: 潜在座標が「先に固定される前処理」でなくなること。
 

@@ -59,13 +59,24 @@ def _g_axial(i: int) -> float:
     return 2.0 / (r_i + r_ip1)
 
 
-def build_traub19(dendrite_type: CompartmentType = TRAUB_TYPE) -> NeuronGraph:
+# dend 刺激版の注入先。soma (8) 隣の active な apical proximal dendrite で、
+# soma へ確実に電流が伝播する (g_Na=15)。
+DEND_STIM_IDX = 9
+
+
+def build_traub19(
+    dendrite_type: CompartmentType = TRAUB_TYPE,
+    stim_idx: int = SOMA_IDX,
+) -> NeuronGraph:
     """19-comp Traub モデル。
 
     dendrite_type 既定は TRAUB_TYPE (全 comp 同一型)。soma だけ置換対象にしたいときは
     TRAUB_DUMMY_TYPE を渡す → soma だけ traub 型に残り dendrite が別型 (置換対象外) に
     なる。comp_type=traub の学習を preset 変更なしで soma 1 ノードだけへ適用できる。
     中身は同一なので動力学は変わらない。
+
+    stim_idx 既定は SOMA_IDX (soma 注入 = 元の traub.c と同じ)。dendrite に注入したい
+    ときはその index を渡す (area scale も注入ノードのものに合わせる)。
     """
     nodes = [
         Compartment(
@@ -78,5 +89,8 @@ def build_traub19(dendrite_type: CompartmentType = TRAUB_TYPE) -> NeuronGraph:
     edges = [Edge(_name_at(i), _name_at(i + 1), _g_axial(i)) for i in range(NC - 1)]
     # 外部電流を密度 [μA/cm^2] → 絶対 [μA] に変換 (kernel 内で /area して密度に戻す)
     return NeuronGraph(
-        nodes=nodes, edges=edges, stim=_SOMA_NAME, stim_area_scale=_AREA[SOMA_IDX]
+        nodes=nodes,
+        edges=edges,
+        stim=_name_at(stim_idx),
+        stim_area_scale=_AREA[stim_idx],
     )

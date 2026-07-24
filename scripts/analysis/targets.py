@@ -5,5 +5,5 @@ TARGET_MODEL: dict[str, list[str]] = {
     "hh": ["hh", "phhhp"],
     # traub19_soma = soma だけ置換対象に残した 19-comp (dendrite はダミー型)。
     # comp_type=traub の run をこれへ適用すると soma 1 ノードだけ置換される。
-    "traub": ["traub19", "traub", "traub19_soma"],
+    "traub": ["traub19", "traub", "traub19_soma", "traub19_soma_dendstim"],
 }

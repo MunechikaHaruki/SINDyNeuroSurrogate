@@ -4,7 +4,7 @@ from ..compartments import COMPARTMENT_TYPES
 from ..compartments.hh import HH_TYPE, PASSIVE_TYPE, HHParams
 from ..compartments.traub import TRAUB_DUMMY_TYPE, TRAUB_TYPE, TraubParams
 from ..core.network import Compartment, Edge, NeuronGraph
-from .traub19 import build_traub19
+from .traub19 import DEND_STIM_IDX, build_traub19
 
 
 def chain(
@@ -92,6 +92,11 @@ MCMODELS: dict[str, NeuronGraph] = {
     # comp_type=traub の学習をそのまま適用すると soma 1 ノードだけが置換される
     # (適用先モデル側で置換範囲を絞る → preset/yaml は不変)。
     "traub19_soma": build_traub19(dendrite_type=TRAUB_DUMMY_TYPE),
+    # 同上 (soma だけ置換対象) だが電流注入を dendrite にした版。soma 非注入で
+    # dend → soma 伝播を surrogate soma が再現できるかを見る。
+    "traub19_soma_dendstim": build_traub19(
+        dendrite_type=TRAUB_DUMMY_TYPE, stim_idx=DEND_STIM_IDX
+    ),
     "hh7": NeuronGraph(
         nodes=[
             Compartment(name="p1", type=PASSIVE_TYPE),
