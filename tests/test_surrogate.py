@@ -29,8 +29,9 @@ from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.closure.ude import UDEClosure
 from neurosurrogate.surrogate.preprocessor.autoencoder import AEPreprocessor
+from neurosurrogate.surrogate.preprocessor.pca import PCAPreprocessor
 from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
-from neurosurrogate.view.model import equation_texs
+from neurosurrogate.view.model import equation_texs, preprocessor_figs
 from neurosurrogate.view.specs import draw_all, spec_simple
 from neurosurrogate.view.train import train_figs
 
@@ -116,6 +117,34 @@ def test_view_comps_limit_drawn_traces(
     assert [name for name, _ in train_figs(sindy, comps=[_train_comp(sindy)])] == [
         name for name, _ in train_figs(sindy)
     ]
+
+
+def test_pca_metrics_report_per_component_and_cumulative_ratio(
+    sindy: SurrogateBundle,
+) -> None:
+    """PCA metrics は保持成分ごとの寄与率 (連番) と累積を出す。累積は保持成分の
+    ratio 和と一致し 0〜1、full スペクトルは保持成分以上の長さを持つ。"""
+    prep = sindy.preprocessor
+    assert isinstance(prep, PCAPreprocessor)
+    m = prep.metrics()
+    n_kept = len(prep.explained_variance_ratio)
+    assert [f"pca/explained_variance_ratio_{i + 1}" for i in range(n_kept)] == [
+        k for k in m if k.startswith("pca/explained_variance_ratio_")
+    ]
+    cumulative = m["pca/cumulative_explained_variance_ratio"]
+    assert cumulative == pytest.approx(float(prep.explained_variance_ratio.sum()))
+    assert 0.0 <= cumulative <= 1.0 + 1e-9
+    assert len(prep.full_explained_variance_ratio) >= n_kept
+
+
+def test_preprocessor_figs_scree_for_pca_empty_for_ae(
+    sindy: SurrogateBundle,
+) -> None:
+    """PCA は scree 図を返し、AE は固有図なし → 空列 (closure_figs と同型)。"""
+    assert [name for name, _ in preprocessor_figs(sindy.preprocessor)] == ["pca_scree"]
+    ae = fit_surrogate("_test_traub_hybrid")  # preprocessor_type=ae ではないので確認
+    if isinstance(ae.preprocessor, AEPreprocessor):
+        assert preprocessor_figs(ae.preprocessor) == []
 
 
 def test_train_figs_render_from_reloaded_surrogate(

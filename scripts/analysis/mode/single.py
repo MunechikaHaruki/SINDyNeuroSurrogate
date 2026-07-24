@@ -22,7 +22,11 @@ from neurosurrogate.metrics.eval import EvalResult, evaluate
 from neurosurrogate.models import MCMODELS
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.replace import replaced_names
-from neurosurrogate.view.model import closure_figs, view_neuron_graph
+from neurosurrogate.view.model import (
+    closure_figs,
+    preprocessor_figs,
+    view_neuron_graph,
+)
 from neurosurrogate.view.specs import draw_all
 from neurosurrogate.view.train import train_figs
 
@@ -139,6 +143,7 @@ def model_figs(
     return [
         ("neurograph", view_neuron_graph(net, replaced_names(surrogate.meta, net))),
         *closure_figs(surrogate.closure),
+        *preprocessor_figs(surrogate.preprocessor),
         *train_figs(surrogate, comps),
     ]
 

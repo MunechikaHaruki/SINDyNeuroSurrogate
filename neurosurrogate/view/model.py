@@ -10,9 +10,12 @@ import seaborn as sns
 import sympy as sp
 from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 
 from ..surrogate.closure.base import Closure
 from ..surrogate.closure.sindy import SINDyBundle
+from ..surrogate.preprocessor.base import Preprocessor
+from ..surrogate.preprocessor.pca import PCAPreprocessor
 from .engine import new_figure, place_legend
 
 _NODE_COLORS = {
@@ -137,6 +140,53 @@ def closure_figs(closure: Closure) -> list[tuple[str, Figure]]:
     if isinstance(closure, SINDyBundle):
         return [("model", view_model(closure))]
     return []
+
+
+def preprocessor_figs(prep: Preprocessor) -> list[tuple[str, Figure]]:
+    """preprocessor の診断図 (識別子付き)。指標の見せ方は変換ごとに違い共通図が無い
+    (PCA=寄与率 scree、AE は固有図なし) → closure_figs と同型で型振り分け。図を持た
+    ない変換は空列を返す。再構成誤差の時系列は train_recon_fig が別に受け持つ。"""
+    if isinstance(prep, PCAPreprocessor):
+        return [("pca_scree", pca_scree_fig(prep))]
+    return []
+
+
+def pca_scree_fig(prep: PCAPreprocessor) -> Figure:
+    """PCA scree 図: 成分別寄与率 (棒) + 累積寄与率 (折れ線)。保持成分を色で区別し、
+    捨てた成分も含めて描く → n_components の選択が累積の飽和点に対し妥当かを見る。"""
+    ratios = prep.full_explained_variance_ratio
+    n_kept = len(prep.explained_variance_ratio)
+    idx = np.arange(1, len(ratios) + 1)
+    cumulative = np.cumsum(ratios)
+
+    fig = new_figure()
+    ax = fig.subplots()
+    ax.bar(
+        idx,
+        ratios,
+        color=[_SURR_COLOR if i < n_kept else "#CCCCCC" for i in range(len(ratios))],
+    )
+    ax.set_xlabel("principal component")
+    ax.set_ylabel("explained variance ratio")
+    ax.set_xticks(idx)
+
+    ax2 = ax.twinx()
+    ax2.plot(idx, cumulative, "o-", color=_STIM_BORDER, linewidth=1.2, markersize=4)
+    ax2.set_ylabel("cumulative")
+    ax2.set_ylim(0, 1.02)
+
+    ax.set_title(
+        f"PCA scree (n_components={n_kept}, cumulative={cumulative[n_kept - 1]:.3f})"
+    )
+    place_legend(
+        ax,
+        [
+            mpatches.Patch(color=_SURR_COLOR, label="retained"),
+            mpatches.Patch(color="#CCCCCC", label="discarded"),
+            Line2D([], [], color=_STIM_BORDER, marker="o", label="cumulative"),
+        ],
+    )
+    return fig
 
 
 def view_model(result: SINDyBundle, figsize=(15, 3)):
