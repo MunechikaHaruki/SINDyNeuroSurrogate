@@ -4,8 +4,8 @@ import jax.numpy as jnp
 import numpy as np
 from sklearn.decomposition import PCA
 
-from ...core.opcost import OpCost
-from .base import Preprocessor
+from ....core.opcost import OpCost
+from ..base import Preprocessor
 
 
 class PCAPreprocessor(Preprocessor):

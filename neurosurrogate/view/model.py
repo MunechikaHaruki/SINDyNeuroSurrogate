@@ -15,7 +15,7 @@ from matplotlib.lines import Line2D
 from ..surrogate.closure.base import Closure
 from ..surrogate.closure.sindy import SINDyBundle
 from ..surrogate.preprocessor.base import Preprocessor
-from ..surrogate.preprocessor.pca import PCAPreprocessor
+from ..surrogate.preprocessor.impl.pca import PCAPreprocessor
 from .engine import new_figure, place_legend
 
 _NODE_COLORS = {

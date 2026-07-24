@@ -1,24 +1,16 @@
-"""UDE: encoder / decoder / 潜在方程式を **同じロスで同時に** 学習する hybrid。
+"""UDE: encoder / decoder / 潜在方程式を同じロスで同時に学習する hybrid。
 
-既存の hybrid は 2 段階だった: preprocessor が再構成 MSE だけを見て潜在座標を決め、
-その座標を固定したまま SINDy が潜在方程式を同定する。この分離が次元削減の頭を
-押さえている:
+既存 hybrid は 2 段 (preprocessor が再構成 MSE で座標を固定 → SINDy が方程式を同定)。
+この分離がジレンマを生む: PCA は方程式を張れるが圧縮できず、AE は圧縮できるが潜在が
+歪んでレート関数ライブラリが張れない = 圧縮できる座標と方程式が書ける座標が一致しない。
+座標と方程式を同じ目的関数で決めれば消える → 潜在方程式も NN にし「潜在を積分した軌道が
+元のゲート軌道に合うか」を直接ロスにする。
 
-  - PCA は線形なので真の `dg/dt = α(1-g) - βg` が潜在でもそのまま張れるが、
-    線形部分空間ではゲート多様体を圧縮できない。
-  - AE は多様体に沿って圧縮できるが、潜在座標が非線形に歪むのでレート関数
-    ライブラリ (catalog の `*_gate_forward` 等) が張れなくなる。
-
-**圧縮できる座標と方程式が書ける座標が一致しない**、というのがジレンマの中身。
-座標と方程式を同じ目的関数で決めれば消える → 潜在方程式も NN にして
-「潜在を積分した軌道が元のゲート軌道に合うか」を直接ロスにする。
-
-`HybridBase` との差分は `fit` / `_dlatent` / `_closure_opcost` の 3 本だけで、
-kernel の骨格・physics 分離 (Ca サブ系)・初期値は hybrid と完全に共有する。
+kernel 骨格・physics 分離・初期値は `hybrid_kernel.py` の共有関数を使い、SINDy 版との差
+は fit と潜在方程式の評価 (NN vs ξ 内積) だけ。
 """
 
 import logging
-from collections.abc import Callable
 from typing import Any
 
 import jax
@@ -27,23 +19,20 @@ import numpy as np
 import optax
 import xarray as xr
 
-from ...core import access
-from ...core.opcost import OpCost
-from ..closure.ude import UDEClosure, latent_deriv
-from ..meta import SurrogateMeta
-from ..preprocessor.autoencoder import AEPreprocessor, decoder, encoder
-from ..preprocessor.base import Preprocessor
-from .hybrid import HybridBase
+from ....core.network import CompartmentType
+from ...closure.ude import UDEClosure, latent_deriv
+from ...meta import SurrogateMeta
+from ...preprocessor.base import Preprocessor
+from ...preprocessor.impl.autoencoder import AEPreprocessor, decoder, encoder
+from ..base import Ansatz, TrainInputs
+from .hybrid_kernel import hybrid_physics, hybrid_surr_comp_type, hybrid_train_inputs
 
 logger = logging.getLogger(__name__)
 
 
 def _init_mlp(dims: list[int], key) -> list[dict]:
-    """tanh MLP の重み。最終層は 0 初期化 = 学習開始時 d(latent)/dt ≡ 0。
-
-    潜在を積分して回すので、初期の右辺が暴れると窓の終端で発散して勾配が死ぬ。
-    ゼロから立ち上げれば最初の数 epoch は必ず有限に留まる。
-    """
+    """tanh MLP の重み。最終層 0 初期化 = 開始時 d(latent)/dt ≡ 0 (潜在を積分するので
+    初期の右辺が暴れると窓終端で発散し勾配が死ぬ)。"""
     layers = []
     for i, (n_in, n_out) in enumerate(zip(dims[:-1], dims[1:], strict=True)):
         key, sub = jax.random.split(key)
@@ -58,17 +47,28 @@ def _init_mlp(dims: list[int], key) -> list[dict]:
     return layers
 
 
-class UDEAnsatz(HybridBase[UDEClosure]):
-    """潜在方程式を NN にし、encoder/decoder ごと ODE 解を通して joint 学習する。
+class UDEAnsatz(Ansatz[UDEClosure]):
+    """Hybrid + 潜在方程式を NN にし encoder/decoder ごと ODE 解を通して joint 学習。
 
-    ロスは 2 項:
-      traj  … 窓の先頭を encode → 潜在を Euler で rollout → decode した**軌道**が
-              真のゲート軌道に一致するか。学習と評価がどちらも閉ループになる
-              (従来は真の点での 1 ステップ誤差しか見ていなかった)。
-      recon … 同点の再構成。decoder が潜在の外挿で崩れないためのアンカーで、
-              これが従来 preprocessor の目的関数そのもの (重み `w_recon` で従来との
-              間を連続に振れる)。
+    ロス 2 項: traj = 窓頭を encode→Euler rollout→decode した軌道が真のゲート軌道に
+    一致するか / recon = 同点の再構成 (decoder の外挿崩れを防ぐアンカー、重み w_recon)。
+    kernel 骨格は `hybrid_*` 関数と共有し、ここは joint 学習 (fit) と潜在方程式の評価
+    (NN) だけを担う。
     """
+
+    def n_train_gate(self, meta: SurrogateMeta) -> int:
+        """純電位依存ゲートのみ学習 (Ca サブ系は physics へ分離)。"""
+        return hybrid_physics(meta).n_learned
+
+    def train_inputs(
+        self,
+        meta: SurrogateMeta,
+        train_xr: xr.Dataset,
+        preprocessor: Preprocessor,
+    ) -> TrainInputs:
+        return hybrid_train_inputs(
+            self.train_source(meta), train_xr, preprocessor, meta.n_components
+        )
 
     def fit(
         self,
@@ -89,27 +89,20 @@ class UDEAnsatz(HybridBase[UDEClosure]):
         hidden = int(spec.get("hidden", 32))
         depth = int(spec.get("depth", 2))
         w_recon = float(spec.get("w_recon", 1.0))
-        # 潜在が値域外へ出たときの復元力。学習中も同じ右辺で rollout する (推論だけに
-        # 効く項を後付けすると、学習が知らない力で軌道が曲がる)。
+        # 値域外の復元力。学習も同じ右辺で rollout する (推論だけの後付け項は学習が
+        # 知らない力で軌道を曲げる)。
         pull = float(spec.get("pull", 20.0))
 
         source = self.train_source(meta)
-        # (n_comp, T, n_gate) / (n_comp, T)。窓は comp を跨がせない (別の軌道なので
-        # 連結すると境界に嘘の遷移が入る) → comp 軸を残したまま窓を切る。
-        gate = jnp.asarray(
-            np.stack([source.gate(train_xr, i) for i in source.comp_ids]),
-            dtype=jnp.float32,
-        )
-        volt = jnp.asarray(
-            np.stack([access.potential(train_xr, i) for i in source.comp_ids]),
-            dtype=jnp.float32,
-        )
+        # (n_comp, T, n_gate) / (n_comp, T)。窓は comp を跨がせない (別軌道)。
+        gate = jnp.asarray(np.stack(source.gates(train_xr)), dtype=jnp.float32)
+        volt = jnp.asarray(np.stack(source.potentials(train_xr)), dtype=jnp.float32)
         n_comp, n_time, _ = gate.shape
         if n_time <= window:
             raise ValueError(f"window={window} が学習軌道長 {n_time} 以上")
 
-        # 標準化統計は preprocessor の fit 済みのものを流用し、学習変数にはしない
-        # (データの素性であって表現ではない)。V も同じ理由で固定統計で正規化する。
+        # 標準化統計は preprocessor の fit 済みを流用 (データの素性で表現でない)。V も
+        # 同様に固定統計で正規化。
         gate_norm = (gate - jnp.asarray(preprocessor.x_mean)) / jnp.asarray(
             preprocessor.x_std
         )
@@ -127,8 +120,7 @@ class UDEAnsatz(HybridBase[UDEClosure]):
         }
 
         def rollout(nn: list[dict], z0: jnp.ndarray, vb: jnp.ndarray) -> jnp.ndarray:
-            """窓内を Euler で積分。simulator の generic_euler_solver と同じ刻み方
-            (学習した右辺がそのまま置換シミュで回る)。"""
+            """窓内を Euler 積分 (simulator と同じ刻み → 学習右辺が置換で回る)。"""
 
             def step(z, v_k):
                 return z + latent_deriv(nn, z, v_k[:, None], pull) * dt, z
@@ -173,9 +165,9 @@ class UDEAnsatz(HybridBase[UDEClosure]):
         if loss is None or parts is None:
             raise ValueError(f"epochs={epochs} は 1 以上が要る")
 
-        # joint 学習した encoder/decoder を preprocessor へ書き戻す。**これが UDE で
-        # 前処理が「先に固定される変換」でなくなる唯一の点** — kernel が呼ぶ decode
-        # も、初期潜在 (gate_inits) も、再構成指標も、ここで更新したものが使われる。
+        # joint 学習した encoder/decoder を preprocessor へ書き戻す = 前処理が「先に
+        # 固定される変換」でなくなる唯一の点 (kernel の decode・gate_inits・再構成指標が
+        # 更新後の値になる)。
         preprocessor.enc_params = {k: np.asarray(v) for k, v in params["enc"].items()}
         preprocessor.dec_params = {k: np.asarray(v) for k, v in params["dec"].items()}
         preprocessor._set_fit_artifacts(np.asarray(source.stacked_gate(train_xr)))
@@ -192,8 +184,10 @@ class UDEAnsatz(HybridBase[UDEClosure]):
             },
         )
 
-    def _dlatent(self, closure: UDEClosure) -> Callable:
-        return closure.apply()
-
-    def _closure_opcost(self, closure: UDEClosure) -> OpCost:
-        return closure.opcost()
+    def surr_comp_type(
+        self,
+        meta: SurrogateMeta,
+        preprocessor: Preprocessor,
+        closure: UDEClosure,
+    ) -> CompartmentType:
+        return hybrid_surr_comp_type(meta, preprocessor, closure, closure.apply())

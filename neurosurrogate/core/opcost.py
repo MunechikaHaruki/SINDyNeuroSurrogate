@@ -21,14 +21,3 @@ class OpCost:
 
     def to_dict(self) -> dict[str, int]:
         return {f.name: getattr(self, f.name) for f in fields(self)}
-
-    def diff_dict(self, other: "OpCost | None") -> dict[str, int]:
-        if other is None:
-            return {}
-        surr_d = self.to_dict()
-        orig_d = other.to_dict()
-        return {
-            **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
-            **{f"cost/original/{k}": v for k, v in orig_d.items()},
-            **{f"cost/diff/{k}": surr_d[k] - orig_d[k] for k in orig_d},
-        }

@@ -19,16 +19,15 @@ import joblib
 import xarray as xr
 
 from ..core.network import CompartmentType
-from ..core.opcost import OpCost
 from .ansatz.base import Ansatz
-from .ansatz.hybrid import HybridAnsatz
-from .ansatz.sindy import SINDyAnsatz
-from .ansatz.ude import UDEAnsatz
+from .ansatz.impl.hybrid import HybridAnsatz
+from .ansatz.impl.sindy import SINDyAnsatz
+from .ansatz.impl.ude import UDEAnsatz
 from .closure.base import Closure
 from .meta import SurrogateMeta
-from .preprocessor.autoencoder import AEPreprocessor
 from .preprocessor.base import Preprocessor
-from .preprocessor.pca import PCAPreprocessor
+from .preprocessor.impl.autoencoder import AEPreprocessor
+from .preprocessor.impl.pca import PCAPreprocessor
 
 BUNDLE_FILE = "surrogate.joblib"  # 学習成果物 (closure/preprocessor)
 META_FILE = "meta.json"  # 同定情報。一覧はこれだけ読む
@@ -101,15 +100,15 @@ class SurrogateBundle:
         return bundle
 
     @classmethod
-    def load_meta(cls, dir: Path | str) -> SurrogateMeta:
-        """同定情報だけを読む。run 一覧は pickle を開かずに済む。"""
-        return SurrogateMeta.from_dict(json.loads((Path(dir) / META_FILE).read_text()))
-
-    @classmethod
     def load(cls, dir: Path | str) -> "SurrogateBundle":
+        # meta は JSON 別ファイル (構造で保存)、学習成果物は pickle。run 一覧が meta
+        # だけ読む経路は mlflow_io が artifact の meta.json を直読みする (bundle を
+        # 経由しない) → ここは load 内でまとめて読めば足りる。
         data = joblib.load(Path(dir) / BUNDLE_FILE)
         bundle = cls()
-        bundle.meta = cls.load_meta(dir)
+        bundle.meta = SurrogateMeta.from_dict(
+            json.loads((Path(dir) / META_FILE).read_text())
+        )
         bundle.preprocessor = data["preprocessor"]
         bundle.closure = data["closure"]
         return bundle
@@ -131,13 +130,24 @@ class SurrogateBundle:
         """置換後の CompartmentType (replace.apply_surrogate が差し込む)。"""
         return self.ansatz.surr_comp_type(self.meta, self.preprocessor, self.closure)
 
-    @property
-    def opcost(self) -> OpCost:
-        return self.ansatz.opcost(self.meta, self.preprocessor, self.closure)
-
     def metrics(self) -> dict:
+        # cost/* は MLflow metric キー空間の組立 = metrics 集約の関心事 (OpCost 代数
+        # ではない) → ここでインライン展開する。surr のコストは surr_comp_type に焼き
+        # 込み済 (別経路を持たない)。original が無ければ差分は出さない。
+        orig = self.meta.original_opcost
+        cost: dict[str, int] = {}
+        if orig is not None:
+            surr = self.surr_comp_type.opcost
+            assert surr is not None  # surr_comp_type は必ず opcost を焼き込む
+            surr_d = surr.to_dict()
+            orig_d = orig.to_dict()
+            cost = {
+                **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
+                **{f"cost/original/{k}": v for k, v in orig_d.items()},
+                **{f"cost/surr-orig/{k}": surr_d[k] - orig_d[k] for k in orig_d},
+            }
         return {
             **self.closure.metrics(),
             **self.preprocessor.metrics(),
-            **self.opcost.diff_dict(self.meta.original_opcost),
+            **cost,
         }

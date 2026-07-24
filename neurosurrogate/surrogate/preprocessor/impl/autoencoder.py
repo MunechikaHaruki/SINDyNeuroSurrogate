@@ -5,8 +5,8 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
-from ...core.opcost import OpCost
-from .base import Preprocessor
+from ....core.opcost import OpCost
+from ..base import Preprocessor
 
 logger = logging.getLogger(__name__)
 

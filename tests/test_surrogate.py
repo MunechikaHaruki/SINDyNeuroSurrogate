@@ -22,14 +22,15 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.metrics.eval import EvalResult, evaluate
-from neurosurrogate.surrogate.ansatz.hybrid import HybridAnsatz
-from neurosurrogate.surrogate.ansatz.ude import UDEAnsatz
+from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
+from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import hybrid_physics
+from neurosurrogate.surrogate.ansatz.impl.ude import UDEAnsatz
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.closure.ude import UDEClosure
-from neurosurrogate.surrogate.preprocessor.autoencoder import AEPreprocessor
-from neurosurrogate.surrogate.preprocessor.pca import PCAPreprocessor
+from neurosurrogate.surrogate.preprocessor.impl.autoencoder import AEPreprocessor
+from neurosurrogate.surrogate.preprocessor.impl.pca import PCAPreprocessor
 from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
 from neurosurrogate.view.model import equation_texs, preprocessor_figs
 from neurosurrogate.view.specs import draw_all, spec_simple
@@ -153,9 +154,8 @@ def test_train_figs_render_from_reloaded_surrogate(
     """学習データ図は save/load を跨いで描ける: 軌道は保存されず meta +
     ansatz.train_source から再生成される (marimo が run ロード毎に描く経路)。"""
     sindy.save(tmp_path)
-    # meta は JSON で別ファイル → 一覧側は pickle を開かずに同定情報を読める
-    assert SurrogateBundle.load_meta(tmp_path) == sindy.meta
     reloaded = SurrogateBundle.load(tmp_path)
+    assert reloaded.meta == sindy.meta  # meta は JSON で round-trip
     source = reloaded.ansatz.train_source(reloaded.meta)
     assert source.comp_ids == [_train_comp(sindy)]  # 単体 hh モデル → 1 comp
     assert source.n_gate == len(sindy.meta.comp_type.gate_names)  # 全ゲート
@@ -373,14 +373,13 @@ def test_ude_rejects_non_learnable_preprocessor() -> None:
 def test_hybrid_opcost_includes_decode() -> None:
     """hybrid の kernel は毎ステップ decode を呼ぶ → OpCost に計上されている。"""
     surrogate = fit_surrogate("_test_hh_hybrid")
-    ansatz = surrogate.ansatz
-    assert isinstance(ansatz, HybridAnsatz)  # _physics は hybrid 固有
+    assert isinstance(surrogate.ansatz, HybridAnsatz)
     assert isinstance(surrogate.closure, SINDyBundle)  # opcost は表現固有
     decode_cost = surrogate.preprocessor.opcost()
     # PCA decode: gate ごとに latent 数の積 + 同数の加減 (3 latent x 3 gate)
     assert (decode_cost.mul, decode_cost.pm) == (9, 9)
-    assert surrogate.opcost == (
+    assert surrogate.surr_comp_type.opcost == (
         decode_cost
-        + ansatz._physics(surrogate.meta).dv_cost
+        + hybrid_physics(surrogate.meta).dv_cost
         + surrogate.closure.opcost()
     )

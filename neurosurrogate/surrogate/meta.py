@@ -5,7 +5,7 @@ bundle / ansatz / replace が共通で参照する **leaf** (surrogate 内の他
 オーケストレーターである SurrogateBundle を知らずに済む。
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import xarray as xr
 
@@ -19,22 +19,15 @@ from ..core.simulator import unified_simulator
 class SurrogateMeta:
     """何を学習したかの同定情報 (学習構造・置換対象の種類・学習データ)。
 
-    surrogate_type / preprocessor_type は実装を解決する dispatch キー、
-    n_components は潜在次元。**学習構造の単一源**で、実装側 (ansatz/preprocessor)
-    は自分がどう選ばれたかを知らない。
+    surrogate_type / preprocessor_type は実装を解決する dispatch キー、n_components は
+    潜在次元 = **学習構造の単一源** (実装側は自分がどう選ばれたかを知らない)。
 
-    置換対象と学習範囲は別軸で、yaml もその 2 キーで指定する:
-      `comp_type`     … **置換対象のコンパートメントの種類** (yaml 直指定)。
-                        サロゲートは「種類 → それを置換するモデル」の対応であって
-                        MC ネットワーク名やノード名には紐づかない → 置換判定
-                        (replace の型一致) も実装 dispatch (hybrid の physics) も
-                        ここだけを見る。
-      `train_comp_id` … **学習軌道を 1 ノードへ絞る指定** (yaml の
-                        `train_comp_identifier`、既定 None)。None なら種類一致の
-                        置換対象ノード全部で学習する (訓練分布=評価分布)。
-      `physics_type`  … **どこまでを学習ゲートにするかの選択** (hybrid の
-                        `HYBRID_PHYSICS` キー、既定 None = comp_type 名)。
-                        同じ置換対象でも学習/physics の分割位置を変えられる。
+    置換対象と学習範囲は別軸で yaml もその軸で指定する:
+      comp_type     … 置換対象のコンパートメント種類。サロゲートは「種類 → それを置換
+                      するモデル」で MC 名やノード名に紐づかない → 置換判定も hybrid の
+                      physics dispatch もここだけ見る。
+      train_comp_id … 学習を 1 ノードへ絞る指定 (None=種類一致ノード全部で学習)。
+      physics_type  … 学習/physics の分割位置の変種 (None=comp_type 名)。
     """
 
     surrogate_type: str  # sindy/hybrid
@@ -72,43 +65,34 @@ class SurrogateMeta:
         )
 
     def to_dict(self) -> dict:
-        """JSON 保存形。型を文字列/素データへ落とす唯一の境界。"""
+        """JSON 保存形。素データへ落とすのは comp_type/dataset だけ、残りはそのまま。"""
         return {
-            "surrogate_type": self.surrogate_type,
-            "preprocessor_type": self.preprocessor_type,
-            "n_components": self.n_components,
+            **{f.name: getattr(self, f.name) for f in fields(self)},
             "comp_type": self.comp_type.name,
             "dataset": self.dataset.to_dict(),
-            "train_comp_id": self.train_comp_id,
-            "physics_type": self.physics_type,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "SurrogateMeta":
         return cls(
-            surrogate_type=d["surrogate_type"],
-            preprocessor_type=d["preprocessor_type"],
-            n_components=d["n_components"],
-            dataset=DatasetConfig.from_dict(d["dataset"]),
-            comp_type=COMPARTMENT_TYPES[d["comp_type"]],
-            train_comp_id=d["train_comp_id"],
-            physics_type=d["physics_type"],
+            **{
+                **d,
+                "comp_type": COMPARTMENT_TYPES[d["comp_type"]],
+                "dataset": DatasetConfig.from_dict(d["dataset"]),
+            }
         )
 
     @property
     def label(self) -> str:
-        """図表示用の簡約名 (凡例が主用途)。runName 文字列に非依存。例:
+        """図凡例用の簡約名。条件の軸ごとに改行 (1 行だと凡例で潰れる)。例:
 
             hybrid/n5/ae
             +traub_sr_physics
             @traub19:soma
 
-        条件の軸ごとに改行する — 1 行に連ねると凡例で潰れて読めない。
-        `@` 以降は学習データ (MC モデル名 + 絞り込みノード名)。学習構造が同じでも
-        学習データが違えば別物 (traub 単体 vs traub19 全 comp vs traub19 の soma
-        のみ) → sweep はこれを識別キーにするので、ここまで含めないと別 run が
-        silent に 1 本へ潰れる。physics 変種 (`+…`) も同じ理由で付ける。
-        既定値の軸は行ごと出さない = 条件を振っていなければ従来どおり短いまま。
+        `@` 以降 = 学習データ (MC モデル名 + 絞り込みノード)。学習構造が同じでも学習
+        データが違えば別物 → sweep の識別キー。ここまで含めないと別 run が silent に
+        1 本へ潰れる。既定値の軸は出さない。
         """
         return "\n".join(
             [
@@ -122,27 +106,25 @@ class SurrogateMeta:
 
     @property
     def surr_type_name(self) -> str:
-        """置換後 CompartmentType の名前。例 traub_hybrid_surr。
+        """置換後 CompartmentType の名前 (例 traub_hybrid_surr)。
 
-        `simulator._group_by_type` はノードを **type 名でバケット化し代表 1 個の
-        kernel を全員へ適用する** → 名前が衝突すると片方の kernel が黙って使われる。
-        由来 (種類 × 定式化) を名前へ入れておけば、置換後ノードが何由来か図やログ
-        から読めるうえ、別サロゲート同士が同名になることもない。
+        simulator は type 名でノードをバケット化し代表 kernel を全員へ適用する → 名前
+        衝突は片方の kernel を黙って捨てる。種類×定式化を名前へ入れて衝突回避 + 由来を
+        図/ログから読めるようにする。
         """
         return f"{self.comp_type.name}_{self.surrogate_type}_surr"
 
     @property
     def train_comp(self) -> Compartment:
-        """学習の基準ノード (params/初期値の参照先)。
-
-        絞り込み指定があればそのノード、無ければ dataset 内で種類が一致する先頭
-        ノード。sindy は学習時 params をモデルへ焼き込むので、params 両立の比較対象
-        (replace の `_PARAMS_MATCH`) と置換後の初期電位はここから取る。置換可否の
-        「種類」判定はここを経由しない (comp_type が直接持つ)。
+        """学習の基準ノード (params/初期値の参照先)。絞り込みがあればそのノード、
+        無ければ種類一致の先頭。sindy は params を焼き込むので params 両立比較 (replace
+        の `_PARAMS_MATCH`) と初期電位はここから取る。種類判定は経由しない。
         """
+        nodes = self.dataset.net.nodes
         if self.train_comp_id is not None:
-            return self.dataset.net.nodes[self.train_comp_id]
-        return next(n for n in self.dataset.net.nodes if n.type == self.comp_type)
+            return nodes[self.train_comp_id]  # 絞り込み指定あり → そのノード
+        # 絞り込み無し → 種類一致ノードの先頭 (同種は params が全一致 → どれでも同じ)
+        return next(n for n in nodes if n.type == self.comp_type)
 
     @property
     def original_opcost(self) -> OpCost | None:
