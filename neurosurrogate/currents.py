@@ -244,13 +244,14 @@ def add_white_noise(sigma: float = 0.1):
     return apply
 
 
-def train(duration: float = 9000):
-    """学習時電流。波形パラメータ固定 (duration のみ可変)。"""
+def train(duration: float = 9000, seed: int = 991927697):
+    """学習時電流。波形パラメータ固定 (duration/seed のみ可変)。
+    seed = 離散値パルス列の乱数実現 (同分布の別サンプルで頑健性を見る)。"""
     return generate_discretized(
         options=[-5, 1.3, 6.3, 20],
         weights=[0.3, 1, 1, 1],
         sigma=1,
-        seed=991927697,
+        seed=seed,
         silence_duration=80,
         duration=duration,
     )

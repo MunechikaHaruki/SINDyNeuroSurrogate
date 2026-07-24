@@ -1,0 +1,16 @@
+# @package _global_
+# 対照群: traub_srPhysics_useMC19CompForTeachingData の SINDy optimizer を
+# STLSQ → SR3 に差し替えた版 (疎回帰の同定手法比較。1 preset 1 条件)。
+defaults:
+  - traub_srPhysics_useMC19CompForTeachingData
+
+surrogate:
+  ansatz:
+    optimizer:
+      type: sr3
+      # config.yaml が STLSQ 用に持つ threshold/alpha は SR3 に無い引数 →
+      # null で _instantiate が落とす。SR3 の疎性は reg_weight_lam/regularizer で指定。
+      threshold: null
+      alpha: null
+      reg_weight_lam: 0.01
+      regularizer: l0

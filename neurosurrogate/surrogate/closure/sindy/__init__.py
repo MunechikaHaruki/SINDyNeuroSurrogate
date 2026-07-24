@@ -25,11 +25,14 @@ if TYPE_CHECKING:
 
 OPTIMIZER_CLS: dict[str, type] = {
     "stlsq": ps.optimizers.STLSQ,
+    "sr3": ps.optimizers.SR3,
 }
 
 
 def _instantiate(spec: dict, registry: dict[str, type]):
-    spec = dict(spec)
+    # None は「その optimizer では使わない hyperparam」= yaml で明示 null にして
+    # 落とす (STLSQ 固有 alpha を config.yaml から継承する SR3 preset 等)。
+    spec = {k: v for k, v in spec.items() if v is not None}
     return registry[spec.pop("type")](**spec)
 
 

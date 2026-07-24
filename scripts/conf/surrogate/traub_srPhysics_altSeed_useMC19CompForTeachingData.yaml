@@ -1,0 +1,11 @@
+# @package _global_
+# 対照群: traub_srPhysics_useMC19CompForTeachingData の教師電流を別乱数実現に。
+# 波形分布 (options/weights/sigma) は同一・seed だけ差替え → 学習頑健性を見る (1 preset 1 条件)。
+defaults:
+  - traub_srPhysics_useMC19CompForTeachingData
+
+surrogate:
+  meta:
+    datasets:
+      current_params:
+        seed: 20260724
