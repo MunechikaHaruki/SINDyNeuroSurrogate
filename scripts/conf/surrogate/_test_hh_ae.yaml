@@ -1,16 +1,23 @@
 # @package _global_
-# テスト専用プリセット。pca 固定の他テストが踏まない AE の encode/decode を通す。
-# epochs を切り詰めるので再構成品質は問わない (経路が通ることだけ)。
-defaults:
-  - hh_hybrid
-
+# テスト専用プリセット (自己完結)。pca 固定の他テストが踏まない AE の encode/decode
+# を通す。epochs を切り詰めるので再構成品質は問わない (経路が通ることだけ)。
 surrogate:
   meta:
+    comp_type: hh
     surrogate_type: hybrid
     preprocessor_type: ae
     n_components: 2
     datasets:
+      model_name: hh
+      current_type: train
       current_params:
         duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮
   preprocessor:
     epochs: 20 # 収束は見ない
+  ansatz:
+    library_specs:
+      - type: hh_gate_forward
+      - type: hh_gate_backward
+      - type: hh_gate_forward_product
+      - type: hh_gate_backward_product
+      - type: basis

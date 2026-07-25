@@ -1,14 +1,22 @@
 # @package _global_
-# テスト専用プリセット。素体 (単体 traub 教師) から library_specs を継承。
+# テスト専用プリセット (自己完結)。単体 traub 教師の学習構造を直接書き下す。本番
+# preset は results/obsolete へ退避したので defaults 継承しない。
 # Ca サブ系 (XI/Q) の physics 分離と traub19 への移植を踏む経路。
-defaults:
-  - traub_useSingleCompForTeachingData
-
 surrogate:
   meta:
+    comp_type: traub
     surrogate_type: hybrid
     preprocessor_type: pca # 決定的で速い pca に固定 (AE は乱数初期化で品質がブレる)
     n_components: 5
     datasets:
+      model_name: traub
+      current_type: train
       current_params:
         duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮
+  ansatz:
+    library_specs:
+      - type: traub_gate_forward
+      - type: traub_gate_backward
+      - type: traub_gate_forward_product
+      - type: traub_gate_backward_product
+      - type: basis

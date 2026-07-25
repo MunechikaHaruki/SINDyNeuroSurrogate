@@ -1,13 +1,21 @@
 # @package _global_
-# テスト専用プリセット (test_hh_sindy の hybrid 版)。
-defaults:
-  - hh_hybrid
-
+# テスト専用プリセット (自己完結、test_hh_sindy の hybrid 版)。本番 preset は
+# results/obsolete へ退避したので defaults 継承しない。
 surrogate:
   meta:
+    comp_type: hh
     surrogate_type: hybrid
     preprocessor_type: pca # 決定的で速い pca に固定 (AE 経路は test_hh_ae)
     n_components: 3 # hybrid の既定潜在次元
     datasets:
+      model_name: hh
+      current_type: train
       current_params:
         duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮
+  ansatz:
+    library_specs:
+      - type: hh_gate_forward
+      - type: hh_gate_backward
+      - type: hh_gate_forward_product
+      - type: hh_gate_backward_product
+      - type: basis

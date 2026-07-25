@@ -1,5 +1,7 @@
 import logging
 import os
+import tempfile
+from pathlib import Path
 
 import hydra
 import mlflow
@@ -38,6 +40,14 @@ def _fit_and_log(cfg: DictConfig) -> None:
     log_surrogate_model(SurrogateBundle.setup(cfg_surr))
 
 
+def _log_config(cfg: DictConfig) -> None:
+    """学習に使った合成 config を代表 run の artifact に yaml で残す (再現用)。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "config.yaml"
+        path.write_text(OmegaConf.to_yaml(cfg))
+        mlflow.log_artifact(str(path))
+
+
 def _ensure_sweep_parent(preset: str) -> str | None:
     """--multirun 時のみ: sweep の親 run を返す。無ければ yaml本体 (sweeper 抜き config)
     を学習して親=代表を作る。子は parentRunId で紐付き run_selector は代表だけ出す。"""
@@ -49,10 +59,12 @@ def _ensure_sweep_parent(preset: str) -> str | None:
     )
     if hits:
         return hits[0].info.run_id
+    parent_cfg = compose(config_name="config", overrides=[f"surrogate={preset}"])
     with mlflow.start_run(run_name=f"[parent]{preset}") as parent:
         mlflow.set_tag("sweep_id", sweep_id)
         mlflow.log_param("preset", preset)
-        _fit_and_log(compose(config_name="config", overrides=[f"surrogate={preset}"]))
+        _log_config(parent_cfg)
+        _fit_and_log(parent_cfg)
         return parent.info.run_id
 
 
@@ -66,6 +78,10 @@ def main(cfg: DictConfig) -> None:
     with mlflow.start_run(run_name=_run_name(preset), tags=tags):
         # 出自 preset は学習に影響しない → pickle 外の MLflow param へ。
         mlflow.log_param("preset", preset)
+        # 単発 (parent_id なし) はこの run 自身が代表 → config yaml を残す。
+        # multirun の子は残さない (代表 = 親のみ)。
+        if parent_id is None:
+            _log_config(cfg)
         _fit_and_log(cfg)
     logger.info(f"[{_run_name(preset)}] 完了")
 

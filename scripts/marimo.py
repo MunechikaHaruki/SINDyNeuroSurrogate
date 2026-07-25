@@ -10,7 +10,7 @@ def _():
 
     import marimo as mo
     from analysis import ui
-    from analysis.access import plt_style_of, preset_of
+    from analysis.access import plt_style_of
     from analysis.mode import single as m_single
     from analysis.mode import sweep as m_sweep
     from analysis.save import panel, restore
@@ -34,7 +34,6 @@ def _():
         mo,
         panel,
         plt_style_of,
-        preset_of,
         restore,
         runs_df,
         setup_mpl,
@@ -52,9 +51,19 @@ def _(RESULT_DIR, restore):
 
 
 @app.cell
-def _(restore, restore_dd):
+def _(mo):
+    # base.json は手で頻繁に編集する。押下で cfg セルを再実行しディスクから読み直す。
+    reload_base = mo.ui.run_button(label="base.json 再読込")
+    reload_base  # noqa: B018
+    return (reload_base,)
+
+
+@app.cell
+def _(reload_base, restore, restore_dd):
     # cfg = base.json デフォルト ← 選択 meta.json 上書き。marimo は widget を減らし、
     # シミュ入力 (current/dt/current_params/sweep 範囲) はこの cfg (ファイル) から読む。
+    # reload_base 押下でこのセルが再走 → load_base がディスクを読み直す。
+    reload_base  # noqa: B018
     cfg = restore.resolve(restore_dd.value)
     return (cfg,)
 
@@ -112,8 +121,8 @@ def _(cfg, m_sweep, mo):
 
 
 @app.cell
-def _(panel, preset_of, preset_ui, save_result):
-    save_panel = panel.make_save_panel(save_result, preset_of(preset_ui))
+def _(panel, save_result, sel_name):
+    save_panel = panel.make_save_panel(save_result, sel_name)
     panel.render_save_panel(save_panel)
     return (save_panel,)
 
@@ -201,10 +210,13 @@ def _(cfg, loaded_sweep, m_sweep, run_sweep, set_res_sweep):
 
 @app.cell
 def _(run_selector):
-    # 選択 run id (single 選択テーブル → 0/1 件)。loaded_single/loaded_sweep の単一源。
+    # 選択 run id + runName (single 選択テーブル → 0/1 件)。id は loaded_single/
+    # loaded_sweep の単一源、name は保存先の既定名に使う。
     _sel = run_selector.value
-    sel_id = _sel["run_id"].iloc[0] if _sel is not None and len(_sel) else None
-    return (sel_id,)
+    _has = _sel is not None and len(_sel)
+    sel_id = _sel["run_id"].iloc[0] if _has else None
+    sel_name = _sel["tags.mlflow.runName"].iloc[0] if _has else None
+    return sel_id, sel_name
 
 
 @app.cell

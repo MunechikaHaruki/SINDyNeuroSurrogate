@@ -70,7 +70,7 @@ radon:
 # Smoke test: pytest (ドメイン層) + Hydra entry + marimo notebook (cell error -> exit 1)
 test:
     {{ VIRTUAL_ENV }} pytest -q
-    MLFLOW_EXPERIMENT={{ SMOKE_EXP }} {{ VIRTUAL_ENV }} python scripts/main.py +surrogate.meta.datasets.current_params.duration=180
+    MLFLOW_EXPERIMENT={{ SMOKE_EXP }} {{ VIRTUAL_ENV }} python scripts/main.py surrogate=_test_hh_sindy
 
 # traub 系 preset (conf/surrogate/traub_*.yaml) を順に --multirun 実行
 traub:
