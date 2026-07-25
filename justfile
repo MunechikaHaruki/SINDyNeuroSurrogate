@@ -14,6 +14,7 @@ SMOKE_EXP := "smoke_test"  # just test の main.py run 隔離先 (clean-test が
 clean-cache:
     find . -type f -name "*.py[co]" -delete
     find . -type d -name "__pycache__" -delete
+    find . -type f -name ".DS_Store" -not -path './.git/*' -delete
     rm -rf ./.mypy_cache
     rm -rf ./.ruff_cache
     rm -rf ./.pytest_cache

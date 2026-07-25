@@ -9,10 +9,10 @@ from dataclasses import dataclass, fields
 
 import xarray as xr
 
-from ..compartments import COMPARTMENT_TYPES
 from ..core.network import Compartment, CompartmentType, DatasetConfig
 from ..core.opcost import OpCost
 from ..core.simulator import unified_simulator
+from ..neurons.compartments import COMPARTMENT_TYPES
 
 
 @dataclass(frozen=True)

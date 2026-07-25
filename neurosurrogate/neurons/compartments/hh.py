@@ -2,8 +2,8 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ..core.network import CompartmentType
-from ..core.opcost import OpCost
+from ...core.network import CompartmentType
+from ...core.opcost import OpCost
 from .common import _gate_ode, _inf_ode, lin_exp_form
 
 

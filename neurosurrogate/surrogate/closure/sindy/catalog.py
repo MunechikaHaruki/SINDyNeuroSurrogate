@@ -1,6 +1,6 @@
 import sympy as sp
 
-from ....compartments import hh, traub
+from ....neurons.compartments import hh, traub
 from .entry import LibraryEntry
 from .roles import G, U, V  # 役割記号: 電位 / ゲート(=隠れ変数) / 外部電流
 

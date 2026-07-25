@@ -5,6 +5,7 @@ Hydra プリセットを実設定源として読み、UI/実験ログを介さ�
 短縮電流だけ固定したテスト専用プリセット) に置き、テスト側は override しない。
 """
 
+from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
 
@@ -14,24 +15,35 @@ import pytest
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
-from neurosurrogate.compartments.traub import (
+from neurosurrogate.core import access
+from neurosurrogate.core.network import DatasetConfig
+from neurosurrogate.core.opcost import OpCost
+from neurosurrogate.core.simulator import unified_simulator
+from neurosurrogate.metrics.eval import EvalResult, evaluate
+from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
+from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
-from neurosurrogate.core import access
-from neurosurrogate.core.network import DatasetConfig
-from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.metrics.eval import EvalResult, evaluate
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
-from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import hybrid_physics
+from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
+    hybrid_physics,
+    hybrid_surr_comp_type,
+)
 from neurosurrogate.surrogate.ansatz.impl.ude import UDEAnsatz
 from neurosurrogate.surrogate.bundle import SurrogateBundle
+from neurosurrogate.surrogate.closure.base import Closure
 from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.closure.ude import UDEClosure
+from neurosurrogate.surrogate.preprocessor.base import Preprocessor
 from neurosurrogate.surrogate.preprocessor.impl.autoencoder import AEPreprocessor
 from neurosurrogate.surrogate.preprocessor.impl.pca import PCAPreprocessor
-from neurosurrogate.surrogate.replace import apply_surrogate, replaceables
+from neurosurrogate.surrogate.replace import (
+    apply_surrogate,
+    replace_nodes,
+    replaceables,
+)
 from neurosurrogate.view.model import equation_texs, preprocessor_figs
 from neurosurrogate.view.specs import draw_all, spec_simple
 from neurosurrogate.view.train import train_figs
@@ -368,6 +380,90 @@ def test_ude_rejects_non_learnable_preprocessor() -> None:
         UDEAnsatz().fit(
             pca_based.meta, pca_based.train_xr, pca_based.preprocessor, {"epochs": 1}
         )
+
+
+class _IdentityPreprocessor(Preprocessor):
+    """恒等 preprocessor: latent==gate を無演算 passthrough する検証専用実装。
+
+    真の式を潜在方程式へ入れたとき置換 kernel が原系と bit 一致することを担保する
+    ため、decode/encode を一切の演算なしで素通しする (fit 経路は持たない手組み)。
+    """
+
+    def __init__(self, gate_inits: list[float]) -> None:
+        self.gate_inits = gate_inits
+        self.reconstruction_mse = 0.0
+        self.reconstruction_mse_ratio = 0.0
+
+    @classmethod
+    def fit(
+        cls, train_gate: np.ndarray, n_components: int, spec: dict
+    ) -> "Preprocessor":
+        raise NotImplementedError("恒等 preprocessor は手組み専用")
+
+    def encode(self, x: np.ndarray) -> np.ndarray:
+        return x
+
+    def decode(self, state: jnp.ndarray) -> jnp.ndarray:
+        return state
+
+    def metrics(self) -> dict:
+        return {}
+
+    def opcost(self) -> OpCost:
+        return OpCost()
+
+    @property
+    def n_features(self) -> int:
+        return len(self.gate_inits)
+
+
+class _NullClosure(Closure):
+    """潜在方程式は自由関数 (dlatent_fn) 側で与える → opcost/metrics だけの殻。"""
+
+    def metrics(self) -> dict[str, float]:
+        return {}
+
+    def opcost(self) -> OpCost:
+        return OpCost()
+
+
+def test_original_dynamics_injected_reproduces_potential_exactly() -> None:
+    """恒等サロゲート: 前処理=恒等 (latent==gate)・潜在方程式=真の HH ゲート式 を
+    hybrid kernel へ差し込むと、置換系の電位遷移が原系と **完全一致** する。
+
+    サロゲート積分経路 (座標変換・state レイアウト・physics dV/dt・euler・型差替) に
+    近似以外の齟齬が無いことの担保 — 真の右辺を入れれば差はゼロでなければならない。
+    """
+    surrogate = fit_surrogate("_test_hh_hybrid")  # comp_type=hh, n_components=3
+    meta = surrogate.meta
+    p = meta.train_comp.resolved_params
+    assert isinstance(p, HHParams)
+
+    # 潜在方程式 = 原 HH の dgate そのまま (latent==gate なので引数もそのまま渡せる)。
+    def exact_dlatent(latent: jnp.ndarray, v: jnp.ndarray) -> jnp.ndarray:
+        v_rel = v - p.E_REST
+        return jnp.stack(
+            [dmdt(v_rel, latent[0]), dhdt(v_rel, latent[1]), dndt(v_rel, latent[2])]
+        )
+
+    surr_type = hybrid_surr_comp_type(
+        meta,
+        _IdentityPreprocessor(hh_inits(p)[1:]),  # 初期ゲート = 原 init のゲート部
+        _NullClosure(),
+        exact_dlatent,
+    )
+    replaced = dc_replace(
+        meta.dataset,
+        net=replace_nodes(
+            meta.dataset.net, surr_type, lambda n: n.type == meta.comp_type
+        ),
+    )
+
+    comp = _train_comp(surrogate)
+    assert np.array_equal(
+        access.potential(unified_simulator(meta.dataset), comp),
+        access.potential(unified_simulator(replaced), comp),
+    )
 
 
 def test_hybrid_opcost_includes_decode() -> None:

@@ -8,9 +8,9 @@ import pandas as pd
 from matplotlib.figure import Figure
 
 from ..core import access
-from ..currents import CURRENT_MAP
 from ..metrics.wave import diverged
-from ..models import MCMODELS
+from ..neurons import MCMODELS
+from ..neurons.currents import CURRENT_MAP
 from .engine import error_fig, new_figure, place_legend
 
 if TYPE_CHECKING:

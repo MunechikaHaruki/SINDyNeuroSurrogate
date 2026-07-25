@@ -5,9 +5,9 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from ..core.network import CompartmentType
-from ..core.opcost import OpCost
-from .common import lin_exp_form
+from ...core.network import CompartmentType
+from ...core.opcost import OpCost
+from .common import _gate_ode, _inf_ode, lin_exp_form
 
 TRAUB_V_LEAK = -60.0
 TRAUB_V_INIT = -60.0
@@ -110,13 +110,18 @@ _TRAUB_RATE_V = {
 }
 
 
+# 公式 (steady-state a/(a+b)・gate ODE a(1-x)-bx) は common に一元化し、ここは
+# (α, β) ペアから閉包を導出するだけ (hh.py が m_inf/dmdt を組むのと同じ流儀)。
+_TRAUB_INF_V = {name: _inf_ode(a, b) for name, (a, b) in _TRAUB_RATE_V.items()}
+_TRAUB_DSTATE_V = {name: _gate_ode(a, b) for name, (a, b) in _TRAUB_RATE_V.items()}
+
+# Ca 濃度 XI で駆動される AHP ゲート Q (引数が v でなく xi なだけで同じ形)。
+_traub_inf_q = _inf_ode(alpha_q_traub, beta_q_traub)
+_traub_dq = _gate_ode(alpha_q_traub, beta_q_traub)
+
+
 def _traub_inf_v(name, v):
-    a, b = _TRAUB_RATE_V[name]
-    return a(v) / (a(v) + b(v))
-
-
-def _traub_inf_q(xi):
-    return alpha_q_traub(xi) / (alpha_q_traub(xi) + beta_q_traub(xi))
+    return _TRAUB_INF_V[name](v)
 
 
 class TraubParams(NamedTuple):
@@ -168,7 +173,7 @@ def calc_traub_channel(p: TraubParams, u_t, v, states):
     dB = _traub_dstate_v("B", v, B)
     dS = _traub_dstate_v("S", v, S)
     dR = _traub_dstate_v("R", v, R)
-    dQ = alpha_q_traub(XI) * (1.0 - Q) - beta_q_traub(XI) * Q
+    dQ = _traub_dq(XI, Q)
     i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
     dXI = -p.phi_area * i_ca - p.Beta * XI
 
@@ -201,7 +206,7 @@ def traub_calcium_step(p: TraubParams, v, gates8, extra):
     Q, XI = extra[0], extra[1]
     S, R = gates8[6], gates8[7]
     i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
-    dQ = alpha_q_traub(XI) * (1.0 - Q) - beta_q_traub(XI) * Q
+    dQ = _traub_dq(XI, Q)
     dXI = -p.phi_area * i_ca - p.Beta * XI
     return jnp.concatenate([gates8, extra]), jnp.stack([dQ, dXI])
 
@@ -217,7 +222,7 @@ def traub_sr_calcium_step(p: TraubParams, v, gates6, extra):
     S, R, XI, Q = extra[0], extra[1], extra[2], extra[3]
     i_ca = p.g_Ca * S * S * R * (v - p.V_Ca)
     dXI = -p.phi_area * i_ca - p.Beta * XI
-    dQ = alpha_q_traub(XI) * (1.0 - Q) - beta_q_traub(XI) * Q
+    dQ = _traub_dq(XI, Q)
     full = jnp.concatenate([gates6, jnp.stack([S, R, Q, XI])])
     return full, jnp.stack(
         [_traub_dstate_v("S", v, S), _traub_dstate_v("R", v, R), dXI, dQ]
@@ -259,8 +264,7 @@ def _traub_state_inits(p: TraubParams) -> list[float]:
 
 
 def _traub_dstate_v(name, v, x):
-    a, b = _TRAUB_RATE_V[name]
-    return a(v) * (1.0 - x) - b(v) * x
+    return _TRAUB_DSTATE_V[name](v, x)
 
 
 # レート関数の演算コスト。_traub_u の pm=1、lin_exp_form の (exp=1, pm=1, div=1) を

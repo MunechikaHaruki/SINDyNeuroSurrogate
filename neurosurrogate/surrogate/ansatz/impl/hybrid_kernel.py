@@ -12,8 +12,11 @@ from typing import Any
 import jax.numpy as jnp
 import xarray as xr
 
-from ....compartments.hh import HH_DV_COST, HHParams, hh_dv
-from ....compartments.traub import (
+from ....core import access
+from ....core.network import CompartmentType
+from ....core.opcost import OpCost
+from ....neurons.compartments.hh import HH_DV_COST, HHParams, hh_dv
+from ....neurons.compartments.traub import (
     TRAUB_CA_COST,
     TRAUB_DV_COST,
     TRAUB_EXTRA_GATE_NAMES,
@@ -28,9 +31,6 @@ from ....compartments.traub import (
     traub_sr_calcium_step,
     traub_sr_extra_inits,
 )
-from ....core import access
-from ....core.network import CompartmentType
-from ....core.opcost import OpCost
 from ...closure.base import Closure
 from ...meta import SurrogateMeta
 from ...preprocessor.base import Preprocessor

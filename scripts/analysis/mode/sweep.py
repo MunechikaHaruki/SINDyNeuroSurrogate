@@ -18,7 +18,7 @@ from neurosurrogate.metrics.eval_sweep import (
 )
 from neurosurrogate.metrics.wave import DF_ROW_METRICS, SCALAR_METRICS
 from neurosurrogate.surrogate.bundle import SurrogateBundle
-from neurosurrogate.view.utils import sweep_fig, sweep_trace_grid_fig
+from neurosurrogate.view.preview import sweep_fig, sweep_trace_grid_fig
 
 # ---------------------------------------------------------------------------
 # Sweep UI

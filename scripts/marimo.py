@@ -23,7 +23,7 @@ def _():
     from analysis.targets import TARGET_MODEL
     from mlflow_io import get_runs_df, load_from_selector
 
-    RESULT_DIR = Path(__file__).resolve().parent / "conf" / "surrogate" / "result"
+    RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
 
     runs_df = get_runs_df()
     return (

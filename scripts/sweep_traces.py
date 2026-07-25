@@ -28,13 +28,13 @@ from neurosurrogate.metrics.eval_sweep import (
     sweep_labels,
     sweepable_params,
 )
-from neurosurrogate.models import MCMODELS
+from neurosurrogate.neurons import MCMODELS
 from neurosurrogate.surrogate.replace import replaced_names
-from neurosurrogate.view.utils import sweep_trace_grid_fig
+from neurosurrogate.view.preview import sweep_trace_grid_fig
 
 logger = logging.getLogger(__name__)
 
-RESULT_DIR = Path(__file__).resolve().parent / "conf" / "surrogate" / "result"
+RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
 
 
 def _parse_args() -> argparse.Namespace:

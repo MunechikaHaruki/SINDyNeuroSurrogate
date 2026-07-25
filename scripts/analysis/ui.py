@@ -20,12 +20,12 @@ from analysis.save.panel import SaveEntry
 from analysis.style import STYLES
 from mlflow_io import setup_mlflow
 
-from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult
-from neurosurrogate.models import MCMODELS
+from neurosurrogate.neurons import MCMODELS
+from neurosurrogate.neurons.currents import CURRENT_MAP
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.replace import replaced_names
-from neurosurrogate.view.utils import current_preview_fig
+from neurosurrogate.view.preview import current_preview_fig
 
 CurrentList: list = list(CURRENT_MAP.keys())
 

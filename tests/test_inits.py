@@ -8,13 +8,13 @@ soma (default params) の Ca 濃度 XI を初期値に取り、traub.c 参照か
 import numpy as np
 import pytest
 
-from neurosurrogate.compartments.traub import (
+from neurosurrogate.neurons import MCMODELS
+from neurosurrogate.neurons.compartments.traub import (
     TRAUB_STATE_NAMES,
     TraubParams,
     _traub_inf_v,
 )
-from neurosurrogate.models import MCMODELS
-from neurosurrogate.models.traub19 import SOMA_IDX
+from neurosurrogate.neurons.traub19 import SOMA_IDX
 
 XI_IDX = 1 + TRAUB_STATE_NAMES.index("XI")  # init は [V, *gates]
 Q_IDX = 1 + TRAUB_STATE_NAMES.index("Q")

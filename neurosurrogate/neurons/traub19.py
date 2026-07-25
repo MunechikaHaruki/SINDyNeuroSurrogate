@@ -10,8 +10,8 @@ C reference: tmp/dataset_utils/traub/traub.c と代数的等価。
 
 import math
 
-from ..compartments.traub import TRAUB_TYPE, TraubParams
-from ..core.network import Compartment, CompartmentType, Edge, NeuronGraph
+from ..core.network import Compartment, Edge, NeuronGraph
+from .compartments.traub import TRAUB_DUMMY_TYPE, TRAUB_TYPE, TraubParams
 
 # --- traub.c の per-compartment 定数 (19要素) ---
 
@@ -61,27 +61,24 @@ def _g_axial(i: int) -> float:
 
 # dend 刺激版の注入先。soma (8) 隣の active な apical proximal dendrite で、
 # soma へ確実に電流が伝播する (g_Na=15)。
-DEND_STIM_IDX = 9
+_DEND_STIM_IDX = 9
 
 
-def build_traub19(
-    dendrite_type: CompartmentType = TRAUB_TYPE,
+def _build_traub19(
+    soma_only: bool = False,
     stim_idx: int = SOMA_IDX,
 ) -> NeuronGraph:
-    """19-comp Traub モデル。
+    """19-comp Traub モデルを組む内部ヘルパ (公開するのは下の TRAUB19_MODELS)。
 
-    dendrite_type 既定は TRAUB_TYPE (全 comp 同一型)。soma だけ置換対象にしたいときは
-    TRAUB_DUMMY_TYPE を渡す → soma だけ traub 型に残り dendrite が別型 (置換対象外) に
-    なる。comp_type=traub の学習を preset 変更なしで soma 1 ノードだけへ適用できる。
-    中身は同一なので動力学は変わらない。
-
-    stim_idx 既定は SOMA_IDX (soma 注入 = 元の traub.c と同じ)。dendrite に注入したい
-    ときはその index を渡す (area scale も注入ノードのものに合わせる)。
+    soma_only=False (既定) は全 comp 同一 traub 型。True にすると soma だけ traub 型に
+    残り dendrite はダミー型 (別型 = 置換対象外) になる → comp_type=traub の学習が soma
+    1 ノードだけへ適用される。stim_idx で注入ノードを変える (area scale も注入ノードの
+    ものに合わせる)。変種の意味は TRAUB19_MODELS 側。
     """
     nodes = [
         Compartment(
             name=_name_at(i),
-            type=TRAUB_TYPE if i == SOMA_IDX else dendrite_type,
+            type=TRAUB_DUMMY_TYPE if soma_only and i != SOMA_IDX else TRAUB_TYPE,
             params=_params_at(i),
         )
         for i in range(NC)
@@ -94,3 +91,17 @@ def build_traub19(
         stim=_name_at(stim_idx),
         stim_area_scale=_AREA[stim_idx],
     )
+
+
+# 19-comp Traub の 3 変種を宣言的に定義 (__init__ は MCMODELS へ merge するだけ)。
+# 変種差 = (dendrite を置換対象にするか, 電流注入先) の 2 軸だが、意図は名前で示す。
+TRAUB19_MODELS: dict[str, NeuronGraph] = {
+    # 全 comp 同一 traub 型 → 全ノード置換対象 (元の traub.c と同じ soma 注入)。
+    "traub19": _build_traub19(),
+    # soma だけ traub 型に残し dendrite をダミー型 traub_ に。comp_type=traub の学習を
+    # そのまま適用すると soma 1 ノードだけ置換される (適用先で範囲を絞る→preset 不変)。
+    "traub19_soma": _build_traub19(soma_only=True),
+    # 同上 (soma だけ置換対象) だが電流注入を dendrite に。soma 非注入で dend → soma
+    # 伝播を surrogate soma が再現できるかを見る。
+    "traub19_soma_dendstim": _build_traub19(soma_only=True, stim_idx=_DEND_STIM_IDX),
+}

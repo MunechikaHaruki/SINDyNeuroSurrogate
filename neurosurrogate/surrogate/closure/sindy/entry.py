@@ -7,9 +7,9 @@ import pysindy as ps
 import sympy as sp
 from sympy.core.function import AppliedUndef
 
-from ....compartments.hh import HH_RATE_COST_MAP
-from ....compartments.traub import TRAUB_RATE_COST_MAP
 from ....core.opcost import OpCost
+from ....neurons.compartments.hh import HH_RATE_COST_MAP
+from ....neurons.compartments.traub import TRAUB_RATE_COST_MAP
 
 _RATE_COST_MAP = HH_RATE_COST_MAP | TRAUB_RATE_COST_MAP
 

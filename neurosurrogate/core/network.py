@@ -72,7 +72,7 @@ class Compartment:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Compartment":
-        from ..compartments import COMPARTMENT_TYPES
+        from ..neurons.compartments import COMPARTMENT_TYPES
 
         comp_type = COMPARTMENT_TYPES[d["type"]]
         if "params" in d:
@@ -184,7 +184,7 @@ class DatasetConfig:
         )
 
     def build_current(self) -> np.ndarray:
-        from ..currents import CURRENT_MAP
+        from ..neurons.currents import CURRENT_MAP
 
         return CURRENT_MAP[self.current_type](**self.current_params)(self.dt)
 
@@ -197,7 +197,7 @@ class DatasetConfig:
         current_params: dict | None = None,
     ) -> "DatasetConfig":
         """yamlとの境界。current_params 省略時はパラメータ無し (既定値)。"""
-        from ..models import MCMODELS
+        from ..neurons import MCMODELS
 
         return DatasetConfig(
             model_name=model_name,

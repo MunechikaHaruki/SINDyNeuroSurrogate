@@ -12,8 +12,8 @@ import xarray as xr
 
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
-from ..currents import CURRENT_MAP
-from ..models import MCMODELS
+from ..neurons import MCMODELS
+from ..neurons.currents import CURRENT_MAP
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.replace import apply_surrogate
 from .wave import DynamicMetrics, extract_metric

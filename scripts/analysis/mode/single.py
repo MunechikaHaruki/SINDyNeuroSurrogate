@@ -17,9 +17,9 @@ from matplotlib.figure import Figure
 from mlflow_io import load_surrogate_model
 
 from neurosurrogate.core.network import DatasetConfig, NeuronGraph
-from neurosurrogate.currents import CURRENT_MAP
 from neurosurrogate.metrics.eval import EvalResult, evaluate
-from neurosurrogate.models import MCMODELS
+from neurosurrogate.neurons import MCMODELS
+from neurosurrogate.neurons.currents import CURRENT_MAP
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.replace import replaced_names
 from neurosurrogate.view.model import (
