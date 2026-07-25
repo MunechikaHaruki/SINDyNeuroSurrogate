@@ -4,7 +4,7 @@
 `Ansatz.train_source` (どの comp の・先頭何ゲートか) から `bundle.train_xr` を
 再生成し、そこから図を組む。→ MLflow から load した run でも同じ図が出る。
 
-evaluate 後の比較図 (specs.py) と違い、**surrogate 単体にしか依存しない** ので
+evaluate 後の比較図 (sim.py) と違い、**surrogate 単体にしか依存しない** ので
 置換シミュを回す前に描ける。
 """
 
@@ -16,9 +16,9 @@ import jax.numpy as jnp
 import numpy as np
 from matplotlib.figure import Figure
 
-from ..core import access
-from ..surrogate.bundle import SurrogateBundle
-from .engine import (
+from ...core import access
+from ...surrogate.bundle import SurrogateBundle
+from ..engine import (
     PanelSpec,
     TraceSpec,
     draw_engine,

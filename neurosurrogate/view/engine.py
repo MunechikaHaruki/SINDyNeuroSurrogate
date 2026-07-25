@@ -1,3 +1,10 @@
+"""描画プリミティブ: 図の生成・凡例配置・エラー図と、パネル記述 (`PanelSpec` /
+`TraceSpec`) からの一括描画 (`draw_engine`)。
+
+`figs/` 配下の各図はここだけを土台にする (matplotlib の作法をここへ閉じ込める)。
+`TraceSpec` は t/y を numpy で持つので Dataset 非依存。marimo 非依存。
+"""
+
 from __future__ import annotations
 
 import logging

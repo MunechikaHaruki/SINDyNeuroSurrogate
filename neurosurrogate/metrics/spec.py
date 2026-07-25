@@ -1,27 +1,47 @@
-"""評価する対象の仕様 (設定 dict → 型) とその実行。marimo/mlflow 非依存。
+"""評価対象の仕様 (設定 dict → 型) と結果のキー付け規約。marimo/mlflow 非依存。
 
 設定ファイル (scripts/conf/base.json) は `sim`/`sweep` の 2 セクションを持ち、
 どちらも entry の list、1 entry = **適用先 target × 電流** を自己完結で持つ
 (sweep はさらに掃引軸)。**そのスキーマを知るのはこの module だけ** で、UI 層は
-生の dict を渡すだけ: どのキーが何を意味するか・何回どの順でシミュするか・結果を
-どのキーで束ねるかは全部ここが決める (表示設定 `draw` は widget 由来なので UI 側)。
+生の dict を渡すだけ: どのキーが何を意味するか・結果をどのキーで束ねるかはここが
+決める (表示設定 `draw` は widget 由来なので UI 側)。
+
+**実行は知らない** — 仕様 → 実行の向きに依存を張り、シミュを回すのは `eval.py`
+(`run_sims` / `run_sweeps`) 側。
 """
 
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Self, TypeVar
 
-from ..core.network import DatasetConfig
+import numpy as np
+
+from ..core.network import DatasetConfig, NeuronGraph
 from ..neurons import MCMODELS
 from ..surrogate.bundle import SurrogateBundle
+from ..surrogate.meta import SurrogateMeta
 from ..surrogate.replace import replaced_names
-from .eval import EvalResult, evaluate
-from .eval_sweep import (
-    CurrentSweepConfig,
-    SweepEval,
-    dedupe_labels,
-    evaluate_sweep,
-    sweep_labels,
-)
+
+
+def dedupe_labels(names: list[str]) -> list[str]:
+    """衝突した名前にだけ順序の連番を付ける (与えた順)。結果 dict のキーが silent に
+    潰れて表と図が食い違うのを防ぐ共通規約 (選択を拒否せず全部見せる)。"""
+    counts = Counter(names)
+    seen: Counter[str] = Counter()
+    labels = []
+    for name in names:
+        seen[name] += 1
+        labels.append(name if counts[name] == 1 else f"{name}#{seen[name]}")
+    return labels
+
+
+def sweep_labels(surrogates: list[SurrogateBundle]) -> list[str]:
+    """掃引結果の run 軸の識別キー列 (与えた順)。
+
+    `meta.label` は学習構造 + 学習データまでしか区別しない → library_specs 違いや
+    同 config の再実行は同じ label になるため連番で潰れを防ぐ。
+    """
+    return dedupe_labels([s.meta.label for s in surrogates])
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -36,7 +56,8 @@ class SimSpec:
     name: str | None = None
 
     @classmethod
-    def _common(cls, d: dict) -> dict:
+    def _fields_from(cls, d: dict) -> dict:
+        """設定 entry → コンストラクタ引数。サブクラスは自分の軸を足す。"""
         return {
             "target": str(d["target"]),
             "current_type": str(d["current_type"]),
@@ -47,21 +68,35 @@ class SimSpec:
 
     @classmethod
     def from_dict(cls, d: dict) -> Self:
-        return cls(**cls._common(d))
+        return cls(**cls._fields_from(d))
 
     @property
     def label(self) -> str:
         """既定は適用先名。`name` 指定で電流の意図を名前に出せる。"""
         return self.name or self.target
 
-    def dataset(self) -> DatasetConfig:
-        """このシミュの入力 (原系)。置換系は `apply_surrogate` が非破壊で作る。"""
+    @property
+    def net(self) -> NeuronGraph:
+        """適用先の MC モデル。**target 名 → ネットの解決はここだけ**が行い、結果型も
+        描画も spec 経由で引く (文字列キーを持ち回らない)。"""
+        return MCMODELS[self.target]
+
+    def replaceable(self, meta: SurrogateMeta) -> bool:
+        """この surrogate をこの適用先へ置換できるか。**実行するかもエラー図を出すかも
+        この 1 つの述語**で決める (欠落キーで非互換を伝えない)。"""
+        return bool(replaced_names(meta, self.net))
+
+    def _dataset(self, current_params: dict) -> DatasetConfig:
         return DatasetConfig.build_dataset(
             model_name=self.target,
             dt=self.dt,
             current_type=self.current_type,
-            current_params=self.current_params,
+            current_params=current_params,
         )
+
+    def dataset(self) -> DatasetConfig:
+        """このシミュの入力 (原系)。置換系は `apply_surrogate` が非破壊で作る。"""
+        return self._dataset(self.current_params)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -74,24 +109,22 @@ class SweepSpec(SimSpec):
     amp_steps: int
 
     @classmethod
-    def from_dict(cls, d: dict) -> Self:
-        return cls(
-            **cls._common(d),
-            sweep_param=str(d["sweep_param"]),
-            amp_start=float(d["amp_start"]),
-            amp_stop=float(d["amp_stop"]),
-            amp_steps=int(d["amp_steps"]),
-        )
+    def _fields_from(cls, d: dict) -> dict:
+        return {
+            **super()._fields_from(d),
+            "sweep_param": str(d["sweep_param"]),
+            "amp_start": float(d["amp_start"]),
+            "amp_stop": float(d["amp_stop"]),
+            "amp_steps": int(d["amp_steps"]),
+        }
 
-    def sweep_config(self) -> CurrentSweepConfig:
-        return CurrentSweepConfig(
-            current_type=self.current_type,
-            sweep_param=self.sweep_param,
-            amp_start=self.amp_start,
-            amp_stop=self.amp_stop,
-            amp_steps=self.amp_steps,
-            base_params=self.current_params,
-        )
+    @property
+    def amp_values(self) -> np.ndarray:
+        return np.linspace(self.amp_start, self.amp_stop, self.amp_steps)
+
+    def dataset_at(self, amp: float) -> DatasetConfig:
+        """掃引 1 点の入力。単発と同じ構築経路を通す (掃引だけ別の組み方をしない)。"""
+        return self._dataset({**self.current_params, self.sweep_param: float(amp)})
 
 
 S = TypeVar("S", bound=SimSpec)
@@ -113,38 +146,11 @@ def parse_sweeps(cfg: dict) -> dict[str, SweepSpec]:
     return _labeled([SweepSpec.from_dict(d) for d in cfg.get("sweep", [])])
 
 
-def cfg_targets(cfg: dict) -> list[str]:
-    """設定が宣言する適用先モデル名 (sim + sweep、重複除去・出現順)。UI の run 絞り込み
-    と comp 選択肢の母集合。"""
-    specs: list[SimSpec] = [*parse_sims(cfg).values(), *parse_sweeps(cfg).values()]
-    return list(dict.fromkeys(s.target for s in specs))
+def cfg_specs(cfg: dict) -> list[SimSpec]:
+    """設定が宣言する全 spec (sim + sweep)。"""
+    return [*parse_sims(cfg).values(), *parse_sweeps(cfg).values()]
 
 
-def run_sims(
-    bundle: SurrogateBundle,
-    specs: dict[str, SimSpec],
-) -> dict[str, EvalResult]:
-    """spec ごとに原系/置換系を並走シミュし label → EvalResult。置換可能な comp が
-    無い spec (非互換な target) は simulate せず落とす (呼び出し側が欠落で判別)。"""
-    return {
-        label: evaluate(bundle, s.dataset())
-        for label, s in specs.items()
-        if replaced_names(bundle.meta, MCMODELS[s.target])
-    }
-
-
-def run_sweeps(
-    bundles: list[SurrogateBundle],
-    specs: dict[str, SweepSpec],
-) -> dict[str, SweepEval]:
-    """spec ごとに amp 掃引評価し label → SweepEval。掃引結果は **entry 軸 (この dict)
-    × run 軸 (`sweep_labels`)** の 2 段。"""
-    return {
-        label: evaluate_sweep(
-            dict(zip(sweep_labels(bundles), bundles, strict=True)),
-            model_name=s.target,
-            dt=s.dt,
-            cfg=s.sweep_config(),
-        )
-        for label, s in specs.items()
-    }
+def usable(meta: SurrogateMeta, cfg: dict) -> bool:
+    """この設定で 1 本でも置換シミュできる surrogate か = UI の run 絞り込み条件。"""
+    return any(s.replaceable(meta) for s in cfg_specs(cfg))

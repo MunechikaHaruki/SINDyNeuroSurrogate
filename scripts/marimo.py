@@ -17,12 +17,8 @@ def _():
         sweep_siblings,
     )
 
-    from neurosurrogate.metrics.spec import (
-        parse_sims,
-        parse_sweeps,
-        run_sims,
-        run_sweeps,
-    )
+    from neurosurrogate.metrics.eval import run_sims, run_sweeps
+    from neurosurrogate.metrics.spec import parse_sims, parse_sweeps
     from neurosurrogate.view.report import result_groups
     from neurosurrogate.view.save import flatten
 
@@ -68,15 +64,18 @@ def _(reload_base, restore_dd, widgets):
     # widget を減らし、シミュ入力 (target/current/dt/current_params/sweep 範囲) はこの
     # ファイルから読む。widget は初期値をここから取る = cfg セルの上流。
     # reload_base 押下でこのセルが再走 → resolve がディスクを読み直す。
+    # run 選択は cfg でなく同じ保存先の run_id.txt から (別ファイル・別経路)。
     reload_base  # noqa: B018
     defaults = widgets.resolve(restore_dd.value)
-    return (defaults,)
+    restored_run_id = widgets.resolve_run_id(restore_dd.value)
+    return defaults, restored_run_id
 
 
 @app.cell
-def _(defaults, runs_df, widgets):
-    # preset (yaml) 絞り込み = run_selector の上流フィルタ。
-    preset_ui = widgets.make_preset_ui(runs_df, defaults)
+def _(runs_df, widgets):
+    # preset (yaml) 絞り込み = run_selector の上流フィルタ。cfg には入れない
+    # (run を絞るだけの一時的な選択で、描いた図の設定ではない)。
+    preset_ui = widgets.make_preset_ui(runs_df)
     preset_ui  # noqa: B018
     return (preset_ui,)
 
@@ -90,10 +89,10 @@ def _(preset_ui):
 
 
 @app.cell
-def _(defaults, preset, runs_df, widgets):
+def _(defaults, preset, restored_run_id, runs_df, widgets):
     # marimo に残す唯一の「入力」= run を 1 件選ぶだけ。適用先 / sweep 対象 (兄弟 run)
-    # は選択後に自動決定。
-    run_selector = widgets.make_run_ui(runs_df, preset, defaults)
+    # は選択後に自動決定。復元時は run_id.txt の run を初期選択。
+    run_selector = widgets.make_run_ui(runs_df, preset, defaults, restored_run_id)
     run_selector  # noqa: B018
     return (run_selector,)
 
@@ -138,28 +137,23 @@ def _(save_result, sel_name, widgets):
 
 
 @app.cell
-def _(RESULT_DIR, cfg, preset, save_opts, save_result, sel_ids, widgets):
-    # 保存 meta.json = 描画に使った cfg (base⊕meta⊕draw) ⊕ 実際に効いた preset/run 選択
-    # → base.json と同じ形で round-trip する。
-    widgets.save(
-        save_opts,
-        save_result,
-        RESULT_DIR,
-        {**cfg, "preset": preset, "run_selector": sel_ids},
-    )
+def _(RESULT_DIR, cfg, save_opts, save_result, sel_id, widgets):
+    # 保存 meta.json = **描画に使った cfg そのもの** (base⊕meta⊕draw) で base.json と
+    # 同形 → 復元 dropdown でそのまま読み戻る。preset も選択 run も cfg ではないので
+    # 混ぜず、出所 run だけ別ファイル (run_id.txt) に落とす。
+    widgets.save(save_opts, save_result, RESULT_DIR, cfg, sel_id)
     return
 
 
 @app.cell
 def _(run_selector):
     # 選択 run (single 選択テーブル → 0/1 件) を **widget から値へ**。id は
-    # loaded_single/loaded_sweep の単一源、name は保存先の既定名、ids は復元用。
+    # loaded_single/loaded_sweep の単一源、name は保存先の既定名。
     _sel = run_selector.value
     _has = _sel is not None and len(_sel)
     sel_id = _sel["run_id"].iloc[0] if _has else None
     sel_name = _sel["tags.mlflow.runName"].iloc[0] if _has else None
-    sel_ids = list(_sel["run_id"]) if _has else []
-    return sel_id, sel_ids, sel_name
+    return sel_id, sel_name
 
 
 @app.cell(column=1)

@@ -1,48 +1,35 @@
+"""掃引結果 (`SweepEval`) の図: メトリクス折れ線と amp×run の波形格子。
+
+軸名も run 軸ラベルも結果 (`SweepEval.spec` / `run_labels`) から引く = 呼び出し側で
+作り直さない。marimo 非依存。
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-import numpy as np
 from matplotlib.figure import Figure
 
-from ..core import access
-from ..metrics.wave import diverged
-from ..neurons import MCMODELS
-from .engine import error_fig, new_figure, place_legend
+from ...core import access
+from ...metrics.wave import diverged
+from ..engine import new_figure, place_legend
 
 if TYPE_CHECKING:
-    from ..core.network import DatasetConfig
-    from ..metrics.eval_sweep import SweepEval
-
-
-def current_preview_fig(dset: DatasetConfig) -> Figure:
-    """電流波形プレビュー。構築失敗は error_fig。marimo 非依存。"""
-    try:
-        i_ext = dset.build_current()
-    except Exception as e:  # noqa: BLE001
-        return error_fig(f"build failed: {e}")
-    t = np.arange(len(i_ext)) * dset.dt
-    fig = new_figure(figsize=(6, 2))
-    ax = fig.subplots()
-    ax.plot(t, i_ext, lw=0.8)
-    ax.set_xlabel("t [ms]")
-    ax.set_ylabel("I_ext [μA/cm²]")
-    ax.set_title(f"{dset.current_type} preview")
-    return fig
+    from ...metrics.eval import SweepEval
 
 
 def sweep_fig(
     sweep: SweepEval,
     comp_name: str,
     metric_key: str,
-    labels: list[str],
     ylim: tuple[float, float] | None = None,
 ) -> Figure:
     """sweep メトリクス折れ線 (Original + surrogate 各 run)。marimo 非依存。
-    labels は surrogate 列名 (= meta.label、順序=描画順)。掃引軸名は sweep.cfg から。"""
+    run 軸ラベルも掃引軸名も結果 (sweep) から引く = 別引数で持ち回らない。"""
     data = sweep.metrics_df(comp_name, metric_key)
-    cfg = sweep.cfg
+    labels = sweep.run_labels
+    spec = sweep.spec
     fig = new_figure()
     ax = fig.subplots()
     if "original" in data.columns:
@@ -59,23 +46,20 @@ def sweep_fig(
             label=label,
         )
 
-    ax.set_xlabel(cfg.sweep_param)
+    ax.set_xlabel(spec.sweep_param)
     ax.set_ylabel(metric_key)
-    ax.set_title(f"{cfg.sweep_param} sweep — {metric_key} ({comp_name})")
+    ax.set_title(f"{spec.sweep_param} sweep — {metric_key} ({comp_name})")
     if ylim is not None:
         ax.set_ylim(*ylim)
     place_legend(ax)
     return fig
 
 
-def sweep_trace_grid_fig(
-    sweep: SweepEval,
-    comp_name: str,
-    labels: list[str],
-) -> Figure:
+def sweep_trace_grid_fig(sweep: SweepEval, comp_name: str) -> Figure:
     """列=掃引 amp の波形格子。行1=I_ext、行2以降=各 run の V 波形 (orig 重畳)。
-    labels は surr_datasets のキー (= meta.label、順序=行順)。marimo 非依存。"""
-    comp_id = MCMODELS[sweep.model_name].name_to_idx(comp_name)
+    行順は結果の run 軸 (`sweep.run_labels`) そのもの。marimo 非依存。"""
+    comp_id = sweep.spec.net.name_to_idx(comp_name)
+    labels = sweep.run_labels
     n_col = len(sweep.amp_datasets)
     n_row = 1 + len(labels)
     fig = new_figure(figsize=(2.6 * n_col, 1.5 * n_row))

@@ -2,8 +2,8 @@
 
 `mo.ui.*` を作って表示するのはここだけ。`.value` を読んで plain 値へ落とすのは
 marimo.py のセルなので、この層の関数は widget を**受け取らない** (返すだけ)。
-計算も図の組立も持たない — シミュ設定のパースと実行は `metrics.spec`、結果図の
-組立は `view.report`、保存の実体は `view.save.save_entries`。
+計算も図の組立も持たない — シミュ設定のパースは `metrics.spec`・実行は
+`metrics.eval`、結果図の組立は `view.report`、保存の実体は `view.save.save_entries`。
 """
 
 from __future__ import annotations
@@ -18,11 +18,9 @@ import pandas as pd
 from matplotlib.figure import Figure
 from mlflow_io import setup_mlflow
 
-from neurosurrogate.metrics.spec import cfg_targets, parse_sims
-from neurosurrogate.metrics.wave import DF_ROW_METRICS, SCALAR_METRICS
-from neurosurrogate.neurons import MCMODELS
-from neurosurrogate.surrogate.replace import replaced_names
-from neurosurrogate.view.preview import current_preview_fig
+from neurosurrogate.metrics.spec import cfg_specs, parse_sims, usable
+from neurosurrogate.metrics.wave import SWEEP_METRICS
+from neurosurrogate.view.figs.sim import current_preview_fig
 from neurosurrogate.view.save import SaveEntry, save_entries
 
 setup_mlflow()
@@ -32,6 +30,7 @@ BASE_JSON = CONF_DIR / "base.json"
 STYLE_DIR = CONF_DIR / "style"
 STYLES = ["paper", "presentation"]
 ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
+RUN_ID_FILE = "run_id.txt"  # 保存先に置く出所 run の記録 (cfg = meta.json とは別)
 
 
 def setup_mpl(matplotlib_style: str) -> None:
@@ -79,6 +78,16 @@ def resolve(meta_path: str | None) -> dict:
     return _merge(base, json.loads(Path(meta_path).read_text()))
 
 
+def resolve_run_id(meta_path: str | None) -> str | None:
+    """復元選択 → その保存で使った run_id (`run_id.txt`)。cfg と同じ dropdown 選択
+    から引くが**別ファイル**なので、meta.json は cfg そのままで保てる。無ければ None
+    (= run は先頭選択のまま)。"""
+    if not meta_path:
+        return None
+    path = Path(meta_path).with_name(RUN_ID_FILE)
+    return path.read_text().strip() or None if path.exists() else None
+
+
 def make_restore_panel(result_dir: Path) -> tuple[mo.Html, mo.ui.dropdown]:
     """復元パネル (html, dropdown)。選択肢は result_dir 直下の保存 meta.json。
     選択で即復元・空選択で既定 (base.json のみ)。run_button は click 後 False 復帰し
@@ -101,13 +110,12 @@ def make_restore_panel(result_dir: Path) -> tuple[mo.Html, mo.ui.dropdown]:
 # ---------------------------------------------------------------------------
 
 
-def make_preset_ui(runs_df: pd.DataFrame, cfg: dict) -> mo.ui.dropdown:
-    """出自 preset (surrogate/*.yaml) の絞り込み dropdown。run_selector の上流フィルタ
-    (preset を変えると出す run 群が変わる)。初期値は cfg (base.json⊕meta.json)。"""
-    options = [ALL_PRESETS, *sorted(runs_df["preset"].dropna().unique())]
+def make_preset_ui(runs_df: pd.DataFrame) -> mo.ui.dropdown:
+    """出自 preset (surrogate/*.yaml) の絞り込み dropdown。**run_selector を絞るだけ**
+    の一時的な選択なので cfg にも保存 meta.json にも入れない (既定は絞らない)。"""
     return mo.ui.dropdown(
-        options=options,
-        value=valid_or(cfg.get("preset"), options, ALL_PRESETS),
+        options=[ALL_PRESETS, *sorted(runs_df["preset"].dropna().unique())],
+        value=ALL_PRESETS,
         label="preset (yaml)",
     )
 
@@ -119,23 +127,25 @@ def preset_runs(runs_df: pd.DataFrame, preset: str) -> pd.DataFrame:
     return cast(pd.DataFrame, runs_df[runs_df["preset"] == preset])
 
 
-def make_run_ui(runs_df: pd.DataFrame, preset: str, cfg: dict) -> mo.ui.table:
+def make_run_ui(
+    runs_df: pd.DataFrame, preset: str, cfg: dict, run_id: str | None = None
+) -> mo.ui.table:
     """run 選択テーブル。preset で絞り、cfg が宣言する適用先 (sim/sweep の target)
     のどれかへ**実際に置換できる** 代表 run (sweep 親/単発 = parent_id 欠損) だけ
-    出す。子は隠す。互換基準は replace ドメインのみが持ち UI に複製しない。
-    初期選択=cfg run_id。"""
+    出す。子は隠す。互換判定は `metrics.spec.usable` (= cfg で 1 本でもシミュできるか)
+    に委ね UI に複製しない。初期選択は `run_id` (復元した `run_id.txt`、無ければ先頭)
+    = **どの run を見るかは cfg でなく別ファイル由来**。"""
     in_preset = preset_runs(runs_df, preset)
-    nets = [MCMODELS[t] for t in cfg_targets(cfg)]
     reps = in_preset[
-        in_preset["meta"].map(lambda m: any(replaced_names(m, n) for n in nets))
-        & in_preset["parent_id"].isna()
+        in_preset["meta"].map(lambda m: usable(m, cfg)) & in_preset["parent_id"].isna()
     ]
     runs = pd.DataFrame(reps[["tags.mlflow.runName", "comp_type", "run_id"]])
-    wanted = set(cfg.get("run_selector") or [])
-    ids = list(runs["run_id"])
-    initial = [i for i, r in enumerate(ids) if r in wanted] or ([0] if ids else [])
+    hit = [i for i, r in enumerate(runs["run_id"]) if r == run_id]
     return mo.ui.table(
-        runs, label="Run (1件)", selection="single", initial_selection=initial
+        runs,
+        label="Run (1件)",
+        selection="single",
+        initial_selection=hit or ([0] if len(runs) else []),
     )
 
 
@@ -148,9 +158,7 @@ def make_run_ui(runs_df: pd.DataFrame, preset: str, cfg: dict) -> mo.ui.table:
 def _comp_names(cfg: dict) -> list[str]:
     """comp 選択肢 = cfg が宣言する適用先 (sim/sweep の target) の comp 名を出現順に
     重複除去した和集合。選択 run に依らず cfg だけで決まる。"""
-    return list(
-        dict.fromkeys(name for t in cfg_targets(cfg) for name in MCMODELS[t].names)
-    )
+    return list(dict.fromkeys(name for s in cfg_specs(cfg) for name in s.net.names))
 
 
 def make_draw_ui(cfg: dict) -> mo.ui.dictionary:
@@ -158,7 +166,7 @@ def make_draw_ui(cfg: dict) -> mo.ui.dictionary:
     # cfg["draw"] (復元 meta.json 由来)、無効化した選択は valid_or で既定へ落とす。
     names = _comp_names(cfg)
     default_comp = "soma" if "soma" in names else (names[0] if names else None)
-    metrics = DF_ROW_METRICS + SCALAR_METRICS
+    metrics = SWEEP_METRICS
     p = cfg.get("draw", {})
     return mo.ui.dictionary(
         {
@@ -276,13 +284,19 @@ def save(
     entries: list[SaveEntry],
     result_dir: Path,
     meta: dict,
+    run_id: str | None,
 ) -> mo.Html:
     """ボタン押下で保存パネルの値 (dir/select/run) を domain の `save_entries` へ渡し、
-    書けたパスを表示。opts は marimo.py が `save_panel.value` に落としたもの。"""
+    書けたパスを表示。opts は marimo.py が `save_panel.value` に落としたもの。
+
+    出所 run は `meta.json` (= cfg) を汚さず **`run_id.txt` に別ファイルで**残す。
+    MLflow は domain の関心ではないのでこの層が書く (`save_entries` は cfg と図だけ)。
+    """
     if not opts["run"]:
         return mo.md("(未保存)")
-    saved = save_entries(
-        entries, result_dir / opts["dir"], meta, names=set(opts["select"])
-    )
+    dest = result_dir / opts["dir"]
+    saved = save_entries(entries, dest, meta, names=set(opts["select"]))
+    if run_id:
+        (dest / RUN_ID_FILE).write_text(run_id)
     msgs = [mo.md(f"✅ `{p.relative_to(result_dir)}`") for p in saved]
     return mo.vstack(msgs) if msgs else mo.md("(未保存)")

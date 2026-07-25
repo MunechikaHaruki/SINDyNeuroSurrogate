@@ -1,14 +1,21 @@
+"""単発置換シミュの図: 入力電流プレビューと、原系/置換系の比較 (波形・差分・相平面)。
+
+`draw_all` が `EvalResult` から全図を識別子付きで一括生成し、呼び出し側は種別を
+知らず (id, fig) を保存/表示に流すだけ。marimo 非依存。
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
+import numpy as np
 import xarray as xr
 from matplotlib.figure import Figure
 
-from ..core import access
-from ..core.access import POTENTIAL_VAR
-from .engine import (
+from ...core import access
+from ...core.access import POTENTIAL_VAR
+from ..engine import (
     PanelSpec,
     TraceSpec,
     draw_engine,
@@ -18,10 +25,29 @@ from .engine import (
 )
 
 if TYPE_CHECKING:
-    from ..metrics.eval import EvalResult
+    from ...core.network import DatasetConfig
+    from ...metrics.eval import EvalResult
 
 
-def spec_simple(ds: xr.Dataset, comps: Sequence[int] | None = None) -> list[PanelSpec]:
+def current_preview_fig(dset: DatasetConfig) -> Figure:
+    """電流波形プレビュー。構築失敗は error_fig。marimo 非依存。"""
+    try:
+        i_ext = dset.build_current()
+    except Exception as e:  # noqa: BLE001
+        return error_fig(f"build failed: {e}")
+    t = np.arange(len(i_ext)) * dset.dt
+    fig = new_figure(figsize=(6, 2))
+    ax = fig.subplots()
+    ax.plot(t, i_ext, lw=0.8)
+    ax.set_xlabel("t [ms]")
+    ax.set_ylabel("I_ext [μA/cm²]")
+    ax.set_title(f"{dset.current_type} preview")
+    return fig
+
+
+def panels_simple(
+    ds: xr.Dataset, comps: Sequence[int] | None = None
+) -> list[PanelSpec]:
     """全 comp の波形。comps を渡すとその comp だけに絞る (None=全部)。
     traub19 のような多 comp モデルは全部重ねると読めないため。"""
     comp_ids = [int(i) for i in access.comp_ids(ds) if comps is None or int(i) in comps]
@@ -65,7 +91,7 @@ def spec_simple(ds: xr.Dataset, comps: Sequence[int] | None = None) -> list[Pane
     return spec
 
 
-def spec_diff(
+def panels_diff(
     original: xr.Dataset,
     preprocessed: xr.Dataset,
     surrogate: xr.Dataset,
@@ -111,7 +137,7 @@ def spec_diff(
     ]
 
 
-def plot_2d_attractor_comparison(orig_ds, surr_ds, comp_id, state_vars=None) -> Figure:
+def attractor_fig(orig_ds, surr_ds, comp_id, state_vars=None) -> Figure:
     """相平面重ね描き。orig と surr のダイナミクス一致度可視化。"""
     if state_vars is None:
         state_vars = [access.POTENTIAL_VAR, *access.latent_vars(1)]
@@ -176,10 +202,12 @@ def draw_all(
     original, surrogate = result.original_ds, result.surr_ds
     jobs: dict[str, Callable[[], Figure]] = {
         "diff": lambda: draw_engine(
-            spec_diff(original, result.preprocessed_latent(comp_id), surrogate, comp_id)
+            panels_diff(
+                original, result.preprocessed_latent(comp_id), surrogate, comp_id
+            )
         ),
-        "simple": lambda: draw_engine(spec_simple(original, comps)),
-        "attractor": lambda: plot_2d_attractor_comparison(
+        "simple": lambda: draw_engine(panels_simple(original, comps)),
+        "attractor": lambda: attractor_fig(
             result.preprocessed_latent(comp_id), surrogate, comp_id
         ),
     }

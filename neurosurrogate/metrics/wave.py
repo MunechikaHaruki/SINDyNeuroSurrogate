@@ -2,11 +2,12 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, TypeVar
+from typing import TypeVar
 
 import efel
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from ..core import access
 
@@ -94,8 +95,8 @@ def _row(name: str, o: float, s: float, col: str = "metric") -> dict:
 class DynamicMetrics:
     """電圧・eFEL特徴量を計算するデータ層。下記の純粋関数群から参照される。"""
 
-    original: Any = field(repr=False)
-    surrogate: Any = field(repr=False)
+    original: xr.Dataset = field(repr=False)
+    surrogate: xr.Dataset = field(repr=False)
     comp_id: int
     dt: float
 
@@ -189,16 +190,13 @@ def spike_features_df(
 # 波形・発火パターン指標（純粋関数群）
 # ---------------------------------------------------------------------------
 
-# waveform_summary_df の row 名（orig/surr 両方を持つ指標）
-DF_ROW_METRICS: list[str] = ["spike_count", "latency", "mean_isi", "std_isi"]
-# waveform_summary + spike_shape_corr のスカラーキー（surr のみの指標）
-SCALAR_METRICS: list[str] = [
-    "rmse",
-    "mae",
-    "latency_error",
-    "periodicity_gap",
-    "spike_shape_corr",
-]
+# waveform_summary_df の row 名（原系/置換系の両方が定義される指標）
+_ROW_METRICS: list[str] = ["spike_count", "latency", "mean_isi", "std_isi"]
+# waveform_summary + spike_shape_corr のキー（両者の比較なので置換系側だけの指標）
+_SCALAR_METRICS: list[str] = ["rmse", "mae", "periodicity_gap", "spike_shape_corr"]
+# 掃引図で選べる metric の**単一源**。UI の選択肢も `extract_metric` の受理集合も
+# ここから引く (別々に並べると、生成されないキーを選べてしまい黙って nan 図が出る)。
+SWEEP_METRICS: list[str] = _ROW_METRICS + _SCALAR_METRICS
 
 
 def _waveform_error(dm: DynamicMetrics) -> dict:
@@ -233,7 +231,7 @@ def waveform_summary_df(dm: DynamicMetrics) -> pd.DataFrame:
 
 
 def waveform_summary(dm: DynamicMetrics) -> dict:
-    """波形誤差 + サマリスカラー（latency_error/periodicity_gap）。"""
+    """波形誤差 (rmse/mae) + 発火周期のズレ (periodicity_gap)。"""
     return {
         **_waveform_error(dm),
         "periodicity_gap": abs(_diff(*_isi_stat(dm, np.mean))),
@@ -247,14 +245,9 @@ def waveform_summary(dm: DynamicMetrics) -> dict:
 
 @dataclass(frozen=True)
 class WaveReport:
-    """波形+スパイク指標を統合した評価レポート。df は表示/保存へそのまま流す。"""
+    """波形+スパイク指標を統合した評価レポート。df をそのまま表示/保存へ流す。"""
 
-    n_orig: int  # orig スパイク数
-    n_surr: int  # surr スパイク数
-    has_spikes: bool  # 指定 spike index が両信号の範囲内か
-    waveform_scalar: dict  # rmse/mae/periodicity_gap
-    spike_shape_corr: dict  # has_spikes 時のみ非空
-    df_metrics: pd.DataFrame  # 波形行 (+ has_spikes 時スパイク特徴量)
+    df_metrics: pd.DataFrame  # 波形行 (+ 指定 spike が両信号にあればその特徴量)
     df_scalar: pd.DataFrame  # 全スカラーを縦持ち
 
 
@@ -263,42 +256,32 @@ def wave_report(
     spike_orig: int = 0,
     spike_surr: int = 0,
 ) -> WaveReport:
-    """dm から波形/スパイク指標を計算し DataFrame まで組み立てて返す。"""
+    """dm から波形/スパイク指標を計算し DataFrame まで組み立てて返す。指定した
+    spike index が両信号の範囲内にあるときだけ、その AP の特徴量と形状相関を足す。"""
     n_orig, n_surr = n_spikes(dm)
-    has_spikes = 0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr
-
-    wf_scalar = waveform_summary(dm)
     df_metrics = waveform_summary_df(dm)
-    scalar = dict(wf_scalar)
-    corr: dict = {}
-    if has_spikes:
-        corr = spike_shape_corr(dm)
+    scalar = waveform_summary(dm)
+    if 0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr:
         df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
         df_spike.index.name = "metric"
         df_metrics = pd.concat([df_metrics, df_spike])
-        scalar.update(corr)
-
-    df_scalar = pd.DataFrame(scalar.items(), columns=["metric", "value"]).set_index(
-        "metric"
-    )
+        scalar.update(spike_shape_corr(dm))
     return WaveReport(
-        n_orig=n_orig,
-        n_surr=n_surr,
-        has_spikes=has_spikes,
-        waveform_scalar=wf_scalar,
-        spike_shape_corr=corr,
         df_metrics=df_metrics,
-        df_scalar=df_scalar,
+        df_scalar=pd.DataFrame(scalar.items(), columns=["metric", "value"]).set_index(
+            "metric"
+        ),
     )
 
 
 def extract_metric(dm: DynamicMetrics, metric_key: str) -> tuple[float | None, float]:
-    """指定 metric の (orig, surr) を返す。スカラー metric の orig は None。"""
-    if metric_key in DF_ROW_METRICS:
+    """指定 metric の (orig, surr)。両者の比較で決まるスカラー metric に原系の値は
+    無い → orig は None。未知キーは KeyError (選択肢は `SWEEP_METRICS` が単一源で、
+    そこに載っていて取り出せないキーがあれば黙って nan を返さず落とす)。"""
+    if metric_key in _ROW_METRICS:
         df = waveform_summary_df(dm)
         return (
             float(df.loc[metric_key, "orig"]),  # type: ignore[arg-type]
             float(df.loc[metric_key, "surr"]),  # type: ignore[arg-type]
         )
-    scalars = {**waveform_summary(dm), **spike_shape_corr(dm)}
-    return None, float(scalars.get(metric_key, _NAN))
+    return None, float({**waveform_summary(dm), **spike_shape_corr(dm)}[metric_key])

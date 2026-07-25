@@ -20,6 +20,7 @@ from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.metrics.eval import EvalResult, evaluate
+from neurosurrogate.metrics.wave import SWEEP_METRICS, DynamicMetrics, extract_metric
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
@@ -44,9 +45,9 @@ from neurosurrogate.surrogate.replace import (
     replace_nodes,
     replaceables,
 )
-from neurosurrogate.view.model import equation_texs, preprocessor_figs
-from neurosurrogate.view.specs import draw_all, spec_simple
-from neurosurrogate.view.train import train_figs
+from neurosurrogate.view.figs.model import equation_texs, preprocessor_figs
+from neurosurrogate.view.figs.sim import draw_all, panels_simple
+from neurosurrogate.view.figs.train import train_figs
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
 LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, g1..gN, u] の両端
@@ -112,6 +113,17 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert np.isfinite(v[0])
 
 
+def test_sweep_metric_choices_are_all_extractable(sindy_eval: EvalResult) -> None:
+    """UI が出す掃引 metric 選択肢は全て取り出せる = 選んだのに生成されないキーで
+    黙って nan の図が出ることが無い (未知キーは extract_metric が KeyError)。"""
+    dm = DynamicMetrics(
+        sindy_eval.original_ds, sindy_eval.surr_ds, 0, sindy_eval.dataset.dt
+    )
+    assert all(extract_metric(dm, key)[1] is not None for key in SWEEP_METRICS)
+    with pytest.raises(KeyError):
+        extract_metric(dm, "latency_error")
+
+
 def test_sindy_draws_all_figs(sindy_eval: EvalResult) -> None:
     assert [name for name, _ in draw_all(sindy_eval, 0)] == [
         "diff",
@@ -126,7 +138,7 @@ def test_view_comps_limit_drawn_traces(
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
     ds = sindy_eval.original_ds
-    assert len(spec_simple(ds, comps=[])) < len(spec_simple(ds))
+    assert len(panels_simple(ds, comps=[])) < len(panels_simple(ds))
     assert [name for name, _ in train_figs(sindy, comps=[_train_comp(sindy)])] == [
         name for name, _ in train_figs(sindy)
     ]

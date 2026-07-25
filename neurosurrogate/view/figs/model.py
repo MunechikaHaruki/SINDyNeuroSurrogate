@@ -1,3 +1,10 @@
+"""学習済み surrogate と適用先ネットの静的図: ニューロングラフ・閉包項の中身
+(SINDy 係数 heatmap と方程式)・preprocessor の固有図 (PCA scree)。
+
+**置換シミュを回さずに描ける** = run をロードしただけで出る図。共通の図が無い表現
+(closure/preprocessor の型ごと) は型で振り分け、非対応なら空列を返す。marimo 非依存。
+"""
+
 from __future__ import annotations
 
 import re
@@ -12,11 +19,11 @@ from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-from ..surrogate.closure.base import Closure
-from ..surrogate.closure.sindy import SINDyBundle
-from ..surrogate.preprocessor.base import Preprocessor
-from ..surrogate.preprocessor.impl.pca import PCAPreprocessor
-from .engine import new_figure, place_legend
+from ...surrogate.closure.base import Closure
+from ...surrogate.closure.sindy import SINDyBundle
+from ...surrogate.preprocessor.base import Preprocessor
+from ...surrogate.preprocessor.impl.pca import PCAPreprocessor
+from ..engine import new_figure, place_legend
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
@@ -37,7 +44,7 @@ _FEATURE_FONTSCALE = 1.3  # heatmap X軸 basis 関数 (TeX) をデフォルト�
 _T = sp.Symbol("t")
 
 
-def view_neuron_graph(net, surrogate_nodes=None, figsize=None) -> Figure:
+def neuron_graph_fig(net, surrogate_nodes=None, figsize=None) -> Figure:
     """NeuronGraph を networkx で可視化。ノード色=種別、赤枠=stim ノード。
 
     surrogate_nodes (置換対象ノード名集合) を渡すと該当ノードを紫で強調。
@@ -138,7 +145,7 @@ def closure_figs(closure: Closure) -> list[tuple[str, Figure]]:
     (SINDy=ξ heatmap、NN 表現なら重み分布など) → 型で振り分ける。図を持たない表現
     は空列を返し、呼び出し側は保存/表示に流すだけで済む。"""
     if isinstance(closure, SINDyBundle):
-        return [("model", view_model(closure))]
+        return [("model", _sindy_coef_fig(closure))]
     return []
 
 
@@ -189,7 +196,7 @@ def pca_scree_fig(prep: PCAPreprocessor) -> Figure:
     return fig
 
 
-def view_model(result: SINDyBundle, figsize=(15, 3)):
+def _sindy_coef_fig(result: SINDyBundle, figsize=(15, 3)):
     xi_matrix = np.asarray(result.xi)
     fig = new_figure(figsize=figsize)
     ax = fig.subplots()
