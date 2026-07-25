@@ -17,10 +17,10 @@ if TYPE_CHECKING:
     from ..metrics.eval_sweep import CurrentSweepConfig, SweepEval
 
 
-def current_preview_fig(current_type: str, dt: float, params: dict) -> Figure:
+def current_preview_fig(current_type: str, dt: float, current_params: dict) -> Figure:
     """電流波形プレビュー。構築失敗は error_fig。marimo 非依存。"""
     try:
-        i_ext = CURRENT_MAP[current_type](**params)(dt)
+        i_ext = CURRENT_MAP[current_type](**current_params)(dt)
     except Exception as e:  # noqa: BLE001
         return error_fig(f"build failed: {e}")
     t = np.arange(len(i_ext)) * dt

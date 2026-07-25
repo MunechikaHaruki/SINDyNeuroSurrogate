@@ -9,6 +9,7 @@ from typing import cast
 import mlflow
 import mlflow.artifacts
 import pandas as pd
+from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
@@ -74,10 +75,15 @@ def load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
     return [load_surrogate_model(rid) for rid in run_ids]
 
 
-def load_from_selector(selection: pd.DataFrame) -> list[SurrogateBundle]:
-    """run_selector の選択 DataFrame → run_id 抽出 → load_runs。
-    single (1件) / sweep (複数) 共通の UI ロード経路。"""
-    return load_runs(cast(pd.DataFrame, selection)["run_id"].tolist())
+def sweep_siblings(parent_id: str) -> list[str]:
+    """親 run (or 単発) の run_id → その sweep 群 = 自身 + 子 (parentRunId 一致)。
+    db を直接引く (runs_df 非依存)。run_selector は代表だけ出すので引数は常に親、
+    単発は子ゼロ = 1 件。"""
+    children = mlflow.search_runs(
+        filter_string=f"tags.`{MLFLOW_PARENT_RUN_ID}` = '{parent_id}'",
+        output_format="list",
+    )
+    return [parent_id, *[r.info.run_id for r in children]]
 
 
 def get_runs_df():
@@ -94,9 +100,13 @@ def get_runs_df():
     runs_df = all_runs_df.copy()
     runs_df = runs_df.sort_values("start_time", ascending=False)
     runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
+    # 親 run id (hydra --multirun の子が持つ mlflow.parentRunId)。親/単発は欠損 (NaN)。
+    # 代表判定 (parent_id.isna()) と sweep 兄弟導出 (sweep_siblings) の唯一の鍵。
+    # .get は親子 run が皆無で列自体が無い実験でも None → 全 NaN 列に落とす。
+    runs_df["parent_id"] = runs_df.get("tags.mlflow.parentRunId")
     runs_df = runs_df[
-        ["tags.mlflow.runName", "run_id", "start_time"]
-        + [c for c in runs_df.columns if "metrics" in c or "params" in c]
+        ["tags.mlflow.runName", "run_id", "start_time", "parent_id"]
+        + [c for c in runs_df.columns if "params" in c]
     ]
     # 各 run の同定情報を dataframe 列として付与 (mlflow params に依存せず meta.json
     # から直接読む)。`meta` 列があれば UI は置換互換を replace ドメインの判定関数で

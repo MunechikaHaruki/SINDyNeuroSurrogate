@@ -3,7 +3,7 @@ surrogate:
   meta:
     comp_type: hh  # 置換対象のコンパートメント種類
     surrogate_type: hybrid
-    preprocessor_type: ae
+    preprocessor_type: pca
     n_components: 2  # 潜在方程式の次元
     datasets:
       model_name: hh
@@ -20,4 +20,4 @@ hydra:
   sweeper:
     params:
       surrogate.meta.n_components: 1,2
-      surrogate.meta.preprocessor_type: pca,ae
+      surrogate.meta.preprocessor_type: pca

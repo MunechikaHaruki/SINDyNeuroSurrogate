@@ -1,49 +1,43 @@
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import cast
 
 import marimo as mo
 import pandas as pd
 from analysis.access import (
     ALL_PRESETS,
     comp_type_of,
-    current_of,
-    dt_of,
+    current_inputs,
     preset_of,
-    sim_current_params_of,
-    target_of,
     valid_or,
 )
 from analysis.mode import single as analysis_single
 from analysis.mode import sweep as analysis_sweep
 from analysis.save.panel import SaveEntry
 from analysis.style import STYLES
+from analysis.targets import TARGET_MODEL
 from mlflow_io import setup_mlflow
 
 from neurosurrogate.metrics.eval import EvalResult
 from neurosurrogate.neurons import MCMODELS
-from neurosurrogate.neurons.currents import CURRENT_MAP
 from neurosurrogate.surrogate.bundle import SurrogateBundle
-from neurosurrogate.surrogate.replace import replaced_names
 from neurosurrogate.view.preview import current_preview_fig
-
-CurrentList: list = list(CURRENT_MAP.keys())
 
 setup_mlflow()
 
 
 # ---------------------------------------------------------------------------
-# Base UI
+# Preset filter + Run 選択 (marimo に残す唯一の「入力」widget)
 # ---------------------------------------------------------------------------
 
 
-def make_preset_ui(runs_df: pd.DataFrame, preset: dict | None = None) -> mo.ui.dropdown:
-    """出自 preset (surrogate/*.yaml) の絞り込み dropdown。**base_ui より上流**の
-    独立 UI — これを変えると下流の model_pair / run 一覧が組み直される。"""
+def make_preset_ui(runs_df: pd.DataFrame, cfg: dict) -> mo.ui.dropdown:
+    """出自 preset (surrogate/*.yaml) の絞り込み dropdown。run_selector の上流フィルタ
+    (preset を変えると出す run 群が変わる)。初期値は cfg (base.json⊕meta.json)。"""
     options = [ALL_PRESETS, *sorted(runs_df["preset"].dropna().unique())]
     return mo.ui.dropdown(
         options=options,
-        value=valid_or((preset or {}).get("preset"), options, ALL_PRESETS),
+        value=valid_or(cfg.get("preset"), options, ALL_PRESETS),
         label="preset (yaml)",
     )
 
@@ -55,154 +49,67 @@ def preset_runs(runs_df: pd.DataFrame, preset_ui: mo.ui.dropdown) -> pd.DataFram
     return cast(pd.DataFrame, runs_df[runs_df["preset"] == preset_of(preset_ui)])
 
 
-def make_base_ui(
-    runs_df: pd.DataFrame,
-    target_model: dict[str, list[str]],
-    preset_ui: mo.ui.dropdown,
-    preset: dict | None = None,
-) -> mo.ui.dictionary:
-    # モデルペア = **置換対象のコンパートメント種類 → 適用先 MC モデル**。サロゲート
-    # は「種類 → それを置換するモデル」の対応 (replace.replaceable) なので、左は学習
-    # データの MC モデル名ではなく comp_type を取る。右は target_model が種類ごとに
-    # 定義する適用先一覧。label→(comp_type,target) を .value で得る。
-    # **選択 preset に実在する comp_type だけ**からペアを組む → 整合しない
-    # model_pair を選べない (選んだ瞬間に run 0 件になる状態を作らない)。
-    comp_types = sorted(preset_runs(runs_df, preset_ui)["comp_type"].unique())
-    pairs = {
-        f"{comp_type}→{tgt}": (comp_type, tgt)
-        for comp_type in comp_types
-        for tgt in target_model.get(comp_type, [])
-    }
-    # ペアが 1 つも組めない = 選べる run が無い。空 dropdown を作って下流を
-    # StopIteration/KeyError で落とさず、原因 (run 側か TARGET_MODEL 側か) を示す。
-    if not pairs:
-        raise ValueError(
-            f"選択可能なモデルペアが無い (preset={preset_of(preset_ui)})。"
-            f"読込めた run の comp_type={comp_types or '(なし)'} / "
-            f"TARGET_MODEL のキー={list(target_model)}。"
-            "run が 0 件なら surrogate の pickle スキーマ変更で旧 run が読めていない "
-            "(再学習が要る)。comp_type が TARGET_MODEL に無いなら適用先を定義する。"
-        )
-    # preset (復元) 値で初期値上書き。無効値 (run 集合変化等) は既定へフォールバック。
-    # model_pair は json で list 化するので options(tuple) と list 比較で照合。
-    b = (preset or {}).get("base", {})
-    pair_label = next(
-        (k for k, v in pairs.items() if list(v) == b.get("model_pair")),
-        next(iter(pairs)),
-    )
-    return mo.ui.dictionary(
-        {
-            "plt_style": mo.ui.radio(
-                options=STYLES, value=b.get("plt_style", STYLES[1])
-            ),
-            "sim_current_type": mo.ui.dropdown(
-                CurrentList,
-                value=valid_or(b.get("sim_current_type"), CurrentList, "lin&steady"),
-            ),
-            "dt": mo.ui.number(value=b.get("dt", 0.01), step=0.001),
-            "model_pair": mo.ui.dropdown(
-                options=pairs,
-                value=pair_label,
-                label="モデルペア (train→target)",
-            ),
-        }
-    )
-
-
-# ---------------------------------------------------------------------------
-# Setting UI (集約)
-# ---------------------------------------------------------------------------
-
-
-def _run_selector(
-    runs: pd.DataFrame,
-    label: str,
-    selection: Literal["single", "multi"] = "multi",
-    selected_ids: list[str] | None = None,
+def make_run_ui(
+    runs_df: pd.DataFrame, preset_ui: mo.ui.dropdown, cfg: dict
 ) -> mo.ui.table:
-    # preset 復元時は run_id → 表示行位置へ写像。無指定は既定 (先頭 1 件)。
-    ids = list(runs["run_id"])
-    if selected_ids is not None:
-        wanted = set(selected_ids)
-        initial = [i for i, r in enumerate(ids) if r in wanted]
-    else:
-        initial = [0] if ids else []
-    return mo.ui.table(
-        runs, label=label, selection=selection, initial_selection=initial
-    )
-
-
-def make_setting_ui(
-    runs_df: pd.DataFrame,
-    base_ui: mo.ui.dictionary,
-    preset_ui: mo.ui.dropdown,
-    preset: dict | None = None,
-) -> mo.ui.dictionary:
-    current_type = current_of(base_ui)
-    # 選んだペア (種類 → 適用先) に**実際に置換できる** run だけを提示。互換基準は
-    # replace ドメインの判定 (種類一致 + params 両立) をそのまま使い、UI 側に複製
-    # しない。run_selector は sim/sweep 各キーへ個別に埋め、single (1件必須) と
-    # sweep (複数可) で選択状態を分離する。
-    net = MCMODELS[target_of(base_ui)]
+    """run 選択テーブル。preset で絞り comp_type∈TARGET_MODEL の代表 run
+    (sweep 親/単発 = parent_id 欠損) だけ出す。子は隠す。初期選択=cfg run_id。"""
     in_preset = preset_runs(runs_df, preset_ui)
-    selected = (in_preset["comp_type"] == comp_type_of(base_ui)) & in_preset[
-        "meta"
-    ].map(lambda m: bool(replaced_names(m, net)))
-    runs = pd.DataFrame(in_preset[selected][["tags.mlflow.runName", "run_id"]])
-    sim_p = (preset or {}).get("sim", {})
-    sweep_p = (preset or {}).get("sweep", {})
-    d: dict = {
-        "sim": analysis_single.make_sim_ui(
-            current_type,
-            _run_selector(
-                runs, "single Run (1件)", "single", sim_p.get("run_selector")
-            ),
-            sim_p.get("current_params"),
-        ),
-        "run_sim": mo.ui.run_button(label="single 実行"),
-    }
-    sweep = analysis_sweep.make_sweep_ui(
-        current_type,
-        _run_selector(
-            runs, "sweep Run (複数可)", selected_ids=sweep_p.get("run_selector")
-        ),
-        sweep_p,
+    reps = in_preset[
+        in_preset["comp_type"].isin(TARGET_MODEL) & in_preset["parent_id"].isna()
+    ]
+    runs = pd.DataFrame(reps[["tags.mlflow.runName", "comp_type", "run_id"]])
+    wanted = set(cfg.get("sim", {}).get("run_selector") or [])
+    ids = list(runs["run_id"])
+    initial = [i for i, r in enumerate(ids) if r in wanted] or ([0] if ids else [])
+    return mo.ui.table(
+        runs, label="Run (1件)", selection="single", initial_selection=initial
     )
-    if sweep is not None:
-        d["sweep"] = sweep
-        d["run_sweep"] = mo.ui.run_button(label="sweep 実行")
-    return mo.ui.dictionary(d)
 
 
 # ---------------------------------------------------------------------------
-# Draw setttings
+# Draw settings (表示調整のみ widget で残す)
 # ---------------------------------------------------------------------------
 
 
-def make_draw_ui(
-    base_ui: mo.ui.dictionary, preset: dict | None = None
-) -> mo.ui.dictionary:
-    net = MCMODELS[target_of(base_ui)]
-    p = (preset or {}).get("draw", {})
+def _comp_names(loaded_single: SurrogateBundle | None) -> list[str]:
+    """draw の comp 選択肢 = 選択 run の代表 target (TARGET_MODEL[comp_type][0]、comp
+    最豊富な正準モデル) の comp 名。run 未選択なら空。"""
+    if loaded_single is None:
+        return []
+    return list(MCMODELS[TARGET_MODEL[comp_type_of(loaded_single.meta)][0]].names)
+
+
+def make_draw_ui(loaded_single: SurrogateBundle | None, cfg: dict) -> mo.ui.dictionary:
+    # draw_ui は 1 段フラット (ネストの益より深い添字アクセスの害が大きい)。sweep 系は
+    # 条件付き (sweep 可能な電流のときだけ) で sweep_* キーを足す。
+    names = _comp_names(loaded_single)
+    default_comp = "soma" if "soma" in names else (names[0] if names else None)
+    p = cfg.get("draw", {})
     d: dict = {
+        # plt_style は描画設定なので draw_ui に置く (描画セルが setup_mpl で適用)。
+        "plt_style": mo.ui.radio(options=STYLES, value=p.get("plt_style", STYLES[1])),
         # 既定=soma (全モデルが細胞体を "soma" と命名する共通規約)。
         "eval_comp": mo.ui.dropdown(
-            options=net.names,
-            value=valid_or(p.get("eval_comp"), net.names, "soma"),
+            options=names,
+            value=valid_or(p.get("eval_comp"), names, default_comp),
             label="評価対象comp",
         ),
         # 全 comp を並べる図 (simple / train_*) の表示制限。空 = 全部 (既定)。
         # eval_comp (比較対象 1 件) とは別軸: traub19 の 19 本重ねを読める本数へ絞る。
         "view_comps": mo.ui.multiselect(
-            options=net.names,
-            value=[c for c in p.get("view_comps", []) if c in net.names],
+            options=names,
+            value=[c for c in p.get("view_comps", []) if c in names],
             label="表示comp (空=全部)",
         ),
-        "single": analysis_single.make_draw_ui(p.get("single", {}).get("spike")),
+        "spike_orig": mo.ui.number(
+            value=int(p.get("spike_orig", 0)), step=1, label="spike orig #"
+        ),
+        "spike_surr": mo.ui.number(
+            value=int(p.get("spike_surr", 0)), step=1, label="spike surr #"
+        ),
     }
-    sweep = analysis_sweep.make_draw_ui(base_ui, p.get("sweep"))
-    if sweep is not None:
-        d["sweep"] = sweep
+    d.update(analysis_sweep.draw_fields(cfg, p) or {})
     return mo.ui.dictionary(d)
 
 
@@ -214,23 +121,19 @@ def make_draw_ui(
 def view_result(
     loaded_single: SurrogateBundle | None,
     loaded_sweep: list[SurrogateBundle],
-    base_ui: mo.ui.dictionary,
-    res_single: EvalResult | None,
+    res_single: dict[str, EvalResult] | None,
     res_sweep: dict | None,
-    draw_ui: mo.ui.dictionary,
-) -> list[SaveEntry]:
-    """single / sweep の save entry 列を連結 (表示は panel.render)。"""
-    return analysis_single.view(
-        loaded_single, base_ui, res_single, draw_ui
-    ) + analysis_sweep.view(loaded_sweep, res_sweep, draw_ui)
+    draw: dict,
+) -> dict[str, list[SaveEntry]]:
+    """save entry を model / single / sweep の 3 グループに分ける (表示は
+    panel.render_groups がタブ分け、保存は panel.flatten で一括)。model=静的モデル図
+    (run ロードのみ)、single=波形+指標 (res_single ゲート)、sweep=掃引。"""
+    return {
+        "model": analysis_single.model_view(loaded_single, draw),
+        "single": analysis_single.eval_view(loaded_single, res_single, draw),
+        "sweep": analysis_sweep.view(loaded_sweep, res_sweep, draw),
+    }
 
 
-def plot_preview(
-    base_ui: mo.ui.dictionary, setting_ui: mo.ui.dictionary
-) -> list[SaveEntry]:
-    current_type = current_of(base_ui)
-    return current_preview_fig(
-        current_type,
-        dt_of(base_ui),
-        sim_current_params_of(setting_ui),
-    )
+def plot_preview(cfg: dict) -> list[SaveEntry]:
+    return current_preview_fig(**current_inputs(cfg))

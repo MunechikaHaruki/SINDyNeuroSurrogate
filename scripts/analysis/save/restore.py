@@ -7,12 +7,39 @@ import marimo as mo
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# 状態 snapshot / 復元 (meta.json)
+# 設定の解決 (base.json デフォルト ← meta.json 上書き) と snapshot / 復元
 #
-# UI 値 (.value) は make_*_ui の preset 引数と同じ木構造なので丸ごと dump するだけで
-# 復元可能。唯一 run_selector の DataFrame だけ非可逆なので run_id リストへ落とす
-# (他の tuple/scalar/dict は json で round-trip)。make_*_ui 側が同じ key を読む。
+# marimo は widget を減らし「run 選択 + 実行 + 表示」に専念する。シミュ入力
+# (current_type/dt/current_params/sweep 範囲) は widget でなく **設定 dict cfg** から
+# 読む: conf/base.json のデフォルトを、復元 dropdown で選んだ保存 meta.json が上書き
+# する (meta が勝つ)。保存時は使用した cfg を meta.json に書き戻すので round-trip する。
+# comp_type は cfg に持たない (選択 run の SurrogateMeta から自動決定)。
 # ---------------------------------------------------------------------------
+
+BASE_JSON = Path(__file__).resolve().parents[2] / "conf" / "base.json"
+
+
+def load_base() -> dict:
+    """デフォルト設定 (conf/base.json)。"""
+    return json.loads(BASE_JSON.read_text())
+
+
+def _merge(base: object, override: object) -> object:
+    """deep merge: 双方 dict なら key ごとに再帰、それ以外は override 採用
+    (list/scalar は丸ごと差し替え)。"""
+    if not isinstance(base, dict) or not isinstance(override, dict):
+        return override
+    out = dict(base)
+    for k, v in override.items():
+        out[k] = _merge(base.get(k), v) if k in base else v
+    return out
+
+
+def resolve(meta_path: str | None) -> dict:
+    """base.json デフォルト ← 選択 meta.json 上書き。meta 未選択なら base のみ。"""
+    if not meta_path:
+        return load_base()
+    return _merge(load_base(), json.loads(Path(meta_path).read_text()))
 
 
 def _snapshot(value: object) -> object:
@@ -26,24 +53,19 @@ def _snapshot(value: object) -> object:
 
 def to_meta(
     preset_ui: mo.ui.dropdown,
-    base_ui: mo.ui.dictionary,
-    setting_ui: mo.ui.dictionary,
-    draw_ui: mo.ui.dictionary,
+    cfg: dict,
+    run_selector: mo.ui.table,
+    draw: dict,
 ) -> dict:
-    """preset/base/sim/sweep/draw UI 値を復元可能 snapshot に (make_*_ui preset と対)。
-
-    preset (yaml 絞り込み) は base_ui の外にある独立 UI なので個別に積む — 復元時は
-    これが先に効き、整合する model_pair / run 一覧が組まれる。
-    """
-    meta: dict = {
+    """使用した設定を復元可能 snapshot に (base.json と同じ形)。cfg (base⊕meta の
+    解決値) をベースに、実際に効いた preset / run 選択 / draw 値で上書き。draw は
+    marimo で .value 済みの dict。sim.current_params と sweep 範囲は cfg から素通し。"""
+    return {
+        **cfg,
         "preset": preset_ui.value,
-        "base": _snapshot(base_ui.value),
-        "sim": _snapshot(setting_ui["sim"].value),
-        "draw": _snapshot(draw_ui.value),
+        "sim": {**cfg.get("sim", {}), "run_selector": _snapshot(run_selector.value)},
+        "draw": _snapshot(draw),
     }
-    if "sweep" in setting_ui:
-        meta["sweep"] = _snapshot(setting_ui["sweep"].value)
-    return meta
 
 
 def _list_metas(result_dir: Path) -> dict[str, str]:
@@ -55,14 +77,10 @@ def _list_metas(result_dir: Path) -> dict[str, str]:
 
 
 def make_panel(result_dir: Path) -> tuple[mo.Html, mo.ui.dropdown]:
-    """復元パネル (html, dropdown) を返す。dropdown 選択で即復元・空選択で既定。
-    run_button は click 後 False 復帰し gate が revert するため不採用。"""
+    """復元パネル (html, dropdown)。dropdown 選択で即復元・空選択で既定 (base.json
+    のみ)。run_button は click 後 False 復帰し gate が revert するため不採用。"""
     dropdown = mo.ui.dropdown(options=_list_metas(result_dir), label="復元元 meta.json")
-    html = mo.vstack([mo.md("### 状態復元 (meta.json) — 選択で即復元"), dropdown])
+    html = mo.vstack(
+        [mo.md("### 設定復元 (meta.json) — 選択で base.json を上書き"), dropdown]
+    )
     return html, dropdown
-
-
-def load(path: str | None) -> dict | None:
-    if not path:
-        return None
-    return json.loads(Path(path).read_text())

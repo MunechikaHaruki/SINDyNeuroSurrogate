@@ -1,14 +1,15 @@
 import marimo as mo
 import pandas as pd
 from analysis.access import (
-    current_of,
+    comp_type_of,
+    current_type_of,
     dt_of,
     eval_comp_of,
-    sim_current_params_of,
-    target_of,
+    sweep_config_inputs,
     valid_or,
 )
 from analysis.save.panel import SaveEntry, entry
+from analysis.targets import TARGET_MODEL
 
 from neurosurrogate.metrics.eval_sweep import (
     CurrentSweepConfig,
@@ -21,77 +22,36 @@ from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.view.preview import sweep_fig, sweep_trace_grid_fig
 
 # ---------------------------------------------------------------------------
-# Sweep UI
+# Sweep UI (amp 範囲は base.json 側 = widget 無し。表示調整の draw_ui だけ残す)
 # ---------------------------------------------------------------------------
 
 
-def _is_sweepable(current_type: str) -> bool:
-    return len(sweepable_params(current_type)) > 0
+def is_sweepable(cfg: dict) -> bool:
+    """cfg の電流が amp 掃引できるか (sweep 実行ボタン/描画の出し分けに使う)。"""
+    return len(sweepable_params(current_type_of(cfg))) > 0
 
 
-_SWEEP_FALLBACK = (-5.0, 20.0, 10)
-
-
-def make_sweep_ui(
-    current_type: str,
-    run_selector: mo.ui.table,
-    preset: dict | None = None,
-) -> mo.ui.dictionary | None:
-    params = sweepable_params(current_type)
-    if not params:
+def draw_fields(cfg: dict, p: dict) -> dict | None:
+    """sweep 表示設定 (flat な key の dict。draw_ui へ merge される)。sweep 非対応
+    電流なら None。metric カタログ + sweepable 判定という sweep ドメイン知識をここに
+    集約する (ui は返った dict をそのまま広げるだけ)。"""
+    if not is_sweepable(cfg):
         return None
-    start, stop, steps = _SWEEP_FALLBACK
-    p = preset or {}
-    return mo.ui.dictionary(
-        {
-            "run_selector": run_selector,
-            "sweep_param": mo.ui.dropdown(
-                options=params,
-                value=valid_or(p.get("sweep_param"), params, params[0]),
-                label="sweep param",
-            ),
-            "amp_start": mo.ui.number(
-                value=p.get("amp_start", start), step=1.0, label="amp_start"
-            ),
-            "amp_stop": mo.ui.number(
-                value=p.get("amp_stop", stop), step=1.0, label="amp_stop"
-            ),
-            "amp_steps": mo.ui.number(
-                value=p.get("amp_steps", steps), step=1, label="steps"
-            ),
-        }
-    )
-
-
-def make_draw_ui(
-    base_ui: mo.ui.dictionary, preset: dict | None = None
-) -> mo.ui.dictionary | None:
-    current_type = current_of(base_ui)
-    if not _is_sweepable(current_type):
-        return None
-    p = preset or {}
-    ylim = p.get("ylim", {})
     options = DF_ROW_METRICS + SCALAR_METRICS
-    return mo.ui.dictionary(
-        {
-            "metric": mo.ui.dropdown(
-                options=options,
-                value=valid_or(p.get("metric"), options, "spike_count"),
-                label="metric",
-            ),
-            "ylim": mo.ui.dictionary(
-                {
-                    "auto": mo.ui.checkbox(value=ylim.get("auto", True), label="auto"),
-                    "min": mo.ui.number(
-                        value=ylim.get("min", 0.0), step=1.0, label="ymin"
-                    ),
-                    "max": mo.ui.number(
-                        value=ylim.get("max", 1.0), step=1.0, label="ymax"
-                    ),
-                }
-            ),
-        }
-    )
+    return {
+        "sweep_metric": mo.ui.dropdown(
+            options=options,
+            value=valid_or(p.get("sweep_metric"), options, "spike_count"),
+            label="sweep metric",
+        ),
+        "sweep_yauto": mo.ui.checkbox(value=p.get("sweep_yauto", True), label="y auto"),
+        "sweep_ymin": mo.ui.number(
+            value=p.get("sweep_ymin", 0.0), step=1.0, label="ymin"
+        ),
+        "sweep_ymax": mo.ui.number(
+            value=p.get("sweep_ymax", 1.0), step=1.0, label="ymax"
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -100,30 +60,24 @@ def make_draw_ui(
 
 
 def calc_sweep(
-    base_ui: mo.ui.dictionary,
-    setting_ui: mo.ui.dictionary,
+    cfg: dict,
     loaded: list[SurrogateBundle],
 ) -> dict:
-    """UI 値 + ロード済 surrogate を evaluate_sweep へ委譲。raw sim データを返す。
-    surrogate は loaded (load_selected 由来) を単一源とし再取得しない。
-    掃引結果の識別キーは label。"""
-    sweep_ui = setting_ui["sweep"]
-    current_type = current_of(base_ui)
-    cfg = CurrentSweepConfig(
-        current_type=current_type,
-        sweep_param=sweep_ui["sweep_param"].value,
-        amp_start=sweep_ui["amp_start"].value,
-        amp_stop=sweep_ui["amp_stop"].value,
-        amp_steps=sweep_ui["amp_steps"].value,
-        base_params=sim_current_params_of(setting_ui),
-    )
+    """cfg (base.json⊕meta.json) の掃引設定 + ロード済 surrogate を evaluate_sweep へ
+    委譲。raw sim データを返す。surrogate は loaded (sweep 兄弟) を単一源とし再取得
+    しない。target/comp_type は loaded の meta から自動決定。掃引結果の識別キーは
+    label。"""
+    sweep_cfg = CurrentSweepConfig(**sweep_config_inputs(cfg))
+    # sweep は全 target は回さず代表 target (TARGET_MODEL[comp_type][0]) 1 つ。
+    # 兄弟 run × amp を既に掛けており target 軸を足すと図が過剰になるため。
+    # comp_type は兄弟 run 共通なので先頭 loaded の meta から取る。
     sweep_eval = evaluate_sweep(
         dict(zip(sweep_labels(loaded), loaded, strict=True)),
-        model_name=target_of(base_ui),
-        dt=dt_of(base_ui),
-        cfg=cfg,
+        model_name=TARGET_MODEL[comp_type_of(loaded[0].meta)][0],
+        dt=dt_of(cfg),
+        cfg=sweep_cfg,
     )
-    return {"sweep_eval": sweep_eval, "cfg": cfg}
+    return {"sweep_eval": sweep_eval, "cfg": sweep_cfg}
 
 
 # ---------------------------------------------------------------------------
@@ -142,24 +96,23 @@ def _eval_df(loaded: list[SurrogateBundle]) -> pd.DataFrame:
 def view(
     loaded: list[SurrogateBundle],
     res: dict | None,
-    draw_ui: mo.ui.dictionary,
+    draw: dict,
 ) -> list[SaveEntry]:
     """評価サマリ表 (選択 run) → sweep 波形格子 + メトリクス図 (res ゲート)。"""
     if not loaded:
         return []
     entries = [entry("eval_summary", _eval_df(loaded))]
-    if res is None or "sweep" not in draw_ui:
+    if res is None or "sweep_metric" not in draw:
         return entries
     labels = sweep_labels(loaded)  # calc_sweep が dict キーに使ったものと同一規則
 
-    eval_comp = eval_comp_of(draw_ui)
-    ylim_ui = draw_ui["sweep"]["ylim"]
+    eval_comp = eval_comp_of(draw)
     ylim = (
         None
-        if ylim_ui["auto"].value
-        else (float(ylim_ui["min"].value), float(ylim_ui["max"].value))
+        if draw["sweep_yauto"]
+        else (float(draw["sweep_ymin"]), float(draw["sweep_ymax"]))
     )
-    metric_key = draw_ui["sweep"]["metric"].value
+    metric_key = draw["sweep_metric"]
     data = res["sweep_eval"].metrics_df(eval_comp, metric_key)
     entries += [
         entry(

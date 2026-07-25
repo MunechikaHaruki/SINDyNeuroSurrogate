@@ -50,6 +50,18 @@ def render(entries: list[SaveEntry]) -> mo.Html:
     return mo.vstack(blocks)
 
 
+def render_groups(groups: dict[str, list[SaveEntry]]) -> mo.Html:
+    """グループ (model/single/sweep) をタブ分け表示 (全部を 1 列に流すと見にくい)。
+    空グループはタブごと省く。"""
+    tabs = {name: render(es) for name, es in groups.items() if es}
+    return mo.ui.tabs(tabs) if tabs else mo.md("(結果なし)")
+
+
+def flatten(groups: dict[str, list[SaveEntry]]) -> list[SaveEntry]:
+    """保存パネル用にグループを平坦化 (表示はグループ分割・保存は一括)。"""
+    return [e for es in groups.values() for e in es]
+
+
 # ---------------------------------------------------------------------------
 # Save Panel
 # ---------------------------------------------------------------------------

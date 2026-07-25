@@ -1,0 +1,21 @@
+{
+  "preset": "(すべて)",
+  "base": {
+    "sim_current_type": "lin&steady",
+    "dt": 0.01
+  },
+  "sim": {
+    "current_params": {
+      "value": 10,
+      "silence_duration": 0.0,
+      "duration": 100.0
+    },
+    "run_selector": []
+  },
+  "sweep": {
+    "sweep_param": "value",
+    "amp_start": -5.0,
+    "amp_stop": 20.0,
+    "amp_steps": 10
+  }
+}
