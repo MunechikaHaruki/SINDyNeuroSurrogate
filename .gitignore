@@ -12,7 +12,7 @@ mlflow.db
 **/hydra-outputs/**/
 
 scripts/conf/surrogate/__*
-# marimo/sweep_traces の出力先 (研究成果物、conf 外へ退避)
+# marimo の出力先 (研究成果物、conf 外へ退避)
 results/
 
 docs/slide/result/_*

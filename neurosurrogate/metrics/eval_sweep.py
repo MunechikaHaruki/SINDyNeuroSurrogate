@@ -2,7 +2,6 @@
 並走シミュし、comp/metric 単位で掃引メトリクスを抽出。marimo/mlflow 非依存の
 純粋ドメイン層 (UI/ラベル引き出しは analysis 側)。"""
 
-import inspect
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -13,40 +12,30 @@ import xarray as xr
 from ..core.network import DatasetConfig
 from ..core.simulator import unified_simulator
 from ..neurons import MCMODELS
-from ..neurons.currents import CURRENT_MAP
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.replace import apply_surrogate
 from .wave import DynamicMetrics, extract_metric
 
 
-def sweepable_params(current_type: str) -> list[str]:
-    """掃引対象候補となる numeric パラメータ名列。silence_duration/duration は
-    掃引意図の対象でないため除外。0 件 = 掃引できない電流。"""
-    return [
-        name
-        for name, p in inspect.signature(CURRENT_MAP[current_type]).parameters.items()
-        if p.annotation in (int, float) and name not in ("silence_duration", "duration")
-    ]
+def dedupe_labels(names: list[str]) -> list[str]:
+    """衝突した名前にだけ順序の連番を付ける (与えた順)。結果 dict のキーが silent に
+    潰れて表と図が食い違うのを防ぐ共通規約 (選択を拒否せず全部見せる)。"""
+    counts = Counter(names)
+    seen: Counter[str] = Counter()
+    labels = []
+    for name in names:
+        seen[name] += 1
+        labels.append(name if counts[name] == 1 else f"{name}#{seen[name]}")
+    return labels
 
 
 def sweep_labels(surrogates: list[SurrogateBundle]) -> list[str]:
-    """掃引結果の識別キー列 (与えた順)。
+    """掃引結果の run 軸の識別キー列 (与えた順)。
 
     `meta.label` は学習構造 + 学習データまでしか区別しない → library_specs 違いや
-    同 config の再実行は同じ label になる。掃引結果は label キーの dict なので、
-    そのままだと silent に 1 run へ潰れ summary 表と掃引図が食い違う。衝突した
-    label にだけ順序の連番を付けて潰れを防ぐ (選択を拒否せず全部見せる)。
+    同 config の再実行は同じ label になるため連番で潰れを防ぐ。
     """
-    counts = Counter(s.meta.label for s in surrogates)
-    seen: Counter[str] = Counter()
-    labels = []
-    for s in surrogates:
-        seen[s.meta.label] += 1
-        n = seen[s.meta.label]
-        labels.append(
-            s.meta.label if counts[s.meta.label] == 1 else f"{s.meta.label}#{n}"
-        )
-    return labels
+    return dedupe_labels([s.meta.label for s in surrogates])
 
 
 @dataclass(frozen=True)
@@ -69,11 +58,13 @@ class CurrentSweepConfig:
 
 @dataclass(frozen=True)
 class SweepEval:
-    """amp 掃引ごとの (orig, {rid: surr}) シミュ結果と comp/metric 抽出。"""
+    """amp 掃引ごとの (orig, {rid: surr}) シミュ結果と comp/metric 抽出。掃引仕様
+    (cfg) も持つ = 描画が軸名を結果から引ける (別引数で持ち回らない)。"""
 
     amp_datasets: list[tuple[float, xr.Dataset, dict[str, xr.Dataset]]]
     model_name: str
     dt: float
+    cfg: CurrentSweepConfig
 
     def metrics_df(self, eval_comp_name: str, metric_key: str) -> pd.DataFrame:
         """eval_comp × metric_key で amp 掃引メトリクスを DataFrame 化。"""
@@ -118,4 +109,4 @@ def evaluate_sweep(
             for rid, surrogate in surrogates.items()
         }
         amp_datasets.append((float(amp), unified_simulator(dset), surr_datasets))
-    return SweepEval(amp_datasets=amp_datasets, model_name=model_name, dt=dt)
+    return SweepEval(amp_datasets=amp_datasets, model_name=model_name, dt=dt, cfg=cfg)

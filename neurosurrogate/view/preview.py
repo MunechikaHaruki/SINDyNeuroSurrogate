@@ -4,45 +4,45 @@ from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from matplotlib.figure import Figure
 
 from ..core import access
 from ..metrics.wave import diverged
 from ..neurons import MCMODELS
-from ..neurons.currents import CURRENT_MAP
 from .engine import error_fig, new_figure, place_legend
 
 if TYPE_CHECKING:
-    from ..metrics.eval_sweep import CurrentSweepConfig, SweepEval
+    from ..core.network import DatasetConfig
+    from ..metrics.eval_sweep import SweepEval
 
 
-def current_preview_fig(current_type: str, dt: float, current_params: dict) -> Figure:
+def current_preview_fig(dset: DatasetConfig) -> Figure:
     """電流波形プレビュー。構築失敗は error_fig。marimo 非依存。"""
     try:
-        i_ext = CURRENT_MAP[current_type](**current_params)(dt)
+        i_ext = dset.build_current()
     except Exception as e:  # noqa: BLE001
         return error_fig(f"build failed: {e}")
-    t = np.arange(len(i_ext)) * dt
+    t = np.arange(len(i_ext)) * dset.dt
     fig = new_figure(figsize=(6, 2))
     ax = fig.subplots()
     ax.plot(t, i_ext, lw=0.8)
     ax.set_xlabel("t [ms]")
     ax.set_ylabel("I_ext [μA/cm²]")
-    ax.set_title(f"{current_type} preview")
+    ax.set_title(f"{dset.current_type} preview")
     return fig
 
 
 def sweep_fig(
-    data: pd.DataFrame,
-    cfg: CurrentSweepConfig,
+    sweep: SweepEval,
     comp_name: str,
     metric_key: str,
     labels: list[str],
     ylim: tuple[float, float] | None = None,
 ) -> Figure:
     """sweep メトリクス折れ線 (Original + surrogate 各 run)。marimo 非依存。
-    labels は data の surrogate 列名 (= meta.label、順序=描画順)。"""
+    labels は surrogate 列名 (= meta.label、順序=描画順)。掃引軸名は sweep.cfg から。"""
+    data = sweep.metrics_df(comp_name, metric_key)
+    cfg = sweep.cfg
     fig = new_figure()
     ax = fig.subplots()
     if "original" in data.columns:

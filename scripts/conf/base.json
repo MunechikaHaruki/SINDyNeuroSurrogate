@@ -1,19 +1,59 @@
 {
-  "base": {
-    "sim_current_type": "lin&steady",
-    "dt": 0.01
-  },
-  "sim": {
-    "current_params": {
-      "value": 10,
-      "silence_duration": 0.0,
-      "duration": 100.0
+  "sim": [
+    {
+      "target": "traub19",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "value": 10,
+        "silence_duration": 0.0,
+        "duration": 100.0
+      }
+    },
+    {
+      "target": "traub",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "value": 10,
+        "silence_duration": 0.0,
+        "duration": 100.0
+      }
+    },
+    {
+      "target": "traub19_soma",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "value": 10,
+        "silence_duration": 0.0,
+        "duration": 100.0
+      }
+    },
+    {
+      "target": "traub19_soma_dendstim",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "value": 10,
+        "silence_duration": 0.0,
+        "duration": 100.0
+      }
     }
-  },
-  "sweep": {
-    "sweep_param": "value",
-    "amp_start": 0,
-    "amp_stop": 20.0,
-    "amp_steps": 3
-  }
+  ],
+  "sweep": [
+    {
+      "target": "traub19",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "value": 10,
+        "duration": 100.0
+      },
+      "sweep_param": "silence_duration",
+      "amp_start": 0,
+      "amp_stop": 10.0,
+      "amp_steps": 5
+    }
+  ]
 }
