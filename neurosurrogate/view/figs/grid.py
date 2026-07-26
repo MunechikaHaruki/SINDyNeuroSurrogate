@@ -187,18 +187,22 @@ def trace_grid_fig(grid: EvalGrid, comp_name: str) -> Figure:
 
 
 def compare_grid_fig(grids: dict[str, EvalGrid], comp_name: str) -> Figure:
-    """複数の評価を並べた波形格子 (行=評価、セルは全 run を重ねる = run 軸は色で潰す)。
+    """複数の評価を並べた波形格子 (行=評価、セルは親 run 1 本だけ)。
 
     同じ掃引を適用先 (刺激位置) 違いで並べる図なので、電流行は先頭評価のものを
-    1 回だけ描く (点数が揃わなければ `_grid_fig` が raise)。
+    1 回だけ描く (点数が揃わなければ `_grid_fig` が raise)。run 軸は sweep 子を
+    含めず**親 run (`run_labels[0]`) のみ** — 子まで重ねると比較の主眼 (刺激位置差)
+    が run 差に埋もれる。
     """
     first = next(iter(grids.values()))
-    rows = [
-        _Row(
-            label,
-            g.spec.net.name_to_idx(comp_name),
-            [(p.original, p.surrogates) for p in g.points],
+    rows = []
+    for label, g in grids.items():
+        parent = g.run_labels[0]
+        rows.append(
+            _Row(
+                label,
+                g.spec.net.name_to_idx(comp_name),
+                [(p.original, {parent: p.surrogates[parent]}) for p in g.points],
+            )
         )
-        for label, g in grids.items()
-    ]
     return _grid_fig(_header(first), rows, _axis_name(first), comp_name)

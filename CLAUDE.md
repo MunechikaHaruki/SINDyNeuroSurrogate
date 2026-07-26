@@ -68,6 +68,7 @@ scripts/  main.py                # Hydra エントリ
           draw.py                # artifact + conf/draw.json → 図/表の書き出し (CLI と marimo 保存ボタンの共通本体)
           marimo.py              # notebook セル (run 選択 + 実行 + 描画呼び出しのみ。描画自体は draw.py)
           widgets.py             # marimo widget 層 (計算も図の組立も持たない)
+          poster_assets.py       # results/<dir> → docs/poster/result へ poster 使用分だけコピー
           conf/                  # 下記「設定ファイル」参照
 tests/    conftest.py / test_surrogate.py / test_inits.py
 docs/     poster/ slide/         # typst
