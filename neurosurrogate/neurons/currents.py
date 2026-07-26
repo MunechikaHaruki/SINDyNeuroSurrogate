@@ -124,9 +124,29 @@ def generate_chirp(
     return apply
 
 
+@current_generator
+def generate_pulse_train(
+    amplitude: float = 20.0,
+    frequency: float = 20.0,
+    baseline: float = 0.0,
+):
+    """周期的な矩形パルス列。**流れる幅 = 流れない幅** (1 周期の半分ずつ = duty 50%)
+    なので波形の自由度は frequency だけ = 掃引軸に取ると進むほどパルスが詰まる。
+    amplitude/baseline [μA/cm²]、frequency [Hz]"""
+
+    def apply(active: np.ndarray, dt: float) -> None:
+        half = 500.0 / frequency  # 周期 (1000/f [ms]) の半分 = ON 幅 = OFF 幅
+        active[:] = np.where(
+            (np.arange(len(active)) * dt) % (2 * half) < half, amplitude, baseline
+        )
+
+    return apply
+
+
 PERIODIC_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     "periodic&sinousoidal": generate_sinousoidal,
     "periodic&chirp": generate_chirp,
+    "periodic&pulse": generate_pulse_train,
 }
 
 

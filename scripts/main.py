@@ -9,7 +9,7 @@ from hydra import compose
 from hydra.core.hydra_config import HydraConfig
 from hydra.types import RunMode
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
-from mlflow_io import log_surrogate_model, setup_mlflow
+from mlflow_io import log_surrogate_model
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.surrogate.bundle import SurrogateBundle
@@ -71,7 +71,6 @@ def _ensure_sweep_parent(preset: str) -> str | None:
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
     _disable_proxy()
-    setup_mlflow()
     preset = str(HydraConfig.get().runtime.choices["surrogate"])
     parent_id = _ensure_sweep_parent(preset)
     tags = {MLFLOW_PARENT_RUN_ID: parent_id} if parent_id else None
