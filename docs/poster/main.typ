@@ -73,8 +73,6 @@
         numbering: none,
         supplement: none,
       )<comp>
-      // 訳: マルチコンパートメントモデルは空間形態を連結コンパートメントで表す。
-      A multi-compartment model represents the *spatial morphology* as connected compartments.
     ],
     // ======== 中央+右: 等価回路 / 可変コンダクタンスの中身、その下に Goal を跨がせる ========
     [
@@ -90,12 +88,12 @@
             supplement: none,
           )<circuit>
           // 訳: 各コンパートメント = 膜容量 + 可変イオンコンダクタンス + 隣接との軸方向結合。
-          Each compartment is an *RC circuit*: capacitance, *variable* ionic conductances ($dots.c$ = $g_"Ca", g_"K(A)", g_"K(AHP)", g_"K(C)"$), and axial coupling $g_(i, i plus.minus 1)$.
+          Each compartment: capacitance, *variable* ionic conductances, axial coupling $g_(i, i plus.minus 1)$.
         ],
         // -------- 右: 可変コンダクタンスの中身 (ゲート変数とレート関数) --------
         [
           // 訳: コンダクタンスはゲート変数に依存し、ゲートはレート関数の ODE に従う。
-          Conductances depend on *gate variables*, which obey ODEs with *rate functions* $alpha, beta$:
+          Conductances depend on *gate variables*, ODEs with rate functions $alpha, beta$:
           #figure(
             text(size: 28pt)[
               $
@@ -140,7 +138,7 @@
       #stage_simulate(unit: 1.62cm, label-size: 24pt)
       #v(0.2em)
       // 訳: Traub 19-comp の soma へランダムパルス列を注入し、19 comp すべての V と 10 ゲートを記録。
-      Inject a *random pulse train* at the *soma* of the Traub 19-compartment cell; record $V$ and the *10 gates* of *all 19 compartments*.
+      Inject a *random pulse train* at the soma; record $V$ and *10 gates* for *all 19 compartments*.
     ],
     // ======== ② 純電位依存ゲート 8 本だけ潜在へ圧縮 (V と Ca サブ系は素通し) ========
     [
@@ -150,7 +148,7 @@
       #stage_compress(unit: 1.57cm, label-size: 24pt)
       #v(0.2em)
       // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
-      The *6 voltage-dependent gates* ride on a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n = 5$. #text(blue)[$V$] and the #ce("Ca^2+") subsystem *stay uncompressed*.
+      *6 voltage-dependent gates* ride a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n=5$. #text(blue)[$V$] and #ce("Ca^2+") *stay uncompressed*.
     ],
     // ======== ③ [V, z] から潜在の支配方程式を同定 ========
     [
@@ -160,7 +158,7 @@
       #stage_identify(unit: 1.58cm, label-size: 24pt)
       #v(0.2em)
       // 訳: 潜在だけスパース同定、dV/dt と Ca サブ系は元の物理式のまま。基底はゲート自身のレート関数 α, β (昨年の 41 項汎用ライブラリを置換)。
-      *SINDy* @Champion-2019-DatadrivenDiscoveryCoordinatesGoverning fits *only* $dot(bold(z))$; $dot(V)$ and the #ce("Ca^2+") subsystem keep the *original physics*. The library is *physics-informed* — the gates' own $alpha(V), beta(V)$, not last year's *41-term* generic one.
+      *SINDy* @Champion-2019-DatadrivenDiscoveryCoordinatesGoverning fits *only* $dot(bold(z))$; $dot(V)$ and #ce("Ca^2+") keep *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$, not a *41-term* generic one.
     ],
   )
 ]
@@ -174,18 +172,18 @@
   // 掲載は全て同一 run: hybrid / n=5 / AE / traub_sr_physics を traub19 の全 comp へ適用
   // 外側 2 列 = (左+中央 / 右)。model.png が横長なので左+中央に跨がせる (Intro の Goal と同じ手)。
   #grid(
-    columns: (2fr, 1fr),
+    columns: (2.5fr, 0.8fr),
     gutter: 1em,
     // ======== 左+中央: ①② ③ を 2 列に並べ、その下へ ④ を跨がせる ========
     [
       #grid(
-        columns: (1fr, 1fr),
+        columns: (1fr, 1.3fr),
         gutter: 1em,
         // -------- 左列: 単発 AP の再現 --------
         [
           *① Single action potential*
           #figure(
-            image("result/traub_soma_dc/diff.png", width: 100%),
+            image("result/diff.png", width: 100%),
             caption: [20 ms, 3 #sym.mu A/cm#super[2] step: $V$ and the *5 AE latents*. Original (blue) / surrogate (red).],
             numbering: none,
             supplement: none,
@@ -213,7 +211,7 @@
           #v(0.25em)
           *③ Unseen periodic drive*
           #figure(
-            image("result/traub19_pulse_freq/sweep_traces.png", width: 100%),
+            image("result/traces.png", width: 100%),
             caption: [Pulse train, 10–50 Hz — *outside training*.],
             numbering: none,
             supplement: none,
