@@ -212,7 +212,8 @@ def test_result_artifacts_round_trip_without_resimulating(
     surrogate は焼き込まず出所 run_id だけを持つ。"""
     root = tmp_path / "artifacts"
     root.mkdir()
-    assert len(save(sindy_grid, "hh_dc", root, {"r0": "RID"})) == 1  # run 軸 1 本
+    n = len(save(sindy_grid, "hh_dc", root, {"r0": "RID"}, "PARENT"))
+    assert n == 1  # run 軸 1 本
 
     # 同じ label で入力仕様だけ変えて回し直した系列 (束ねたら点の意味がずれる)
     point = sindy_grid.points[0]
@@ -220,7 +221,7 @@ def test_result_artifacts_round_trip_without_resimulating(
         spec=dc_replace(sindy_grid.spec, dt=sindy_grid.spec.dt * 2),
         points=[EvalPoint(None, point.original, {"r1": point.surrogates["r0"]})],
     )
-    save(other, "hh_dc", root, {"r1": "RID"})
+    save(other, "hh_dc", root, {"r1": "RID"}, "PARENT")
 
     arts = artifacts(root)
     assert {a.meta.run_id for a in arts} == {"RID"}  # surrogate でなく run_id を持つ

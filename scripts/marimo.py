@@ -61,14 +61,14 @@ def _(sel_name, widgets):
 
 
 @app.cell
-def _(bundles, draw, run_and_save, run_ids, run_panel, specs, widgets):
+def _(bundles, draw, run_and_save, run_ids, run_panel, sel_id, specs, widgets):
     # 1 クリックで完結: 評価 → artifact 保存 → 描画 → 図保存。artifact を経由する
-    # (draw.render_if は results/artifacts/ 直下すべてを読む) ので、再描画だけしたい
+    # (draw.render_if は対象 run の artifact を読む) ので、再描画だけしたい
     # ときは marimo を経由せず CLI `uv run scripts/draw.py` を使えば足りる — marimo
     # 側で「計算だけ」「描画だけ」を別ボタンに分ける理由は薄い。
     if run_panel.value["run"]:
-        run_and_save(bundles, specs, draw.ARTIFACT_DIR, run_ids)
-    saved = draw.render_if(run_panel.value["run"], run_panel.value["dir"])
+        run_and_save(bundles, specs, draw.ARTIFACT_DIR, run_ids, sel_id)
+    saved = draw.render_if(run_panel.value["run"], run_panel.value["dir"], sel_id)
     widgets.written_html(saved, draw.RESULT_DIR, "(未実行)")
     return
 

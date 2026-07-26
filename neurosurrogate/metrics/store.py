@@ -4,12 +4,16 @@
 しか無く、カーネルを落とせば消える = 図を直すたびに再シミュしていた。ここで
 結果をディスクへ落とし、描画は artifact を読むだけにする。
 
-規約 (1 artifact = **1 surrogate run × 1 spec**):
+規約 (1 artifact = **1 surrogate run × 1 spec**、1 dir = **1 学習 run (親 or 孤立)**):
 
-    <root>/<created>_<label>__<run_label>/
-        meta.json     # 何を回したか (入力仕様 / run_id / run_label)
+    <root>/<parent_run_id>/<created>_<label>__<run_label>/
+        meta.json     # 何を回したか (入力仕様 / run_id / run_label / parent_run_id)
         data.joblib   # 点ごとの (点の値, 原系, 置換系)
 
+- **`parent_run_id` が dir を切る単位**: sweep なら親 run_id、単発なら自身の run_id
+  (呼び出し側が渡す = marimo の run 選択 `sel_id` そのもの)。これにより
+  `results/artifacts/<parent_run_id>/` の 1 dir が「回した学習 run」と 1 対 1
+  対応し、`scripts/draw.py` から対象 run だけを指定して描画できる。
 - **surrogate を焼き込まない**: meta に `run_id` (MLflow) を書くだけ。閉包項や
   preprocessor が要る図 (diff/attractor) は描画側が run_id からロードする
   (MLflow は scripts 側の関心なのでここは知らない)。
@@ -54,6 +58,7 @@ class ArtifactMeta:
     target: str  # 適用先 MC モデル名 (一覧の絞り込み用)
     run_id: str  # 出所 surrogate の MLflow run
     run_label: str  # 出所 surrogate の識別名 (結果の run 軸キー)
+    parent_run_id: str  # 学習 run (親 or 孤立) の MLflow run_id = dir を切る単位
     source: dict  # 入力仕様 (EvalSpec)
     created: str
     dtype: str = DTYPE
@@ -90,13 +95,15 @@ class Artifact:
 
 
 def _dest(root: Path, meta: ArtifactMeta) -> Path:
-    """`<created>_<label>__<run_label>` (時刻頭 = 一覧が時系列順)。同秒の衝突は
-    連番で避ける (上書きで前の結果を消さない)。"""
+    """`<parent_run_id>/<created>_<label>__<run_label>` (時刻頭 = 一覧が時系列順)。
+    `parent_run_id` dir が学習 run 1 本に対応する単位。同秒の衝突は連番で避ける
+    (上書きで前の結果を消さない)。"""
+    run_dir = root / _SAFE.sub("-", meta.parent_run_id)
     base = f"{meta.created}_{_SAFE.sub('-', f'{meta.label}__{meta.run_label}')}"
-    dest = root / base
+    dest = run_dir / base
     i = 2
     while dest.exists():
-        dest = root / f"{base}-{i}"
+        dest = run_dir / f"{base}-{i}"
         i += 1
     return dest
 
@@ -126,9 +133,16 @@ def _write(root: Path, meta: ArtifactMeta, data: object) -> Path:
     return dest
 
 
-def save(grid: EvalGrid, label: str, root: Path, run_ids: dict[str, str]) -> list[Path]:
+def save(
+    grid: EvalGrid,
+    label: str,
+    root: Path,
+    run_ids: dict[str, str],
+    parent_run_id: str,
+) -> list[Path]:
     """1 評価結果を **run 軸ごとに 1 artifact** へ分解して保存 (run を後から足せる)。
-    `run_ids` = run 軸キー → MLflow run_id。"""
+    `run_ids` = run 軸キー → MLflow run_id。`parent_run_id` = 学習 run (親 or 孤立)
+    の run_id で、保存先 dir (`root/<parent_run_id>/...`) を切る単位。"""
     saved = []
     for run_label in grid.run_labels:
         meta = ArtifactMeta(
@@ -136,6 +150,7 @@ def save(grid: EvalGrid, label: str, root: Path, run_ids: dict[str, str]) -> lis
             target=grid.spec.target,
             run_id=run_ids[run_label],
             run_label=run_label,
+            parent_run_id=parent_run_id,
             source=grid.spec.to_dict(),
             created=datetime.now().strftime("%Y%m%d-%H%M%S"),
         )
@@ -153,10 +168,14 @@ def save(grid: EvalGrid, label: str, root: Path, run_ids: dict[str, str]) -> lis
 
 
 def save_all(
-    res: dict[str, EvalGrid], root: Path, run_ids: dict[str, str]
+    res: dict[str, EvalGrid], root: Path, run_ids: dict[str, str], parent_run_id: str
 ) -> list[Path]:
     """`run_evals` の結果をまとめて artifact 化 (label × run 軸 → artifact)。"""
-    return [p for label, g in res.items() for p in save(g, label, root, run_ids)]
+    return [
+        p
+        for label, g in res.items()
+        for p in save(g, label, root, run_ids, parent_run_id)
+    ]
 
 
 def run_and_save(
@@ -164,23 +183,28 @@ def run_and_save(
     specs: dict[str, EvalSpec],
     root: Path,
     run_ids: dict[str, str],
+    parent_run_id: str,
 ) -> list[Path]:
     """評価実行 + artifact 保存を 1 呼び出しに畳む (marimo の実行ボタンが呼ぶ唯一の
     関数。**実行 = 計算 + 保存**をここで閉じ、marimo 側は結果を保持しない)。
-    bundles が空 (run 未選択) なら何もしない。"""
+    bundles が空 (run 未選択) なら何もしない。`parent_run_id` = marimo の run 選択
+    (`sel_id`) をそのまま渡す = 1 学習 run に対して 1 artifact dir。"""
     if not bundles:
         return []
-    return save_all(run_evals(bundles, specs), root, run_ids)
+    return save_all(run_evals(bundles, specs), root, run_ids, parent_run_id)
 
 
 # --- 読込 ---------------------------------------------------------------------
 
 
-def artifacts(root: Path) -> list[Artifact]:
-    """`root` 直下の artifact 一覧 (meta.json だけ読む = 波形は触らない)。読めない
-    もの (スキーマ変更後の残骸) は落とす = 1 件の失敗で一覧全体を潰さない。"""
+def artifacts(root: Path, parent_run_id: str | None = None) -> list[Artifact]:
+    """`root` 配下 (`<parent_run_id>/<artifact>/`) の artifact 一覧 (meta.json だけ
+    読む = 波形は触らない)。読めないもの (スキーマ変更後の残骸) は落とす = 1 件の
+    失敗で一覧全体を潰さない。`parent_run_id` を渡すと学習 run 1 本分だけに絞る
+    (1 dir = 1 学習 run という規約をそのままフィルタに使える)。"""
+    pattern = f"{_SAFE.sub('-', parent_run_id)}/*" if parent_run_id else "*/*"
     found = []
-    for d in sorted(p for p in root.glob("*") if (p / META_FILE).is_file()):
+    for d in sorted(p for p in root.glob(pattern) if (p / META_FILE).is_file()):
         try:
             meta = ArtifactMeta.from_dict(json.loads((d / META_FILE).read_text()))
         except Exception as e:  # noqa: BLE001 — 壊れた 1 件で一覧を落とさない
