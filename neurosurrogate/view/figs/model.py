@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import re
+from functools import partial
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
@@ -19,11 +20,14 @@ from matplotlib.colors import SymLogNorm
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
+from ...core.network import NeuronGraph
 from ...surrogate.closure.base import Closure
 from ...surrogate.closure.sindy import SINDyBundle
+from ...surrogate.meta import SurrogateMeta
 from ...surrogate.preprocessor.base import Preprocessor
 from ...surrogate.preprocessor.impl.pca import PCAPreprocessor
-from ..engine import new_figure, place_legend
+from ...surrogate.replace import replaced_names
+from ..engine import collect, new_figure, place_legend
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
@@ -44,7 +48,11 @@ _FEATURE_FONTSCALE = 1.3  # heatmap X軸 basis 関数 (TeX) をデフォルト�
 _T = sp.Symbol("t")
 
 
-def neuron_graph_fig(net, surrogate_nodes=None, figsize=None) -> Figure:
+def neuron_graph_fig(
+    net: NeuronGraph,
+    surrogate_nodes: set[str] | None = None,
+    figsize: tuple[float, float] | None = None,
+) -> Figure:
     """NeuronGraph を networkx で可視化。ノード色=種別、赤枠=stim ノード。
 
     surrogate_nodes (置換対象ノード名集合) を渡すと該当ノードを紫で強調。
@@ -145,7 +153,7 @@ def closure_figs(closure: Closure) -> list[tuple[str, Figure]]:
     (SINDy=ξ heatmap、NN 表現なら重み分布など) → 型で振り分ける。図を持たない表現
     は空列を返し、呼び出し側は保存/表示に流すだけで済む。"""
     if isinstance(closure, SINDyBundle):
-        return [("model", _sindy_coef_fig(closure))]
+        return collect({"model": lambda: _sindy_coef_fig(closure)})
     return []
 
 
@@ -154,8 +162,23 @@ def preprocessor_figs(prep: Preprocessor) -> list[tuple[str, Figure]]:
     (PCA=寄与率 scree、AE は固有図なし) → closure_figs と同型で型振り分け。図を持た
     ない変換は空列を返す。再構成誤差の時系列は train_recon_fig が別に受け持つ。"""
     if isinstance(prep, PCAPreprocessor):
-        return [("pca_scree", pca_scree_fig(prep))]
+        return collect({"pca_scree": lambda: pca_scree_fig(prep)})
     return []
+
+
+def neuron_graph_figs(
+    nets: dict[str, NeuronGraph], meta: SurrogateMeta
+) -> list[tuple[str, Figure]]:
+    """適用先ごとのニューロングラフ (識別子 `<target>/neurograph`)。置換ノードの強調は
+    meta から引く = 呼び出し側は「どの適用先を描くか」だけ渡す。"""
+    return collect(
+        {
+            f"{target}/neurograph": partial(
+                neuron_graph_fig, net, replaced_names(meta, net)
+            )
+            for target, net in nets.items()
+        }
+    )
 
 
 def pca_scree_fig(prep: PCAPreprocessor) -> Figure:

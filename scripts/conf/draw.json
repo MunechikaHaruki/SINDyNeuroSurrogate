@@ -1,0 +1,19 @@
+{
+  "default": {
+    "plt_style": "presentation",
+    "eval_comp": "soma",
+    "view_comps": [],
+    "detail_point": 0,
+    "spike_orig": 0,
+    "spike_surr": 0,
+    "metric": "spike_count",
+    "metric_yauto": true
+  },
+  "results": [],
+  "compare": [
+    {
+      "name": "stim_site",
+      "evals": ["traub19_somastim", "traub19_dendstim"]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ Hydra プリセットを実設定源として読み、UI/実験ログを介さ�
 短縮電流だけ固定したテスト専用プリセット) に置き、テスト側は override しない。
 """
 
+import json
 from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
@@ -13,14 +14,22 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from hydra import compose, initialize_config_dir
+from matplotlib.figure import Figure
 from omegaconf import OmegaConf
 
 from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.metrics.eval import EvalResult, evaluate
-from neurosurrogate.metrics.wave import SWEEP_METRICS, DynamicMetrics, extract_metric
+from neurosurrogate.metrics.eval import (
+    EvalGrid,
+    EvalPoint,
+    evaluate,
+    preprocessed_latent,
+)
+from neurosurrogate.metrics.spec import EvalSpec, SweepAxis, parse_evals
+from neurosurrogate.metrics.store import artifacts, load_all, save
+from neurosurrogate.metrics.wave import METRIC_KEYS, DynamicMetrics, extract_metric
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
@@ -45,9 +54,12 @@ from neurosurrogate.surrogate.replace import (
     replace_nodes,
     replaceables,
 )
+from neurosurrogate.view.engine import collect, new_figure
+from neurosurrogate.view.figs.cell import cell_figs, panels_simple
+from neurosurrogate.view.figs.grid import compare_grid_fig, trace_grid_fig
 from neurosurrogate.view.figs.model import equation_texs, preprocessor_figs
-from neurosurrogate.view.figs.sim import draw_all, panels_simple
 from neurosurrogate.view.figs.train import train_figs
+from neurosurrogate.view.report import CompareSpec, DrawSpec, ReportSpec, eval_report
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
 LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, g1..gN, u] の両端
@@ -87,9 +99,21 @@ def sindy() -> SurrogateBundle:
     return fit_surrogate("_test_hh_sindy")
 
 
+def _spec_of(bundle: SurrogateBundle) -> EvalSpec:
+    """学習データと同じ入力の評価仕様 (掃引軸なし = 点 1 つ)。"""
+    ds = bundle.meta.dataset
+    return EvalSpec(
+        target=ds.model_name,
+        current_type=ds.current_type,
+        dt=ds.dt,
+        current_params=ds.current_params,
+    )
+
+
 @pytest.fixture(scope="module")
-def sindy_eval(sindy: SurrogateBundle) -> EvalResult:
-    return evaluate(sindy, sindy.meta.dataset)
+def sindy_grid(sindy: SurrogateBundle) -> EvalGrid:
+    """単発 = 点 1 つ・run 1 本の退化グリッド (掃引と同じ型・同じ経路)。"""
+    return evaluate({"r0": sindy}, _spec_of(sindy))
 
 
 @pytest.fixture(scope="module")
@@ -107,37 +131,171 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
-    result = evaluate(surrogate, surrogate.meta.dataset)
-    v = access.potential(result.surr_ds, _train_comp(surrogate))
-    assert v.shape == access.time(result.original_ds).shape
+    point = evaluate({"r0": surrogate}, _spec_of(surrogate)).points[0]
+    v = access.potential(point.surrogates["r0"], _train_comp(surrogate))
+    assert v.shape == access.time(point.original).shape
     assert np.isfinite(v[0])
 
 
-def test_sweep_metric_choices_are_all_extractable(sindy_eval: EvalResult) -> None:
+def test_sweep_metric_choices_are_all_extractable(sindy_grid: EvalGrid) -> None:
     """UI が出す掃引 metric 選択肢は全て取り出せる = 選んだのに生成されないキーで
     黙って nan の図が出ることが無い (未知キーは extract_metric が KeyError)。"""
-    dm = DynamicMetrics(
-        sindy_eval.original_ds, sindy_eval.surr_ds, 0, sindy_eval.dataset.dt
-    )
-    assert all(extract_metric(dm, key)[1] is not None for key in SWEEP_METRICS)
+    point = sindy_grid.points[0]
+    dm = DynamicMetrics(point.original, point.surrogates["r0"], 0, sindy_grid.spec.dt)
+    assert all(extract_metric(dm, key)[1] is not None for key in METRIC_KEYS)
     with pytest.raises(KeyError):
         extract_metric(dm, "latency_error")
 
 
-def test_sindy_draws_all_figs(sindy_eval: EvalResult) -> None:
-    assert [name for name, _ in draw_all(sindy_eval, 0)] == [
-        "diff",
-        "simple",
-        "attractor",
-    ]
+def test_sindy_draws_all_figs(sindy_grid: EvalGrid, sindy: SurrogateBundle) -> None:
+    """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
+    point = sindy_grid.points[0]
+    figs = cell_figs(
+        point.original,
+        point.surrogates["r0"],
+        0,
+        lambda: preprocessed_latent(sindy, sindy_grid.spec.net, point.original, 0),
+    )
+    assert [name for name, _ in figs] == ["diff", "simple", "attractor"]
+
+
+def test_eval_and_draw_json_are_self_consistent() -> None:
+    """marimo/CLI の既定設定が自己整合: `eval.json` の全 entry の電流が掃引点まで
+    含めて構築でき、`draw.json` の `results`/`compare` が参照する label は
+    `eval.json` の label に実在する (2 ファイルに分けたことで生まれうる typo/ズレを
+    テストで担保する)。単発 entry も「点 1 つ」として同じ経路を通る。"""
+    conf_dir = Path(__file__).parents[1] / "scripts/conf"
+    evals = parse_evals(json.loads((conf_dir / "eval.json").read_text()))
+    for spec in evals.values():
+        for point in spec.points:
+            assert len(spec.dataset_at(point).build_current()) > 0
+    assert [len(s.points) for s in evals.values()][0] == 1  # 掃引軸なし = 点 1 つ
+
+    report = ReportSpec.from_dict(json.loads((conf_dir / "draw.json").read_text()))
+    assert {r.label for r in report.results} <= set(evals)
+    for comparison in report.compares.values():
+        assert set(comparison.evals) <= set(evals)
+
+
+def test_compare_grid_rows_are_current_then_one_per_eval(
+    sindy: SurrogateBundle,
+) -> None:
+    """compare 図の行 = [I_ext] + [評価ごとの V]、列 = 点。点数が揃わない結果を
+    混ぜると列の意味が行ごとにずれる → raise。"""
+    spec = EvalSpec(
+        target="hh",
+        current_type="lin&steady",
+        dt=0.05,
+        current_params={"duration": 30.0, "silence_duration": 0.0},
+        sweep=SweepAxis(param="value", start=5.0, stop=10.0, steps=2),
+    )
+    grid = evaluate({"r0": sindy}, spec)
+    fig = compare_grid_fig({"a": grid, "b": grid}, "soma")
+    assert len(fig.axes) == 3 * 2  # (I_ext + a + b) 行 × 2 点
+    assert [ax.get_ylabel() for ax in fig.axes[::2]] == ["I_ext", "a", "b"]
+
+    # 同じ格子骨格を run 軸で開くと行 = [I_ext] + [run] (行の組み方だけが違う)。
+    run_fig = trace_grid_fig(grid, "soma")
+    assert [ax.get_ylabel() for ax in run_fig.axes[::2]] == ["I_ext", "r0"]
+
+    axis = SweepAxis(param="value", start=5.0, stop=10.0, steps=3)
+    short = evaluate({"r0": sindy}, dc_replace(spec, sweep=axis))
+    with pytest.raises(ValueError, match="点数"):
+        compare_grid_fig({"a": grid, "b": short}, "soma")
+
+
+def test_result_artifacts_round_trip_without_resimulating(
+    sindy_grid: EvalGrid, tmp_path: Path
+) -> None:
+    """結果 artifact = **1 surrogate run × 1 spec**。保存 → 読込で再シミュ無しに
+    同じ波形が戻り、run 軸ごとに分かれて保存され読込で束ね直る。artifact に
+    surrogate は焼き込まず出所 run_id だけを持つ。"""
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    assert len(save(sindy_grid, "hh_dc", root, {"r0": "RID"})) == 1  # run 軸 1 本
+
+    # 同じ label で入力仕様だけ変えて回し直した系列 (束ねたら点の意味がずれる)
+    point = sindy_grid.points[0]
+    other = EvalGrid(
+        spec=dc_replace(sindy_grid.spec, dt=sindy_grid.spec.dt * 2),
+        points=[EvalPoint(None, point.original, {"r1": point.surrogates["r0"]})],
+    )
+    save(other, "hh_dc", root, {"r1": "RID"})
+
+    arts = artifacts(root)
+    assert {a.meta.run_id for a in arts} == {"RID"}  # surrogate でなく run_id を持つ
+
+    # label でなく (label, 入力仕様) で束ね、label 衝突は新しい系列が勝つ
+    loaded = load_all(arts)
+    assert list(loaded) == ["hh_dc"]
+    assert loaded["hh_dc"].run_labels == ["r1"]
+    assert loaded["hh_dc"].spec.dt == other.spec.dt
+    # 入力仕様から dataset を復元でき、波形は float32 で往復する
+    assert loaded["hh_dc"].spec.dataset_at(None).model_name == sindy_grid.spec.target
+    np.testing.assert_allclose(
+        access.potential(loaded["hh_dc"].points[0].surrogates["r1"], 0),
+        access.potential(point.surrogates["r0"], 0),
+        rtol=1e-5,
+    )
+
+
+def test_report_draws_the_results_at_hand_not_the_declaration(
+    sindy_grid: EvalGrid, sindy: SurrogateBundle
+) -> None:
+    """描画は**手元の結果だけ**を見る (計算入力の設定と突き合わせない): 設定ファイル
+    に宣言の無い label — 別セッションで回して artifact から読んだ結果 — もそのまま
+    図になり、逆に参照先が手元に無い compare は error 図でなく**黙って落ちる**
+    (宣言とのズレは呼び出し側の関心) = 計算と描画が切れている。"""
+    report = ReportSpec(default=DrawSpec(eval_comp="soma"))
+    entries = eval_report({"読んだ系列": sindy_grid}, {"r0": sindy}, report)
+    assert any(e.name.startswith("読んだ系列/") for e in entries)
+
+    dangling = CompareSpec(name="c", evals=["未実行"])
+    report_with_compare = ReportSpec(
+        default=DrawSpec(eval_comp="soma"), compares={"c": dangling}
+    )
+    assert eval_report({}, {"r0": sindy}, report_with_compare) == []
+
+
+def test_report_spec_overrides_default_draw_per_label() -> None:
+    """`draw.json` の `results[]` override は既定 (`default`) の上に 1 段だけ被さる:
+    override したキーだけ変わり、他は既定値のまま。宣言に無い label は既定そのもの。"""
+    report = ReportSpec.from_dict(
+        {
+            "default": {"eval_comp": "soma", "metric": "spike_count"},
+            "results": [{"eval": "traub19_dendstim", "eval_comp": "c09"}],
+        }
+    )
+    assert report.draw_for("traub19_dendstim") == DrawSpec(
+        eval_comp="c09", metric="spike_count"
+    )
+    assert report.draw_for("宣言に無い label") == report.default
+
+
+def test_draw_settings_are_typed_and_failed_figs_fold_into_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """表示設定は widget/保存 dict を読む型 1 つが源 (欠落キーは既定値)。描画 job の
+    失敗は列を保ったまま error 図へ畳む = 1 図の失敗で他の図まで落とさない。"""
+    assert DrawSpec.from_dict({}).metric_ylim() is None  # 既定は y auto
+    drawn = DrawSpec.from_dict(
+        {"eval_comp": "soma", "metric_yauto": False, "metric_ymax": 40}
+    )
+    assert (drawn.eval_comp, drawn.metric_ylim()) == ("soma", (0.0, 40.0))
+
+    def boom() -> Figure:
+        raise KeyError("missing var")
+
+    assert [name for name, _ in collect({"ok": new_figure, "ng": boom})] == ["ok", "ng"]
+    assert "ng" in capsys.readouterr().err  # 失敗は握り潰さず stderr へも出す
 
 
 def test_view_comps_limit_drawn_traces(
-    sindy_eval: EvalResult, sindy: SurrogateBundle
+    sindy_grid: EvalGrid, sindy: SurrogateBundle
 ) -> None:
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
-    ds = sindy_eval.original_ds
+    ds = sindy_grid.points[0].original
     assert len(panels_simple(ds, comps=[])) < len(panels_simple(ds))
     assert [name for name, _ in train_figs(sindy, comps=[_train_comp(sindy)])] == [
         name for name, _ in train_figs(sindy)

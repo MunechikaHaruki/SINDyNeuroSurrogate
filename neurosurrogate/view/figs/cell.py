@@ -1,7 +1,9 @@
-"""単発置換シミュの図: 入力電流プレビューと、原系/置換系の比較 (波形・差分・相平面)。
+"""**1 セル (点 × run) の詳細図**: 入力電流プレビューと、原系/置換系の比較
+(波形・差分・相平面)。
 
-`draw_all` が `EvalResult` から全図を識別子付きで一括生成し、呼び出し側は種別を
-知らず (id, fig) を保存/表示に流すだけ。marimo 非依存。
+結果グリッドのどのセルかは呼び出し側が選び、ここは Dataset だけを受ける
+(結果型を知らない)。`cell_figs` が全図を識別子付きで一括生成し、呼び出し側は
+種別を知らず (id, fig) を保存/表示に流すだけ。marimo 非依存。
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from ...core.access import POTENTIAL_VAR
 from ..engine import (
     PanelSpec,
     TraceSpec,
+    collect,
     draw_engine,
     error_fig,
     new_figure,
@@ -26,7 +29,6 @@ from ..engine import (
 
 if TYPE_CHECKING:
     from ...core.network import DatasetConfig
-    from ...metrics.eval import EvalResult
 
 
 def current_preview_fig(dset: DatasetConfig) -> Figure:
@@ -95,7 +97,7 @@ def panels_diff(
     original: xr.Dataset,
     preprocessed: xr.Dataset,
     surrogate: xr.Dataset,
-    surr_id: int,
+    comp_id: int,
 ) -> list[PanelSpec]:
     return [
         PanelSpec("I_ext(t)", [TraceSpec(*access.i_ext(original), color="gold")]),
@@ -103,12 +105,12 @@ def panels_diff(
             "V [mV]",
             [
                 TraceSpec(
-                    *access.trace(original, surr_id, POTENTIAL_VAR),
+                    *access.trace(original, comp_id, POTENTIAL_VAR),
                     label="orig V",
                     color="blue",
                 ),
                 TraceSpec(
-                    *access.trace(surrogate, surr_id, POTENTIAL_VAR),
+                    *access.trace(surrogate, comp_id, POTENTIAL_VAR),
                     label="surr V",
                     color="red",
                     style="--",
@@ -120,12 +122,12 @@ def panels_diff(
                 latent,
                 [
                     TraceSpec(
-                        *access.trace(preprocessed, surr_id, latent),
+                        *access.trace(preprocessed, comp_id, latent),
                         label=f"target {latent}",
                         color="blue",
                     ),
                     TraceSpec(
-                        *access.trace(surrogate, surr_id, latent),
+                        *access.trace(surrogate, comp_id, latent),
                         label=f"surr {latent}",
                         color="red",
                         style="--",
@@ -137,84 +139,57 @@ def panels_diff(
     ]
 
 
-def attractor_fig(orig_ds, surr_ds, comp_id, state_vars=None) -> Figure:
-    """相平面重ね描き。orig と surr のダイナミクス一致度可視化。"""
-    if state_vars is None:
-        state_vars = [access.POTENTIAL_VAR, *access.latent_vars(1)]
+def attractor_fig(orig_ds: xr.Dataset, surr_ds: xr.Dataset, comp_id: int) -> Figure:
+    """相平面 (V × 第1潜在) の重ね描き。原系と置換系のダイナミクス一致度を見る。
+    変数が無い comp では KeyError が出るまま (呼び出し側の `collect` が畳む)。"""
+    x_var, y_var = access.POTENTIAL_VAR, access.latent_vars(1)[0]
+
+    def trajectory(ds: xr.Dataset) -> tuple[np.ndarray, np.ndarray]:
+        # access.trace は (t, y) を返す。相平面は値のみ使う
+        return tuple(access.trace(ds, comp_id, v)[1] for v in (x_var, y_var))  # type: ignore[return-value]
+
     fig = new_figure()
     ax = fig.subplots()
-
-    def extract_trajectory(ds):
-        # access.trace は (t, y) を返す。相平面は値のみ使う
-        return [access.trace(ds, comp_id, var)[1] for var in state_vars]
-
-    # --- 1. データの抽出 ---
-    try:
-        o_x, o_y = extract_trajectory(orig_ds)
-        s_x, s_y = extract_trajectory(surr_ds)
-    except KeyError as e:
-        ax.text(
-            0.5,
-            0.5,
-            f"Variable not found:\n{e}",
-            transform=ax.transAxes,
-            ha="center",
-            color="red",
-        )
-        return fig
-
-    # --- 2. 描画 ---
-    # オリジナル：黒で「正解」の形を示す。alphaを少し下げて重なりを見やすくする
+    o_x, o_y = trajectory(orig_ds)
+    s_x, s_y = trajectory(surr_ds)
+    # 原系は黒で「正解」の形。alpha を下げて重なりを見やすくする
     ax.plot(
         o_x, o_y, color="black", linewidth=1.2, alpha=0.6, label="Original (Target)"
     )
-
-    # サロゲート：赤（または青）の破線や細線で「再現」を示す
     ax.plot(
         s_x, s_y, color="crimson", linewidth=1.0, alpha=0.8, label="Surrogate (SINDy)"
     )
-
-    # --- 3. 装飾 ---
-    ax.set_xlabel(f"{state_vars[0]}")
-    ax.set_ylabel(f"{state_vars[1]}")
+    ax.set_xlabel(x_var)
+    ax.set_ylabel(y_var)
     ax.set_title(f"Attractor Comparison (Comp {comp_id})")
-
-    # ランダム電流などの場合、軌道がボヤけるのでグリッドがあると位置関係が追いやすい
+    # ランダム電流だと軌道がボヤける → グリッドがあると位置関係を追いやすい
     ax.grid(True, linestyle=":", alpha=0.5)
     place_legend(ax)
-
     return fig
 
 
-def draw_all(
-    result: EvalResult, comp_id: int, comps: Sequence[int] | None = None
+def cell_figs(
+    original: xr.Dataset,
+    surrogate: xr.Dataset,
+    comp_id: int,
+    latent: Callable[[], xr.Dataset],
+    comps: Sequence[int] | None = None,
 ) -> list[tuple[str, Figure]]:
-    """EvalResult から全描画を識別子付きで一括生成。analysis 側は種別を知らず
-    (id, fig) を保存/表示に流すだけ。学習ドメイン外 comp 等での失敗は error_fig
-    に畳み戻り値型を保つ。
+    """1 セルの全描画を識別子付きで一括生成 (失敗の畳み込みは `collect`)。
+    呼び出し側は種別を知らず (id, fig) を保存/表示に流すだけ。
 
     comp_id=比較対象 (diff/attractor は 1 comp の話)、comps=全 comp を並べる図
     (simple) の表示制限。
 
-    latent (preprocessed) は lazy 参照: 学習ドメイン外 comp で preprocessed_latent
-    が raise するため diff/attractor でのみ評価する (simple は呼ばない)。
+    `latent` (原系ゲートの潜在射影) は **callable で受けて lazy 参照**: 学習ドメイン
+    外 comp では raise するので diff/attractor でのみ評価する (simple は呼ばない)。
     """
-    original, surrogate = result.original_ds, result.surr_ds
-    jobs: dict[str, Callable[[], Figure]] = {
-        "diff": lambda: draw_engine(
-            panels_diff(
-                original, result.preprocessed_latent(comp_id), surrogate, comp_id
-            )
-        ),
-        "simple": lambda: draw_engine(panels_simple(original, comps)),
-        "attractor": lambda: attractor_fig(
-            result.preprocessed_latent(comp_id), surrogate, comp_id
-        ),
-    }
-    out: list[tuple[str, Figure]] = []
-    for name, job in jobs.items():
-        try:
-            out.append((name, job()))
-        except (ValueError, KeyError) as e:
-            out.append((name, error_fig(f"{name}: {e}")))
-    return out
+    return collect(
+        {
+            "diff": lambda: draw_engine(
+                panels_diff(original, latent(), surrogate, comp_id)
+            ),
+            "simple": lambda: draw_engine(panels_simple(original, comps)),
+            "attractor": lambda: attractor_fig(latent(), surrogate, comp_id),
+        }
+    )

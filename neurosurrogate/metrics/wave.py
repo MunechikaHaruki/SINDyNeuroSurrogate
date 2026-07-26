@@ -194,9 +194,10 @@ def spike_features_df(
 _ROW_METRICS: list[str] = ["spike_count", "latency", "mean_isi", "std_isi"]
 # waveform_summary + spike_shape_corr のキー（両者の比較なので置換系側だけの指標）
 _SCALAR_METRICS: list[str] = ["rmse", "mae", "periodicity_gap", "spike_shape_corr"]
-# 掃引図で選べる metric の**単一源**。UI の選択肢も `extract_metric` の受理集合も
-# ここから引く (別々に並べると、生成されないキーを選べてしまい黙って nan 図が出る)。
-SWEEP_METRICS: list[str] = _ROW_METRICS + _SCALAR_METRICS
+# 点軸メトリクス図で選べる metric の**単一源**。UI の選択肢も `extract_metric` の
+# 受理集合もここから引く (別々に並べると、生成されないキーを選べてしまい黙って
+# nan 図が出る)。
+METRIC_KEYS: list[str] = _ROW_METRICS + _SCALAR_METRICS
 
 
 def _waveform_error(dm: DynamicMetrics) -> dict:
@@ -276,7 +277,7 @@ def wave_report(
 
 def extract_metric(dm: DynamicMetrics, metric_key: str) -> tuple[float | None, float]:
     """指定 metric の (orig, surr)。両者の比較で決まるスカラー metric に原系の値は
-    無い → orig は None。未知キーは KeyError (選択肢は `SWEEP_METRICS` が単一源で、
+    無い → orig は None。未知キーは KeyError (選択肢は `METRIC_KEYS` が単一源で、
     そこに載っていて取り出せないキーがあれば黙って nan を返さず落とす)。"""
     if metric_key in _ROW_METRICS:
         df = waveform_summary_df(dm)

@@ -12,6 +12,7 @@ import pandas as pd
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
+from neurosurrogate.metrics.spec import run_labels
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
@@ -21,7 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 def setup_mlflow() -> None:
-    project_root = Path(__file__).parent.parent
+    """tracking 先をリポジトリ直下の `mlflow.db` に固定する (**import 時に実行**)。
+
+    MLflow 3 の既定 tracking URI は **cwd 相対**の `sqlite:///mlflow.db` → 設定前に
+    この module の関数を呼ぶと、そのとき居たディレクトリに空 DB が生えて「run が無い」
+    に見える。URI を持つのはこの module なので、呼び忘れようのない import 時に張る
+    (`__file__` は resolve してから辿る = cwd にも symlink にも依存しない)。
+    """
+    project_root = Path(__file__).resolve().parent.parent
     mlflow.set_tracking_uri(f"sqlite:///{project_root}/mlflow.db")
     # smoke test は MLFLOW_EXPERIMENT=smoke_test で本番 experiment を汚さず隔離
     # (just clean-test が丸ごと削除)。既定は本番 experiment のまま。
@@ -29,6 +37,8 @@ def setup_mlflow() -> None:
     # 全 run の meta 読込で artifact DL 進捗バーが大量出力 → 抑制
     os.environ["MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR"] = "false"
 
+
+setup_mlflow()
 
 SURR_ARTIFACT_DIR = "surrogate"
 
@@ -73,6 +83,27 @@ def load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
     """run_id 列 → surrogate ロード。run 選択の唯一のロード経路
     (sweep 複数 / single 1件 共通)。表示名は meta.label (runName 非依存)。"""
     return [load_surrogate_model(rid) for rid in run_ids]
+
+
+def run_ids_by_label(
+    bundles: list[SurrogateBundle], run_ids: list[str]
+) -> dict[str, str]:
+    """run 軸キー (`run_labels`) → MLflow run_id。結果・図・artifact の run 軸を
+    同じキーで揃えつつ、artifact に出所 run を書くための対応表 = 結果を保存しても
+    「どの run で回したか」を失わない。run_id という概念を持つのは MLflow 層なので
+    domain でなくここが組む。"""
+    return dict(zip(run_labels(bundles), run_ids, strict=True))
+
+
+def load_bundles(
+    run_ids: list[str],
+) -> tuple[dict[str, SurrogateBundle], dict[str, str]]:
+    """run_id 列 → (run 軸キー→surrogate, run 軸キー→run_id)。marimo からは
+    これ 1 回の呼び出しで済ませる (load_runs/run_ids_by_label/zip の組み立ては
+    marimo のセルでなくここが持つ)。"""
+    bundles = load_runs(run_ids)
+    ids = run_ids_by_label(bundles, run_ids)
+    return dict(zip(ids, bundles, strict=True)), ids
 
 
 def sweep_siblings(parent_id: str) -> list[str]:

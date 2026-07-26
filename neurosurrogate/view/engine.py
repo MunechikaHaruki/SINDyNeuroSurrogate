@@ -1,5 +1,5 @@
 """描画プリミティブ: 図の生成・凡例配置・エラー図と、パネル記述 (`PanelSpec` /
-`TraceSpec`) からの一括描画 (`draw_engine`)。
+`TraceSpec`) からの一括描画 (`draw_engine`)、複数図を (id, fig) 列へ畳む `collect`。
 
 `figs/` 配下の各図はここだけを土台にする (matplotlib の作法をここへ閉じ込める)。
 `TraceSpec` は t/y を numpy で持つので Dataset 非依存。marimo 非依存。
@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import math
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -72,6 +72,19 @@ def error_fig(msg: str) -> Figure:
     return fig
 
 
+def collect(jobs: dict[str, Callable[[], Figure]]) -> list[tuple[str, Figure]]:
+    """名前付き描画 job を (id, fig) 列へ畳む — `figs/` が複数図を返すときの共通規約。
+    1 図の失敗 (学習ドメイン外 comp 等) で列ごと落とさず error_fig に差し替える
+    (呼び出し側は種別も成否も知らず保存/表示に流すだけ)。"""
+    out: list[tuple[str, Figure]] = []
+    for name, job in jobs.items():
+        try:
+            out.append((name, job()))
+        except Exception as e:  # noqa: BLE001 — 描画の失敗は図に畳む (error_fig が記録)
+            out.append((name, error_fig(f"{name}: {e}")))
+    return out
+
+
 @dataclass
 class TraceSpec:
     t: np.ndarray
@@ -80,27 +93,18 @@ class TraceSpec:
     color: str | None = None
     style: str = "-"
 
-    def xy(self) -> tuple[np.ndarray, np.ndarray]:
-        return self.t, self.y
-
 
 @dataclass
 class PanelSpec:
     ylabel: str
     traces: list[TraceSpec] = field(default_factory=list)
-    xlabel: str | None = None
-
-    def with_xlabel(self, label: str) -> PanelSpec:
-        return PanelSpec(ylabel=self.ylabel, traces=self.traces, xlabel=label)
 
 
 def draw_engine(
     spec: list[PanelSpec],
     figsize: tuple[float, float] | None = None,
 ) -> Figure:
-    panels = [*spec[:-1], spec[-1].with_xlabel("Time [ms]")] if spec else spec
-
-    n_rows = len(panels)
+    n_rows = len(spec)
     # figsize 未指定は matplotlib 既定。パネル数が多い図 (ゲート/潜在ごとに 1 段) は
     # 呼び出し側が段数に応じた寸法を渡す。
     fig = new_figure(figsize=figsize)
@@ -108,13 +112,12 @@ def draw_engine(
     if n_rows == 1:
         axs = [axs]
 
-    for ax, p in zip(axs, panels, strict=False):
+    for ax, p in zip(axs, spec, strict=False):
         for tr in p.traces:
-            x, y = tr.xy()
-            ax.plot(x, y, label=tr.label, color=tr.color, linestyle=tr.style)
+            ax.plot(tr.t, tr.y, label=tr.label, color=tr.color, linestyle=tr.style)
         ax.set_ylabel(p.ylabel)
         place_legend(ax)
-        if p.xlabel:
-            ax.set_xlabel(p.xlabel)
+    if n_rows:  # 横軸は全段共有 (sharex) → ラベルは最下段だけ
+        axs[-1].set_xlabel("Time [ms]")
 
     return fig
