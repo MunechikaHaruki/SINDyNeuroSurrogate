@@ -4,8 +4,8 @@ surrogate:
   meta:
     comp_type: traub  # 置換対象のコンパートメント種類
     surrogate_type: hybrid
-    preprocessor_type: ae
-    n_components: 5  # 潜在方程式の次元
+    preprocessor_type: pca
+    n_components: 6  # 潜在方程式の次元
     datasets:
       model_name: traub19
       current_type: train
@@ -24,5 +24,5 @@ surrogate:
 hydra:
   sweeper:
     params:
-      surrogate.meta.n_components: 2,3,4,5
-      surrogate.meta.preprocessor_type: pca,ae
+      surrogate.meta.n_components: 6,7,8
+      surrogate.meta.preprocessor_type: pca
