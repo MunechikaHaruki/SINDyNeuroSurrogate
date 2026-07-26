@@ -1,0 +1,4 @@
+label,nnz,nnz_ratio,ae/reconstruction_mse,ae/reconstruction_mse_ratio,cost/surrogate/exp,cost/surrogate/div,cost/surrogate/pm,cost/surrogate/mul,cost/original/exp,cost/original/div,cost/original/pm,cost/original/mul,cost/surr-orig/exp,cost/surr-orig/div,cost/surr-orig/pm,cost/surr-orig/mul
+"hybrid/n5/ae
++traub_sr_physics
+@traub19",410,0.7961165048543689,5.210480823912101e-05,0.00041276077295507253,121,204,947,782,19,36,88,57,102,168,859,725

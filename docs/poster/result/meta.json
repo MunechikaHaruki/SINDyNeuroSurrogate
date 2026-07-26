@@ -1,0 +1,81 @@
+{
+  "sim": [
+    {
+      "name": "traub_soma_dc",
+      "target": "traub",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "silence_duration": 10.0,
+        "duration": 40.0,
+        "value": 3.0
+      }
+    }
+  ],
+  "sweep": [
+    {
+      "name": "traub19_somastim",
+      "target": "traub19_soma",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "silence_duration": 10.0,
+        "duration": 300.0
+      },
+      "sweep_param": "value",
+      "amp_start": 0.0,
+      "amp_stop": 10.0,
+      "amp_steps": 5
+    },
+    {
+      "name": "traub19_dendstim",
+      "target": "traub19_soma_dendstim",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "silence_duration": 10.0,
+        "duration": 300.0
+      },
+      "sweep_param": "value",
+      "amp_start": 0.0,
+      "amp_stop": 10.0,
+      "amp_steps": 5
+    },
+    {
+      "name": "traub19_pulse_freq",
+      "target": "traub19_soma",
+      "current_type": "periodic&pulse",
+      "dt": 0.01,
+      "current_params": {
+        "amplitude": 20,
+        "baseline": 0.0,
+        "silence_duration": 10.0,
+        "duration": 300.0
+      },
+      "sweep_param": "frequency",
+      "amp_start": 10.0,
+      "amp_stop": 50.0,
+      "amp_steps": 5
+    }
+  ],
+  "compare": [
+    {
+      "name": "stim_site",
+      "sweeps": [
+        "traub19_somastim",
+        "traub19_dendstim"
+      ]
+    }
+  ],
+  "draw": {
+    "plt_style": "presentation",
+    "eval_comp": "soma",
+    "view_comps": [],
+    "spike_orig": 0,
+    "spike_surr": 0,
+    "sweep_metric": "spike_count",
+    "sweep_yauto": true,
+    "sweep_ymin": 0.0,
+    "sweep_ymax": 1.0
+  }
+}
