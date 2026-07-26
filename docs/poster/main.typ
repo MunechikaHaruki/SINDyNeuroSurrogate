@@ -113,9 +113,9 @@
         ],
       )
       #v(0.4em)
-      // 訳 (Goal): より少ない状態変数で膜電位応答を再現するサロゲートモデルを構築する。
+      // 訳 (Goal): 複雑なゲートダイナミクスが変換後の座標でも単純な回帰(SINDy)で捉えられるか検証し、その結果として状態変数を削減する。
       #mini-box(title: "Goal")[
-        Reproduce the membrane-potential response with *fewer state variables*.
+        Test whether *complex gate dynamics* remain tractable to a *simple regression* (SINDy) after a coordinate change — and thereby reproduce the membrane-potential response with *fewer state variables*.
       ]
     ],
   )
@@ -184,25 +184,23 @@
           *① Single action potential*
           #figure(
             image("result/diff.png", width: 100%),
-            caption: [20 ms, 3 #sym.mu A/cm#super[2] step: $V$ and the *5 AE latents*. Original (blue) / surrogate (red).],
+            caption: [20 ms, 3 #sym.mu A/cm#super[2] step: $V$ and the *5 AE latents* (*AE*, $n=5$).],
             numbering: none,
             supplement: none,
           )
-          #mini-box(title: "Waveform match", color: rgb("#2a7f2a"))[
-            #set text(size: 20pt)
-            // 訳: RMSE 7.3 mV、AP 形状相関 0.999、スパイク数一致、潜時誤差 0.3 ms
-            - RMSE *7.3 mV*, shape corr. *0.999*
-            - spike *1 #sym.arrow.r 1*, latency err *0.3 ms*
-          ]
-          // 訳: 残る誤差はピーク電圧 13 mV 低い。
-          - *Gap*: peak *13 mV low*.
+          // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms — 潜在ダイナミクスの位相情報はSINDyで捉えられている。
+          - *When* it fires is accurate (latency err *0.3 ms*, AHP timing gap *3.1 ms*) — latent dynamics preserve *timing*
+          // 訳: どれだけ大きいかは系統的過小評価: ピーク13mV低い(振幅差12.9mV)、立ち上がり/立ち下がり速度差21.0/10.3 mV/ms。一方AHP深さ差0.28mVと静止電位付近は正確 → 誤差はスパイクの急峻な遷移部に集中。
+          - *How big* is systematically *underestimated* — peak *13 mV low* (amplitude gap *12.9 mV*), rise #sym.slash fall rate gap *21.0* #sym.slash *10.3 mV/ms* — yet AHP depth gap is only *0.28 mV*: error concentrates in the *fast, steep transition*, not the slow relaxation
+          // 訳: → SINDyライブラリでなく、AE(n=5)側が急峻な遷移の情報を圧縮しきれていない可能性。
+          $->$ suggests the *AE encoding (n=5)*, not the SINDy library, fails to preserve the *steepest transition*
         ],
         // -------- 中央列: 学習外の刺激への汎化 (②③) --------
         [
           *② New stimulus site*
           #figure(
             image("result/compare_stim_site.png", width: 100%),
-            caption: [Amplitude sweep. *Top*: soma, as trained. *Bottom*: dendrite, *unseen*.],
+            caption: [Amplitude sweep (*AE*, $n=5$). *Top*: soma, as trained. *Bottom*: dendrite, *unseen*.],
             numbering: none,
             supplement: none,
           )
@@ -212,7 +210,7 @@
           *③ Unseen periodic drive*
           #figure(
             image("result/traces.png", width: 100%),
-            caption: [Pulse train, 10–50 Hz — *outside training*.],
+            caption: [Pulse train, 10–50 Hz — *outside training* (*AE*, $n=5$).],
             numbering: none,
             supplement: none,
           )
@@ -229,34 +227,33 @@
         numbering: none,
         supplement: none,
       )
-      // 訳: 79.6% が非ゼロ = スパースでない → コスト増。
-      - *79.6% non-zero* — accurate but *not sparse*: cost *rises* (exp $19 -> 121$).
+      // 訳: 79.6% が非ゼロ = スパースでない。
+      - *79.6% non-zero* — accurate but *not sparse*.
     ],
     // ======== 右列: 上に PCA・無圧縮の傍証、下に結論と参照 ========
     [
       *⑤ PCA, no compression*
       #figure(
         image("result/noCompression.png", width: 100%),
-        caption: [PCA latents, $n$ = uncompressed.],
+        caption: [*PCA*, $n=6$ = uncompressed (vs. *AE*, $n=5$ above).],
         numbering: none,
         supplement: none,
       )
-      // 訳: 無圧縮 PCA 空間でも SINDy のような単純な回帰で再現できる → 座標変換自体に十分な情報があり、アプローチは妥当。
-      - Even *uncompressed PCA* coords carry enough information for a *simple regression* like SINDy $->$ the *approach itself* is valid.
+      // 訳: 無圧縮でも同じ結果 → 効いているのは圧縮でなく座標変換そのもの。複雑ゲート系がSINDyのような単純回帰で捉えられるという主張の核心的傍証。
+      - Holds *even without compression* $->$ what matters is the *coordinate change itself*, not the compression ratio: core evidence that complex gate dynamics stay *tractable to simple regression*.
       #v(0.3em)
       #mini-box(title: "Conclusion")[
         #set text(size: 21pt)
-        // 訳: Traub 19-comp 全置換で発散せず、AP 形状相関 0.999。
-        - *All 19 compartments* replaced, no divergence; AP *shape corr. 0.999*.
-        // 訳: 学習外の刺激位置・周波数へ転移 → 部品として再利用可。
-        - Transfers to an *unseen site and frequency*.
-        // 訳: 圧縮は 6→5 止まりで ξ が密。
-        - Compression stops at *6 #sym.arrow.r 5* and $xi$ stays dense.
-        // 訳: 今後: ξ のスパース化と潜在次元削減。
-        $->$ *Future*: sparsify $xi$, push $n$ down.
+        // 訳: 全19区画置換、発散せず、未見の刺激部位・周波数にも転移。
+        - Replaced *all 19 compartments*, no divergence; transfers to *unseen site #sym.dot.c frequency*.
+        // 訳: 核心: SINDyが学習できたのは圧縮したから(n=6→5)ではない。⑤(無圧縮PCA, n=6)でも同じ結果 → 効いているのは座標変換そのもの。
+        - *Core finding*: SINDy succeeds *not because we compressed* ($n$: 6→5) — ⑤ shows the *same result uncompressed* ($n=6$), so it is the *coordinate change itself* that makes gate dynamics learnable.
+        // 訳: だからコスト削減は圧縮の副産物にすぎず、ξが密(79.6%非ゼロ)な現状ではまだ実証できていない。
+        - Cost reduction follows *only if* compression matters — so it remains *unproven*: $xi$ is still dense (*79.6%* non-zero).
+        $->$ *Future*: sparsify $xi$, push $n$ down, test on other channel models.
       ]
       #v(0.3em)
-      #text(size: 21pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")]
+      #text(size: 19pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")[github.com/MunechikaHaruki/SINDyNeuroSurrogate]]
       #show bibliography: set text(size: 18pt)
       #bibliography("bibliography.bib", title: none)
     ],
