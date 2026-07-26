@@ -232,8 +232,18 @@
       // 訳: 79.6% が非ゼロ = スパースでない → コスト増。
       - *79.6% non-zero* — accurate but *not sparse*: cost *rises* (exp $19 -> 121$).
     ],
-    // ======== 右列: 上は空けたまま、下に結論と参照 ========
+    // ======== 右列: 上に PCA・無圧縮の傍証、下に結論と参照 ========
     [
+      *⑤ PCA, no compression*
+      #figure(
+        image("result/noCompression.png", width: 100%),
+        caption: [PCA latents, $n$ = uncompressed.],
+        numbering: none,
+        supplement: none,
+      )
+      // 訳: 無圧縮 PCA 空間でも SINDy のような単純な回帰で再現できる → 座標変換自体に十分な情報があり、アプローチは妥当。
+      - Even *uncompressed PCA* coords carry enough information for a *simple regression* like SINDy $->$ the *approach itself* is valid.
+      #v(0.3em)
       #mini-box(title: "Conclusion")[
         #set text(size: 21pt)
         // 訳: Traub 19-comp 全置換で発散せず、AP 形状相関 0.999。
