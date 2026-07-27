@@ -16,12 +16,12 @@
     let yj = 9.5 // 軸方向抵抗 + I_ext が合流するノード
     let ybot = 0.0 // 接地レール (チャネルの終端が集まる横線)
     let ygnd = -2.5 // 接地記号が合流するノード
-    let xj = 6.4 // ノードの x 位置 (I_ext の真下 = Na チャネルの真上)
+    let xj = 2 // ノードの x 位置 (I_ext の真下 = Na チャネルの真上)
     let dx = 4.6 // 枝間隔 (ラベル同士が重ならない十分な幅)
 
     // --- 隣接コンパートメントとの軸方向結合。1 点のノードに集約する ---
-    node("Vim1", (-4.0, yj), fill: false)
-    node("Vip1", (xj + 2 * dx + 4.0, yj), fill: false)
+    node("Vim1", (-3.0, yj), fill: false)
+    node("Vip1", (xj + 2 * dx - 3.0, yj), fill: false)
     node("J", (xj, yj))
     resistor("gprev", "Vim1", "J", label: lab[$g_(i-1,i)$])
     resistor("gnext", "J", "Vip1", label: lab[$g_(i,i+1)$])
@@ -29,8 +29,8 @@
     content("Vip1", lab[$V_(i+1)$], anchor: "west", padding: 8pt)
 
     // --- 外部注入電流: ノードへ直接流し込む ---
-    node("Iin", (xj, yj + 3.2), fill: false)
-    wire("Iin", "J", i: (content: lab[$I_"ext"$], distance: 35%))
+    node("Iin", (xj, yj + 0.3), fill: false)
+    wire("Iin", "J", i: (content: lab[$I_"ext"$], distance: -100%))
 
     // --- ノードから膜レールへ 1 本の縦線で接続 ---
     node("M", (xj, ytop))
@@ -68,7 +68,7 @@
     node("G", (xj, ygnd))
     wire("Gna", "G")
     earth("gnd", "G")
-    content("G", lab[extracellular], anchor: "east", padding: 10pt)
+    content("G", lab[extracellular], anchor: "west", padding: 10pt)
 
     // --- V_i = 細胞内 (膜レール) と接地レールの電位差であることを両矢印で明示 ---
     draw.line(

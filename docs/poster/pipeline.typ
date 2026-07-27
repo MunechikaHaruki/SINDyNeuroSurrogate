@@ -121,6 +121,8 @@
 )
 
 // ================= ③ 潜在の支配方程式を同定 =================
+// 同定式そのもの (z1, z2 の展開) は canvas でなく main.typ 側で図の下に
+// typst 標準 equation として置く (狭い列幅では canvas 内の横長数式が崩れるため)。
 #let stage_identify(unit: 1cm, label-size: 22pt) = canvas(
   length: unit,
   {
@@ -129,40 +131,21 @@
     let lab = (..a) => text(size: label-size, ..a)
 
     // --- 入力 [V, z] ---
-    content((0.1, 4.9), lab(fill: blue)[$V$], anchor: "west")
-    line((0.7, 4.85), (1.8, 4.45), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
-    content((0.1, 3.0), lab(fill: green.darken(25%))[$bold(z)$], anchor: "west")
+    content((0.1, 3.4), lab(fill: blue)[$V$], anchor: "west")
+    line((0.7, 3.35), (1.8, 2.95), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
+    content((0.1, 1.5), lab(fill: green.darken(25%))[$bold(z)$], anchor: "west")
     line(
-      (0.7, 3.05),
-      (1.8, 3.45),
+      (0.7, 1.55),
+      (1.8, 1.95),
       mark: (end: "stealth", scale: 0.5),
       stroke: 1.6pt + green.darken(25%),
     )
 
-    // --- SINDy ---
-    rect((1.9, 2.9), (4.6, 5.0), stroke: 2.4pt)
-    content((3.25, 3.95), lab[SINDy])
-    line((4.7, 3.95), (5.5, 3.95), mark: (end: "stealth", scale: 0.5))
-
-    // --- 同定される潜在方程式 (基底の 1 項を丸で囲むため content を分割) ---
-    content((5.7, 4.6), lab[$frac(d z_1, d t) = xi_11$], anchor: "west", name: "e1")
-    content("e1.east", lab[$ alpha_M (V) $], anchor: "west", name: "basis")
-    content(
-      "basis.east",
-      lab[#h(0.35em)$+ xi_12 beta_M (V) z_1 + dots.c$],
-      anchor: "west",
-    )
-    content((5.7, 3.0), lab[$frac(d z_2, d t) = xi_21 alpha_N (V) + dots.c$], anchor: "west")
-    content((6.6, 2.1), lab[$dots.v$])
-
-    // --- ライブラリ基底 = ゲートのレート関数 ---
-    circle("basis", radius: (0.95, 0.45), stroke: 1.8pt + red)
-    line((8.2, 5.2), (8.9, 6.2), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + red)
-    content(
-      (9.0, 6.3),
-      lab(fill: red)[basal function =\ the gates' own\ *rate functions*],
-      anchor: "south-west",
-    )
+    // --- SINDy: ライブラリ基底 = ゲートのレート関数 (図はここまでに簡略化) ---
+    rect((1.9, 1.4), (4.6, 3.5), stroke: 2.4pt + red)
+    content((3.25, 2.45), lab[SINDy\ #text(fill:red,size:label-size*0.9)[basis: \ $alpha(V), beta(V)$]])
+    line((4.7, 2.45), (5.5, 2.45), mark: (end: "stealth", scale: 0.5))
+    content((5.7, 2.45), lab[$dot(bold(z)) = xi thin Theta(V, bold(z))$], anchor: "west")
   },
 )
 
@@ -241,6 +224,6 @@
     rect((17.5 + dx, 1.15), (20.5 + dx, 2.65), stroke: 2.4pt)
     content((19.0 + dx, 1.9), lab[integrate #linebreak() #text(size: 0.7em)[(Euler)]])
     line((20.6 + dx, 1.9), (21.3 + dx, 1.9), mark: (end: "stealth", scale: 0.5))
-    content((21.4 + dx, 1.9), lab[$bold(z)(t+Delta t), V(t+Delta t)$], anchor: "west")
+    content((21.4 + dx, 1.9), lab[$bold(z)(t+Delta t)\ V(t+Delta t)$], anchor: "west")
   },
 )
