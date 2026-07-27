@@ -115,22 +115,19 @@ def train_preprocessed_fig(
         bundle.meta, bundle.train_xr, bundle.preprocessor
     )
     shown = _shown(bundle, comps)
-    return draw_engine(
-        [
-            PanelSpec(
-                name,
-                [
-                    TraceSpec(
-                        access.time(bundle.train_xr), mats[pos][:, k], label=label
-                    )
-                    for pos, _, label in shown
-                ],
-            )
-            for mats, names in ((inputs.x, inputs.x_names), (inputs.u, inputs.u_names))
-            for k, name in enumerate(names)
-        ],
-        figsize=_figsize(len(inputs.x_names) + len(inputs.u_names)),
-    )
+    panels = [
+        PanelSpec(
+            name,
+            [
+                TraceSpec(access.time(bundle.train_xr), mats[pos][:, k], label=label)
+                for pos, _, label in shown
+            ],
+        )
+        for mats, names in ((inputs.x, inputs.x_names), (inputs.u, inputs.u_names))
+        for k, name in enumerate(names)
+    ]
+    panels.sort(key=lambda p: p.ylabel != access.POTENTIAL_VAR)
+    return draw_engine(panels, figsize=_figsize(3))
 
 
 def train_recon_fig(

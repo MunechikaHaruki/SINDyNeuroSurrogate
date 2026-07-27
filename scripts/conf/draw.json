@@ -2,7 +2,7 @@
   "default": {
     "plt_style": "presentation",
     "eval_comp": "soma",
-    "view_comps": [],
+    "view_comps": ["soma"],
     "detail_point": 0,
     "spike_orig": 0,
     "spike_surr": 0,

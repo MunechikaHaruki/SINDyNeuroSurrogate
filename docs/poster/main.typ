@@ -188,47 +188,52 @@
 #pop.column-box(heading: "Results and Discussion")[
   #set text(size: 29pt)
   // 掲載は全て同一 run: hybrid / n=5 / AE / traub_sr_physics を traub19 の全 comp へ適用
-  // 構成: 2 列。左列 = 1行目 train_preprocessed + ① 画像 / 2行目 Findings① / 3行目④SINDy係数。右列 = ②③ 縦積み。
+  // 構成: 2 列。左列 = train_raw + train_preprocessed 縦積み → ④SINDy係数。右列 = ①画像 → ②③。
   #grid(
     columns: (1.4fr, 1fr),
     gutter: 1.5em,
-    // ======== 左列 ========
+    // ======== 左列: train_raw / train_preprocessed を先頭、以下④ ========
     [
-      // -------- 1行目: train_preprocessed + ① 画像横並び --------
       #grid(
-        columns: (1fr, 1fr),
-        gutter: -0.9em,
-        [
-          *Data*
-          #align(center)[
-            #figure(
-              image("result/train_preprocessed.png", width: 82%),
-              caption: [Latent trajectories used to fit the SINDy library.],
-              numbering: none,
-              supplement: none,
-            )
-          ]
-        ],
-        [
-          * Action Potential comparison*
-          #align(center)[
-            #figure(
-              image("result/diff.png", width: 90%),
-              caption: [20 ms, 3 #sym.mu A/cm#super[2] step: $V$ and the *5 AE latents*.],
-              numbering: none,
-              supplement: none,
-            )
-          ]
-          #text(size: 25pt)[
-            // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms。
-            - *When* it fires is accurate (latency err *0.3 ms*, AHP timing gap *3.1 ms*).
-            // 訳: どれだけ大きいかは系統的過小評価: ピーク13mV低い(振幅差12.9mV)、立ち上がり/立ち下がり速度差21.0/10.3 mV/ms。一方AHP深さ差0.28mVと静止電位付近は正確。
-            - *How big* is systematically *underestimated* — peak *13 mV low* (amplitude gap *12.9 mV*), rise #sym.slash fall rate gap *21.0* #sym.slash *10.3 mV/ms* — yet AHP depth gap is only *0.28 mV*.
-          ]
-        ],
-      )
+        columns: (1fr,1fr),
+        gutter: 1em
+      )[
+      *Data*
+      #align(center)[
+        #figure(
+          image("result/train_raw.png", width: 82%),
+          caption: [Raw training trajectories.],
+          numbering: none,
+          supplement: none,
+        )
+        #sym.arrow.b Compress
+        #figure(
+          image("result/train_preprocessed.png", width: 82%),
+          caption: [Latent trajectories used to fit the SINDy library.],
+          numbering: none,
+          supplement: none,
+        )
+      ]
+      ][
+        * Action Potential comparison*
+        #align(center)[
+          #figure(
+            image("result/diff.png", width: 100%),
+            caption: [20 ms, 3 #sym.mu A/cm#super[2] step: $V$ and the *5 AE latents*.],
+            numbering: none,
+            supplement: none,
+          )
+        ]
+        #text(size: 25pt)[
+          // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms。
+          - *When* it fires is accurate (latency err *0.3 ms*, AHP timing gap *3.1 ms*).
+          // 訳: どれだけ大きいかは系統的過小評価: ピーク13mV低い(振幅差12.9mV)、立ち上がり/立ち下がり速度差21.0/10.3 mV/ms。一方AHP深さ差0.28mVと静止電位付近は正確。
+          - *How big* is systematically *underestimated* — peak *13 mV low* (amplitude gap *12.9 mV*), rise #sym.slash fall rate gap *21.0* #sym.slash *10.3 mV/ms* — yet AHP depth gap is only *0.28 mV*.
+        ]
+      ]
+
       #v(0.3em)
-      // -------- 2行目: ④ SINDy 係数 --------
+      // -------- ④ SINDy 係数 --------
       *④ Identified latent equations*
       #align(center)[
         #figure(
@@ -241,7 +246,7 @@
       // 訳: 79.6% が非ゼロ = スパースでない。
       - *79.6% non-zero* — accurate but *not sparse*.
     ],
-    // ======== 右列: Findings① を先頭、以下②③ を縦に重ねて配置 + 説明 ========
+    // ======== 右列: ① 画像を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
       #v(0.3em)
       *② New stimulus site*
