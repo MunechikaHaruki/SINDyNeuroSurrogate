@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -17,15 +17,7 @@ from matplotlib.figure import Figure
 
 from ...core import access
 from ...core.access import POTENTIAL_VAR
-from ..engine import (
-    PanelSpec,
-    TraceSpec,
-    collect,
-    draw_engine,
-    error_fig,
-    new_figure,
-    place_legend,
-)
+from ._internal.engine import PanelSpec, TraceSpec, error_fig, new_figure, place_legend
 
 if TYPE_CHECKING:
     from ...core.network import DatasetConfig
@@ -166,30 +158,3 @@ def attractor_fig(orig_ds: xr.Dataset, surr_ds: xr.Dataset, comp_id: int) -> Fig
     ax.grid(True, linestyle=":", alpha=0.5)
     place_legend(ax)
     return fig
-
-
-def cell_figs(
-    original: xr.Dataset,
-    surrogate: xr.Dataset,
-    comp_id: int,
-    latent: Callable[[], xr.Dataset],
-    comps: Sequence[int] | None = None,
-) -> list[tuple[str, Figure]]:
-    """1 セルの全描画を識別子付きで一括生成 (失敗の畳み込みは `collect`)。
-    呼び出し側は種別を知らず (id, fig) を保存/表示に流すだけ。
-
-    comp_id=比較対象 (diff/attractor は 1 comp の話)、comps=全 comp を並べる図
-    (simple) の表示制限。
-
-    `latent` (原系ゲートの潜在射影) は **callable で受けて lazy 参照**: 学習ドメイン
-    外 comp では raise するので diff/attractor でのみ評価する (simple は呼ばない)。
-    """
-    return collect(
-        {
-            "diff": lambda: draw_engine(
-                panels_diff(original, latent(), surrogate, comp_id)
-            ),
-            "simple": lambda: draw_engine(panels_simple(original, comps)),
-            "attractor": lambda: attractor_fig(latent(), surrogate, comp_id),
-        }
-    )

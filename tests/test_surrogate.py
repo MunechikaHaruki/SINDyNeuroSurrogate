@@ -28,19 +28,27 @@ from neurosurrogate.eval.run import (
 )
 from neurosurrogate.eval.spec import SimSpec, parse_evals
 from neurosurrogate.eval.store import SimResult, artifacts, load_all, save, save_all
-from neurosurrogate.metrics.engine import collect, new_figure
-from neurosurrogate.metrics.figs.cell import cell_figs, panels_simple
-from neurosurrogate.metrics.figs.grid import compare_grid_fig, trace_grid_fig
-from neurosurrogate.metrics.figs.model import equation_texs, preprocessor_figs
-from neurosurrogate.metrics.figs.train import train_figs
+from neurosurrogate.metrics.artifact import (
+    cell_figs,
+    compare_grid_fig,
+    equation_texs,
+    preprocessor_figs,
+    trace_grid_fig,
+    train_figs,
+)
+from neurosurrogate.metrics.artifact._internal.engine import collect, new_figure
+from neurosurrogate.metrics.artifact._internal.wave import (
+    METRIC_KEYS,
+    DynamicMetrics,
+    extract_metric,
+)
+from neurosurrogate.metrics.artifact.cell import panels_simple
 from neurosurrogate.metrics.report import (
     CompareSpec,
     DrawSpec,
     ReportSpec,
-    ResultSpec,
     eval_report,
 )
-from neurosurrogate.metrics.wave import METRIC_KEYS, DynamicMetrics, extract_metric
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
@@ -202,7 +210,7 @@ def test_eval_and_draw_json_are_self_consistent() -> None:
 
     report = ReportSpec.from_dict(json.loads((conf_dir / "draw.json").read_text()))
     names = {spec.name for spec in evals.values()}
-    assert {r.label for r in report.results} <= names
+    assert set(report.results) <= names
     for comparison in report.compares.values():
         assert set(comparison.evals) <= names
 
@@ -324,13 +332,11 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
         )
         for (_label, run_id), result in sindy_results.items()
     }
-    report = ReportSpec(
-        results=(ResultSpec(label="読んだ系列", draw=DrawSpec(eval_comp="soma")),)
-    )
+    report = ReportSpec(results={"読んだ系列": DrawSpec(eval_comp="soma")})
     entries = eval_report(renamed, {"r0": sindy}, report)
     assert any(e.name.startswith("読んだ系列/") for e in entries)
 
-    dangling = CompareSpec(name="c", evals=["未実行"], eval_comp="soma")
+    dangling = CompareSpec(evals=["未実行"], eval_comp="soma")
     report_with_compare = ReportSpec(compares={"c": dangling})
     assert eval_report({}, {"r0": sindy}, report_with_compare) == []
 

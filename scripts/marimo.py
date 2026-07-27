@@ -28,6 +28,7 @@ def _():
     RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
     ARTIFACT_DIR = RESULT_DIR / "artifacts"
     ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
+    PLT_STYLE = "presentation"  # 描画スタイル (draw.json の関心でない = ここで固定)
 
     # marimo に残す操作は「run 選択」「評価」「描画」の 3 つ。評価 (→ artifact 保存)
     # と描画 (→ 図保存) はボタンを分け、CLI は持たない (二重管理を避け、この 2
@@ -39,6 +40,7 @@ def _():
         ALL_PRESETS,
         ARTIFACT_DIR,
         DRAW_JSON,
+        PLT_STYLE,
         RESULT_DIR,
         ReportSpec,
         STYLE_DIR,
@@ -118,55 +120,6 @@ def _(mo, sel_name):
     return (run_panel,)
 
 
-@app.cell
-def _(
-    ARTIFACT_DIR,
-    DRAW_JSON,
-    RESULT_DIR,
-    ReportSpec,
-    STYLE_DIR,
-    artifacts,
-    json,
-    load_all,
-    load_surrogate_model,
-    mo,
-    render_report,
-    run_panel,
-    sel_id,
-):
-    # 描画ボタン: artifact + draw.json → dest へ図/表を書き出す (手元の artifact =
-    # draw.json 調整後の再描画も含む)。今保存した学習 run (`sel_id`) の artifact
-    # だけを描く。surrogate は artifact に焼き込まれていない (閉包項が要る図
-    # diff/attractor 用に MLflow から引き直す。load_surrogate_model は run_id ごとに
-    # @cache 済み)。図表の組立/保存は `render_report` (metrics 層) に委譲する。
-    saved = []
-    if run_panel.value["draw"]:
-        draw_dict = json.loads(DRAW_JSON.read_text())
-        report = ReportSpec.from_dict(draw_dict)
-        arts = artifacts(ARTIFACT_DIR, sel_id)
-        res = load_all(arts)
-        bundles_for_draw = {
-            a.meta.spec.run_id: load_surrogate_model(a.meta.spec.run_id)
-            for a in arts
-            if a.meta.spec.run_id is not None
-        }
-        sources = [str(a.path.relative_to(ARTIFACT_DIR)) for a in arts]
-        style_paths = [
-            STYLE_DIR / "base.mplstyle",
-            STYLE_DIR / f"{report.plt_style}.mplstyle",
-        ]
-        dest = RESULT_DIR / run_panel.value["dir"]
-        saved = render_report(
-            bundles_for_draw, res, report, draw_dict, sources, dest, style_paths
-        )
-    (
-        mo.vstack([mo.md(f"✅ `{p.relative_to(RESULT_DIR)}`") for p in saved])
-        if saved
-        else mo.md("(未実行)")
-    )
-    return
-
-
 @app.cell(column=1)
 def _(preset_ui):
     # **widget → plain 値の境界**。以降どの関数にも widget は渡さない。
@@ -203,6 +156,52 @@ def _(ARTIFACT_DIR, bundles, run_and_save, run_ids, run_panel, sel_id, specs):
     # 評価ボタン: 評価 → artifact 保存だけ (描画はしない)。
     if run_panel.value["eval"]:
         run_and_save(bundles, specs, ARTIFACT_DIR, run_ids, sel_id)
+    return
+
+
+@app.cell
+def _(
+    ARTIFACT_DIR,
+    DRAW_JSON,
+    PLT_STYLE,
+    RESULT_DIR,
+    ReportSpec,
+    STYLE_DIR,
+    artifacts,
+    json,
+    load_all,
+    load_surrogate_model,
+    mo,
+    render_report,
+    run_panel,
+    sel_id,
+):
+    # 描画ボタン: artifact + draw.json → dest へ図/表を書き出す (手元の artifact =
+    # draw.json 調整後の再描画も含む)。今保存した学習 run (`sel_id`) の artifact
+    # だけを描く。surrogate は artifact に焼き込まれていない (閉包項が要る図
+    # diff/attractor 用に MLflow から引き直す。load_surrogate_model は run_id ごとに
+    # @cache 済み)。図表の組立/保存は `render_report` (metrics 層) に委譲する。
+    saved = []
+    if run_panel.value["draw"]:
+        report = ReportSpec.from_dict(json.loads(DRAW_JSON.read_text()))
+        arts = artifacts(ARTIFACT_DIR, sel_id)
+        res = load_all(arts)
+        bundles_for_draw = {
+            a.meta.spec.run_id: load_surrogate_model(a.meta.spec.run_id)
+            for a in arts
+            if a.meta.spec.run_id is not None
+        }
+        style_paths = [
+            STYLE_DIR / "base.mplstyle",
+            STYLE_DIR / f"{PLT_STYLE}.mplstyle",
+        ]
+        dest = RESULT_DIR / run_panel.value["dir"]
+        saved = render_report(bundles_for_draw, res, report, dest, style_paths)
+    (
+        mo.vstack([mo.md(f"✅ `{p.relative_to(RESULT_DIR)}`") for p in saved])
+        if saved
+        else mo.md("(未実行)")
+    )
     return
 
 

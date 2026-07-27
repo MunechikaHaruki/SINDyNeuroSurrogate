@@ -10,197 +10,41 @@ marimo 非依存 (marimo は artifact 読込 + surrogate ロードだけ持ち�
 
 **描く対象は結果 `results` 自身**で、シミュ入力の設定 (`eval.json`) は受け取らない:
 結果 artifact は入力仕様を自分で持つので、設定ファイルと無関係に (別セッションで
-回した結果でも) 描ける。描画の宣言は別ファイル (`draw.json`) の関心で、ここが型
-(`DrawSpec`/`ResultSpec`/`ReportSpec`/`CompareSpec`) として持つ (計算仕様 `SimSpec`
-を `eval.spec` が持つのと同じ関係)。
+回した結果でも) 描ける。描画の宣言のスキーマ (`DrawSpec`/`ReportSpec`/`CompareSpec`)
+は `declare.py` が持つ (計算仕様 `SimSpec` を `eval.spec` が持つのと同じ関係、ここは
+型を受け取って組み立てるだけ)。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Self
 
 import matplotlib.pyplot as plt
-import pandas as pd
-from matplotlib.figure import Figure
 
-from ..core.network import NeuronGraph
 from ..eval.run import SimKey
-from ..eval.spec import dedupe_labels
 from ..eval.store import SimResult
 from ..surrogate.bundle import SurrogateBundle
-from ..surrogate.diagnostics import preprocessed_latent, surrogate_metrics
+from ..surrogate.diagnostics import preprocessed_latent
 from . import select
-from .engine import error_fig
-from .figs.cell import cell_figs, current_preview_fig
-from .figs.grid import compare_grid_fig, metric_fig, trace_grid_fig
-from .figs.model import closure_figs, neuron_graph_figs, preprocessor_figs
-from .figs.train import train_figs
-from .figs.wave import wave_report
-from .save import SaveEntry, save_entries, slug
-from .wave import dm_of
-
-# --- 描画の宣言 (表示設定 + 並べ方) ---------------------------------------------
-
-
-@dataclass(frozen=True, kw_only=True)
-class DrawSpec:
-    """表示設定のスキーマを知る唯一の場所 (UI は同名キーの dict を組むだけ = キーの
-    意味と既定値の源はここ 1 つ)。**評価 (系列名) ごとに固有の値** (適用先が変われば
-    comp 名も変わる) — グローバルな既定値を持たない。`plt_style` だけは評価に依らない
-    ので `ReportSpec.plt_style` (トップレベル) の関心。"""
-
-    eval_comp: str = ""  # 比較対象 comp (1 件)。適用先ごとに違うので既定を持たない
-    view_comps: tuple[str, ...] = ()  # 全 comp を並べる図の表示制限 (空=全部)
-    detail_point: int = 0  # 詳細図 (diff/attractor/指標) を描く点の index
-    spike_orig: int = 0
-    spike_surr: int = 0
-    # 点軸メトリクス図 (点が 2 つ以上のときだけ描く折れ線)
-    metric: str = "spike_count"
-    metric_yauto: bool = True
-    metric_ymin: float = 0.0
-    metric_ymax: float = 1.0
-
-    @classmethod
-    def from_dict(cls, d: dict) -> DrawSpec:
-        """`draw.json` の `results[]` 1 件 → 型 (欠落キーは既定値)。
-        **dict を見るのはここまで**で、以降は型で渡す。"""
-        return cls(
-            eval_comp=str(d.get("eval_comp") or ""),
-            view_comps=tuple(str(c) for c in d.get("view_comps", ())),
-            detail_point=int(d.get("detail_point", cls.detail_point)),
-            spike_orig=int(d.get("spike_orig", cls.spike_orig)),
-            spike_surr=int(d.get("spike_surr", cls.spike_surr)),
-            metric=str(d.get("metric", cls.metric)),
-            metric_yauto=bool(d.get("metric_yauto", cls.metric_yauto)),
-            metric_ymin=float(d.get("metric_ymin", cls.metric_ymin)),
-            metric_ymax=float(d.get("metric_ymax", cls.metric_ymax)),
-        )
-
-    def view_comp_ids(self, net: NeuronGraph) -> list[int] | None:
-        """全 comp を並べる図に描く comp。UI では名前、描画側は comp_id で受ける。
-        空選択 = 制限なし (None)。"""
-        return [net.name_to_idx(c) for c in self.view_comps] or None
-
-    def metric_ylim(self) -> tuple[float, float] | None:
-        """点軸メトリクス図の y レンジ (auto なら None = matplotlib 任せ)。"""
-        return None if self.metric_yauto else (self.metric_ymin, self.metric_ymax)
-
-
-@dataclass(frozen=True, kw_only=True)
-class CompareSpec:
-    """複数の評価結果を 1 枚の格子へ縦に並べる図の宣言 (行=評価、列=点)。
-
-    シミュ仕様ではなく**既に回した結果への参照**なので描画側の型 (compare を足しても
-    回るシミュは eval entry を書いた分だけ)。`evals` は系列名 (`SimSpec.name`) 列。
-    `eval_comp` は比較する compare 自身の設定 (系列ごとの `results[]` には
-    紐付かないグローバル設定を持たないので、compare 自身が持つ)。
-    """
-
-    name: str
-    evals: list[str]
-    eval_comp: str
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Self:
-        return cls(
-            name=str(d["name"]),
-            evals=[str(s) for s in d["evals"]],
-            eval_comp=str(d["eval_comp"]),
-        )
-
-
-@dataclass(frozen=True, kw_only=True)
-class ResultSpec:
-    """`draw.json` の `results[]` 1 件 = 描く系列名 1 つ + その表示設定宣言。
-    系列名ごとに固有の値 (comp 名など) しか持たないので、既定値からの override では
-    なく `DrawSpec` 単体で完結する (欠落キーは `DrawSpec` の型既定値)。"""
-
-    label: str
-    draw: DrawSpec
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Self:
-        return cls(label=str(d["eval"]), draw=DrawSpec.from_dict(d))
-
-
-# `results`/`kinds` を指定しなければ手元の結果を全種描く既定 = 何も書かなくても
-# 動く (最初の 1 回はここから)。絞り込みたくなったら明示的に列挙する。
-ALL_KINDS = (
-    "current",
-    "summary",
-    "closure",
-    "preprocessor",
-    "neurograph",
-    "train",
-    "traces",
-    "cell",
-    "metric",
-    "compare",
+from .artifact import (
+    cell_figs,
+    closure_figs,
+    compare_grid_fig,
+    current_preview_fig,
+    error_fig,
+    metric_fig,
+    neuron_graph_figs,
+    preprocessor_figs,
+    summary_df,
+    trace_grid_fig,
+    train_figs,
+    wave_report,
 )
-
-
-@dataclass(frozen=True, kw_only=True)
-class ReportSpec:
-    """描画宣言全体 (`draw.json`) の型 = 表示スタイル + 系列名ごとの設定 + compare +
-    保存する種類の絞り込み。**dict を見るのはここまで**で、以降
-    (`model_report`/`eval_report`) は型で渡す (`eval.spec.parse_evals` が計算入力に
-    対してやるのと同じ役目)。
-    """
-
-    plt_style: str = "presentation"
-    results: tuple[ResultSpec, ...] = ()
-    compares: dict[str, CompareSpec] = field(default_factory=dict)
-    kinds: tuple[str, ...] = ALL_KINDS
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Self:
-        default_d = d.get("default", {})
-        results = [ResultSpec.from_dict(r) for r in d.get("results", ())]
-        compares = [CompareSpec.from_dict(c) for c in d.get("compare", ())]
-        kinds = tuple(str(k) for k in d["kinds"]) if "kinds" in d else ALL_KINDS
-        return cls(
-            plt_style=str(default_d.get("plt_style", cls.plt_style)),
-            results=tuple(results),
-            compares=dict(
-                zip(dedupe_labels([c.name for c in compares]), compares, strict=True)
-            ),
-            kinds=kinds,
-        )
-
-    def draw_for(self, name: str) -> DrawSpec:
-        """系列名の表示設定 (`results[]` に無ければ `DrawSpec` の型既定値。
-        `eval_comp` が空だと `_eval_report_one` がエラー図を出す = 未指定は
-        黙って何か描くのでなく気付ける形にする)。"""
-        return next((r.draw for r in self.results if r.label == name), DrawSpec())
-
-    def for_results(
-        self, results: dict[SimKey, SimResult]
-    ) -> list[tuple[str, DrawSpec]]:
-        """描く対象 (系列名, draw) 列。`results` が空なら手元の結果を全部描く既定。
-        非空なら **`results` に列挙した系列名だけへ絞り込む** (artifact が増えるほど
-        draw 出力も比例して増えるのを避ける)。手元に無い名前は黙って落とす
-        (`_compare_report` の「参照は宣言、欠落は宣言とのズレ」という扱いと揃える)。
-        """
-        names = select.series(results)
-        if not self.results:
-            return [(name, self.draw_for(name)) for name in names]
-        return [(r.label, r.draw) for r in self.results if r.label in names]
-
-    def wants(self, kind: str) -> bool:
-        """この種類の図/表を保存するか (`kinds` による絞り込み)。"""
-        return kind in self.kinds
-
+from .artifact._internal.wave import dm_of
+from .declare import CompareSpec, DrawSpec, ReportSpec
+from .save import SaveEntry, save_entries, slug
 
 # --- model (run のロードのみ。置換シミュ不要) -----------------------------------
-
-
-def _summary_df(bundles: dict[str, SurrogateBundle]) -> pd.DataFrame:
-    """run 軸の学習側指標サマリ (評価結果に依らないので results 無しでも出せる)。"""
-    return pd.DataFrame(
-        [{"label": label, **surrogate_metrics(s)} for label, s in bundles.items()]
-    ).set_index("label")
 
 
 def model_report(
@@ -224,19 +68,26 @@ def model_report(
         label = select.labels_of(results, name)[0]
         return results[(label, None)]
 
+    def _source_of(r: SimResult) -> tuple[str, ...]:
+        return (str(r.source),) if r.source is not None else ()
+
     entries = (
         [
             SaveEntry(
-                f"current/{name}", current_preview_fig(_first(name).spec.dataset())
+                f"current/{name}",
+                current_preview_fig(_first(name).spec.dataset()),
+                sources=_source_of(_first(name)),
+                draw=draw,
             )
-            for name, _ in targets
+            for name, draw in targets
         ]
-        if report.wants("current")
+        if report.wants("current_preview_fig")
         else []
     )
     if not bundles:
         return entries
-    bundle = next(iter(bundles.values()))
+    rep_run_id = next(iter(bundles.keys()))
+    bundle = bundles[rep_run_id]
     nets = {_first(name).spec.target: _first(name).spec.net for name, _ in targets}
     # train データ図は適用先非依存 (学習データは meta から再生成)。comp 制限は
     # 代表系列 (先頭の results override) で名前解決 (学習 comp 名は target を
@@ -246,18 +97,32 @@ def model_report(
         if targets and nets
         else None
     )
-    if report.wants("summary"):
-        entries.append(SaveEntry("summary", _summary_df(bundles)))
-    figs: list[tuple[str, Figure]] = []
-    if report.wants("closure"):
-        figs += closure_figs(bundle.closure)
-    if report.wants("preprocessor"):
-        figs += preprocessor_figs(bundle.preprocessor)
-    if report.wants("neurograph"):
-        figs += neuron_graph_figs(nets, bundle.meta)
-    if report.wants("train"):
-        figs += train_figs(bundle, comps)
-    entries += [SaveEntry(name, fig) for name, fig in figs]
+    if report.wants("summary_df"):
+        entries.append(
+            SaveEntry("summary", summary_df(bundles), sources=tuple(bundles.keys()))
+        )
+    if report.wants("closure_figs"):
+        entries += [
+            SaveEntry(name, fig, sources=(rep_run_id,))
+            for name, fig in closure_figs(bundle.closure)
+        ]
+    if report.wants("preprocessor_figs"):
+        entries += [
+            SaveEntry(name, fig, sources=(rep_run_id,))
+            for name, fig in preprocessor_figs(bundle.preprocessor)
+        ]
+    if report.wants("neuron_graph_figs"):
+        target_sources = (s for name, _ in targets for s in _source_of(_first(name)))
+        net_sources = tuple(dict.fromkeys((rep_run_id, *target_sources)))
+        entries += [
+            SaveEntry(name, fig, sources=net_sources)
+            for name, fig in neuron_graph_figs(nets, bundle.meta)
+        ]
+    if report.wants("train_figs"):
+        entries += [
+            SaveEntry(name, fig, sources=(rep_run_id,))
+            for name, fig in train_figs(bundle, comps)
+        ]
     return entries
 
 
@@ -286,6 +151,7 @@ def _cell_entries(
     for run_id in run_ids:
         surr = results[(label, run_id)]
         run_label = select.run_label_of(results, name, run_id)
+        sources = tuple(str(r.source) for r in (orig, surr) if r.source is not None)
         figs = cell_figs(
             orig.dataset,
             surr.dataset,
@@ -299,9 +165,22 @@ def _cell_entries(
         # run 表示名は凡例向けに改行/`/` を含む → 名前に混ぜる分だけ slug 化
         run = slug(run_label)
         entries += [
-            *[SaveEntry(f"{name}/{run}/{fname}", fig) for fname, fig in figs],
-            SaveEntry(f"{name}/{run}/metrics", rep.df_metrics),
-            SaveEntry(f"{name}/{run}/metrics_scalar", rep.df_scalar),
+            *[
+                SaveEntry(f"{name}/{run}/{fname}", fig, sources=sources, draw=draw)
+                for fname, fig in figs
+            ],
+            SaveEntry(
+                f"{name}/{run}/metrics",
+                rep.df_metrics,
+                sources=sources,
+                draw=draw,
+            ),
+            SaveEntry(
+                f"{name}/{run}/metrics_scalar",
+                rep.df_scalar,
+                sources=sources,
+                draw=draw,
+            ),
         ]
     return entries
 
@@ -323,20 +202,28 @@ def _eval_report_one(
         target = results[(labels[0], None)].spec.target
         msg = f"{name}: eval_comp {draw.eval_comp!r} not in {target!r}"
         return [SaveEntry(f"{name}/error", error_fig(msg))]
+    sources = select.sources_of(results, name)
     entries: list[SaveEntry] = []
-    if report.wants("traces"):
+    if report.wants("trace_grid_fig"):
         entries.append(
-            SaveEntry(f"{name}/traces", trace_grid_fig(results, name, draw.eval_comp))
+            SaveEntry(
+                f"{name}/traces",
+                trace_grid_fig(results, name, draw.eval_comp),
+                sources=sources,
+                draw=draw,
+            )
         )
-    if report.wants("cell"):
+    if report.wants("cell_figs"):
         entries += _cell_entries(name, results, bundles, draw)
-    if report.wants("metric") and len(labels) > 1:
+    if report.wants("metric_fig") and len(labels) > 1:
         entries.append(
             SaveEntry(
                 f"{name}/metric",
                 metric_fig(
                     results, name, draw.eval_comp, draw.metric, draw.metric_ylim()
                 ),
+                sources=sources,
+                draw=draw,
             )
         )
     return entries
@@ -367,8 +254,10 @@ def _compare_report(
             msg = f"{label}: some evals don't have eval_comp {spec.eval_comp!r}"
             entries.append(SaveEntry(f"compare_{label}/error", error_fig(msg)))
             continue
+        spec_sources = (s for n in spec.evals for s in select.sources_of(results, n))
+        sources = tuple(dict.fromkeys(spec_sources))
         fig = compare_grid_fig(results, spec.evals, spec.eval_comp)
-        entries.append(SaveEntry(f"compare_{label}", fig))
+        entries.append(SaveEntry(f"compare_{label}", fig, sources=sources, draw=spec))
     return entries
 
 
@@ -387,7 +276,7 @@ def eval_report(
     entries: list[SaveEntry] = []
     for name, draw in report.for_results(results):
         entries += _eval_report_one(name, results, bundles, draw, report)
-    if report.wants("compare"):
+    if report.wants("compare_grid_fig"):
         entries += _compare_report(report.compares, results)
     return entries
 
@@ -396,18 +285,17 @@ def render_report(
     bundles: dict[str, SurrogateBundle],
     results: dict[SimKey, SimResult],
     report: ReportSpec,
-    draw_dict: dict,
-    sources: list[str],
     dest: Path,
     style_paths: list[Path],
 ) -> list[Path]:
     """model/eval の図表を組み立てて dest へ保存する唯一の入口。呼び出し側
     (`scripts/marimo.py` の描画ボタン) は artifact 読込 + surrogate ロード (mlflow
-    依存) だけを持ち、組立/保存はここに委譲する。"""
+    依存) だけを持ち、組立/保存はここに委譲する。成果物ごとの由来 (`sources`/`draw`)
+    は各 `SaveEntry` が持ち、`meta.json` へは `save_entries` がそのまま落とす
+    (draw.json 丸ごとの snapshot は持たない)。"""
     for p in style_paths:
         plt.style.use(p)
     entries = model_report(bundles, results, report) + eval_report(
         results, bundles, report
     )
-    meta = {"draw": draw_dict, "sources": sources}
-    return save_entries(entries, dest, meta)
+    return save_entries(entries, dest)

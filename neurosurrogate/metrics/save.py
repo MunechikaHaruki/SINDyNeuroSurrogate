@@ -6,13 +6,19 @@ view が返す `(id, fig)` 列に**保存名**を与えた `SaveEntry` が、表
 「どれを選んだか」「どこへ」だけを渡す。
 """
 
+from __future__ import annotations
+
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
 from matplotlib.figure import Figure
+
+if TYPE_CHECKING:
+    from .report import CompareSpec, DrawSpec
 
 _UNSAFE = re.compile(r"[\s/\\:]+")
 
@@ -26,14 +32,19 @@ def slug(name: str) -> str:
 
 @dataclass(frozen=True)
 class SaveEntry:
-    """1 成果物 = 表示名 + 中身 (図 or 表)。
+    """1 成果物 = 表示名 + 中身 (図 or 表) + 由来 (参照 artifact/run と描画設定)。
 
     **保存名は表示名から決まる** (拡張子だけ中身の型で分かれる) ので別に持たない =
     表示と保存で名前が食い違わない。書き出し方も中身の型で決まるのでここが持つ。
+    `sources`/`draw` は `meta.json` の対応する value にそのまま落ちる = 「どの
+    リソースからどう描いたか」を成果物 1 件ごとに追跡できる。`draw` は型のまま
+    持つ (dict 化は `save_entries` が meta.json へ書き出す境界でだけ行う)。
     """
 
     name: str
     obj: Figure | pd.DataFrame
+    sources: tuple[str, ...] = ()  # 参照した artifact パス/run_id (由来なしは空)
+    draw: DrawSpec | CompareSpec | None = None  # 使った表示設定 (無ければ None)
 
     @property
     def path(self) -> str:
@@ -51,10 +62,25 @@ class SaveEntry:
         return path
 
 
-def save_entries(entries: list[SaveEntry], dest: Path, meta: dict) -> list[Path]:
-    """entry を全部 `dest` 直下へ書き出し、`meta.json` (再現用の設定 snapshot) を
-    同階層に置く。返り値は書いたパス列 (呼び出し側は表示に流すだけ)。"""
+def _entries_meta(entries: list[SaveEntry]) -> dict:
+    """entry 列 → `meta.json` のスキーマ (`保存パス → {sources, draw}` の対応表。
+    draw.json の丸ごと保存ではなく成果物 1 件ごとの由来)。副作用なしの純粋関数で
+    書き出し (`save_entries`) と分離し、スキーマ組立だけを単独でテストできる。"""
+    return {
+        e.path: {
+            "sources": list(e.sources),
+            "draw": asdict(e.draw) if is_dataclass(e.draw) else None,
+        }
+        for e in entries
+    }
+
+
+def save_entries(entries: list[SaveEntry], dest: Path) -> list[Path]:
+    """entry を全部 `dest` 直下へ書き出し、`_entries_meta` が組んだスキーマを
+    `meta.json` として同階層に置く。返り値は書いたパス列 (呼び出し側は表示に
+    流すだけ)。"""
     dest.mkdir(parents=True, exist_ok=True)
+    meta = _entries_meta(entries)
     (dest / "meta.json").write_text(
         json.dumps(meta, indent=2, ensure_ascii=False, default=str)
     )

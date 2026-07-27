@@ -54,15 +54,18 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
   eval/  spec.py                 # EvalSpec/SweepAxis + parse_evals (計算入力のみ)
          eval.py                 # EvalGrid/EvalPoint (点軸 × run 軸の純粋データ型) + evaluate/run_evals
          store.py                # 評価結果 artifact の save/load (results/artifacts/、永続化のみ)
-  metrics/  wave.py              # DynamicMetrics/diverged (eFEL 計算) + dm_at (EvalGrid→DynamicMetrics)
-            engine.py            # 描画プリミティブ (new_figure/draw_engine/collect/error_fig)
-            figs/cell.py         # 1 セル (点 × run) の詳細図 + 電流プレビュー
-            figs/grid.py         # 点軸メトリクス折れ線 + 波形格子 (行=run / 行=評価)
-            figs/model.py        # 静的図 (neurograph/closure/preprocessor)
-            figs/train.py        # 学習データ図
-            figs/wave.py         # wave.py の計算値 → WaveReport/metrics_df (DataFrame 組立)
-            report.py            # 描画宣言 DrawSpec/ResultSpec/ReportSpec/CompareSpec + model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
-            save.py              # SaveEntry/slug/save_entries (図と表の書き出し)
+  metrics/  select.py            # 結果 (SimKey→SimResult) からの群 (系列名/label/run_id) 選択
+            declare.py           # 描画宣言の型 DrawSpec/ReportSpec/CompareSpec (draw.json のスキーマ)
+            report.py            # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
+            save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ)
+            artifact/__init__.py # 外部公開 API (Figure/DataFrame を返す集約関数のみ: cell_figs/closure_figs/preprocessor_figs/neuron_graph_figs/train_figs/wave_report + grid.py の re-export)
+            artifact/cell.py     # 1 セルの個別図 (diff/simple/attractor) + 電流プレビュー
+            artifact/grid.py     # 点軸メトリクス折れ線 + 波形格子 (行=run / 行=評価)
+            artifact/model.py    # 静的図の個別生成 (neurograph/closure/preprocessor の中身)
+            artifact/train.py    # 学習データの個別図
+            artifact/wave_table.py # _internal/wave.py の計算値 → DataFrame 組立
+            artifact/_internal/engine.py # 描画プリミティブ (Figure/DataFrame を返さない実装詳細)
+            artifact/_internal/wave.py   # DynamicMetrics/diverged (eFEL 計算、Figure/DataFrame を返さない計算層)
 scripts/  main.py                # Hydra エントリ
           mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)
           marimo.py              # notebook 本体 (run 選択 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)

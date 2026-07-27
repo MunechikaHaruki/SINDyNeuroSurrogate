@@ -115,6 +115,7 @@ class SimResult:
     spec: SimSpec
     run_label: str | None  # 表示名 (凡例/行見出し)。None=原系
     dataset: xr.Dataset
+    source: Path | None = None  # 読込元 artifact パス (実行直後は無い = None)
 
 
 # --- 保存 ---------------------------------------------------------------------
@@ -207,5 +208,5 @@ def load_all(arts: list[Artifact]) -> dict[SimKey, SimResult]:
     for a in sorted(arts, key=lambda a: a.meta.created):
         spec = a.meta.spec
         key = (a.meta.label, spec.run_id)
-        out[key] = SimResult(spec, a.meta.run_label, a.load_data())
+        out[key] = SimResult(spec, a.meta.run_label, a.load_data(), source=a.path)
     return out

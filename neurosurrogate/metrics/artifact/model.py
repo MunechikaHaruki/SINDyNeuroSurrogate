@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import re
-from functools import partial
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
@@ -21,13 +20,9 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from ...core.network import NeuronGraph
-from ...surrogate.closure.base import Closure
 from ...surrogate.closure.sindy import SINDyBundle
-from ...surrogate.meta import SurrogateMeta
-from ...surrogate.preprocessor.base import Preprocessor
 from ...surrogate.preprocessor.impl.pca import PCAPreprocessor
-from ...surrogate.replace import replaced_names
-from ..engine import collect, new_figure, place_legend
+from ._internal.engine import new_figure, place_legend
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
@@ -151,39 +146,6 @@ def _latex(e: sp.Basic) -> str:
 def tex(e: sp.Basic) -> str:
     """sympy 式 → インライン数式 (matplotlib mathtext / marimo の md 共通記法)。"""
     return f"${_latex(e)}$"
-
-
-def closure_figs(closure: Closure) -> list[tuple[str, Figure]]:
-    """閉包項の中身図 (識別子付き)。中身の描き方は表現ごとに違い、共通の図は無い
-    (SINDy=ξ heatmap、NN 表現なら重み分布など) → 型で振り分ける。図を持たない表現
-    は空列を返し、呼び出し側は保存/表示に流すだけで済む。"""
-    if isinstance(closure, SINDyBundle):
-        return collect({"model": lambda: _sindy_coef_fig(closure)})
-    return []
-
-
-def preprocessor_figs(prep: Preprocessor) -> list[tuple[str, Figure]]:
-    """preprocessor の診断図 (識別子付き)。指標の見せ方は変換ごとに違い共通図が無い
-    (PCA=寄与率 scree、AE は固有図なし) → closure_figs と同型で型振り分け。図を持た
-    ない変換は空列を返す。再構成誤差の時系列は train_recon_fig が別に受け持つ。"""
-    if isinstance(prep, PCAPreprocessor):
-        return collect({"pca_scree": lambda: pca_scree_fig(prep)})
-    return []
-
-
-def neuron_graph_figs(
-    nets: dict[str, NeuronGraph], meta: SurrogateMeta
-) -> list[tuple[str, Figure]]:
-    """適用先ごとのニューロングラフ (識別子 `<target>/neurograph`)。置換ノードの強調は
-    meta から引く = 呼び出し側は「どの適用先を描くか」だけ渡す。"""
-    return collect(
-        {
-            f"{target}/neurograph": partial(
-                neuron_graph_fig, net, replaced_names(meta, net)
-            )
-            for target, net in nets.items()
-        }
-    )
 
 
 def pca_scree_fig(prep: PCAPreprocessor) -> Figure:

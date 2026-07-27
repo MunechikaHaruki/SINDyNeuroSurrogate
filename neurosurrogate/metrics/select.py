@@ -52,3 +52,15 @@ def pair(
 ) -> tuple[SimResult, SimResult]:
     """(原系, 置換系) の 1 組。"""
     return results[(label, None)], results[(label, run_id)]
+
+
+def sources_of(results: dict[SimKey, SimResult], name: str) -> tuple[str, ...]:
+    """`name` の系列が参照した artifact パス (読込元が無い = 実行直後の結果は除く。
+    重複除去は順序を保ったまま)。"""
+    return tuple(
+        dict.fromkeys(
+            str(r.source)
+            for r in results.values()
+            if r.spec.name == name and r.source is not None
+        )
+    )

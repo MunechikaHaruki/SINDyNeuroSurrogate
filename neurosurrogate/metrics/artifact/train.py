@@ -18,10 +18,9 @@ from matplotlib.figure import Figure
 
 from ...core import access
 from ...surrogate.bundle import SurrogateBundle
-from ..engine import (
+from ._internal.engine import (
     PanelSpec,
     TraceSpec,
-    collect,
     draw_engine,
     new_figure,
     place_legend,
@@ -224,22 +223,3 @@ def train_manifold_fig(
     ax.grid(True, linestyle=":", alpha=0.5)
     place_legend(ax)
     return fig
-
-
-def train_figs(
-    bundle: SurrogateBundle, comps: Sequence[int] | None = None
-) -> list[tuple[str, Figure]]:
-    """学習データ図を識別子付きで一括生成 (`sim.draw_all` と同じ `collect` 規約)。
-    comps=描く comp の制限 (None=学習 comp 全部)。
-
-    train_xr の再生成はここで初めて走る (cached_property) → 呼ばなければコスト 0。
-    """
-    return collect(
-        {
-            "train_raw": lambda: train_raw_fig(bundle, comps),
-            "train_preprocessed": lambda: train_preprocessed_fig(bundle, comps),
-            "train_recon": lambda: train_recon_fig(bundle, comps),
-            "train_v_coverage": lambda: train_v_coverage_fig(bundle, comps),
-            "train_manifold": lambda: train_manifold_fig(bundle, comps),
-        }
-    )

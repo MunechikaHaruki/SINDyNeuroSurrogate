@@ -8,21 +8,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from .. import select
-from ..wave import (
+from ._internal.wave import (
     DynamicMetrics,
     diff_or_nan,
     dm_of,
     extract_metric,
-    n_spikes,
     spike_feature_values,
-    spike_shape_corr,
-    waveform_summary,
     waveform_summary_rows,
 )
 
@@ -75,34 +71,3 @@ def metrics_df(
                 row["original"] = orig_value  # run に依らない = 同じ値の上書き
         rows.append(row)
     return pd.DataFrame(rows)
-
-
-@dataclass(frozen=True)
-class WaveReport:
-    """波形+スパイク指標を統合した評価レポート。df をそのまま表示/保存へ流す。"""
-
-    df_metrics: pd.DataFrame  # 波形行 (+ 指定 spike が両信号にあればその特徴量)
-    df_scalar: pd.DataFrame  # 全スカラーを縦持ち
-
-
-def wave_report(
-    dm: DynamicMetrics,
-    spike_orig: int = 0,
-    spike_surr: int = 0,
-) -> WaveReport:
-    """dm から波形/スパイク指標を計算し DataFrame まで組み立てて返す。指定した
-    spike index が両信号の範囲内にあるときだけ、その AP の特徴量と形状相関を足す。"""
-    n_orig, n_surr = n_spikes(dm)
-    df_metrics = waveform_summary_df(dm)
-    scalar = waveform_summary(dm)
-    if 0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr:
-        df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
-        df_spike.index.name = "metric"
-        df_metrics = pd.concat([df_metrics, df_spike])
-        scalar.update(spike_shape_corr(dm))
-    return WaveReport(
-        df_metrics=df_metrics,
-        df_scalar=pd.DataFrame(scalar.items(), columns=["metric", "value"]).set_index(
-            "metric"
-        ),
-    )

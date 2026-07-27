@@ -17,8 +17,8 @@ from matplotlib.figure import Figure
 from ...core import access
 from ...core.diverge import diverged
 from .. import select
-from ..engine import new_figure, place_legend
-from .wave import metrics_df
+from ._internal.engine import new_figure, place_legend
+from .wave_table import metrics_df
 
 if TYPE_CHECKING:
     import xarray as xr

@@ -1,7 +1,4 @@
 {
-  "default": {
-    "plt_style": "presentation"
-  },
   "results": [
     {
       "eval": "traub_soma_dc",
