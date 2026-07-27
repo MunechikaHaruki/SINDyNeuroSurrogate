@@ -1,5 +1,6 @@
 // 学習パイプラインの流れ図 (CeTZ で描画)
 // ① MC モデルの 1 comp をシミュレーション → ② ゲートだけ圧縮 → ③ 潜在の式を同定
+// → ④ 学習済み decoder/SINDy を等価回路の gate 計算に差し込んでシミュレーション再構成
 #import "@preview/cetz:0.4.2": canvas, draw
 
 // ---- 波形ヘルパ (すべて (x,y) 点列を返す) ----
@@ -169,3 +170,58 @@
     )
   },
 )
+
+// ================= ④ decoder/SINDy を等価回路の gate 計算に差し込んでシミュレーション =================
+// hybrid_kernel.py の 1 ステップ: decode(z) → gates → 元の dV/dt (等価回路, 不変) と
+// 並行して SINDy が dz/dt を返す → 積分して次ステップへ。等価回路の"構造"自体は
+// 一切変えず、ゲート計算部分だけを学習済み decoder+SINDy に差替えていることを示す。
+// CeTZ の手動座標は狭い列幅で崩れやすいので、typst 標準の box + 矢印テキストで組む
+// (自動サイズ調整に任せる)。
+#let _flow-box(body, color: black) = box(
+  stroke: 1.4pt + color,
+  inset: 5pt,
+  radius: 3pt,
+  baseline: 50%,
+  body,
+)
+#let _arrow(size: 18pt) = text(size: size)[#sym.arrow.r]
+
+#let stage_simulate_loop(body-size: 20pt) = {
+  set text(size: body-size)
+  let zlab = text(fill: green.darken(25%))[$bold(z)(t)$]
+  let vlab = text(fill: blue)[$V(t)$]
+  stack(
+    dir: ttb,
+    spacing: 0.55em,
+    // --- decode → gates → 等価回路 (不変) ---
+    box(stack(
+      dir: ltr,
+      spacing: 0.4em,
+      zlab,
+      _arrow(),
+      _flow-box[decode #linebreak() #text(size: 0.7em)[learned: AE #sym.slash PCA]],
+      _arrow(),
+      [gates],
+      _arrow(),
+      _flow-box(color: rgb("#8a2020"))[equivalent circuit $dot(V) = f($gates$, V)$ #linebreak() *unchanged*],
+      _arrow(),
+      [$dot(V)$],
+    )),
+    // --- SINDy: 同じ z, V から潜在方程式 (学習済み ξ) ---
+    box(stack(
+      dir: ltr,
+      spacing: 0.4em,
+      zlab, [,], vlab,
+      _arrow(),
+      _flow-box[SINDy $xi$],
+      _arrow(),
+      [$dot(bold(z)) = xi Theta(bold(z), V)$],
+    )),
+    v(0.2em),
+    // --- 積分してループ ---
+    align(center)[
+      $dot(V), dot(bold(z))$ #_arrow() #_flow-box[integrate (Euler)] #_arrow() $bold(z)(t+Delta t), V(t+Delta t)$
+      #text(fill: gray.darken(20%))[#h(1em) $->$ repeat *every* simulation step]
+    ],
+  )
+}

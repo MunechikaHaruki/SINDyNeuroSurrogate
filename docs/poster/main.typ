@@ -1,7 +1,7 @@
 #import "@preview/peace-of-posters:0.5.6" as pop
 #import "@preview/typsium:0.3.1": *
 #import "circuit.typ": traub_circuit
-#import "pipeline.typ": stage_compress, stage_identify, stage_simulate
+#import "pipeline.typ": stage_compress, stage_identify, stage_simulate, stage_simulate_loop
 
 #set page("a0", margin: 2cm)
 #pop.set-poster-layout(pop.layout-a0)
@@ -102,12 +102,11 @@
                 alpha_m (V) &= 0.32 (13.1 - u) \/ (exp((13.1 - u) \/ 4) - 1)
               $
             ],
-            caption: [#ce("Na") current, its gate $m$, and one rate function ($u = V - E_L$)],
             kind: "equation",
             numbering: none,
             supplement: none,
           )<eq-gate>
-          #v(-0.3em)
+          #v(0.8em)
           // 訳: 1 コンパートメント 11 状態変数 → 19 comp で 209 → 並列シミュレーションでメモリボトルネック。
           $->$ *11 states per compartment* $->$ *209* for 19; at brain scale the gates become a *memory bottleneck*.
         ],
@@ -128,9 +127,9 @@
   #set text(size: 29pt)
 
   #grid(
-    columns: (1fr, 1fr, 1fr),
-    gutter: 0.8em,
-    // ======== ① 刺激を入れ、全 comp の V とゲートの時系列を収集 ========
+    columns: (0.6fr, 2fr),
+    gutter: 7em,
+    // ======== ① 刺激を入れ、全 comp の V とゲートの時系列を収集 (単独, 下は空けたまま) ========
     [
       // 訳: ① 教師データを集める。
       *#text(blue)[①] Collect the training data*
@@ -140,25 +139,45 @@
       // 訳: Traub 19-comp の soma へランダムパルス列を注入し、19 comp すべての V と 10 ゲートを記録。
       Inject a *random pulse train* at the soma; record $V$ and *10 gates* for *all 19 compartments*.
     ],
-    // ======== ② 純電位依存ゲート 8 本だけ潜在へ圧縮 (V と Ca サブ系は素通し) ========
+    // ======== ②③ を並べ、その下へ ④ を跨がせる ========
     [
-      // 訳: ② 電位依存ゲートだけを圧縮する。
-      *#text(blue)[②] Compress _only_ the gates*
+      #grid(
+        columns: (1fr, 1fr),
+        gutter: 0.8em,
+        // ======== ② 純電位依存ゲート 8 本だけ潜在へ圧縮 (V と Ca サブ系は素通し) ========
+        [
+          // 訳: ② 電位依存ゲートだけを圧縮する。
+          *#text(blue)[②] Compress _only_ the gates*
+          #v(0.2em)
+          #stage_compress(unit: 1.57cm, label-size: 24pt)
+          #v(0.2em)
+          // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
+          *6 voltage-dependent gates* ride a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n=5$. #text(blue)[$V$] and #ce("Ca^2+") *stay uncompressed*.
+        ],
+        // ======== ③ [V, z] から潜在の支配方程式を同定 ========
+        [
+          // 訳: ③ 潜在の支配方程式を同定する。
+          *#text(blue)[③] Identify the latent ODEs*
+          #v(0.2em)
+          #stage_identify(unit: 1.58cm, label-size: 24pt)
+          #v(0.2em)
+          // 訳: 潜在だけスパース同定、dV/dt と Ca サブ系は元の物理式のまま。基底はゲート自身のレート関数 α, β (昨年の 41 項汎用ライブラリを置換)。
+          *SINDy* @Champion-2019-DatadrivenDiscoveryCoordinatesGoverning fits *only* $dot(bold(z))$; $dot(V)$ and #ce("Ca^2+") keep *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$, not a *41-term* generic one.
+        ],
+      )
+      #v(0.9em)
+      // ======== ④ 学習済み decoder/SINDy を等価回路の gate 計算へ差し込んでシミュレーション ========
+      // title の下に (figure, caption) を横並びにして縦を詰める。
+      *#text(blue)[④] Simulate: decoder-in-the-loop*
       #v(0.2em)
-      #stage_compress(unit: 1.57cm, label-size: 24pt)
-      #v(0.2em)
-      // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
-      *6 voltage-dependent gates* ride a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n=5$. #text(blue)[$V$] and #ce("Ca^2+") *stay uncompressed*.
-    ],
-    // ======== ③ [V, z] から潜在の支配方程式を同定 ========
-    [
-      // 訳: ③ 潜在の支配方程式を同定する。
-      *#text(blue)[③] Identify the latent ODEs*
-      #v(0.2em)
-      #stage_identify(unit: 1.58cm, label-size: 24pt)
-      #v(0.2em)
-      // 訳: 潜在だけスパース同定、dV/dt と Ca サブ系は元の物理式のまま。基底はゲート自身のレート関数 α, β (昨年の 41 項汎用ライブラリを置換)。
-      *SINDy* @Champion-2019-DatadrivenDiscoveryCoordinatesGoverning fits *only* $dot(bold(z))$; $dot(V)$ and #ce("Ca^2+") keep *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$, not a *41-term* generic one.
+      #grid(
+        columns: (1fr, 1fr),
+        align: (center + horizon, left + horizon),
+        gutter: 0em,
+        stage_simulate_loop(body-size: 20pt),
+        // 訳: 各ステップで z→decode→gates、等価回路の dV/dt 式(赤枠)は不変のまま評価。z 自身は同じステップで SINDy(ξ) が更新し、次ステップへ積分。
+        [Each step: $bold(z) ->$ *decode* $->$ gates feed the *unchanged* equivalent-circuit $dot(V)$; SINDy updates $bold(z)$ *in place of* the original gate ODEs.],
+      )
     ],
   )
 ]
