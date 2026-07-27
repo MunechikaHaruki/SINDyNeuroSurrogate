@@ -3,12 +3,12 @@
 #import "circuit.typ": traub_circuit
 #import "pipeline.typ": stage_compress, stage_identify, stage_simulate, stage_simulate_loop
 
-#set page("a0", margin: 2cm)
+#set page("a0", margin: (x: 2cm, top: 2cm, bottom: 0.1cm))
 #pop.set-poster-layout(pop.layout-a0)
 #pop.set-theme(pop.uni-fr)
 #set text(size: pop.layout-a0.at("body-size"))
 #set text(font: ("New Computer Modern", "Hiragino Kaku Gothic ProN"))
-#let box-spacing = 0.5em
+#let box-spacing = 0.15em
 #set columns(gutter: box-spacing)
 #set block(spacing: box-spacing)
 #pop.update-poster-layout(spacing: box-spacing)
@@ -18,7 +18,7 @@
 #let body-size = 33pt
 
 // --- mini box helper ---
-#let mini-box(title: "Heading", color: blue, body) = {
+#let mini-box(title: "Heading", color: blue, title-size: 35pt, body-inset: 8pt, body) = {
   block(
     width: 100%,
     stroke: 1pt + color,
@@ -30,12 +30,12 @@
         width: 100%,
         fill: color,
         inset: 6pt,
-        text(fill: white, weight: "bold", size: 35pt)[#title],
+        text(fill: white, weight: "bold", size: title-size)[#title],
       ),
       block(
         width: 100%,
         fill: white,
-        inset: 8pt,
+        inset: body-inset,
         body,
       ),
     ),
@@ -187,94 +187,124 @@
 #show figure: set figure(gap: 0em)
 
 #pop.column-box(heading: "Results and Discussion")[
-  #set text(size: 22pt)
+  #set text(size: 29pt)
   // 掲載は全て同一 run: hybrid / n=5 / AE / traub_sr_physics を traub19 の全 comp へ適用
-  // 外側 2 列 = (左+中央 / 右)。model.png が横長なので左+中央に跨がせる (Intro の Goal と同じ手)。
+  // 構成: 2 列。左列 = 1行目 train_preprocessed + ① 画像 / 2行目 Findings① / 3行目④SINDy係数。右列 = ②③ 縦積み。
   #grid(
-    columns: (2.5fr, 0.8fr),
-    gutter: 1em,
-    // ======== 左+中央: ①② ③ を 2 列に並べ、その下へ ④ を跨がせる ========
+    columns: (1.4fr, 1fr),
+    gutter: 1.5em,
+    // ======== 左列 ========
     [
+      // -------- 1行目: train_preprocessed + ① 画像横並び --------
       #grid(
-        columns: (1fr, 1.3fr),
-        gutter: 1em,
-        // -------- 左列: 単発 AP の再現 --------
+        columns: (1fr, 1fr),
+        gutter: -0.9em,
+        [
+          *Training data (preprocessed)*
+          #align(center)[
+            #figure(
+              image("result/train_preprocessed.png", width: 82%),
+              caption: [Latent trajectories used to fit the SINDy library.],
+              numbering: none,
+              supplement: none,
+            )
+          ]
+        ],
         [
           *① Single action potential*
-          #figure(
-            image("result/diff.png", width: 100%),
-            caption: [20 ms, 3 #sym.mu A/cm#super[2] step: $V$ and the *5 AE latents* (*AE*, $n=5$).],
-            numbering: none,
-            supplement: none,
-          )
-          // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms — 潜在ダイナミクスの位相情報はSINDyで捉えられている。
-          - *When* it fires is accurate (latency err *0.3 ms*, AHP timing gap *3.1 ms*) — latent dynamics preserve *timing*
-          // 訳: どれだけ大きいかは系統的過小評価: ピーク13mV低い(振幅差12.9mV)、立ち上がり/立ち下がり速度差21.0/10.3 mV/ms。一方AHP深さ差0.28mVと静止電位付近は正確 → 誤差はスパイクの急峻な遷移部に集中。
-          - *How big* is systematically *underestimated* — peak *13 mV low* (amplitude gap *12.9 mV*), rise #sym.slash fall rate gap *21.0* #sym.slash *10.3 mV/ms* — yet AHP depth gap is only *0.28 mV*: error concentrates in the *fast, steep transition*, not the slow relaxation
-          // 訳: → SINDyライブラリでなく、AE(n=5)側が急峻な遷移の情報を圧縮しきれていない可能性。
-          $->$ suggests the *AE encoding (n=5)*, not the SINDy library, fails to preserve the *steepest transition*
-        ],
-        // -------- 中央列: 学習外の刺激への汎化 (②③) --------
-        [
-          *② New stimulus site*
-          #figure(
-            image("result/compare_stim_site.png", width: 100%),
-            caption: [Amplitude sweep (*AE*, $n=5$). *Top*: soma, as trained. *Bottom*: dendrite, *unseen*.],
-            numbering: none,
-            supplement: none,
-          )
-          // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
-          - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
-          #v(0.25em)
-          *③ Unseen periodic drive*
-          #figure(
-            image("result/traces.png", width: 100%),
-            caption: [Pulse train, 10–50 Hz — *outside training* (*AE*, $n=5$).],
-            numbering: none,
-            supplement: none,
-          )
-          // 訳: 20 Hz 以上で一致、10 Hz では後続スパイクを落とす。
-          - Matches for $f gt.eq 20$ Hz; *drops later spikes* at 10 Hz.
+          #align(center)[
+            #figure(
+              image("result/diff.png", width: 90%),
+              caption: [20 ms, 3 #sym.mu A/cm#super[2] step: $V$ and the *5 AE latents*.],
+              numbering: none,
+              supplement: none,
+            )
+          ]
+          #text(size: 25pt)[
+            // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms。
+            - *When* it fires is accurate (latency err *0.3 ms*, AHP timing gap *3.1 ms*).
+            // 訳: どれだけ大きいかは系統的過小評価: ピーク13mV低い(振幅差12.9mV)、立ち上がり/立ち下がり速度差21.0/10.3 mV/ms。一方AHP深さ差0.28mVと静止電位付近は正確。
+            - *How big* is systematically *underestimated* — peak *13 mV low* (amplitude gap *12.9 mV*), rise #sym.slash fall rate gap *21.0* #sym.slash *10.3 mV/ms* — yet AHP depth gap is only *0.28 mV*.
+          ]
         ],
       )
       #v(0.3em)
-      // -------- ④ 同定された潜在方程式 (横長なので左+中央に跨る) --------
+      // -------- 2行目: ④ SINDy 係数 --------
       *④ Identified latent equations*
-      #figure(
-        image("result/model.png", width: 100%),
-        caption: [$xi$ over the physics-informed library.],
-        numbering: none,
-        supplement: none,
-      )
+      #align(center)[
+        #figure(
+          image("result/model.png", width: 100%),
+          caption: [$xi$ over the physics-informed library.],
+          numbering: none,
+          supplement: none,
+        )
+      ]
       // 訳: 79.6% が非ゼロ = スパースでない。
       - *79.6% non-zero* — accurate but *not sparse*.
     ],
-    // ======== 右列: 上に PCA・無圧縮の傍証、下に結論と参照 ========
+    // ======== 右列: Findings① を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
-      *⑤ PCA, no compression*
-      #figure(
-        image("result/noCompression.png", width: 100%),
-        caption: [*PCA*, $n=6$ = uncompressed (vs. *AE*, $n=5$ above).],
-        numbering: none,
-        supplement: none,
-      )
-      // 訳: 無圧縮でも同じ結果 → 効いているのは圧縮でなく座標変換そのもの。複雑ゲート系がSINDyのような単純回帰で捉えられるという主張の核心的傍証。
-      - Holds *even without compression* $->$ what matters is the *coordinate change itself*, not the compression ratio: core evidence that complex gate dynamics stay *tractable to simple regression*.
       #v(0.3em)
-      #mini-box(title: "Conclusion")[
-        #set text(size: 21pt)
-        // 訳: 全19区画置換、発散せず、未見の刺激部位・周波数にも転移。
-        - Replaced *all 19 compartments*, no divergence; transfers to *unseen site #sym.dot.c frequency*.
-        // 訳: 核心: SINDyが学習できたのは圧縮したから(n=6→5)ではない。⑤(無圧縮PCA, n=6)でも同じ結果 → 効いているのは座標変換そのもの。
-        - *Core finding*: SINDy succeeds *not because we compressed* ($n$: 6→5) — ⑤ shows the *same result uncompressed* ($n=6$), so it is the *coordinate change itself* that makes gate dynamics learnable.
-        // 訳: だからコスト削減は圧縮の副産物にすぎず、ξが密(79.6%非ゼロ)な現状ではまだ実証できていない。
-        - Cost reduction follows *only if* compression matters — so it remains *unproven*: $xi$ is still dense (*79.6%* non-zero).
-        $->$ *Future*: sparsify $xi$, push $n$ down, test on other channel models.
+      *② New stimulus site*
+      #align(center)[
+        #figure(
+          image("result/compare_stim_site.png", width: 100%),
+          caption: [Amplitude sweep). *Top*: soma, as trained. *Bottom*: dendrite, *unseen*.],
+          numbering: none,
+          supplement: none,
+        )
       ]
+      // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
+      - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
       #v(0.3em)
-      #text(size: 19pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")[github.com/MunechikaHaruki/SINDyNeuroSurrogate]]
-      #show bibliography: set text(size: 18pt)
+      *③ Unseen periodic drive*
+      #align(center)[
+        #figure(
+          image("result/traces.png", width: 100%),
+          caption: [Pulse train, 10–50 Hz — *outside training*.],
+          numbering: none,
+          supplement: none,
+        )
+      ]
+      // 訳: 20 Hz 以上で一致、10 Hz では後続スパイクを落とす。
+      - Matches for $f gt.eq 20$ Hz; *drops later spikes* at 10 Hz.
+    ],
+  )
+]
+
+// ======== Footer: Conclusion / Code / References / COI (poster 全体の下部) ========
+#block(width: 100%, above: 0.1em, below: 0em)[
+  #grid(
+    columns: (2.4fr, 1fr),
+    gutter: 1em,
+    mini-box(title: "Conclusion", title-size: 30pt, body-inset: 6pt)[
+      #set text(size: 29pt)
+      #set par(leading: 0.4em)
+      #set block(spacing: 0.35em)
+      // 訳: 潜在ダイナミクスはタイミング(位相情報)を保持している。
+      - Latent dynamics preserve *timing*.
+      // 訳: → SINDyライブラリでなく、AE(n=5)側が急峻な遷移の情報を圧縮しきれていない可能性。
+      - Error concentrates in the *fast, steep transition* — suggests the *AE encoding (n=5)*, not the SINDy library, fails to preserve it.
+      // 訳: 全19区画置換、発散せず、未見の刺激部位・周波数にも転移。
+      - Replaced *all 19 compartments*, no divergence; transfers to *unseen site #sym.dot.c frequency*.
+      // 訳: 核心: SINDyが学習できたのは圧縮したから(n=6→5)ではない。⑤(無圧縮PCA, n=6)でも同じ結果 → 効いているのは座標変換そのもの。
+      - *Core finding*: SINDy succeeds *not because we compressed* ($n$: 6→5) — ⑤ shows the *same result uncompressed* ($n=6$), so it is the *coordinate change itself* that makes gate dynamics learnable.
+      // 訳: だからコスト削減は圧縮の副産物にすぎず、ξが密(79.6%非ゼロ)な現状ではまだ実証できていない。
+      - Cost reduction follows *only if* compression matters — so it remains *unproven*: $xi$ is still dense (*79.6%* non-zero).
+      $->$ *Future*: sparsify $xi$, push $n$ down, test on other channel models.
+    ],
+    [
+      #text(size: 15pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")[github.com/MunechikaHaruki/SINDyNeuroSurrogate]]
+      #show bibliography: set text(size: 13pt)
       #bibliography("bibliography.bib", title: none)
+      #v(0.3em)
+      #block(
+        width: 100%,
+        stroke: 1pt + black,
+        radius: 4pt,
+        inset: 6pt,
+        text(size: 14pt)[*Conflicts of Interest* — The authors declare no conflicts of interest regarding this manuscript.],
+      )
     ],
   )
 ]

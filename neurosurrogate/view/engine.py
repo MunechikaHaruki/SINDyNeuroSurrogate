@@ -112,10 +112,15 @@ def draw_engine(
     if n_rows == 1:
         axs = [axs]
 
+    seen_labels: set[str] = set()
     for ax, p in zip(axs, spec, strict=False):
         for tr in p.traces:
             ax.plot(tr.t, tr.y, label=tr.label, color=tr.color, linestyle=tr.style)
         ax.set_ylabel(p.ylabel)
+        labels = {tr.label for tr in p.traces if tr.label is not None}
+        if not labels or labels <= seen_labels:
+            continue  # 全段同一 label 集合の反復 (comp 重ね) は凡例も反復せず 1 回のみ
+        seen_labels |= labels
         place_legend(ax)
     if n_rows:  # 横軸は全段共有 (sharex) → ラベルは最下段だけ
         axs[-1].set_xlabel("Time [ms]")
