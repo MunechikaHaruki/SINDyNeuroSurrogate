@@ -166,7 +166,7 @@ def test_sindy_draws_all_figs(sindy_grid: EvalGrid, sindy: SurrogateBundle) -> N
 
 
 def test_eval_and_draw_json_are_self_consistent() -> None:
-    """marimo/CLI の既定設定が自己整合: `eval.json` の全 entry の電流が掃引点まで
+    """marimo の既定設定が自己整合: `eval.json` の全 entry の電流が掃引点まで
     含めて構築でき、`draw.json` の `results`/`compare` が参照する label は
     `eval.json` の label に実在する (2 ファイルに分けたことで生まれうる typo/ズレを
     テストで担保する)。単発 entry も「点 1 つ」として同じ経路を通る。"""
@@ -417,10 +417,12 @@ def test_duplicate_library_types_are_rejected(sindy_closure: SINDyBundle) -> Non
 
 def test_equations_render_as_tex(sindy_closure: SINDyBundle) -> None:
     texs = equation_texs(sindy_closure)
-    assert len(texs) == len(sindy_closure.targets)  # 1 target = 1 式
+    # target 数が _EQ_HEAD_TARGETS を超える分は展開せず "\vdots" 1 行にまとめる
+    assert len(texs) == len(sindy_closure.targets) - 1
     assert all(t.startswith("$") and t.endswith("$") for t in texs)
-    # 見出しは抜粋 → 先頭数項のみで残りは \cdots に畳む
-    assert all(r"+ \cdots" in t for t in texs)
+    # 見出しは抜粋 → 先頭数項のみで残りは \cdots に畳む (末尾の \vdots 行を除く)
+    assert all(r"+ \cdots" in t for t in texs[:-1])
+    assert texs[-1] == r"$\vdots$"
     # レート関数は未定義 Function → sympy が自動でギリシャ文字化。model は下付きへ
     # 回し、表示時に括弧へ整形 (mathtext が下付き内の空白を詰めるため)
     assert any(r"\alpha_{m(hh)}{\left(V \right)}" in t for t in texs)

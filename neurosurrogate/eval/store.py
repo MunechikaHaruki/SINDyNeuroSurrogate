@@ -17,7 +17,7 @@ dir 名は (parent_run_id, label, spec, run_label) だけで決まる = 同じ�
 - **`parent_run_id` が dir を切る単位**: sweep なら親 run_id、単発なら自身の run_id
   (呼び出し側が渡す = marimo の run 選択 `sel_id` そのもの)。これにより
   `results/artifacts/<parent_run_id>/` の 1 dir が「回した学習 run」と 1 対 1
-  対応し、`scripts/draw.py` から対象 run だけを指定して描画できる。
+  対応し、`scripts/marimo.py` の描画ボタンから対象 run だけを指定して描画できる。
 - **surrogate を焼き込まない**: meta に `run_id` (呼び出し側が渡す opaque な
   識別子) を書くだけ。閉包項や preprocessor が要る図 (diff/attractor) は描画側が
   run_id からロードする (その識別子が何を指すか — MLflow run 等 — は scripts 側の

@@ -1,5 +1,6 @@
-"""評価結果 → 保存できる `SaveEntry` 列の組立。marimo 非依存 (CLI `scripts/draw.py`
-からも同じ関数を呼ぶ)。
+"""評価結果 → 保存できる `SaveEntry` 列の組立、および `render_report` での保存まで。
+marimo 非依存 (marimo は artifact 読込 + surrogate ロードだけ持ち、組立/保存は
+ここに委譲する)。
 
 `eval.eval` が「何を回して何が出たか」を持つのに対し、ここは **どの図をどの名前で
 並べるか**: model (置換シミュ不要の静的図 + 学習側サマリ) / eval (結果グリッドごとの
@@ -17,8 +18,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Self
 
+import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -32,7 +35,7 @@ from .figs.grid import compare_grid_fig, metric_fig, trace_grid_fig
 from .figs.model import closure_figs, neuron_graph_figs, preprocessor_figs
 from .figs.train import train_figs
 from .figs.wave import wave_report
-from .save import SaveEntry, slug
+from .save import SaveEntry, save_entries, slug
 from .wave import dm_at
 
 # --- 描画の宣言 (表示設定 + 並べ方) ---------------------------------------------
@@ -363,3 +366,22 @@ def eval_report(
     if report.wants("compare"):
         entries += _compare_report(report.compares, res)
     return entries
+
+
+def render_report(
+    bundles: dict[str, SurrogateBundle],
+    res: dict[str, EvalGrid],
+    report: ReportSpec,
+    draw_dict: dict,
+    sources: list[str],
+    dest: Path,
+    style_paths: list[Path],
+) -> list[Path]:
+    """model/eval の図表を組み立てて dest へ保存する唯一の入口。呼び出し側
+    (`scripts/marimo.py` の描画ボタン) は artifact 読込 + surrogate ロード (mlflow
+    依存) だけを持ち、組立/保存はここに委譲する。"""
+    for p in style_paths:
+        plt.style.use(p)
+    entries = model_report(bundles, res, report) + eval_report(res, bundles, report)
+    meta = {"draw": draw_dict, "sources": sources}
+    return save_entries(entries, dest, meta)

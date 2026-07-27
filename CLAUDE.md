@@ -61,18 +61,16 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
             figs/model.py        # 静的図 (neurograph/closure/preprocessor)
             figs/train.py        # 学習データ図
             figs/wave.py         # wave.py の計算値 → WaveReport/metrics_df (DataFrame 組立)
-            report.py            # 描画宣言 DrawSpec/ResultSpec/ReportSpec/CompareSpec + model/eval グループの組立
+            report.py            # 描画宣言 DrawSpec/ResultSpec/ReportSpec/CompareSpec + model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
             save.py              # SaveEntry/slug/save_entries (図と表の書き出し)
 scripts/  main.py                # Hydra エントリ
           mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)
-          draw.py                # artifact + conf/draw.json → 図/表の書き出し (CLI と marimo 保存ボタンの共通本体)
-          marimo.py              # notebook セル (run 選択 + 実行 + 描画呼び出しのみ。描画自体は draw.py)
-          widgets.py             # marimo widget 層 (計算も図の組立も持たない)
+          marimo.py              # notebook 本体 (run 選択 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
           poster_assets.py       # results/<dir> → docs/poster/result へ poster 使用分だけコピー
           conf/                  # 下記「設定ファイル」参照
 tests/    conftest.py / test_surrogate.py / test_inits.py
 docs/     poster/ slide/         # typst
-results/  <保存名>/               # draw.py が書く図 + meta.json / artifacts/ に評価結果 (計算)
+results/  <保存名>/               # marimo 描画ボタンが書く図 + meta.json / artifacts/ に評価結果 (計算)
 ```
 
 ## 設定ファイル

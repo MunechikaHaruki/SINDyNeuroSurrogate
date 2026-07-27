@@ -9,15 +9,25 @@ def _():
     import json
     from pathlib import Path
 
-    import draw
-    import widgets
-    from mlflow_io import get_runs_df, load_bundles, sweep_siblings
+    import marimo as mo
+    from mlflow_io import (
+        get_runs_df,
+        load_bundles,
+        load_surrogate_model,
+        sweep_siblings,
+    )
 
-    from neurosurrogate.eval.spec import parse_evals
-    from neurosurrogate.eval.store import run_and_save
+    from neurosurrogate.eval.spec import parse_evals, usable
+    from neurosurrogate.eval.store import artifacts, load_all, run_and_save
+    from neurosurrogate.metrics.report import ReportSpec, render_report
 
     CONF_DIR = Path(__file__).resolve().parent / "conf"
     EVAL_JSON = CONF_DIR / "eval.json"
+    DRAW_JSON = CONF_DIR / "draw.json"
+    STYLE_DIR = CONF_DIR / "style"
+    RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
+    ARTIFACT_DIR = RESULT_DIR / "artifacts"
+    ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
 
     # marimo に残す操作は「run 選択」「評価」「描画」の 3 つ。評価 (→ artifact 保存)
     # と描画 (→ 図保存) はボタンを分け、CLI は持たない (二重管理を避け、この 2
@@ -26,54 +36,140 @@ def _():
     specs = parse_evals(json.loads(EVAL_JSON.read_text()))
     runs_df = get_runs_df()
     return (
-        draw,
+        ALL_PRESETS,
+        ARTIFACT_DIR,
+        DRAW_JSON,
+        RESULT_DIR,
+        ReportSpec,
+        STYLE_DIR,
+        artifacts,
+        json,
+        load_all,
         load_bundles,
+        load_surrogate_model,
+        mo,
+        render_report,
         run_and_save,
         runs_df,
         specs,
         sweep_siblings,
-        widgets,
+        usable,
     )
 
 
 @app.cell
-def _(runs_df, widgets):
+def _(ALL_PRESETS, mo, runs_df):
     # preset (yaml) 絞り込み = run_selector の上流フィルタ (一時的な選択で設定には
     # 入れない)。
-    preset_ui = widgets.make_preset_ui(runs_df)
+    preset_ui = mo.ui.dropdown(
+        options=[ALL_PRESETS, *sorted(runs_df["preset"].dropna().unique())],
+        value=ALL_PRESETS,
+        label="preset (yaml)",
+    )
     preset_ui  # noqa: B018
     return (preset_ui,)
 
 
 @app.cell
-def _(preset, runs_df, specs, widgets):
+def _(ALL_PRESETS, mo, preset, runs_df, specs, usable):
     # marimo に残す唯一の「入力」= run を 1 件選ぶだけ。適用先 / sweep 対象 (兄弟 run)
-    # は選択後に自動決定。
-    run_selector = widgets.make_run_ui(runs_df, preset, specs)
+    # は選択後に自動決定。preset で絞り、宣言された適用先 (eval entry の target) の
+    # どれかへ**実際に置換できる** 代表 run (hydra sweep 親/単発 = parent_id 欠損)
+    # だけ出す (子は隠す)。互換判定は `eval.spec.usable` に委ね UI に複製しない。
+    in_preset = (
+        runs_df if preset == ALL_PRESETS else runs_df[runs_df["preset"] == preset]
+    )
+    usable_mask = in_preset["meta"].map(lambda m: usable(m, specs))
+    reps = in_preset[usable_mask & in_preset["parent_id"].isna()]
+    runs = reps[["tags.mlflow.runName", "comp_type", "run_id"]]
+    run_selector = mo.ui.table(
+        runs,
+        label="Run (1件)",
+        selection="single",
+        initial_selection=[0] if len(runs) else [],
+    )
     run_selector  # noqa: B018
     return (run_selector,)
 
 
 @app.cell
-def _(sel_name, widgets):
-    run_html, run_panel = widgets.make_run_panel(sel_name)
-    run_html  # noqa: B018
+def _(mo, sel_name):
+    # 実行パネル: 評価 (→ artifact 保存) と描画 (→ 図保存) はボタンを分ける
+    # (draw.json 調整後の再描画だけ、評価だけを別々に回せる)。どちらも CLI は持たず、
+    # この 2 ボタンが唯一の実行経路 (marimo と CLI の二重管理を避ける)。保存先の
+    # 既定名は選択 run の runName 入り。
+    run_panel = mo.ui.dictionary(
+        {
+            "dir": mo.ui.text(
+                value=f"{sel_name}_result" if sel_name else "_result", label="保存先"
+            ),
+            "eval": mo.ui.run_button(label="評価 (→ artifact 保存)"),
+            "draw": mo.ui.run_button(label="描画 (→ 図保存)"),
+        }
+    )
+    mo.vstack(
+        [
+            mo.md("### 実行パネル"),
+            run_panel["dir"],
+            run_panel["eval"],
+            run_panel["draw"],
+        ]
+    )
     return (run_panel,)
 
 
 @app.cell
-def _(bundles, draw, run_and_save, run_ids, run_panel, sel_id, specs):
+def _(ARTIFACT_DIR, bundles, run_and_save, run_ids, run_panel, sel_id, specs):
     # 評価ボタン: 評価 → artifact 保存だけ (描画はしない)。
     if run_panel.value["eval"]:
-        run_and_save(bundles, specs, draw.ARTIFACT_DIR, run_ids, sel_id)
+        run_and_save(bundles, specs, ARTIFACT_DIR, run_ids, sel_id)
     return
 
 
 @app.cell
-def _(draw, run_panel, sel_id, widgets):
-    # 描画ボタン: 手元の artifact (draw.json 調整後の再描画も含む) → 図保存だけ。
-    saved = draw.render_if(run_panel.value["draw"], run_panel.value["dir"], sel_id)
-    widgets.written_html(saved, draw.RESULT_DIR, "(未実行)")
+def _(
+    ARTIFACT_DIR,
+    DRAW_JSON,
+    RESULT_DIR,
+    ReportSpec,
+    STYLE_DIR,
+    artifacts,
+    json,
+    load_all,
+    load_surrogate_model,
+    mo,
+    render_report,
+    run_panel,
+    sel_id,
+):
+    # 描画ボタン: artifact + draw.json → dest へ図/表を書き出す (手元の artifact =
+    # draw.json 調整後の再描画も含む)。今保存した学習 run (`sel_id`) の artifact
+    # だけを描く。surrogate は artifact に焼き込まれていない (閉包項が要る図
+    # diff/attractor 用に MLflow から引き直す。load_surrogate_model は run_id ごとに
+    # @cache 済み)。図表の組立/保存は `render_report` (metrics 層) に委譲する。
+    saved = []
+    if run_panel.value["draw"]:
+        draw_dict = json.loads(DRAW_JSON.read_text())
+        report = ReportSpec.from_dict(draw_dict)
+        arts = artifacts(ARTIFACT_DIR, sel_id)
+        res = load_all(arts)
+        bundles_for_draw = {
+            a.meta.run_label: load_surrogate_model(a.meta.run_id) for a in arts
+        }
+        sources = [str(a.path.relative_to(ARTIFACT_DIR)) for a in arts]
+        style_paths = [
+            STYLE_DIR / "base.mplstyle",
+            STYLE_DIR / f"{report.plt_style}.mplstyle",
+        ]
+        dest = RESULT_DIR / run_panel.value["dir"]
+        saved = render_report(
+            bundles_for_draw, res, report, draw_dict, sources, dest, style_paths
+        )
+    (
+        mo.vstack([mo.md(f"✅ `{p.relative_to(RESULT_DIR)}`") for p in saved])
+        if saved
+        else mo.md("(未実行)")
+    )
     return
 
 
@@ -85,10 +181,11 @@ def _(preset_ui):
 
 
 @app.cell
-def _(run_selector, widgets):
-    # id は run 軸 (兄弟 run) を導く単一源、name は保存先の既定名。取り出し方
-    # (pandas indexing) は widgets 側に畳んである。
-    sel_id, sel_name = widgets.selected_run(run_selector.value)
+def _(run_selector):
+    # id は run 軸 (兄弟 run) を導く単一源、name は保存先の既定名。
+    value = run_selector.value
+    sel_id = value["run_id"].iloc[0] if len(value) else None
+    sel_name = value["tags.mlflow.runName"].iloc[0] if len(value) else None
     return sel_id, sel_name
 
 
