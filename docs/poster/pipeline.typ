@@ -78,7 +78,7 @@
     content((9.7, 2.6), lab[$N$], anchor: "west")
     content((9.7, 1.4), lab[$C$], anchor: "west")
     content((10.6, 2.6), text(size: label-size * 4.0)[\{])
-    content((11.1, 2.6), lab[10 gates], anchor: "west")
+    content((11.1, 2.6), lab[6 gates], anchor: "west")
   },
 )
 

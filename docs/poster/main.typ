@@ -83,12 +83,10 @@
         [
           #figure(
             traub_circuit(unit: 1.02cm, label-size: 24pt, stroke-w: 1.6pt),
-            caption: [Equivalent circuit of compartment $i$],
             numbering: none,
             supplement: none,
           )<circuit>
           // 訳: 各コンパートメント = 膜容量 + 可変イオンコンダクタンス + 隣接との軸方向結合。
-          Each compartment: capacitance, *variable* ionic conductances, axial coupling $g_(i, i plus.minus 1)$.
         ],
         // -------- 右: 可変コンダクタンスの中身 (ゲート変数とレート関数) --------
         [
@@ -112,9 +110,9 @@
         ],
       )
       #v(0.4em)
-      // 訳 (Goal): 複雑なゲートダイナミクスが変換後の座標でも単純な回帰(SINDy)で捉えられるか検証し、その結果として状態変数を削減する。
+      // Multi-Compartmentニューロンモデルの膜電位応答ができモデルの膜電位応答ができるサロゲ膜電位応答ができるサロゲートモデ応答ができるサロゲートモデルの作成でできるサロゲートモデルの作成
       #mini-box(title: "Goal")[
-        Test whether *complex gate dynamics* remain tractable to a *simple regression* (SINDy) after a coordinate change — and thereby reproduce the membrane-potential response with *fewer state variables*.
+        Development of a surrogate model capable of reproducing the membrane potential response of a multi-compartment neuron model.
       ]
     ],
   )
@@ -132,12 +130,13 @@
     // ======== ① 刺激を入れ、全 comp の V とゲートの時系列を収集 (単独, 下は空けたまま) ========
     [
       // 訳: ① 教師データを集める。
-      *#text(blue)[①] Collect the training data*
+      *#text(blue)[①] Sample the training data*
       #v(0.2em)
       #stage_simulate(unit: 1.62cm, label-size: 24pt)
       #v(0.2em)
       // 訳: Traub 19-comp の soma へランダムパルス列を注入し、19 comp すべての V と 10 ゲートを記録。
-      Inject a *random pulse train* at the soma; record $V$ and *10 gates* for *all 19 compartments*.
+      Inject a *random pulse train* at the soma; record $V$ and *6 gates*
+    .
     ],
     // ======== ②③ を並べ、その下へ ④ を跨がせる ========
     [
@@ -160,9 +159,9 @@
           *#text(blue)[③] Identify the latent ODEs*
           #v(0.2em)
           #stage_identify(unit: 1.58cm, label-size: 24pt)
-          #v(0.2em)
+          #v(1.5em)
           // 訳: 潜在だけスパース同定、dV/dt と Ca サブ系は元の物理式のまま。基底はゲート自身のレート関数 α, β (昨年の 41 項汎用ライブラリを置換)。
-          *SINDy* @Champion-2019-DatadrivenDiscoveryCoordinatesGoverning fits *only* $dot(bold(z))$; $dot(V)$ keeps *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$, not a *41-term* generic one.
+          *SINDy* @Champion-2019-DatadrivenDiscoveryCoordinatesGoverning fits *only* $dot(bold(z))$; $dot(V)$ keeps *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$.
         ],
       )
       #v(0.4em)
@@ -176,7 +175,7 @@
         gutter: 0em,
         stage_simulate_loop(unit: 0.72cm, label-size: 11pt, body-size: 12pt),
         // 訳: 各ステップで z→decode→gates、等価回路の dV/dt 式(赤枠)は不変のまま評価。z 自身は同じステップで SINDy(ξ) が更新し、次ステップへ積分。
-        [Each step: $bold(z) ->$ *decode* $->$ gates feed the *unchanged* equivalent-circuit $dot(V)$; SINDy updates $bold(z)$ *in place of* the original gate ODEs.],
+        [Each step: $bold(z) ->$ *decode* $->$ gates feed the *unchanged* equivalent-circuit $dot(V)$; SINDy updates $bold(z)$ in place of the original gate ODEs.],
       )
     ],
   )
