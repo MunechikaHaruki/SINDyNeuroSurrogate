@@ -1,9 +1,9 @@
-"""**結果グリッド (`EvalGrid`) を軸で見る図**: 点軸に沿ったメトリクス折れ線と、
-点を列に取る波形格子 2 種 (行=run / 行=評価 spec)。
+"""**フラット結果を軸で見る図**: 点軸 (掃引) に沿ったメトリクス折れ線と、点を列に
+取る波形格子 2 種 (行=run / 行=系列)。
 
 格子の骨格は `_grid_fig` 1 本で、2 種の違いは**行の組み方だけ** (`_Row` 列を作る
-side)。軸名も run 軸ラベルも結果 (`EvalGrid.spec` / `run_labels`) から引く =
-呼び出し側で作り直さない。marimo 非依存。
+side)。系列名・run_id 列は `metrics.select` が結果 dict から引く = 呼び出し側で
+作り直さない。marimo 非依存。
 """
 
 from __future__ import annotations
@@ -15,46 +15,46 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from ...core import access
+from ...core.diverge import diverged
+from .. import select
 from ..engine import new_figure, place_legend
-from ..wave import diverged
 from .wave import metrics_df
 
 if TYPE_CHECKING:
     import xarray as xr
     from matplotlib.axes import Axes
 
-    from ...eval.eval import EvalGrid
-
-
-def _axis_name(grid: EvalGrid) -> str | None:
-    """点軸の名前 (掃引軸が無ければ None = 点が 1 つで軸を名乗らない)。"""
-    return grid.spec.sweep.param if grid.spec.sweep else None
+    from ...eval.run import SimKey
+    from ...eval.store import SimResult
 
 
 def metric_fig(
-    grid: EvalGrid,
+    results: dict[SimKey, SimResult],
+    name: str,
     comp_name: str,
     metric_key: str,
     ylim: tuple[float, float] | None = None,
 ) -> Figure:
-    """点軸に沿ったメトリクス折れ線 (Original + 各 run)。marimo 非依存。
-    run 軸ラベルも点軸名も結果から引く = 別引数で持ち回らない。"""
-    data = metrics_df(grid, comp_name, metric_key)
-    axis = _axis_name(grid) or "point"
+    """点軸に沿ったメトリクス折れ線 (Original + 各 run)。marimo 非依存。"""
+    data = metrics_df(results, name, comp_name, metric_key)
+    run_ids = select.run_ids_of(results, name)
+    labels = select.labels_of(results, name)
+    axis = results[(labels[0], None)].spec.sweep_param or "point"
     fig = new_figure()
     ax = fig.subplots()
     if "original" in data.columns:
         ax.plot(data["point"], data["original"], "k-o", label="Original", zorder=3)
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for idx, label in enumerate(grid.run_labels):
+    for idx, run_id in enumerate(run_ids):
+        run_label = select.run_label_of(results, name, run_id)
         ax.plot(
             data["point"],
-            data[label],
+            data[run_label],
             marker="s",
             linestyle="--",
             color=colors[idx % len(colors)],
-            label=label,
+            label=run_label,
         )
 
     ax.set_xlabel(axis)
@@ -119,7 +119,7 @@ def _trace_cell(
 @dataclass(frozen=True)
 class _Row:
     """波形格子の 1 行 = 行名 + 列 (点) ごとの (原系, 重ねる置換系群) と対象 comp。
-    行が run 軸か spec 軸かの違いは、この列を組む側だけが知る。"""
+    行が run 軸か系列軸かの違いは、この列を組む側だけが知る。"""
 
     label: str
     comp_id: int
@@ -167,43 +167,75 @@ def _grid_fig(
     return fig
 
 
-def _header(grid: EvalGrid) -> list[tuple[float | None, xr.Dataset]]:
+def _header(
+    results: dict[SimKey, SimResult], name: str
+) -> list[tuple[float | None, xr.Dataset]]:
     """列 (点) の見出しと I_ext 行に使う原系。"""
-    return [(p.value, p.original) for p in grid.points]
+    return [
+        (results[(label, None)].spec.sweep_value, results[(label, None)].dataset)
+        for label in select.labels_of(results, name)
+    ]
 
 
-def trace_grid_fig(grid: EvalGrid, comp_name: str) -> Figure:
-    """1 評価を run 軸で開いた波形格子 (行=run、セルはその run 1 本だけ重ねる)。
-    行順は結果の run 軸 (`grid.run_labels`) そのもの。marimo 非依存。"""
-    comp_id = grid.spec.net.name_to_idx(comp_name)
+def trace_grid_fig(
+    results: dict[SimKey, SimResult], name: str, comp_name: str
+) -> Figure:
+    """1 系列を run 軸で開いた波形格子 (行=run、セルはその run 1 本だけ重ねる)。"""
+    labels = select.labels_of(results, name)
+    run_ids = select.run_ids_of(results, name)
+    comp_id = results[(labels[0], None)].spec.net.name_to_idx(comp_name)
     rows = [
         _Row(
-            label,
+            select.run_label_of(results, name, run_id),
             comp_id,
-            [(p.original, {label: p.surrogates[label]}) for p in grid.points],
+            [
+                (
+                    results[(label, None)].dataset,
+                    {
+                        select.run_label_of(results, name, run_id): results[
+                            (label, run_id)
+                        ].dataset
+                    },
+                )
+                for label in labels
+            ],
         )
-        for label in grid.run_labels
+        for run_id in run_ids
     ]
-    return _grid_fig(_header(grid), rows, _axis_name(grid), comp_name)
+    axis_name = results[(labels[0], None)].spec.sweep_param
+    return _grid_fig(_header(results, name), rows, axis_name, comp_name)
 
 
-def compare_grid_fig(grids: dict[str, EvalGrid], comp_name: str) -> Figure:
-    """複数の評価を並べた波形格子 (行=評価、セルは親 run 1 本だけ)。
+def compare_grid_fig(
+    results: dict[SimKey, SimResult], names: list[str], comp_name: str
+) -> Figure:
+    """複数の系列を並べた波形格子 (行=系列、セルは先頭 run 1 本だけ)。
 
-    同じ掃引を適用先 (刺激位置) 違いで並べる図なので、電流行は先頭評価のものを
-    1 回だけ描く (点数が揃わなければ `_grid_fig` が raise)。run 軸は sweep 子を
-    含めず**親 run (`run_labels[0]`) のみ** — 子まで重ねると比較の主眼 (刺激位置差)
-    が run 差に埋もれる。
+    同じ掃引を適用先 (刺激位置) 違いで並べる図なので、電流行は先頭系列のものを
+    1 回だけ描く (点数が揃わなければ `_grid_fig` が raise)。run 軸は先頭 run
+    のみ — 子まで重ねると比較の主眼 (刺激位置差) が run 差に埋もれる。
     """
-    first = next(iter(grids.values()))
+    first_name = names[0]
     rows = []
-    for label, g in grids.items():
-        parent = g.run_labels[0]
+    for name in names:
+        labels = select.labels_of(results, name)
+        run_ids = select.run_ids_of(results, name)
+        run_id = run_ids[0]
+        comp_id = results[(labels[0], None)].spec.net.name_to_idx(comp_name)
+        run_label = select.run_label_of(results, name, run_id)
         rows.append(
             _Row(
-                label,
-                g.spec.net.name_to_idx(comp_name),
-                [(p.original, {parent: p.surrogates[parent]}) for p in g.points],
+                name,
+                comp_id,
+                [
+                    (
+                        results[(label, None)].dataset,
+                        {run_label: results[(label, run_id)].dataset},
+                    )
+                    for label in labels
+                ],
             )
         )
-    return _grid_fig(_header(first), rows, _axis_name(first), comp_name)
+    first_label = select.labels_of(results, first_name)[0]
+    axis_name = results[(first_label, None)].spec.sweep_param
+    return _grid_fig(_header(results, first_name), rows, axis_name, comp_name)

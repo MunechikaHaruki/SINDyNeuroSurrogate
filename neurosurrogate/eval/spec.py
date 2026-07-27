@@ -1,24 +1,25 @@
 """評価対象の仕様 (設定 dict → 型) と結果のキー付け規約。marimo/mlflow 非依存。
 
-**単発と掃引を分けない**: 評価 1 本 = 適用先 target × 電流 × (任意の) 掃引軸 で、
-単発は「掃引軸なし = 点が 1 つ」の退化形にすぎない (掃引点 0/1 か複数かは軸の本数の
-違いであって別種の実験ではない)。かつて `SimSpec`/`SweepSpec` に割れていたせいで
-「掃引だけ run 軸を持つ」「単発だけ置換可否で除外される」といった食い違いが生えた。
+**基本単位は 1 回のシミュレーション**: `SimSpec` は掃引点も run (surrogate) も
+どちらも自身のフィールドとして持つ (どちらも「どのシミュを指すか」を決める同格の
+パラメータ)。掃引軸は設定ファイル側の宣言 (`SweepAxis`) が `parse_evals` の時点で
+`steps` 本の `SimSpec` へ展開し尽くす — 展開後の型に「掃引軸」という概念は残らない。
+run は `run_id` (`None` = 原系) を持つだけの対称なフィールド。
 
-ここが持つのは**計算入力だけ** (設定ファイル scripts/conf/eval.json: 1 entry =
-適用先 × 電流 + 任意の `sweep` 軸)。描画の宣言 (`compare` / 表示設定) は別ファイル
-(scripts/conf/draw.json) の関心なので `view.report` が型で持つ = **設定 dict を
-domain 全体で持ち回らない** (パースは入口 1 回、以降は型で渡す)。
+**ここが持つのは計算入力だけ** (設定ファイル `scripts/conf/eval.json`: label →
+entry の dict。1 entry = 適用先 target × 電流 + 任意の `sweep` 軸)。描画の宣言
+(`compare` / 表示設定) は別ファイル (`scripts/conf/draw.json`) の関心なので
+`metrics.report` が型で持つ = **設定 dict を domain 全体で持ち回らない** (パースは
+入口 1 回、以降は型で渡す)。
 
-**実行は知らない** — 仕様 → 実行の向きに依存を張り、シミュを回すのは `eval.py`
-(`run_evals`) 側。
+**実行は知らない** — 仕様 → 実行の向きに依存を張り、シミュを回すのは `eval.run` 側。
 """
 
 from __future__ import annotations
 
 import json
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Self
 
 import numpy as np
@@ -45,7 +46,7 @@ def dedupe_labels(names: list[str]) -> list[str]:
 
 
 def run_labels(surrogates: list[SurrogateBundle]) -> list[str]:
-    """評価結果の run 軸の識別キー列 (与えた順)。
+    """surrogate 列の表示名 (与えた順)。
 
     `meta.label` は学習構造 + 学習データまでしか区別しない → library_specs 違いや
     同 config の再実行は同じ label になるため連番で潰れを防ぐ。
@@ -58,8 +59,8 @@ def run_labels(surrogates: list[SurrogateBundle]) -> list[str]:
 
 @dataclass(frozen=True, kw_only=True)
 class SweepAxis:
-    """掃引軸 = 電流パラメータ 1 つを等間隔に振る宣言。**この型の有無が単発と掃引の
-    唯一の差**で、無ければ点が 1 つになるだけ。"""
+    """掃引軸 = 電流パラメータ 1 つを等間隔に振る宣言。`parse_evals` が展開し尽くす
+    ので、展開後の `SimSpec` はこの型を持たない (`sweep_param` という軸名だけ残る)。"""
 
     param: str
     start: float
@@ -81,54 +82,57 @@ class SweepAxis:
 
 
 @dataclass(frozen=True, kw_only=True)
-class EvalSpec:
-    """1 本の評価仕様 = 適用先 target × 電流 × (任意の) 掃引軸。dt も entry ごとに
-    持つ (「設定全体で 1 つの電流/dt」は存在しない)。
-
-    掃引軸が無ければ点は 1 つ = かつての単発。**単発と掃引で別の型を持たない**ので、
-    実行も保存も描画も 1 経路で済む (点が 1 個か N 個かだけの違い)。
+class SimSpec:
+    """1 回のシミュレーションの仕様 = 適用先 target × 電流 (掃引点は
+    `current_params` に確定済み) × run。原系/置換系を非対称に扱わない —
+    `run_id=None` が原系、それ以外が surrogate の MLflow run_id で、経路は共通。
     """
 
+    name: str  # eval.json のキー = 掃引しても不変な系列名 (図の系列識別に使う)
     target: str
     current_type: str
     dt: float
     current_params: dict = field(default_factory=dict)
-    name: str | None = None
-    sweep: SweepAxis | None = None
+    sweep_param: str | None = None  # 掃引軸名 (None=掃引なし)。図の x 軸ラベル用
+    run_id: str | None = None  # None=原系、str=surrogate の MLflow run_id
 
-    @classmethod
-    def from_dict(cls, d: dict) -> Self:
-        return cls(
-            target=str(d["target"]),
-            current_type=str(d["current_type"]),
-            dt=float(d["dt"]),
-            current_params=dict(d.get("current_params") or {}),
-            name=d.get("name"),
-            sweep=SweepAxis.from_dict(d["sweep"]) if d.get("sweep") else None,
+    @property
+    def sweep_value(self) -> float | None:
+        """掃引軸の値 (掃引なしなら None)。`current_params` に確定済みの値を読むだけ
+        — 二重に持たない。"""
+        return (
+            float(self.current_params[self.sweep_param]) if self.sweep_param else None
         )
 
     def to_dict(self) -> dict:
-        """設定 entry と同じ形へ戻す (結果 artifact が入力仕様として持ち回る)。"""
+        """artifact が入力仕様として持ち回る形へ。"""
         return {
+            "name": self.name,
             "target": self.target,
             "current_type": self.current_type,
             "dt": self.dt,
             "current_params": self.current_params,
-            "name": self.name,
-            "sweep": asdict(self.sweep) if self.sweep else None,
+            "sweep_param": self.sweep_param,
+            "run_id": self.run_id,
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Self:
+        return cls(
+            name=str(d["name"]),
+            target=str(d["target"]),
+            current_type=str(d["current_type"]),
+            dt=float(d["dt"]),
+            current_params=dict(d.get("current_params") or {}),
+            sweep_param=d.get("sweep_param"),
+            run_id=d.get("run_id"),
+        )
 
     def key(self) -> str:
         """**同じ入力とみなす単位**の正規化文字列 (dict 順序に依らず一致する)。
-        artifact の同一系列判定 (`ArtifactMeta.group_key`) や保存先 dir 名の
-        hash 元など、「この spec と同じか」を問う側はここを経由する (json.dumps
-        の正規化を持ち回り側で書き直させない)。"""
+        artifact の同一系列判定や保存先 dir 名の hash 元など、「この spec と同じか」
+        を問う側はここを経由する。"""
         return json.dumps(self.to_dict(), sort_keys=True, default=str)
-
-    @property
-    def label(self) -> str:
-        """既定は適用先名。`name` 指定で電流の意図を名前に出せる。"""
-        return self.name or self.target
 
     @property
     def net(self) -> NeuronGraph:
@@ -136,46 +140,58 @@ class EvalSpec:
         描画も spec 経由で引く (文字列キーを持ち回らない)。"""
         return MCMODELS[self.target]
 
-    def replaceable(self, meta: SurrogateMeta) -> bool:
-        """この surrogate をこの適用先へ置換できるか。**実行するかもエラー図を出すかも
-        この 1 つの述語**で決める (欠落キーで非互換を伝えない)。"""
-        return bool(replaced_names(meta, self.net))
-
-    @property
-    def points(self) -> list[float | None]:
-        """掃引点の値 (掃引軸が無ければ `[None]` = 点 1 つ)。結果の点軸はこれと
-        1 対 1 で、図の列見出しも掃引軸があるときだけ値を出す。"""
-        return [float(v) for v in self.sweep.values] if self.sweep else [None]
-
-    def dataset_at(self, point: float | None) -> DatasetConfig:
-        """点 1 つ分の入力 (原系)。置換系は `apply_surrogate` が非破壊で作る。
-        単発も掃引も**同じ構築経路**を通る (掃引だけ別の組み方をしない)。"""
-        params = self.current_params
-        if point is not None and self.sweep:
-            params = {**params, self.sweep.param: point}
+    def dataset(self) -> DatasetConfig:
+        """入力 (原系)。置換系は `apply_surrogate` が非破壊で作る。"""
         return DatasetConfig.build_dataset(
             model_name=self.target,
             dt=self.dt,
             current_type=self.current_type,
-            current_params=params,
+            current_params=self.current_params,
         )
-
-    def dataset(self) -> DatasetConfig:
-        """代表点 (先頭) の入力。電流プレビューのように 1 本だけ要る用途向け。"""
-        return self.dataset_at(self.points[0])
 
 
 # --- 設定 dict ⇄ 型 (唯一の変換口) -------------------------------------------------
 
 
-def parse_evals(entries: list[dict]) -> dict[str, EvalSpec]:
-    """`eval.json` (entry の配列) → label → EvalSpec (**dict を型へ落とす唯一の
-    入口**)。同じ label が複数あれば連番で潰れを防ぐ (`run_labels` と同規約) = 結果
-    dict / 図名のキーはここが単一源。"""
-    specs = [EvalSpec.from_dict(d) for d in entries]
-    return dict(zip(dedupe_labels([s.label for s in specs]), specs, strict=True))
+def _expand_sweep(name: str, d: dict) -> dict[str, SimSpec]:
+    """1 entry (dict) → 掃引軸があれば `steps` 本、無ければ 1 本の `label → SimSpec`。
+    label は掃引ありなら `f"{name}#{i}"`、無しなら `name` そのもの (dict 形式の
+    `eval.json` はキー衝突が構造的に起きないので dedupe は要らない)。"""
+    base_params = dict(d.get("current_params") or {})
+    sweep = SweepAxis.from_dict(d["sweep"]) if d.get("sweep") else None
+    if sweep is None:
+        spec = SimSpec(
+            name=name,
+            target=str(d["target"]),
+            current_type=str(d["current_type"]),
+            dt=float(d["dt"]),
+            current_params=base_params,
+        )
+        return {name: spec}
+    specs = {}
+    for i, v in enumerate(sweep.values):
+        params = {**base_params, sweep.param: float(v)}
+        specs[f"{name}#{i}"] = SimSpec(
+            name=name,
+            target=str(d["target"]),
+            current_type=str(d["current_type"]),
+            dt=float(d["dt"]),
+            current_params=params,
+            sweep_param=sweep.param,
+        )
+    return specs
 
 
-def usable(meta: SurrogateMeta, specs: dict[str, EvalSpec]) -> bool:
+def parse_evals(entries: dict[str, dict]) -> dict[str, SimSpec]:
+    """`eval.json` (label → entry の dict) → label → SimSpec (**dict を型へ落とす
+    唯一の入口**)。掃引軸がある entry は `steps` 本の SimSpec へ展開する
+    (label は `f"{name}#{i}"`)。"""
+    specs: dict[str, SimSpec] = {}
+    for name, d in entries.items():
+        specs.update(_expand_sweep(name, d))
+    return specs
+
+
+def usable(meta: SurrogateMeta, specs: dict[str, SimSpec]) -> bool:
     """宣言した評価の 1 本でも置換できる surrogate か = UI の run 絞り込み条件。"""
-    return any(s.replaceable(meta) for s in specs.values())
+    return any(bool(replaced_names(meta, s.net)) for s in specs.values())

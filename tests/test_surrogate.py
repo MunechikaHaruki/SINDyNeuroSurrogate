@@ -21,14 +21,13 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.eval.eval import (
-    EvalGrid,
-    EvalPoint,
-    evaluate,
-    preprocessed_latent,
+from neurosurrogate.eval.run import (
+    SimKey,
+    expand,
+    simulate,
 )
-from neurosurrogate.eval.spec import EvalSpec, SweepAxis, parse_evals
-from neurosurrogate.eval.store import artifacts, load_all, save
+from neurosurrogate.eval.spec import SimSpec, parse_evals
+from neurosurrogate.eval.store import SimResult, artifacts, load_all, save, save_all
 from neurosurrogate.metrics.engine import collect, new_figure
 from neurosurrogate.metrics.figs.cell import cell_figs, panels_simple
 from neurosurrogate.metrics.figs.grid import compare_grid_fig, trace_grid_fig
@@ -58,6 +57,7 @@ from neurosurrogate.surrogate.closure.base import Closure
 from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.closure.ude import UDEClosure
+from neurosurrogate.surrogate.diagnostics import preprocessed_latent
 from neurosurrogate.surrogate.preprocessor.base import Preprocessor
 from neurosurrogate.surrogate.preprocessor.impl.autoencoder import AEPreprocessor
 from neurosurrogate.surrogate.preprocessor.impl.pca import PCAPreprocessor
@@ -105,10 +105,11 @@ def sindy() -> SurrogateBundle:
     return fit_surrogate("_test_hh_sindy")
 
 
-def _spec_of(bundle: SurrogateBundle) -> EvalSpec:
+def _spec_of(bundle: SurrogateBundle, name: str = "hh_dc") -> SimSpec:
     """学習データと同じ入力の評価仕様 (掃引軸なし = 点 1 つ)。"""
     ds = bundle.meta.dataset
-    return EvalSpec(
+    return SimSpec(
+        name=name,
         target=ds.model_name,
         current_type=ds.current_type,
         dt=ds.dt,
@@ -116,10 +117,25 @@ def _spec_of(bundle: SurrogateBundle) -> EvalSpec:
     )
 
 
+def _run_results(
+    bundles: dict[str, SurrogateBundle], spec: SimSpec
+) -> dict[SimKey, SimResult]:
+    """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした結果。"""
+    expanded = expand({spec.name: spec}, bundles)
+    return {
+        key: SimResult(
+            s,
+            bundles[key[1]].meta.label if key[1] is not None else None,
+            simulate(s, bundles[key[1]] if key[1] is not None else None),
+        )
+        for key, s in expanded.items()
+    }
+
+
 @pytest.fixture(scope="module")
-def sindy_grid(sindy: SurrogateBundle) -> EvalGrid:
-    """単発 = 点 1 つ・run 1 本の退化グリッド (掃引と同じ型・同じ経路)。"""
-    return evaluate({"r0": sindy}, _spec_of(sindy))
+def sindy_results(sindy: SurrogateBundle) -> dict[SimKey, SimResult]:
+    """単発 = 点 1 つ・run 1 本のフラット結果。"""
+    return _run_results({"r0": sindy}, _spec_of(sindy))
 
 
 @pytest.fixture(scope="module")
@@ -137,30 +153,36 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
-    point = evaluate({"r0": surrogate}, _spec_of(surrogate)).points[0]
-    v = access.potential(point.surrogates["r0"], _train_comp(surrogate))
-    assert v.shape == access.time(point.original).shape
+    results = _run_results({"r0": surrogate}, _spec_of(surrogate))
+    orig = results[("hh_dc", None)]
+    surr = results[("hh_dc", "r0")]
+    v = access.potential(surr.dataset, _train_comp(surrogate))
+    assert v.shape == access.time(orig.dataset).shape
     assert np.isfinite(v[0])
 
 
-def test_sweep_metric_choices_are_all_extractable(sindy_grid: EvalGrid) -> None:
+def test_sweep_metric_choices_are_all_extractable(
+    sindy_results: dict[SimKey, SimResult],
+) -> None:
     """UI が出す掃引 metric 選択肢は全て取り出せる = 選んだのに生成されないキーで
     黙って nan の図が出ることが無い (未知キーは extract_metric が KeyError)。"""
-    point = sindy_grid.points[0]
-    dm = DynamicMetrics(point.original, point.surrogates["r0"], 0, sindy_grid.spec.dt)
+    orig, surr = sindy_results[("hh_dc", None)], sindy_results[("hh_dc", "r0")]
+    dm = DynamicMetrics(orig.dataset, surr.dataset, 0, surr.spec.dt)
     assert all(extract_metric(dm, key)[1] is not None for key in METRIC_KEYS)
     with pytest.raises(KeyError):
         extract_metric(dm, "latency_error")
 
 
-def test_sindy_draws_all_figs(sindy_grid: EvalGrid, sindy: SurrogateBundle) -> None:
+def test_sindy_draws_all_figs(
+    sindy_results: dict[SimKey, SimResult], sindy: SurrogateBundle
+) -> None:
     """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
-    point = sindy_grid.points[0]
+    orig, surr = sindy_results[("hh_dc", None)], sindy_results[("hh_dc", "r0")]
     figs = cell_figs(
-        point.original,
-        point.surrogates["r0"],
+        orig.dataset,
+        surr.dataset,
         0,
-        lambda: preprocessed_latent(sindy, sindy_grid.spec.net, point.original, 0),
+        lambda: preprocessed_latent(sindy, orig.spec.net, orig.dataset, 0),
     )
     assert [name for name, _ in figs] == ["diff", "simple", "attractor"]
 
@@ -173,14 +195,60 @@ def test_eval_and_draw_json_are_self_consistent() -> None:
     conf_dir = Path(__file__).parents[1] / "scripts/conf"
     evals = parse_evals(json.loads((conf_dir / "eval.json").read_text()))
     for spec in evals.values():
-        for point in spec.points:
-            assert len(spec.dataset_at(point).build_current()) > 0
-    assert [len(s.points) for s in evals.values()][0] == 1  # 掃引軸なし = 点 1 つ
+        assert len(spec.dataset().build_current()) > 0
+    # 掃引展開: 掃引なし entry は 1 label、掃引ありは steps 本 (name#0.. name#4)
+    assert sum(1 for label in evals if label == "traub_soma_dc") == 1
+    assert sum(1 for label in evals if label.startswith("traub19_somastim#")) == 5
 
     report = ReportSpec.from_dict(json.loads((conf_dir / "draw.json").read_text()))
-    assert {r.label for r in report.results} <= set(evals)
+    names = {spec.name for spec in evals.values()}
+    assert {r.label for r in report.results} <= names
     for comparison in report.compares.values():
-        assert set(comparison.evals) <= set(evals)
+        assert set(comparison.evals) <= names
+
+
+def _sweep_specs(name: str, values: list[float]) -> dict[str, SimSpec]:
+    """`SweepAxis` 展開後の形を手で組む (掃引点ごとに `current_params` 確定済み)。"""
+    base = {"duration": 30.0, "silence_duration": 0.0}
+    return {
+        f"{name}#{i}": SimSpec(
+            name=name,
+            target="hh",
+            current_type="lin&steady",
+            dt=0.05,
+            current_params={**base, "value": v},
+            sweep_param="value",
+        )
+        for i, v in enumerate(values)
+    }
+
+
+def _run_named(
+    bundles: dict[str, SurrogateBundle], specs: dict[str, SimSpec], run_label: str
+) -> dict[SimKey, SimResult]:
+    """複数系列 (名前ごとの掃引展開済み specs) を一括シミュし run 表示名を固定する。"""
+    expanded = expand(specs, bundles)
+    return {
+        key: SimResult(
+            s,
+            run_label if key[1] is not None else None,
+            simulate(s, bundles[key[1]] if key[1] is not None else None),
+        )
+        for key, s in expanded.items()
+    }
+
+
+def _renamed(
+    results: dict[SimKey, SimResult], old_name: str, new_name: str
+) -> dict[SimKey, SimResult]:
+    """再シミュ無しに系列名だけ付け替えた複製 (テストの計算コスト削減用)。"""
+    out = {}
+    for (label, run_id), result in results.items():
+        new_label = label.replace(old_name, new_name, 1)
+        out[(new_label, run_id)] = dc_replace(
+            result, spec=dc_replace(result.spec, name=new_name)
+        )
+    return out
 
 
 def test_compare_grid_rows_are_current_then_one_per_eval(
@@ -188,75 +256,78 @@ def test_compare_grid_rows_are_current_then_one_per_eval(
 ) -> None:
     """compare 図の行 = [I_ext] + [評価ごとの V]、列 = 点。点数が揃わない結果を
     混ぜると列の意味が行ごとにずれる → raise。"""
-    spec = EvalSpec(
-        target="hh",
-        current_type="lin&steady",
-        dt=0.05,
-        current_params={"duration": 30.0, "silence_duration": 0.0},
-        sweep=SweepAxis(param="value", start=5.0, stop=10.0, steps=2),
-    )
-    grid = evaluate({"r0": sindy}, spec)
-    fig = compare_grid_fig({"a": grid, "b": grid}, "soma")
+    bundles = {"r0": sindy}
+    results_a = _run_named(bundles, _sweep_specs("a", [5.0, 10.0]), "r0")
+    results = {**results_a, **_renamed(results_a, "a", "b")}
+    fig = compare_grid_fig(results, ["a", "b"], "soma")
     assert len(fig.axes) == 3 * 2  # (I_ext + a + b) 行 × 2 点
     assert [ax.get_ylabel() for ax in fig.axes[::2]] == ["I_ext", "a", "b"]
 
     # 同じ格子骨格を run 軸で開くと行 = [I_ext] + [run] (行の組み方だけが違う)。
-    run_fig = trace_grid_fig(grid, "soma")
+    run_fig = trace_grid_fig(results, "a", "soma")
     assert [ax.get_ylabel() for ax in run_fig.axes[::2]] == ["I_ext", "r0"]
 
-    axis = SweepAxis(param="value", start=5.0, stop=10.0, steps=3)
-    short = evaluate({"r0": sindy}, dc_replace(spec, sweep=axis))
+    results_b3 = _run_named(bundles, _sweep_specs("b", [5.0, 10.0, 15.0]), "r0")
+    short = {**results, **results_b3}
     with pytest.raises(ValueError, match="点数"):
-        compare_grid_fig({"a": grid, "b": short}, "soma")
+        compare_grid_fig(short, ["a", "b"], "soma")
 
 
 def test_result_artifacts_round_trip_without_resimulating(
-    sindy_grid: EvalGrid, tmp_path: Path
+    sindy_results: dict[SimKey, SimResult], tmp_path: Path
 ) -> None:
-    """結果 artifact = **1 surrogate run × 1 spec**。保存 → 読込で再シミュ無しに
-    同じ波形が戻り、run 軸ごとに分かれて保存され読込で束ね直る。artifact に
-    surrogate は焼き込まず出所 run_id だけを持つ。"""
+    """結果 artifact = **1 SimSpec = 1 Dataset**。保存 → 読込で再シミュ無しに
+    同じ波形が戻り、`(label, run_id)` ごとに分かれて保存され読込で束ね直る。
+    artifact に surrogate は焼き込まず出所 run_id (`SimSpec.run_id`) だけを持つ。
+    """
     root = tmp_path / "artifacts"
     root.mkdir()
-    n = len(save(sindy_grid, "hh_dc", root, {"r0": "RID"}, "PARENT"))
-    assert n == 1  # run 軸 1 本
+    orig = sindy_results[("hh_dc", None)]
+    surr_base = sindy_results[("hh_dc", "r0")]
+    surr = dc_replace(surr_base, spec=dc_replace(surr_base.spec, run_id="RID"))
 
-    # 同じ label で入力仕様だけ変えて回し直した系列 (束ねたら点の意味がずれる)
-    point = sindy_grid.points[0]
-    other = EvalGrid(
-        spec=dc_replace(sindy_grid.spec, dt=sindy_grid.spec.dt * 2),
-        points=[EvalPoint(None, point.original, {"r1": point.surrogates["r0"]})],
-    )
-    save(other, "hh_dc", root, {"r1": "RID"}, "PARENT")
+    n = len(save_all({("hh_dc", None): orig, ("hh_dc", "RID"): surr}, root, "PARENT"))
+    assert n == 2  # 原系 + run 軸 1 本
+
+    # 同じ (label, run_id) で入力仕様だけ変えて回し直した系列 (束ねたら点の意味がずれる)
+    other_spec = dc_replace(surr.spec, dt=surr.spec.dt * 2)
+    other = SimResult(other_spec, "r1", surr.dataset)
+    save("hh_dc", other, root, "PARENT")
 
     arts = artifacts(root)
-    assert {a.meta.run_id for a in arts} == {"RID"}  # surrogate でなく run_id を持つ
+    assert {a.meta.spec.run_id for a in arts if a.meta.spec.run_id} == {"RID"}
 
-    # label でなく (label, 入力仕様) で束ね、label 衝突は新しい系列が勝つ
+    # (label, run_id) で束ね、同じ key の衝突は新しい系列 (`created` が新しい方) が勝つ
     loaded = load_all(arts)
-    assert list(loaded) == ["hh_dc"]
-    assert loaded["hh_dc"].run_labels == ["r1"]
-    assert loaded["hh_dc"].spec.dt == other.spec.dt
+    assert set(loaded) == {("hh_dc", None), ("hh_dc", "RID")}
+    assert loaded[("hh_dc", "RID")].spec.dt == other_spec.dt
+    assert loaded[("hh_dc", "RID")].run_label == "r1"
     # 入力仕様から dataset を復元でき、波形は float32 で往復する
-    assert loaded["hh_dc"].spec.dataset_at(None).model_name == sindy_grid.spec.target
+    assert loaded[("hh_dc", "RID")].spec.dataset().model_name == orig.spec.target
     np.testing.assert_allclose(
-        access.potential(loaded["hh_dc"].points[0].surrogates["r1"], 0),
-        access.potential(point.surrogates["r0"], 0),
+        access.potential(loaded[("hh_dc", "RID")].dataset, 0),
+        access.potential(surr.dataset, 0),
         rtol=1e-5,
     )
 
 
 def test_report_draws_the_results_at_hand_not_the_declaration(
-    sindy_grid: EvalGrid, sindy: SurrogateBundle
+    sindy_results: dict[SimKey, SimResult], sindy: SurrogateBundle
 ) -> None:
     """描画は**手元の結果だけ**を見る (計算入力の設定と突き合わせない): 設定ファイル
-    に宣言の無い label — 別セッションで回して artifact から読んだ結果 — もそのまま
+    に宣言の無い系列名 — 別セッションで回して artifact から読んだ結果 — もそのまま
     図になり、逆に参照先が手元に無い compare は error 図でなく**黙って落ちる**
     (宣言とのズレは呼び出し側の関心) = 計算と描画が切れている。"""
+    renamed = {
+        ("読んだ系列", run_id): dc_replace(
+            result, spec=dc_replace(result.spec, name="読んだ系列")
+        )
+        for (_label, run_id), result in sindy_results.items()
+    }
     report = ReportSpec(
         results=(ResultSpec(label="読んだ系列", draw=DrawSpec(eval_comp="soma")),)
     )
-    entries = eval_report({"読んだ系列": sindy_grid}, {"r0": sindy}, report)
+    entries = eval_report(renamed, {"r0": sindy}, report)
     assert any(e.name.startswith("読んだ系列/") for e in entries)
 
     dangling = CompareSpec(name="c", evals=["未実行"], eval_comp="soma")
@@ -294,11 +365,11 @@ def test_draw_settings_are_typed_and_failed_figs_fold_into_error(
 
 
 def test_view_comps_limit_drawn_traces(
-    sindy_grid: EvalGrid, sindy: SurrogateBundle
+    sindy_results: dict[SimKey, SimResult], sindy: SurrogateBundle
 ) -> None:
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
-    ds = sindy_grid.points[0].original
+    ds = sindy_results[("hh_dc", None)].dataset
     assert len(panels_simple(ds, comps=[])) < len(panels_simple(ds))
     assert [name for name, _ in train_figs(sindy, comps=[_train_comp(sindy)])] == [
         name for name, _ in train_figs(sindy)

@@ -6,55 +6,17 @@
 持たない — 軸を組み替える処理は呼び出し側 (`metrics.select`) が dict を舐めるだけ。
 """
 
-import logging
 from dataclasses import replace as dc_replace
 
 import xarray as xr
 
-from ..core import access
-from ..core.coords import transform_gate
-from ..core.diverge import diverged
-from ..core.network import NeuronGraph
+from ..core.diverge import log_divergence
 from ..core.simulator import unified_simulator
 from ..surrogate.bundle import SurrogateBundle
-from ..surrogate.replace import apply_surrogate, replaceable
+from ..surrogate.replace import apply_surrogate, replaced_names
 from .spec import SimSpec
 
-logger = logging.getLogger(__name__)
-
 SimKey = tuple[str, str | None]  # (label, run_id)。run_id=None は原系
-
-
-# --- surrogate 側の診断 (結果でなく surrogate に属する自由関数) ---------------------
-
-
-def preprocessed_latent(
-    surrogate: SurrogateBundle, net: NeuronGraph, ds: xr.Dataset, comp_id: int
-) -> xr.Dataset:
-    """comp_id ノードの原系ゲートを surrogate の latent 空間へ射影した (V, latent...)
-    xr (診断用)。置換対象外 (学習ドメイン外) は latent 比較不可。
-    """
-    comp = net.nodes[comp_id]
-    if not replaceable(surrogate.meta, comp):
-        # error_fig 経由で matplotlib テキストへ描かれる → CJK グリフ非対応で
-        # 文字化けするため英語で書く。
-        raise ValueError(
-            f"comp {comp.name!r} is outside the trained domain -> latent comparison "
-            f"not possible (trained type {surrogate.meta.comp_type.name!r})"
-        )
-    return transform_gate(surrogate.preprocessor, ds, comp_id)
-
-
-def log_divergence(net: NeuronGraph, surr_ds: xr.Dataset, where: str) -> None:
-    """置換系の発散を警告ログに出す。発散すると指標が nan/無意味になり図も潰れる
-    → 図を読む前に原因側 (置換系) が壊れたと気付けるように。"""
-    names = [
-        net.nodes[int(i)].name
-        for i in access.comp_ids(surr_ds)
-        if diverged(access.potential(surr_ds, int(i)))
-    ]
-    if names:
-        logger.warning("置換系の電位が発散 (%s): %s", where, ", ".join(names))
 
 
 # --- 実行 (spec → シミュ) -----------------------------------------------------------
@@ -70,7 +32,9 @@ def expand(
     out: dict[SimKey, SimSpec] = {}
     for label, spec in specs.items():
         compatible = {
-            run_id: s for run_id, s in surrogates.items() if spec.replaceable(s.meta)
+            run_id: s
+            for run_id, s in surrogates.items()
+            if replaced_names(s.meta, spec.net)
         }
         if not compatible:
             continue

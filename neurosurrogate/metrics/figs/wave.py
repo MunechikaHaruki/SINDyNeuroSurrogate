@@ -13,10 +13,11 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from .. import select
 from ..wave import (
     DynamicMetrics,
     diff_or_nan,
-    dm_at,
+    dm_of,
     extract_metric,
     n_spikes,
     spike_feature_values,
@@ -26,7 +27,8 @@ from ..wave import (
 )
 
 if TYPE_CHECKING:
-    from ...eval.eval import EvalGrid
+    from ...eval.run import SimKey
+    from ...eval.store import SimResult
 
 
 def _row(name: str, o: float, s: float, col: str = "metric") -> dict:
@@ -53,19 +55,24 @@ def spike_features_df(
     return pd.DataFrame(rows).set_index("feature")
 
 
-def metrics_df(grid: EvalGrid, comp_name: str, metric_key: str) -> pd.DataFrame:
-    """点軸に沿った metric の DataFrame (列=run 軸)。原系の値は run に依らない
-    ので `original` 列 1 本へ畳む。`EvalGrid` 自身のメソッドにしない (計算結果の
-    純粋データ型に評価/DataFrame 化の関心を持たせない)。"""
-    comp_id = grid.spec.net.name_to_idx(comp_name)
+def metrics_df(
+    results: dict[SimKey, SimResult], name: str, comp_name: str, metric_key: str
+) -> pd.DataFrame:
+    """`name` の系列に沿った metric の DataFrame (列=run 軸)。原系の値は run に
+    依らないので `original` 列 1 本へ畳む。"""
+    labels = select.labels_of(results, name)
+    run_ids = select.run_ids_of(results, name)
     rows: list[dict] = []
-    for i, point in enumerate(grid.points):
-        row: dict = {"point": point.value}
-        for run_label in point.surrogates:
-            orig, surr = extract_metric(dm_at(grid, i, run_label, comp_id), metric_key)
-            row[run_label] = surr
-            if orig is not None:
-                row["original"] = orig  # run に依らない = 同じ値の上書き
+    for label in labels:
+        orig = results[(label, None)]
+        comp_id = orig.spec.net.name_to_idx(comp_name)
+        row: dict = {"point": orig.spec.sweep_value}
+        for run_id in run_ids:
+            o, s = select.pair(results, label, run_id)
+            value, orig_value = extract_metric(dm_of(o, s, comp_id), metric_key)
+            row[select.run_label_of(results, name, run_id)] = value
+            if orig_value is not None:
+                row["original"] = orig_value  # run に依らない = 同じ値の上書き
         rows.append(row)
     return pd.DataFrame(rows)
 

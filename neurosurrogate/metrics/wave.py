@@ -4,10 +4,8 @@ marimo/mlflow 非依存。
 **DataFrame 化 (表として並べる/どの列名にするか) はここの関心でない**: それは
 「結果をどう見せるか」= 描画層の仕事 (`metrics/figs/wave.py`)。ここは
 `DynamicMetrics` を引数に取り、スカラーや (orig, surr) のタプル/dict を返す
-純粋関数群だけを持つ。`eval/eval.py` の発散ログ (`diverged`) もここを呼ぶ
-(計算層が評価層の関数を呼ぶ方向の依存は許容 — 評価ロジック自体を計算層の
-データ型 `EvalGrid` に持たせない方を優先する。詳細は `eval/eval.py` の
-`EvalGrid` docstring)。
+純粋関数群だけを持つ。発散判定 (`diverged`) は `eval/run.py` の発散ログからも
+呼ばれる共通述語なので `core/diverge.py` に置く。
 """
 
 from __future__ import annotations
@@ -25,7 +23,7 @@ import xarray as xr
 from ..core import access
 
 if TYPE_CHECKING:
-    from ..eval.eval import EvalGrid
+    from ..eval.store import SimResult
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -62,13 +60,6 @@ _EFEL_FEATURES = [
 ]
 
 _NAN = float("nan")
-_DIVERGE_V = 1e3  # |V| [mV] の発散判定閾値 (生理的な範囲は ±200 程度)
-
-
-def diverged(v: np.ndarray) -> bool:
-    """電位系列が NaN/inf を含むか、生理的にあり得ない大きさへ振り切れたか。
-    サロゲート置換系が数値的に破綻したかの共通基準 (評価ログ・波形図で共用)。"""
-    return not bool(np.all(np.isfinite(v))) or float(np.abs(v).max()) > _DIVERGE_V
 
 
 @dataclass
@@ -120,14 +111,9 @@ class DynamicMetrics:
         return (list(p) if p is not None else []), (list(q) if q is not None else [])
 
 
-def dm_at(grid: EvalGrid, index: int, run_label: str, comp_id: int) -> DynamicMetrics:
-    """`EvalGrid` の 1 セル (点 × run) から `DynamicMetrics` を組み立てる。
-    評価用のアクセサなので `EvalGrid` (計算結果の純粋データ型) 自身のメソッドに
-    しない — ここに自由関数として置く。"""
-    point = grid.points[index]
-    return DynamicMetrics(
-        point.original, point.surrogates[run_label], comp_id, grid.spec.dt
-    )
+def dm_of(orig: SimResult, surr: SimResult, comp_id: int) -> DynamicMetrics:
+    """(原系, 置換系) の `SimResult` ペアから `DynamicMetrics` を組み立てる。"""
+    return DynamicMetrics(orig.dataset, surr.dataset, comp_id, surr.spec.dt)
 
 
 def _or_nan(fn, arr) -> float:

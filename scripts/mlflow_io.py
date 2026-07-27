@@ -85,25 +85,16 @@ def load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
     return [load_surrogate_model(rid) for rid in run_ids]
 
 
-def run_ids_by_label(
-    bundles: list[SurrogateBundle], run_ids: list[str]
-) -> dict[str, str]:
-    """run 軸キー (`run_labels`) → MLflow run_id。結果・図・artifact の run 軸を
-    同じキーで揃えつつ、artifact に出所 run を書くための対応表 = 結果を保存しても
-    「どの run で回したか」を失わない。run_id という概念を持つのは MLflow 層なので
-    domain でなくここが組む。"""
-    return dict(zip(run_labels(bundles), run_ids, strict=True))
-
-
 def load_bundles(
     run_ids: list[str],
 ) -> tuple[dict[str, SurrogateBundle], dict[str, str]]:
-    """run_id 列 → (run 軸キー→surrogate, run 軸キー→run_id)。marimo からは
-    これ 1 回の呼び出しで済ませる (load_runs/run_ids_by_label/zip の組み立ては
-    marimo のセルでなくここが持つ)。"""
+    """run_id 列 → (run_id→surrogate, run_id→表示名)。`eval.run`/`eval.store` は
+    surrogate を **run_id をキーに**扱う (`SimSpec.run_id` が MLflow run_id
+    そのものなので、他層は表示名でなく run_id で引く) → ここで揃えて返す。
+    marimo からはこれ 1 回の呼び出しで済ませる。"""
     bundles = load_runs(run_ids)
-    ids = run_ids_by_label(bundles, run_ids)
-    return dict(zip(ids, bundles, strict=True)), ids
+    names = dict(zip(run_ids, run_labels(bundles), strict=True))
+    return dict(zip(run_ids, bundles, strict=True)), names
 
 
 def sweep_siblings(parent_id: str) -> list[str]:

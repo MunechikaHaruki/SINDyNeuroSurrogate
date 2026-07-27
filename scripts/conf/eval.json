@@ -1,6 +1,5 @@
-[
-  {
-    "name": "traub_soma_dc",
+{
+  "traub_soma_dc": {
     "target": "traub",
     "current_type": "lin&steady",
     "dt": 0.01,
@@ -10,8 +9,7 @@
       "value": 3.0
     }
   },
-  {
-    "name": "traub19_somastim",
+  "traub19_somastim": {
     "target": "traub19_soma",
     "current_type": "lin&steady",
     "dt": 0.01,
@@ -26,8 +24,7 @@
       "steps": 5
     }
   },
-  {
-    "name": "traub19_dendstim",
+  "traub19_dendstim": {
     "target": "traub19_soma_dendstim",
     "current_type": "lin&steady",
     "dt": 0.01,
@@ -42,8 +39,7 @@
       "steps": 5
     }
   },
-  {
-    "name": "traub19_pulse_freq",
+  "traub19_pulse_freq": {
     "target": "traub19_soma",
     "current_type": "periodic&pulse",
     "dt": 0.01,
@@ -60,4 +56,4 @@
       "steps": 5
     }
   }
-]
+}

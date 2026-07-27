@@ -119,14 +119,6 @@ def _(mo, sel_name):
 
 
 @app.cell
-def _(ARTIFACT_DIR, bundles, run_and_save, run_ids, run_panel, sel_id, specs):
-    # 評価ボタン: 評価 → artifact 保存だけ (描画はしない)。
-    if run_panel.value["eval"]:
-        run_and_save(bundles, specs, ARTIFACT_DIR, run_ids, sel_id)
-    return
-
-
-@app.cell
 def _(
     ARTIFACT_DIR,
     DRAW_JSON,
@@ -154,7 +146,9 @@ def _(
         arts = artifacts(ARTIFACT_DIR, sel_id)
         res = load_all(arts)
         bundles_for_draw = {
-            a.meta.run_label: load_surrogate_model(a.meta.run_id) for a in arts
+            a.meta.spec.run_id: load_surrogate_model(a.meta.spec.run_id)
+            for a in arts
+            if a.meta.spec.run_id is not None
         }
         sources = [str(a.path.relative_to(ARTIFACT_DIR)) for a in arts]
         style_paths = [
@@ -202,6 +196,14 @@ def _(load_bundles, run_ids_list):
     # run 軸キー → surrogate / run_id。組み立ては mlflow_io.load_bundles 1 つに畳む。
     bundles, run_ids = load_bundles(run_ids_list)
     return bundles, run_ids
+
+
+@app.cell
+def _(ARTIFACT_DIR, bundles, run_and_save, run_ids, run_panel, sel_id, specs):
+    # 評価ボタン: 評価 → artifact 保存だけ (描画はしない)。
+    if run_panel.value["eval"]:
+        run_and_save(bundles, specs, ARTIFACT_DIR, run_ids, sel_id)
+    return
 
 
 if __name__ == "__main__":

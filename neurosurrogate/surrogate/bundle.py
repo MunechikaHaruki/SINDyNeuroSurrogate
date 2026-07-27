@@ -129,25 +129,3 @@ class SurrogateBundle:
     def surr_comp_type(self) -> CompartmentType:
         """置換後の CompartmentType (replace.apply_surrogate が差し込む)。"""
         return self.ansatz.surr_comp_type(self.meta, self.preprocessor, self.closure)
-
-    def metrics(self) -> dict:
-        # cost/* は MLflow metric キー空間の組立 = metrics 集約の関心事 (OpCost 代数
-        # ではない) → ここでインライン展開する。surr のコストは surr_comp_type に焼き
-        # 込み済 (別経路を持たない)。original が無ければ差分は出さない。
-        orig = self.meta.original_opcost
-        cost: dict[str, int] = {}
-        if orig is not None:
-            surr = self.surr_comp_type.opcost
-            assert surr is not None  # surr_comp_type は必ず opcost を焼き込む
-            surr_d = surr.to_dict()
-            orig_d = orig.to_dict()
-            cost = {
-                **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
-                **{f"cost/original/{k}": v for k, v in orig_d.items()},
-                **{f"cost/surr-orig/{k}": surr_d[k] - orig_d[k] for k in orig_d},
-            }
-        return {
-            **self.closure.metrics(),
-            **self.preprocessor.metrics(),
-            **cost,
-        }
