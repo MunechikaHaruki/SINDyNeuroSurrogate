@@ -61,8 +61,8 @@
     // ======== 左: 実際の錐体細胞と、そのコンパートメント分割 ========
     [
       #figure(
-        image("pic/ref/pyramidal_.png", width: 100%),
-        caption: [CA3 pyramidal neuron @noauthor__2012],
+        image("pic/ref/pyramidal.png", width: 90%),
+        caption: [guinea pig CA3 pyramidal neuron@pyramidal],
         numbering: none,
         supplement: none,
       )

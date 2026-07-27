@@ -112,7 +112,7 @@
     // --- 圧縮器 ---
     line((4.9, 3.3), (5.6, 3.3), mark: (end: "stealth", scale: 0.5))
     rect((5.7, 2.4), (8.7, 4.2), stroke: 2.4pt)
-    content((7.2, 3.3), lab[PCA / AE])
+    content((7.2, 3.3), lab[ AE])
     line((8.8, 3.3), (9.5, 3.3), mark: (end: "stealth", scale: 0.5))
 
     // --- 潜在変数 ---
@@ -165,7 +165,7 @@
     line((8.2, 5.2), (8.9, 6.2), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + red)
     content(
       (9.0, 6.3),
-      lab(fill: red)[library basis =\ the gates' own\ *rate functions*],
+      lab(fill: red)[basal function =\ the gates' own\ *rate functions*],
       anchor: "south-west",
     )
   },
