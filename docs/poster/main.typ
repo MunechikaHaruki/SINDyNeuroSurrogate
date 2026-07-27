@@ -48,7 +48,7 @@
   text(size: 60pt)[
     A Surrogate Model for Reducing the Computational Cost of Neuron Simulations #v(-3em)
   ],
-  authors: "Haruki Munechika",
+  authors: "Haruki Munechika, Taira Kobayashi",
   institutes: "",
 )
 
@@ -147,12 +147,12 @@
         // ======== ② 純電位依存ゲート 8 本だけ潜在へ圧縮 (V と Ca サブ系は素通し) ========
         [
           // 訳: ② 電位依存ゲートだけを圧縮する。
-          *#text(blue)[②] Compress _only_ the gates*
+          *#text(blue)[②] Compress gates*
           #v(0.2em)
           #stage_compress(unit: 1.57cm, label-size: 24pt)
           #v(0.2em)
           // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
-          *6 voltage-dependent gates* ride a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n=5$. #text(blue)[$V$] and #ce("Ca^2+") *stay uncompressed*.
+          *6 voltage-dependent gates* ride a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n=5$. #text(blue)[$V$] *stays uncompressed*.
         ],
         // ======== ③ [V, z] から潜在の支配方程式を同定 ========
         [
@@ -162,19 +162,19 @@
           #stage_identify(unit: 1.58cm, label-size: 24pt)
           #v(0.2em)
           // 訳: 潜在だけスパース同定、dV/dt と Ca サブ系は元の物理式のまま。基底はゲート自身のレート関数 α, β (昨年の 41 項汎用ライブラリを置換)。
-          *SINDy* @Champion-2019-DatadrivenDiscoveryCoordinatesGoverning fits *only* $dot(bold(z))$; $dot(V)$ and #ce("Ca^2+") keep *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$, not a *41-term* generic one.
+          *SINDy* @Champion-2019-DatadrivenDiscoveryCoordinatesGoverning fits *only* $dot(bold(z))$; $dot(V)$ keeps *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$, not a *41-term* generic one.
         ],
       )
-      #v(0.9em)
+      #v(0.4em)
       // ======== ④ 学習済み decoder/SINDy を等価回路の gate 計算へ差し込んでシミュレーション ========
-      // title の下に (figure, caption) を横並びにして縦を詰める。
+      // 図を左, 説明文を右に置く (①②③の figure-then-text とは違い、図が横長のため横並びの方がクリーン)。
       *#text(blue)[④] Simulate: decoder-in-the-loop*
-      #v(0.2em)
+      #v(0.15em)
       #grid(
         columns: (1fr, 1fr),
         align: (center + horizon, left + horizon),
         gutter: 0em,
-        stage_simulate_loop(body-size: 20pt),
+        stage_simulate_loop(unit: 0.72cm, label-size: 11pt, body-size: 12pt),
         // 訳: 各ステップで z→decode→gates、等価回路の dV/dt 式(赤枠)は不変のまま評価。z 自身は同じステップで SINDy(ξ) が更新し、次ステップへ積分。
         [Each step: $bold(z) ->$ *decode* $->$ gates feed the *unchanged* equivalent-circuit $dot(V)$; SINDy updates $bold(z)$ *in place of* the original gate ODEs.],
       )
@@ -200,7 +200,7 @@
         columns: (1fr, 1fr),
         gutter: -0.9em,
         [
-          *Training data (preprocessed)*
+          *Data*
           #align(center)[
             #figure(
               image("result/train_preprocessed.png", width: 82%),
@@ -211,7 +211,7 @@
           ]
         ],
         [
-          *① Single action potential*
+          * Action Potential comparison*
           #align(center)[
             #figure(
               image("result/diff.png", width: 90%),
@@ -273,7 +273,7 @@
 ]
 
 // ======== Footer: Conclusion / Code / References / COI (poster 全体の下部) ========
-#block(width: 100%, above: 0.1em, below: 0em)[
+#block(width: 100%, above: 1em, below: 0em)[
   #grid(
     columns: (2.4fr, 1fr),
     gutter: 1em,
@@ -295,7 +295,8 @@
     ],
     [
       #text(size: 15pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")[github.com/MunechikaHaruki/SINDyNeuroSurrogate]]
-      #show bibliography: set text(size: 13pt)
+      #v(0.5em)
+      #show bibliography: set text(size: 17pt)
       #bibliography("bibliography.bib", title: none)
       #v(0.3em)
       #block(

@@ -104,11 +104,6 @@
     content((2.8, 3.3), text(size: label-size * 4.0)[\{])
     content((3.2, 3.3), lab[6 gates], anchor: "west")
 
-    // --- Ca²⁺ サブ系 (S, R, Q, XI) も圧縮せず physics で解く ---
-    content((0.1, 0.5), lab[$S, R, Q, xi$], anchor: "west")
-    line((2.4, 0.5), (9.3, 0.5), mark: (end: "stealth", scale: 0.5), stroke: 1.4pt + gray)
-    content((5.8, 0.7), lab(fill: gray.darken(35%))[$"Ca"^(2+)$ subsystem: also physics], anchor: "south")
-
     // --- 圧縮器 ---
     line((4.9, 3.3), (5.6, 3.3), mark: (end: "stealth", scale: 0.5))
     rect((5.7, 2.4), (8.7, 4.2), stroke: 2.4pt)
@@ -186,42 +181,66 @@
 )
 #let _arrow(size: 18pt) = text(size: size)[#sym.arrow.r]
 
-#let stage_simulate_loop(body-size: 20pt) = {
-  set text(size: body-size)
-  let zlab = text(fill: green.darken(25%))[$bold(z)(t)$]
-  let vlab = text(fill: blue)[$V(t)$]
-  stack(
-    dir: ttb,
-    spacing: 0.55em,
-    // --- decode → gates → 等価回路 (不変) ---
-    box(stack(
-      dir: ltr,
-      spacing: 0.4em,
-      zlab,
-      _arrow(),
-      _flow-box[decode #linebreak() #text(size: 0.7em)[learned: AE #sym.slash PCA]],
-      _arrow(),
-      [gates],
-      _arrow(),
-      _flow-box(color: rgb("#8a2020"))[equivalent circuit $dot(V) = f($gates$, V)$ #linebreak() *unchanged*],
-      _arrow(),
-      [$dot(V)$],
-    )),
-    // --- SINDy: 同じ z, V から潜在方程式 (学習済み ξ) ---
-    box(stack(
-      dir: ltr,
-      spacing: 0.4em,
-      zlab, [,], vlab,
-      _arrow(),
-      _flow-box[SINDy $xi$],
-      _arrow(),
-      [$dot(bold(z)) = xi Theta(bold(z), V)$],
-    )),
-    v(0.2em),
-    // --- 積分してループ ---
-    align(center)[
-      $dot(V), dot(bold(z))$ #_arrow() #_flow-box[integrate (Euler)] #_arrow() $bold(z)(t+Delta t), V(t+Delta t)$
-      #text(fill: gray.darken(20%))[#h(1em) $->$ repeat *every* simulation step]
-    ],
-  )
-}
+// ④ 1本の処理の流れとして描く: z→decode(②の鏡写し)→gates→等価回路→V̇、
+// そのすぐ下 (等価回路と同じ x 位置) に SINDy(③で学習した ξ) を置き z,V→ż を出す。
+// V̇ と ż は右端の integrate box に合流し、次ステップの z,V へループする。
+#let stage_simulate_loop(unit: 1cm, label-size: 22pt, body-size: 20pt) = canvas(
+  length: unit,
+  {
+    import draw: *
+    set-style(stroke: 1.4pt, content: (padding: 0.1))
+    let lab = (..a) => text(size: label-size, ..a)
+    // gates 出力以降を右へずらして "6 gates" ラベルと equiv.circuit box の衝突を解消
+    let dx = 1.4
+
+    // --- V は decode を経由せずそのまま等価回路へ (②の「passes through」と対称) ---
+    line((0.1, 4.6), (11.8 + dx, 4.6), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
+    content((0.1, 4.75), lab(fill: blue)[$V$ unchanged], anchor: "west")
+
+    // --- 潜在変数 z (②の出力と同じ波形・同じ位置) ---
+    line(.._smooth-pts(0.1, 3.5, 2.0, 0.8, freq: 1.2, phase: 1.0), stroke: 1.6pt + green.darken(25%))
+    line(.._smooth-pts(0.1, 2.1, 2.0, 0.8, freq: 0.9, phase: 3.4), stroke: 1.6pt + green.darken(25%))
+    content((2.3, 3.9), lab(fill: green.darken(25%))[$z_1$], anchor: "west")
+    content((1.1, 1.6), lab[$dots.v$])
+    content((1.1, 1.1), lab[$bold(z) in RR^n$], anchor: "north")
+
+    // --- decoder (② AE box と同じ大きさ, 逆向き矢印) ---
+    line((2.5, 3.3), (3.2, 3.3), mark: (end: "stealth", scale: 0.5))
+    rect((3.3, 2.4), (6.3, 4.2), stroke: 2.4pt)
+    content((4.8, 3.3), lab[decode #linebreak() #text(size: 0.7em)[AE, reverse of ②]])
+    line((6.4, 3.3), (7.1, 3.3), mark: (end: "stealth", scale: 0.5))
+
+    // --- gates (②の入力ゲート群と同じ波形・同じ本数) ---
+    line(.._smooth-pts(7.3, 4.3, 2.3, 0.8, freq: 1.4, phase: 0.6))
+    line(.._smooth-pts(7.3, 3.1, 2.3, 0.8, freq: 1.9, phase: 2.2))
+    line(.._smooth-pts(7.3, 1.9, 2.3, 0.8, freq: 1.1, phase: 4.0))
+    content((8.5, 1.4), lab[$dots.v$])
+    content((9.9, 3.3), text(size: label-size * 4.0)[\}])
+    content((10.3, 3.3), lab[6 gates], anchor: "west")
+
+    // --- 等価回路 (不変, ③の red と同じ色で「触っていない」ことを示す) ---
+    line((11.1 + dx, 3.3), (11.8 + dx, 3.3), mark: (end: "stealth", scale: 0.5))
+    rect((11.9 + dx, 2.3), (14.9 + dx, 4.3), stroke: 2.4pt + rgb("#8a2020"))
+    content((13.4 + dx, 3.7), lab(fill: rgb("#8a2020"))[equiv.#linebreak()circuit])
+    content((13.4 + dx, 2.7), lab(fill: rgb("#8a2020"), size: label-size * 0.65)[$dot(V) = f(dot)$,#linebreak()*unchanged*])
+    line((15.0 + dx, 3.3), (15.7 + dx, 3.3), mark: (end: "stealth", scale: 0.5))
+    content((15.8 + dx, 3.3), lab[$dot(V)$], anchor: "west")
+
+    // --- SINDy: 等価回路の真下 (同じ x 位置), 同じ z, V から ż を出す ---
+    line((0.7, 3.0), (0.7, 1.1), (11.1 + dx, 1.1), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + green.darken(25%))
+    line((0.1, 4.6), (0.1, 0.3), (11.1 + dx, 0.3), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
+    rect((11.9 + dx, -0.1), (14.9 + dx, 1.5), stroke: 2.4pt)
+    content((13.4 + dx, 1.0), lab[SINDy $xi$])
+    content((13.4 + dx, 0.4), lab(size: label-size * 0.65)[learned in ③])
+    line((15.0 + dx, 0.7), (15.7 + dx, 0.7), mark: (end: "stealth", scale: 0.5))
+    content((15.8 + dx, 0.7), lab[$dot(bold(z))$], anchor: "west")
+
+    // --- V̇, ż → integrate → 次ステップの z, V へ (1 本の流れとして閉じる) ---
+    line((16.6 + dx, 3.3), (17.4 + dx, 1.9), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + rgb("#8a2020"))
+    line((16.9 + dx, 0.7), (17.4 + dx, 1.6), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + green.darken(25%))
+    rect((17.5 + dx, 1.15), (20.5 + dx, 2.65), stroke: 2.4pt)
+    content((19.0 + dx, 1.9), lab[integrate #linebreak() #text(size: 0.7em)[(Euler)]])
+    line((20.6 + dx, 1.9), (21.3 + dx, 1.9), mark: (end: "stealth", scale: 0.5))
+    content((21.4 + dx, 1.9), lab[$bold(z)(t+Delta t), V(t+Delta t)$], anchor: "west")
+  },
+)
