@@ -1,25 +1,25 @@
 """artifact (計算結果) + draw.json (描画宣言) → 図/表の書き出し。
 
-marimo の保存ボタンと `uv run scripts/draw.py` の CLI が呼ぶ**唯一の描画本体**。
-notebook 上で図を眺めるのはやめ、描画は「artifact を読んで PNG/CSV へ落とす」一括
-処理に統一する — 図は最終的に results/ の PNG として残るものであり、marimo は
-MLflow run 選択・シミュ実行・保存の 3 操作だけに絞る (このファイルは MLflow 非依存の
-domain 層ではなく scripts 側 = surrogate ロードに MLflow を使ってよい)。
+marimo の描画ボタンが呼ぶ**唯一の描画本体** (CLI は持たない = marimo と CLI の
+二重管理を避け、実行経路を 1 つに保つ)。notebook 上で図を眺めるのはやめ、描画は
+「artifact を読んで PNG/CSV へ落とす」一括処理に統一する — 図は最終的に results/ の
+PNG として残るものであり、marimo は MLflow run 選択・評価実行・描画の 3 操作だけに
+絞る (このファイルは MLflow 非依存の domain 層ではなく scripts 側 = surrogate
+ロードに MLflow を使ってよい)。
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 from mlflow_io import load_surrogate_model
 
-from neurosurrogate.metrics.store import Artifact, artifacts, load_all
+from neurosurrogate.eval.store import Artifact, artifacts, load_all
+from neurosurrogate.metrics.report import ReportSpec, eval_report, model_report
+from neurosurrogate.metrics.save import save_entries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
-from neurosurrogate.view.report import ReportSpec, eval_report, model_report
-from neurosurrogate.view.save import save_entries
 
 CONF_DIR = Path(__file__).resolve().parent / "conf"
 DRAW_JSON = CONF_DIR / "draw.json"
@@ -55,7 +55,7 @@ def render(
     arts = artifacts(artifact_dir, parent_run_id)
     res = load_all(arts)
     bundles = bundles_of(arts)
-    setup_mpl(report.default.plt_style)
+    setup_mpl(report.plt_style)
     entries = model_report(bundles, res, report) + eval_report(res, bundles, report)
     sources = [str(a.path.relative_to(artifact_dir)) for a in arts]
     meta = {"draw": draw_dict, "sources": sources}
@@ -69,21 +69,3 @@ def render_if(triggered: bool, dir_name: str, parent_run_id: str) -> list[Path]:
     if not triggered:
         return []
     return render(ARTIFACT_DIR, RESULT_DIR / dir_name, parent_run_id=parent_run_id)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-o", "--out", default="_result", help="results/ 直下の保存先")
-    parser.add_argument("--artifacts", type=Path, default=ARTIFACT_DIR)
-    parser.add_argument("--draw", type=Path, default=DRAW_JSON)
-    parser.add_argument(
-        "--run", default=None, help="この学習 run (親 or 孤立の run_id) だけ描く"
-    )
-    args = parser.parse_args()
-    saved = render(args.artifacts, RESULT_DIR / args.out, args.draw, args.run)
-    for p in saved:
-        print(p)
-
-
-if __name__ == "__main__":
-    main()

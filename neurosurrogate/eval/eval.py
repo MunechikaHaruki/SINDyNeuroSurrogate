@@ -9,23 +9,16 @@ marimo/mlflow 非依存の純粋ドメイン層 (widget は scripts 側)。
 import logging
 from dataclasses import dataclass
 
-import pandas as pd
 import xarray as xr
 
 from ..core import access
 from ..core.coords import transform_gate
 from ..core.network import NeuronGraph
 from ..core.simulator import unified_simulator
+from ..metrics.wave import diverged
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.replace import apply_surrogate, replaceable
 from .spec import EvalSpec
-from .wave import (
-    DynamicMetrics,
-    WaveReport,
-    diverged,
-    extract_metric,
-    wave_report,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +40,10 @@ class EvalGrid:
     """1 spec の評価結果 = 点軸 × run 軸のグリッド。
 
     **spec をそのまま持つ** = 掃引軸名も適用先ネットも dt も描画が結果から引ける
-    (model_name/dt を結果側へ写し取らない)。
+    (model_name/dt を結果側へ写し取らない)。**計算結果の純粋データ型に留める** —
+    指標計算・DataFrame 化 (旧 `dm_at`/`metrics_df`) は評価層の関心なので
+    `metrics/wave.py`/`metrics/figs/wave.py` の自由関数として持つ (この型に
+    メソッドとして生やさない)。
     """
 
     spec: EvalSpec
@@ -63,34 +59,6 @@ class EvalGrid:
     def swept(self) -> bool:
         """点が 2 つ以上 = 点軸に沿った図 (メトリクス折れ線) が意味を持つか。"""
         return len(self.points) > 1
-
-    def wave_report(
-        self, index: int, run_label: str, comp_id: int, spike_orig: int, spike_surr: int
-    ) -> WaveReport:
-        """1 セル (点 × run) の波形/スパイク指標。"""
-        point = self.points[index]
-        dm = DynamicMetrics(
-            point.original, point.surrogates[run_label], comp_id, self.spec.dt
-        )
-        return wave_report(dm, spike_orig=spike_orig, spike_surr=spike_surr)
-
-    def metrics_df(self, comp_name: str, metric_key: str) -> pd.DataFrame:
-        """点軸に沿った metric の DataFrame (列=run 軸)。原系の値は run に依らない
-        ので `original` 列 1 本へ畳む。"""
-        comp_id = self.spec.net.name_to_idx(comp_name)
-        rows: list[dict] = []
-        for point in self.points:
-            row: dict = {"point": point.value}
-            for run_label, surr_ds in point.surrogates.items():
-                orig, surr = extract_metric(
-                    DynamicMetrics(point.original, surr_ds, comp_id, self.spec.dt),
-                    metric_key,
-                )
-                row[run_label] = surr
-                if orig is not None:
-                    row["original"] = orig  # run に依らない = 同じ値の上書き
-            rows.append(row)
-        return pd.DataFrame(rows)
 
 
 # --- surrogate 側の診断 (結果でなく surrogate に属する自由関数) ---------------------

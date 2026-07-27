@@ -15,14 +15,15 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from ...core import access
-from ...metrics.wave import diverged
 from ..engine import new_figure, place_legend
+from ..wave import diverged
+from .wave import metrics_df
 
 if TYPE_CHECKING:
     import xarray as xr
     from matplotlib.axes import Axes
 
-    from ...metrics.eval import EvalGrid
+    from ...eval.eval import EvalGrid
 
 
 def _axis_name(grid: EvalGrid) -> str | None:
@@ -38,7 +39,7 @@ def metric_fig(
 ) -> Figure:
     """点軸に沿ったメトリクス折れ線 (Original + 各 run)。marimo 非依存。
     run 軸ラベルも点軸名も結果から引く = 別引数で持ち回らない。"""
-    data = grid.metrics_df(comp_name, metric_key)
+    data = metrics_df(grid, comp_name, metric_key)
     axis = _axis_name(grid) or "point"
     fig = new_figure()
     ax = fig.subplots()

@@ -6,17 +6,22 @@
 
 規約 (1 artifact = **1 surrogate run × 1 spec**、1 dir = **1 学習 run (親 or 孤立)**):
 
-    <root>/<parent_run_id>/<created>_<label>__<run_label>/
+    <root>/<parent_run_id>/<label>__<run_label>__<spec_hash>/
         meta.json     # 何を回したか (入力仕様 / run_id / run_label / parent_run_id)
         data.joblib   # 点ごとの (点の値, 原系, 置換系)
+
+dir 名は (parent_run_id, label, spec, run_label) だけで決まる = 同じ入力を回し
+直せば同じ dir を上書きする (`created` は履歴表示用に meta へ残すだけで dir
+命名には使わない)。
 
 - **`parent_run_id` が dir を切る単位**: sweep なら親 run_id、単発なら自身の run_id
   (呼び出し側が渡す = marimo の run 選択 `sel_id` そのもの)。これにより
   `results/artifacts/<parent_run_id>/` の 1 dir が「回した学習 run」と 1 対 1
   対応し、`scripts/draw.py` から対象 run だけを指定して描画できる。
-- **surrogate を焼き込まない**: meta に `run_id` (MLflow) を書くだけ。閉包項や
-  preprocessor が要る図 (diff/attractor) は描画側が run_id からロードする
-  (MLflow は scripts 側の関心なのでここは知らない)。
+- **surrogate を焼き込まない**: meta に `run_id` (呼び出し側が渡す opaque な
+  識別子) を書くだけ。閉包項や preprocessor が要る図 (diff/attractor) は描画側が
+  run_id からロードする (その識別子が何を指すか — MLflow run 等 — は scripts 側の
+  関心なのでここは知らない)。
 - **run 軸は artifact の外**: run 軸 (`EvalGrid.run_labels`) は保存時に分解し、
   読込時に `load_all` が束ね直す → 後から run を 1 本足すのに全部を回し直さない。
 - **保存するのは結果を作った入力** = `EvalSpec` (点ごとの dataset はそこから決定的に
@@ -25,9 +30,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
+import shutil
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -56,9 +63,9 @@ class ArtifactMeta:
 
     label: str  # spec のラベル (cfg 上の名前)
     target: str  # 適用先 MC モデル名 (一覧の絞り込み用)
-    run_id: str  # 出所 surrogate の MLflow run
+    run_id: str  # 出所 surrogate の識別子 (opaque。呼び出し側が MLflow run_id を渡す)
     run_label: str  # 出所 surrogate の識別名 (結果の run 軸キー)
-    parent_run_id: str  # 学習 run (親 or 孤立) の MLflow run_id = dir を切る単位
+    parent_run_id: str  # 学習 run (親 or 孤立) の識別子 = dir を切る単位
     source: dict  # 入力仕様 (EvalSpec)
     created: str
     dtype: str = DTYPE
@@ -79,8 +86,19 @@ class ArtifactMeta:
     @property
     def group_key(self) -> tuple[str, str]:
         """**同じ結果系列とみなす単位** = (label, 入力仕様)。掃引範囲を変えて回し直せば
-        同じ label でも別系列 (run 軸として束ねると点の意味がずれる)。"""
-        return self.label, json.dumps(self.source, sort_keys=True, default=str)
+        同じ label でも別系列 (run 軸として束ねると点の意味がずれる)。「同じ入力か」の
+        正規化は `EvalSpec.key` の関心 (ここでは呼ぶだけ)。"""
+        return self.label, self.spec.key()
+
+    def dest(self, root: Path) -> Path:
+        """`<parent_run_id>/<label>__<run_label>__<spec_hash>`。dir 名は
+        (parent_run_id, label, spec, run_label) だけで決まる = 同じ入力を回し直せば
+        必ず同じ dir を指す (`group_key` が束ねる単位と揃える)。`spec_hash` が無いと
+        同じ label/run_label で spec を変えた場合に別系列を上書きしてしまう。"""
+        run_dir = root / _SAFE.sub("-", self.parent_run_id)
+        spec_hash = hashlib.sha1(self.spec.key().encode()).hexdigest()[:8]
+        base = _SAFE.sub("-", f"{self.label}__{self.run_label}__{spec_hash}")
+        return run_dir / base
 
 
 @dataclass(frozen=True)
@@ -90,36 +108,51 @@ class Artifact:
     path: Path
     meta: ArtifactMeta
 
+    @classmethod
+    def read(cls, path: Path) -> Artifact:
+        """`path` の meta.json だけ読む (波形は `load_data` で必要になってから)。
+        スキーマ不一致は raise (呼び出し側の一覧組立が壊れた 1 件を落とす)。"""
+        return cls(
+            path, ArtifactMeta.from_dict(json.loads((path / META_FILE).read_text()))
+        )
+
+    def load_data(self) -> list[PointRecord]:
+        """波形本体 (`data.joblib`) を読む = 点ごとの記録。
+        meta だけの一覧表示では呼ばない。"""
+        return joblib.load(self.path / DATA_FILE)  # type: ignore[no-any-return]
+
 
 # --- 保存 ---------------------------------------------------------------------
 
 
-def _dest(root: Path, meta: ArtifactMeta) -> Path:
-    """`<parent_run_id>/<created>_<label>__<run_label>` (時刻頭 = 一覧が時系列順)。
-    `parent_run_id` dir が学習 run 1 本に対応する単位。同秒の衝突は連番で避ける
-    (上書きで前の結果を消さない)。"""
-    run_dir = root / _SAFE.sub("-", meta.parent_run_id)
-    base = f"{meta.created}_{_SAFE.sub('-', f'{meta.label}__{meta.run_label}')}"
-    dest = run_dir / base
-    i = 2
-    while dest.exists():
-        dest = run_dir / f"{base}-{i}"
-        i += 1
-    return dest
+@dataclass(frozen=True)
+class PointRecord:
+    """`data.joblib` に並ぶ 1 点分の記録 = (掃引点の値, 原系, 置換系)。タプルの
+    位置アクセス (`d[i][2]`) で読み書きすると意味が読み取れないので名前を持つ。"""
+
+    value: float | None
+    original: xr.Dataset
+    surrogate: xr.Dataset
+
+    @classmethod
+    def of(cls, point: EvalPoint, run_label: str) -> PointRecord:
+        """保存前の軽量化 (波形を float32 へ = 容量半分、表示にも指標にも十分) も
+        ここで済ませる。`map` はデータ変数だけを変換し座標に触らない: `astype` を
+        Dataset 全体へ掛けると時間座標まで float32 になって dt が数値誤差で崩れ、
+        features の MultiIndex も組み直しになる。"""
+
+        def lighten(ds: xr.Dataset) -> xr.Dataset:
+            return ds.map(lambda v: v.astype(DTYPE), keep_attrs=True)
+
+        return cls(
+            point.value, lighten(point.original), lighten(point.surrogates[run_label])
+        )
 
 
-def _lighten(ds: xr.Dataset) -> xr.Dataset:
-    """保存前の軽量化 = 波形を float32 へ (容量半分、表示にも指標にも十分)。
-
-    `map` はデータ変数だけを変換し座標に触らない: `astype` を Dataset 全体へ掛けると
-    時間座標まで float32 になって dt が数値誤差で崩れ、features の MultiIndex も
-    組み直しになる。
-    """
-    return ds.map(lambda v: v.astype(DTYPE), keep_attrs=True)
-
-
-def _write(root: Path, meta: ArtifactMeta, data: object) -> Path:
-    dest = _dest(root, meta)
+def _write(root: Path, meta: ArtifactMeta, data: list[PointRecord]) -> Path:
+    dest = meta.dest(root)
+    if dest.exists():
+        shutil.rmtree(dest)
     dest.mkdir(parents=True)
     (dest / META_FILE).write_text(
         json.dumps(asdict(meta), indent=2, ensure_ascii=False, default=str)
@@ -141,8 +174,8 @@ def save(
     parent_run_id: str,
 ) -> list[Path]:
     """1 評価結果を **run 軸ごとに 1 artifact** へ分解して保存 (run を後から足せる)。
-    `run_ids` = run 軸キー → MLflow run_id。`parent_run_id` = 学習 run (親 or 孤立)
-    の run_id で、保存先 dir (`root/<parent_run_id>/...`) を切る単位。"""
+    `run_ids` = run 軸キー → 出所 run の識別子。`parent_run_id` = 学習 run (親 or
+    孤立) の識別子で、保存先 dir (`root/<parent_run_id>/...`) を切る単位。"""
     saved = []
     for run_label in grid.run_labels:
         meta = ArtifactMeta(
@@ -155,14 +188,7 @@ def save(
             created=datetime.now().strftime("%Y%m%d-%H%M%S"),
         )
         saved.append(
-            _write(
-                root,
-                meta,
-                [
-                    (p.value, _lighten(p.original), _lighten(p.surrogates[run_label]))
-                    for p in grid.points
-                ],
-            )
+            _write(root, meta, [PointRecord.of(p, run_label) for p in grid.points])
         )
     return saved
 
@@ -206,11 +232,10 @@ def artifacts(root: Path, parent_run_id: str | None = None) -> list[Artifact]:
     found = []
     for d in sorted(p for p in root.glob(pattern) if (p / META_FILE).is_file()):
         try:
-            meta = ArtifactMeta.from_dict(json.loads((d / META_FILE).read_text()))
+            found.append(Artifact.read(d))
         except Exception as e:  # noqa: BLE001 — 壊れた 1 件で一覧を落とさない
             logger.info("artifact 読込不可 %s: %s", d.name, e)
             continue
-        found.append(Artifact(d, meta))
     return found
 
 
@@ -221,15 +246,19 @@ def _load_group(arts: list[Artifact]) -> EvalGrid:
     よう private 名にしている)。"""
     if any(a.meta.group_key != arts[0].meta.group_key for a in arts):
         raise ValueError("入力仕様の違う artifact は 1 つの結果に束ねられない")
-    per_run = [(a.meta.run_label, joblib.load(a.path / DATA_FILE)) for a in arts]
-    values = [v for v, _, _ in per_run[0][1]]
-    if any([v for v, _, _ in d] != values for _, d in per_run):
+    per_run = [(a.meta.run_label, a.load_data()) for a in arts]
+    values = [r.value for r in per_run[0][1]]
+    if any([r.value for r in records] != values for _, records in per_run):
         raise ValueError("点の違う artifact は 1 つの結果に束ねられない")
     return EvalGrid(
         spec=arts[0].meta.spec,
         points=[
-            EvalPoint(value, original, {label: d[i][2] for label, d in per_run})
-            for i, (value, original, _) in enumerate(per_run[0][1])
+            EvalPoint(
+                rec.value,
+                rec.original,
+                {label: recs[i].surrogate for label, recs in per_run},
+            )
+            for i, rec in enumerate(per_run[0][1])
         ],
     )
 

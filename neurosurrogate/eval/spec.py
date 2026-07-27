@@ -16,6 +16,7 @@ domain 全体で持ち回らない** (パースは入口 1 回、以降は型で
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from typing import Self
@@ -116,6 +117,13 @@ class EvalSpec:
             "name": self.name,
             "sweep": asdict(self.sweep) if self.sweep else None,
         }
+
+    def key(self) -> str:
+        """**同じ入力とみなす単位**の正規化文字列 (dict 順序に依らず一致する)。
+        artifact の同一系列判定 (`ArtifactMeta.group_key`) や保存先 dir 名の
+        hash 元など、「この spec と同じか」を問う側はここを経由する (json.dumps
+        の正規化を持ち回り側で書き直させない)。"""
+        return json.dumps(self.to_dict(), sort_keys=True, default=str)
 
     @property
     def label(self) -> str:

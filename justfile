@@ -93,7 +93,3 @@ marimo:
 # Claude Code連携用（MCP + watchモード）
 marimo-mcp:
     {{ VIRTUAL_ENV }} marimo edit --watch --mcp --no-token --port 2701 scripts/marimo.py
-
-# artifact (results/artifacts/) + conf/draw.json から図/表を results/<dir> へ書き出す
-draw dir="_result":
-    {{ VIRTUAL_ENV }} python scripts/draw.py -o {{ dir }}

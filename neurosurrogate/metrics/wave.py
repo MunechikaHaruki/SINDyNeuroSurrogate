@@ -1,15 +1,31 @@
+"""波形/スパイクの指標計算 (DynamicMetrics の計算 + 純粋関数、素の値のみ返す)。
+marimo/mlflow 非依存。
+
+**DataFrame 化 (表として並べる/どの列名にするか) はここの関心でない**: それは
+「結果をどう見せるか」= 描画層の仕事 (`metrics/figs/wave.py`)。ここは
+`DynamicMetrics` を引数に取り、スカラーや (orig, surr) のタプル/dict を返す
+純粋関数群だけを持つ。`eval/eval.py` の発散ログ (`diverged`) もここを呼ぶ
+(計算層が評価層の関数を呼ぶ方向の依存は許容 — 評価ロジック自体を計算層の
+データ型 `EvalGrid` に持たせない方を優先する。詳細は `eval/eval.py` の
+`EvalGrid` docstring)。
+"""
+
+from __future__ import annotations
+
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import efel
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 from ..core import access
+
+if TYPE_CHECKING:
+    from ..eval.eval import EvalGrid
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -55,45 +71,10 @@ def diverged(v: np.ndarray) -> bool:
     return not bool(np.all(np.isfinite(v))) or float(np.abs(v).max()) > _DIVERGE_V
 
 
-def _or_nan(fn, arr) -> float:
-    """arr が None/空なら nan、それ以外は float(fn(arr))。"""
-    if arr is None or len(arr) == 0:
-        return _NAN
-    return float(fn(arr))
-
-
-def _at_or_nan(arr, idx: int) -> float:
-    """arr[idx] を float で返す。arr が None/idx 範囲外なら nan。"""
-    if arr is None or idx >= len(arr):
-        return _NAN
-    return float(arr[idx])
-
-
-def _diff(o: float, s: float) -> float:
-    """o - s。ただし片方でも nan なら nan を返す（差分計算の nan 伝播）。"""
-    return o - s if not (np.isnan(o) or np.isnan(s)) else _NAN
-
-
-def _corr_or_nan(a, b) -> float:
-    """a, b の Pearson 相関。片方でも None なら nan。"""
-    if a is None or b is None:
-        return _NAN
-    return float(np.corrcoef(a, b)[0, 1])
-
-
-def _pair(fn: Callable[[T], R], pair: tuple[T, T]) -> tuple[R, R]:
-    """(orig, surr) ペアに fn を適用して (fn(orig), fn(surr)) を返す。"""
-    return fn(pair[0]), fn(pair[1])
-
-
-def _row(name: str, o: float, s: float, col: str = "metric") -> dict:
-    """orig/surr/orig-surr の DataFrame 行 dict を生成。col で index 列名を指定。"""
-    return {col: name, "orig": o, "surr": s, "orig-surr": _diff(o, s)}
-
-
 @dataclass
 class DynamicMetrics:
-    """電圧・eFEL特徴量を計算するデータ層。下記の純粋関数群から参照される。"""
+    """電圧・eFEL特徴量を計算するデータ層。下記の純粋関数群から参照される
+    (計算そのものはここで完結し、指標側は cached の値を読むだけ)。"""
 
     original: xr.Dataset = field(repr=False)
     surrogate: xr.Dataset = field(repr=False)
@@ -139,6 +120,48 @@ class DynamicMetrics:
         return (list(p) if p is not None else []), (list(q) if q is not None else [])
 
 
+def dm_at(grid: EvalGrid, index: int, run_label: str, comp_id: int) -> DynamicMetrics:
+    """`EvalGrid` の 1 セル (点 × run) から `DynamicMetrics` を組み立てる。
+    評価用のアクセサなので `EvalGrid` (計算結果の純粋データ型) 自身のメソッドに
+    しない — ここに自由関数として置く。"""
+    point = grid.points[index]
+    return DynamicMetrics(
+        point.original, point.surrogates[run_label], comp_id, grid.spec.dt
+    )
+
+
+def _or_nan(fn, arr) -> float:
+    """arr が None/空なら nan、それ以外は float(fn(arr))。"""
+    if arr is None or len(arr) == 0:
+        return _NAN
+    return float(fn(arr))
+
+
+def _at_or_nan(arr, idx: int) -> float:
+    """arr[idx] を float で返す。arr が None/idx 範囲外なら nan。"""
+    if arr is None or idx >= len(arr):
+        return _NAN
+    return float(arr[idx])
+
+
+def diff_or_nan(o: float, s: float) -> float:
+    """o - s。ただし片方でも nan なら nan を返す（差分計算の nan 伝播）。
+    描画層 (`metrics/figs`) の DataFrame 組立 (`orig-surr` 列) からも使う公開関数。"""
+    return o - s if not (np.isnan(o) or np.isnan(s)) else _NAN
+
+
+def _corr_or_nan(a, b) -> float:
+    """a, b の Pearson 相関。片方でも None なら nan。"""
+    if a is None or b is None:
+        return _NAN
+    return float(np.corrcoef(a, b)[0, 1])
+
+
+def _pair(fn: Callable[[T], R], pair: tuple[T, T]) -> tuple[R, R]:
+    """(orig, surr) ペアに fn を適用して (fn(orig), fn(surr)) を返す。"""
+    return fn(pair[0]), fn(pair[1])
+
+
 # ---------------------------------------------------------------------------
 # スパイク指標（純粋関数群、DynamicMetrics を引数で受ける）
 # ---------------------------------------------------------------------------
@@ -167,23 +190,21 @@ def spike_shape_corr(dm: DynamicMetrics) -> dict:
     return {"spike_shape_corr": _corr_or_nan(orig_tmpl, surr_tmpl)}
 
 
-def spike_features_df(
+def spike_feature_values(
     dm: DynamicMetrics,
     spike_orig: int = 0,
     spike_surr: int = 0,
-) -> pd.DataFrame:
-    """指定 AP の eFEL 特徴量を orig/surr/orig-surr で並べた DataFrame。"""
+) -> dict[str, tuple[float, float]]:
+    """指定 AP の eFEL 特徴量ごとの (orig, surr)。並べ方 (DataFrame 化) は
+    呼び出し側 (`metrics/figs`) の関心。"""
     orig_feat, surr_feat = dm.efel
-    rows = [
-        _row(
-            feat,
+    return {
+        feat: (
             _at_or_nan(orig_feat.get(feat), spike_orig),
             _at_or_nan(surr_feat.get(feat), spike_surr),
-            col="feature",
         )
         for feat in _MEDIAN_FEATURES
-    ]
-    return pd.DataFrame(rows).set_index("feature")
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -218,61 +239,24 @@ def _isi_stat(dm: DynamicMetrics, fn) -> tuple[float, float]:
     return _pair(lambda a: _or_nan(fn, a), isi)
 
 
-def waveform_summary_df(dm: DynamicMetrics) -> pd.DataFrame:
-    """spike_count / latency / mean_isi / std_isi を縦に並べた DataFrame。"""
+def waveform_summary_rows(dm: DynamicMetrics) -> dict[str, tuple[float, float]]:
+    """spike_count / latency / mean_isi / std_isi の (orig, surr)。並べ方
+    (DataFrame 化) は呼び出し側 (`metrics/figs`) の関心。"""
     o_n, s_n = n_spikes(dm)
-    return pd.DataFrame(
-        [
-            _row("spike_count", float(o_n), float(s_n)),
-            _row("latency", *_latency(dm)),
-            _row("mean_isi", *_isi_stat(dm, np.mean)),
-            _row("std_isi", *_isi_stat(dm, np.std)),
-        ]
-    ).set_index("metric")
+    return {
+        "spike_count": (float(o_n), float(s_n)),
+        "latency": _latency(dm),
+        "mean_isi": _isi_stat(dm, np.mean),
+        "std_isi": _isi_stat(dm, np.std),
+    }
 
 
 def waveform_summary(dm: DynamicMetrics) -> dict:
     """波形誤差 (rmse/mae) + 発火周期のズレ (periodicity_gap)。"""
     return {
         **_waveform_error(dm),
-        "periodicity_gap": abs(_diff(*_isi_stat(dm, np.mean))),
+        "periodicity_gap": abs(diff_or_nan(*_isi_stat(dm, np.mean))),
     }
-
-
-# ---------------------------------------------------------------------------
-# 統合レポート（DataFrame 組立まで metrics 側で完結。呼び出し側は表示/保存だけ）
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class WaveReport:
-    """波形+スパイク指標を統合した評価レポート。df をそのまま表示/保存へ流す。"""
-
-    df_metrics: pd.DataFrame  # 波形行 (+ 指定 spike が両信号にあればその特徴量)
-    df_scalar: pd.DataFrame  # 全スカラーを縦持ち
-
-
-def wave_report(
-    dm: DynamicMetrics,
-    spike_orig: int = 0,
-    spike_surr: int = 0,
-) -> WaveReport:
-    """dm から波形/スパイク指標を計算し DataFrame まで組み立てて返す。指定した
-    spike index が両信号の範囲内にあるときだけ、その AP の特徴量と形状相関を足す。"""
-    n_orig, n_surr = n_spikes(dm)
-    df_metrics = waveform_summary_df(dm)
-    scalar = waveform_summary(dm)
-    if 0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr:
-        df_spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
-        df_spike.index.name = "metric"
-        df_metrics = pd.concat([df_metrics, df_spike])
-        scalar.update(spike_shape_corr(dm))
-    return WaveReport(
-        df_metrics=df_metrics,
-        df_scalar=pd.DataFrame(scalar.items(), columns=["metric", "value"]).set_index(
-            "metric"
-        ),
-    )
 
 
 def extract_metric(dm: DynamicMetrics, metric_key: str) -> tuple[float | None, float]:
@@ -280,9 +264,5 @@ def extract_metric(dm: DynamicMetrics, metric_key: str) -> tuple[float | None, f
     無い → orig は None。未知キーは KeyError (選択肢は `METRIC_KEYS` が単一源で、
     そこに載っていて取り出せないキーがあれば黙って nan を返さず落とす)。"""
     if metric_key in _ROW_METRICS:
-        df = waveform_summary_df(dm)
-        return (
-            float(df.loc[metric_key, "orig"]),  # type: ignore[arg-type]
-            float(df.loc[metric_key, "surr"]),  # type: ignore[arg-type]
-        )
+        return waveform_summary_rows(dm)[metric_key]
     return None, float({**waveform_summary(dm), **spike_shape_corr(dm)}[metric_key])

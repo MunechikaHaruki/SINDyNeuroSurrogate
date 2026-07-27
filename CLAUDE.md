@@ -24,9 +24,8 @@ uv run scripts/main.py --multirun                                 # preset の h
 just test                  # pytest (tests/、Hydraプリセット読込→fit→置換シミュ→指標/描画) + main.py
 just format && just lint   # ruff fix+format / ruff+mypy (strict、scripts/ 除外)
 just mlflow                # MLflow UI (port 5100、backend: mlflow.db)
-just marimo                # marimo notebook (port 2700。run選択+実行+artifact保存のみ、描画はしない)
+just marimo                # marimo notebook (port 2700。run選択+評価ボタン+描画ボタン。CLIは持たず二重管理を避ける)
 just marimo-mcp            # Claude Code MCP連携 (port 2701)
-just draw [dir]            # artifact (results/artifacts/) + conf/draw.json → results/<dir> へ図/表出力
 just traub                 # traub_* preset を順に --multirun 一括実行
 just clean-cache / clean-log
 just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment のみ削除 (本番 run 不変)
@@ -52,17 +51,18 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
-  metrics/  spec.py              # EvalSpec/SweepAxis + parse_evals (計算入力のみ)
-            eval.py              # EvalGrid (点軸 × run 軸) + evaluate/run_evals
-            store.py             # 評価結果 artifact の save/load (results/artifacts/)
-            wave.py              # eFEL スパイク + RMSE/MAE + METRIC_KEYS
-  view/  engine.py               # 描画プリミティブ (new_figure/draw_engine/collect/error_fig)
-         figs/cell.py            # 1 セル (点 × run) の詳細図 + 電流プレビュー
-         figs/grid.py            # 点軸メトリクス折れ線 + 波形格子 (行=run / 行=評価)
-         figs/model.py           # 静的図 (neurograph/closure/preprocessor)
-         figs/train.py           # 学習データ図
-         report.py               # 描画宣言 DrawSpec/ResultSpec/ReportSpec/CompareSpec + model/eval グループの組立
-         save.py                 # SaveEntry/slug/save_entries (図と表の書き出し)
+  eval/  spec.py                 # EvalSpec/SweepAxis + parse_evals (計算入力のみ)
+         eval.py                 # EvalGrid/EvalPoint (点軸 × run 軸の純粋データ型) + evaluate/run_evals
+         store.py                # 評価結果 artifact の save/load (results/artifacts/、永続化のみ)
+  metrics/  wave.py              # DynamicMetrics/diverged (eFEL 計算) + dm_at (EvalGrid→DynamicMetrics)
+            engine.py            # 描画プリミティブ (new_figure/draw_engine/collect/error_fig)
+            figs/cell.py         # 1 セル (点 × run) の詳細図 + 電流プレビュー
+            figs/grid.py         # 点軸メトリクス折れ線 + 波形格子 (行=run / 行=評価)
+            figs/model.py        # 静的図 (neurograph/closure/preprocessor)
+            figs/train.py        # 学習データ図
+            figs/wave.py         # wave.py の計算値 → WaveReport/metrics_df (DataFrame 組立)
+            report.py            # 描画宣言 DrawSpec/ResultSpec/ReportSpec/CompareSpec + model/eval グループの組立
+            save.py              # SaveEntry/slug/save_entries (図と表の書き出し)
 scripts/  main.py                # Hydra エントリ
           mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)
           draw.py                # artifact + conf/draw.json → 図/表の書き出し (CLI と marimo 保存ボタンの共通本体)
@@ -84,8 +84,12 @@ results/  <保存名>/               # draw.py が書く図 + meta.json / artifa
   current_type + dt + current_params、掃引したいときだけ `sweep`:{param,start,stop,steps})。
   marimo が入口で `EvalSpec` へ落とし、以降 domain は型でしか受け取らない。
 - `scripts/conf/draw.json` — 描画宣言のみ (計算入力と完全分離。artifact が入力仕様を
-  自分で持つので描画側は `eval.json` を読まない)。`default` (表示設定の既定) /
-  `results` (label ごとの override。`{"eval": label, ...DrawSpec のキー}`) /
-  `compare` (既に回した結果を label 参照して 1 枚の格子に並べる)。`ReportSpec.from_dict`
-  が唯一の入口で、以降は型 (`DrawSpec`/`ResultSpec`/`CompareSpec`) で渡す。
+  自分で持つので描画側は `eval.json` を読まない)。`default` (グローバル設定は
+  `plt_style` のみ。`eval_comp` 等は適用先ごとに違うので既定を持たせない) /
+  `results` (空=手元の結果を全部描く既定。非空なら列挙した label だけへ絞り込み。
+  1件 = `{"eval": label, ...DrawSpec のキー}`。override でなく label ごとに完結する
+  宣言) / `compare` (既に回した結果を label 参照して 1 枚の格子に並べる。`eval_comp`
+  は compare 自身が持つ) / `kinds` (保存する図/表の種類の絞り込み。省略時は全種類。
+  種類名は `ReportSpec.ALL_KINDS`)。`ReportSpec.from_dict` が唯一の入口で、以降は型
+  (`DrawSpec`/`ResultSpec`/`CompareSpec`) で渡す。
 - `scripts/conf/style/*.mplstyle` — matplotlib スタイル (paper / presentation)。

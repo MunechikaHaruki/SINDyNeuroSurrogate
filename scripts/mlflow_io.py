@@ -12,7 +12,7 @@ import pandas as pd
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
-from neurosurrogate.metrics.spec import run_labels
+from neurosurrogate.eval.spec import run_labels
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 

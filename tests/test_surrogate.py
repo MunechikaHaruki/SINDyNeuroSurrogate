@@ -21,14 +21,26 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.metrics.eval import (
+from neurosurrogate.eval.eval import (
     EvalGrid,
     EvalPoint,
     evaluate,
     preprocessed_latent,
 )
-from neurosurrogate.metrics.spec import EvalSpec, SweepAxis, parse_evals
-from neurosurrogate.metrics.store import artifacts, load_all, save
+from neurosurrogate.eval.spec import EvalSpec, SweepAxis, parse_evals
+from neurosurrogate.eval.store import artifacts, load_all, save
+from neurosurrogate.metrics.engine import collect, new_figure
+from neurosurrogate.metrics.figs.cell import cell_figs, panels_simple
+from neurosurrogate.metrics.figs.grid import compare_grid_fig, trace_grid_fig
+from neurosurrogate.metrics.figs.model import equation_texs, preprocessor_figs
+from neurosurrogate.metrics.figs.train import train_figs
+from neurosurrogate.metrics.report import (
+    CompareSpec,
+    DrawSpec,
+    ReportSpec,
+    ResultSpec,
+    eval_report,
+)
 from neurosurrogate.metrics.wave import METRIC_KEYS, DynamicMetrics, extract_metric
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
@@ -54,12 +66,6 @@ from neurosurrogate.surrogate.replace import (
     replace_nodes,
     replaceables,
 )
-from neurosurrogate.view.engine import collect, new_figure
-from neurosurrogate.view.figs.cell import cell_figs, panels_simple
-from neurosurrogate.view.figs.grid import compare_grid_fig, trace_grid_fig
-from neurosurrogate.view.figs.model import equation_texs, preprocessor_figs
-from neurosurrogate.view.figs.train import train_figs
-from neurosurrogate.view.report import CompareSpec, DrawSpec, ReportSpec, eval_report
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
 LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, g1..gN, u] の両端
@@ -247,30 +253,26 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     に宣言の無い label — 別セッションで回して artifact から読んだ結果 — もそのまま
     図になり、逆に参照先が手元に無い compare は error 図でなく**黙って落ちる**
     (宣言とのズレは呼び出し側の関心) = 計算と描画が切れている。"""
-    report = ReportSpec(default=DrawSpec(eval_comp="soma"))
+    report = ReportSpec(
+        results=(ResultSpec(label="読んだ系列", draw=DrawSpec(eval_comp="soma")),)
+    )
     entries = eval_report({"読んだ系列": sindy_grid}, {"r0": sindy}, report)
     assert any(e.name.startswith("読んだ系列/") for e in entries)
 
-    dangling = CompareSpec(name="c", evals=["未実行"])
-    report_with_compare = ReportSpec(
-        default=DrawSpec(eval_comp="soma"), compares={"c": dangling}
-    )
+    dangling = CompareSpec(name="c", evals=["未実行"], eval_comp="soma")
+    report_with_compare = ReportSpec(compares={"c": dangling})
     assert eval_report({}, {"r0": sindy}, report_with_compare) == []
 
 
-def test_report_spec_overrides_default_draw_per_label() -> None:
-    """`draw.json` の `results[]` override は既定 (`default`) の上に 1 段だけ被さる:
-    override したキーだけ変わり、他は既定値のまま。宣言に無い label は既定そのもの。"""
+def test_report_spec_results_are_per_label_with_no_default_fallback() -> None:
+    """`draw.json` の `results[]` は label ごとに完結する宣言 (既定値からの override
+    ではない): 指定したキーだけ効き、欠落キーは `DrawSpec` の型既定値。宣言に無い
+    label は `DrawSpec()` そのもの (グローバル既定を持たない)。"""
     report = ReportSpec.from_dict(
-        {
-            "default": {"eval_comp": "soma", "metric": "spike_count"},
-            "results": [{"eval": "traub19_dendstim", "eval_comp": "c09"}],
-        }
+        {"results": [{"eval": "traub19_dendstim", "eval_comp": "c09"}]}
     )
-    assert report.draw_for("traub19_dendstim") == DrawSpec(
-        eval_comp="c09", metric="spike_count"
-    )
-    assert report.draw_for("宣言に無い label") == report.default
+    assert report.draw_for("traub19_dendstim") == DrawSpec(eval_comp="c09")
+    assert report.draw_for("宣言に無い label") == DrawSpec()
 
 
 def test_draw_settings_are_typed_and_failed_figs_fold_into_error(

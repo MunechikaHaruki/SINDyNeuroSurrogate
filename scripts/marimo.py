@@ -13,15 +13,16 @@ def _():
     import widgets
     from mlflow_io import get_runs_df, load_bundles, sweep_siblings
 
-    from neurosurrogate.metrics.spec import parse_evals
-    from neurosurrogate.metrics.store import run_and_save
+    from neurosurrogate.eval.spec import parse_evals
+    from neurosurrogate.eval.store import run_and_save
 
     CONF_DIR = Path(__file__).resolve().parent / "conf"
     EVAL_JSON = CONF_DIR / "eval.json"
 
-    # marimo に残す操作は「run 選択」と「実行」の 2 つだけ。実行は評価 → artifact
-    # 保存 → 描画 → 図保存を 1 クリックで済ませる (計算と描画を別ボタンに分ける理由が
-    # 薄いため)。組み立ての中身はどれも呼び先 1 関数に畳んであり、セルは呼ぶだけ。
+    # marimo に残す操作は「run 選択」「評価」「描画」の 3 つ。評価 (→ artifact 保存)
+    # と描画 (→ 図保存) はボタンを分け、CLI は持たない (二重管理を避け、この 2
+    # ボタンが唯一の実行経路)。組み立ての中身はどれも呼び先 1 関数に畳んであり、
+    # セルは呼ぶだけ。
     specs = parse_evals(json.loads(EVAL_JSON.read_text()))
     runs_df = get_runs_df()
     return (
@@ -61,14 +62,17 @@ def _(sel_name, widgets):
 
 
 @app.cell
-def _(bundles, draw, run_and_save, run_ids, run_panel, sel_id, specs, widgets):
-    # 1 クリックで完結: 評価 → artifact 保存 → 描画 → 図保存。artifact を経由する
-    # (draw.render_if は対象 run の artifact を読む) ので、再描画だけしたい
-    # ときは marimo を経由せず CLI `uv run scripts/draw.py` を使えば足りる — marimo
-    # 側で「計算だけ」「描画だけ」を別ボタンに分ける理由は薄い。
-    if run_panel.value["run"]:
+def _(bundles, draw, run_and_save, run_ids, run_panel, sel_id, specs):
+    # 評価ボタン: 評価 → artifact 保存だけ (描画はしない)。
+    if run_panel.value["eval"]:
         run_and_save(bundles, specs, draw.ARTIFACT_DIR, run_ids, sel_id)
-    saved = draw.render_if(run_panel.value["run"], run_panel.value["dir"], sel_id)
+    return
+
+
+@app.cell
+def _(draw, run_panel, sel_id, widgets):
+    # 描画ボタン: 手元の artifact (draw.json 調整後の再描画も含む) → 図保存だけ。
+    saved = draw.render_if(run_panel.value["draw"], run_panel.value["dir"], sel_id)
     widgets.written_html(saved, draw.RESULT_DIR, "(未実行)")
     return
 
