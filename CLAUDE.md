@@ -91,3 +91,17 @@ results/  <保存名>/               # marimo 描画ボタンが書く図 + meta
   種類名は `ReportSpec.ALL_KINDS`)。`ReportSpec.from_dict` が唯一の入口で、以降は型
   (`DrawSpec`/`ResultSpec`/`CompareSpec`) で渡す。
 - `scripts/conf/style/*.mplstyle` — matplotlib スタイル (paper / presentation)。
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues (`gh` CLI)。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+デフォルト5ラベル (`needs-triage`/`needs-info`/`ready-for-agent`/`ready-for-human`/`wontfix`)。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+single-context (`CONTEXT.md` + `docs/adr/`、未作成)。See `docs/agents/domain.md`.
