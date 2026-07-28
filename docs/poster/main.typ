@@ -1,8 +1,8 @@
 #import "@preview/peace-of-posters:0.5.6" as pop
 #import "@preview/typsium:0.3.1": *
-#import "@preview/cetz:0.5.2"
 #import "circuit.typ": traub_circuit
 #import "pipeline.typ": stage_compress, stage_identify, stage_simulate, stage_simulate_loop
+#import "diagrams.typ": comp-annotated, stim-replace-diagram
 
 #set page("a0", margin: (x: 2cm, top: 2cm, bottom: 0.1cm))
 #pop.set-poster-layout(pop.layout-a0)
@@ -78,32 +78,7 @@
       )
       #v(2em)
       #figure(
-        cetz.canvas({
-          import cetz.draw: *
-          // 画像 1230x332px を幅10へ縮尺 (高さ 332/1230*10)
-          let w = 18
-          let h = 332 / 1230 * w
-
-          let font=20pt
-
-          content((w / 2, h / 2), image("pic/ref/traub_comp.png", width: w * 1cm))
-          // 訳: comp1-8 = basal dendrite (左), comp9 = soma (中央), comp10-19 = apical dendrite (右)
-          // px→cetz座標: x_cetz = px/1230*w, y は画像上端基準で下向き正 → cetz は上向き正なので h - px/332*h
-          let px-to-x(px) = px / 1230 * w
-          let py-to-y(py) = h - py / 332 * h
-
-          // basal dendrite (comp1-8, 左側) を指す矢印
-          line((px-to-x(50), py-to-y(-20)), (px-to-x(50), py-to-y(20)), mark: (end: ">"), stroke: 1.5pt + red)
-          content((px-to-x(50), py-to-y(-40)), text(size: font, fill: red)[basal dend])
-
-          // soma (comp9) を指す矢印
-          line((px-to-x(457), py-to-y(-20)), (px-to-x(457), py-to-y(20)), mark: (end: ">"), stroke: 1.5pt + blue)
-          content((px-to-x(457), py-to-y(-40)), text(size: font, fill: blue)[soma])
-
-          // apical dendrite (comp10-19, 右側) を指す矢印
-          line((px-to-x(1030), py-to-y(-20)), (px-to-x(1030), py-to-y(20)), mark: (end: ">"), stroke: 1.5pt + red)
-          content((px-to-x(1030), py-to-y(-40)), text(size: font, fill: red)[apical dend])
-        }),
+        comp-annotated(w: 18, font: 20pt),
         caption: [Modelled as *19 comps* @Traub-1991-ModelCA3HippocampalPyramidal],
         numbering: none,
         supplement: none,
@@ -284,8 +259,18 @@
     ],
     // ======== 右列: ① 画像を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
-      #v(0.3em)
-      *② New stimulus*
+
+      #align(center)[
+        #figure(
+          stim-replace-diagram(),
+          caption: [ #v(2em)Steady current drives the dendrite; a pulse train drives the soma, whose compartment is replaced by the surrogate.],
+          numbering: none,
+          supplement: none,
+        )
+      ]
+
+
+
       #align(center)[
         #figure(
           image("result/compare_stim_site.png", width: 100%),
@@ -308,62 +293,7 @@
       // 訳: 20 Hz 以上で一致、10 Hz では後続スパイクを落とす。
       - Matches for $f gt.eq 20$ Hz; *drops later spikes* at 10 Hz.
 
-      #v(0.5em)
-      // -------- ⑤ 刺激部位と置換部位の模式図 --------
-      *Stimulus and replacement sites*
-      #align(center)[
-        #figure(
-          cetz.canvas({
-            import cetz.draw: *
-            let w = 3.2
-            let h = 1.1
-            let font = 16pt
 
-            // dendrite - soma - axon の3コンパートメントを横に連結
-            rect((0, 0), (w, h), name: "dendrite")
-            rect((w, 0), (2 * w, h), name: "soma")
-            rect((2 * w, 0), (3 * w, h), name: "axon")
-            content((w / 2, h / 2), text(size: font)[dendrite])
-            content((3 * w / 2, h / 2), text(size: font)[soma])
-            content((5 * w / 2, h / 2), text(size: font)[axon])
-
-            // steady current: 一定振幅の矩形波形 → dendrite へ注入
-            let wf-y0 = h + 1.7
-            let wf-h = 0.5
-            let wf-x0 = w / 2 - 0.5
-            line(
-              (wf-x0, wf-y0), (wf-x0, wf-y0 + wf-h),
-              (wf-x0 + 1, wf-y0 + wf-h),
-              stroke: 1.5pt + blue,
-            )
-            line((w / 2, wf-y0 - 0.2), (w / 2, h), mark: (end: ">"), stroke: 1.5pt + blue)
-            content((w / 2, wf-y0 + wf-h + 0.35), anchor: "east", text(size: font, fill: blue)[steady current])
-
-            // pulse current: 矩形パルス列 → soma へ注入
-            let px0 = 3 * w / 2 - 0.6
-            let pw = 0.25
-            let gap = 0.2
-            line(
-              (px0, wf-y0),
-              (px0, wf-y0 + wf-h), (px0 + pw, wf-y0 + wf-h), (px0 + pw, wf-y0),
-              (px0 + pw + gap, wf-y0),
-              (px0 + pw + gap, wf-y0 + wf-h), (px0 + 2 * pw + gap, wf-y0 + wf-h), (px0 + 2 * pw + gap, wf-y0),
-              (px0 + 2 * pw + 2 * gap, wf-y0),
-              (px0 + 2 * pw + 2 * gap, wf-y0 + wf-h), (px0 + 3 * pw + 2 * gap, wf-y0 + wf-h), (px0 + 3 * pw + 2 * gap, wf-y0),
-              stroke: 1.5pt + red,
-            )
-            line((3 * w / 2, wf-y0 - 0.2), (3 * w / 2, h), mark: (end: ">"), stroke: 1.5pt + red)
-            content((3 * w / 2, wf-y0 + wf-h + 0.35), anchor: "west", text(size: font, fill: red)[pulse current])
-
-            // soma を surrogate で置換することを示す注記 (右へずらしキャプションと重ならないようにする)
-            line((3 * w / 2, -0.2), (3 * w / 2, -1.1), mark: (end: ">"), stroke: 1.5pt + eastern)
-            content((3 * w / 2 + 1.3, -0.75), text(size: font, fill: eastern)[replace soma w/ surrogate])
-          }),
-          caption: [Steady current drives the dendrite; a pulse train drives the soma, whose compartment is replaced by the surrogate.],
-          numbering: none,
-          supplement: none,
-        )
-      ]
     ],
   )
 ]
