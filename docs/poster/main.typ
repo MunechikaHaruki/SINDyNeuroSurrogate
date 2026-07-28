@@ -1,5 +1,6 @@
 #import "@preview/peace-of-posters:0.5.6" as pop
 #import "@preview/typsium:0.3.1": *
+#import "@preview/cetz:0.5.2"
 #import "circuit.typ": traub_circuit
 #import "pipeline.typ": stage_compress, stage_identify, stage_simulate, stage_simulate_loop
 
@@ -68,7 +69,32 @@
       )
       #v(0.4em)
       #figure(
-        image("pic/ref/traub_comp.png", width: 100%),
+        cetz.canvas({
+          import cetz.draw: *
+          // 画像 1230x332px を幅10へ縮尺 (高さ 332/1230*10)
+          let w = 18
+          let h = 332 / 1230 * w
+
+          let font=20pt
+
+          content((w / 2, h / 2), image("pic/ref/traub_comp.png", width: w * 1cm))
+          // 訳: comp1-8 = basal dendrite (左), comp9 = soma (中央), comp10-19 = apical dendrite (右)
+          // px→cetz座標: x_cetz = px/1230*w, y は画像上端基準で下向き正 → cetz は上向き正なので h - px/332*h
+          let px-to-x(px) = px / 1230 * w
+          let py-to-y(py) = h - py / 332 * h
+
+          // basal dendrite (comp1-8, 左側) を指す矢印
+          line((px-to-x(50), py-to-y(-20)), (px-to-x(50), py-to-y(20)), mark: (end: ">"), stroke: 1.5pt + red)
+          content((px-to-x(50), py-to-y(-40)), text(size: font, fill: red)[basal dend])
+
+          // soma (comp9) を指す矢印
+          line((px-to-x(457), py-to-y(-20)), (px-to-x(457), py-to-y(20)), mark: (end: ">"), stroke: 1.5pt + blue)
+          content((px-to-x(457), py-to-y(-40)), text(size: font, fill: blue)[soma])
+
+          // apical dendrite (comp10-19, 右側) を指す矢印
+          line((px-to-x(1030), py-to-y(-20)), (px-to-x(1030), py-to-y(20)), mark: (end: ">"), stroke: 1.5pt + red)
+          content((px-to-x(1030), py-to-y(-40)), text(size: font, fill: red)[apical dend])
+        }),
         caption: [Modelled as *19 comps* @Traub-1991-ModelCA3HippocampalPyramidal],
         numbering: none,
         supplement: none,
@@ -91,14 +117,15 @@
         // -------- 右: 可変コンダクタンスの中身 (ゲート変数とレート関数) --------
         [
           // 訳: コンダクタンスはゲート変数に依存し、ゲートはレート関数の ODE に従う。
-          Conductances depend on *gate variables*, ODEs with rate functions $alpha, beta$:
+          Conductances have *gate variables*, ODEs with rate functions $alpha, beta$:
           #v(1em)
           #figure(
             text(size: 28pt)[
               $
                 I_#ce("Na") &= overline(g)_#ce("Na") med m^2 h med (V - E_#ce("Na")) \
                 frac(d m, d t) &= alpha_m (V) (1 - m) - beta_m (V) m \
-                alpha_m (V) &= 0.32 (13.1 - u) \/ (exp((13.1 - u) \/ 4) - 1)
+                alpha_m (V) &= 0.32 (13.1 - u) \/ (exp((13.1 - u) \/ 4) - 1) \
+                beta_m (V) &= 0.28 (u - 40.1) \/ (exp((u - 40.1) \/ 5) - 1) \
               $
             ],
             kind: "equation",
@@ -107,13 +134,14 @@
           )<eq-gate>
           #v(0.8em)
           // 訳: 1 コンパートメント 11 状態変数 → 19 comp で 209 → 並列シミュレーションでメモリボトルネック。
-          $->$ *11 states per compartment* $->$ *209* for 19; at brain scale the gates become a *memory bottleneck*.
+          $->$ *11 states per compartment* \
+          $->$ *209* for 19 comps; \
+          At large scale network simulation, the gates become a *memory bottleneck*.
         ],
       )
       #v(0.4em)
-      // Multi-Compartmentニューロンモデルの膜電位応答ができモデルの膜電位応答ができるサロゲ膜電位応答ができるサロゲートモデ応答ができるサロゲートモデルの作成でできるサロゲートモデルの作成
       #mini-box(title: "Goal")[
-        Development of a surrogate model capable of reproducing the membrane potential response of a multi-compartment neuron model.
+        Development of a surrogate model with few gate variables capable of reproducing the membrane potential response of a multi-compartment neuron model.
       ]
     ],
   )

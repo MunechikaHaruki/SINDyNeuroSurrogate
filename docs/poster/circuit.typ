@@ -25,8 +25,8 @@
     node("J", (xj, yj))
     resistor("gprev", "Vim1", "J", label: lab[$g_(i-1,i)$])
     resistor("gnext", "J", "Vip1", label: lab[$g_(i,i+1)$])
-    content("Vim1", lab[$V_(i-1)$], anchor: "east", padding: 8pt)
-    content("Vip1", lab[$V_(i+1)$], anchor: "west", padding: 8pt)
+    content("Vim1", lab[$text("Comp")_(i-1)$], anchor: "east", padding: 8pt)
+    content("Vip1", lab[$text("Comp")_(i+1)$], anchor: "west", padding: 8pt)
 
     // --- 外部注入電流: ノードへ直接流し込む ---
     node("Iin", (xj, yj + 0.3), fill: false)
@@ -77,6 +77,8 @@
       stroke: stroke-w,
       mark: (start: "stealth", end: "stealth", scale: 0.35),
     )
-    content((xj - 2 * dx - 1.95, (ytop + ybot) / 2), lab[$V_i$], anchor: "east")
+    content((xj - 2 * dx - 1.95, (ytop + ybot) / 2), lab[
+    #h(7em)$V_i$ \
+      (i th Compartment \ membrane potential)], anchor: "east")
   }, length: unit)
 }
