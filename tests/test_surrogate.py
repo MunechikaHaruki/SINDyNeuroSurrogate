@@ -45,10 +45,10 @@ from neurosurrogate.metrics.artifact._internal.wave import (
 from neurosurrogate.metrics.artifact.cell import panels_simple
 from neurosurrogate.metrics.report import (
     DEFAULT_DRAW,
-    ReportSpec,
     draw_for,
     eval_report,
     metric_ylim,
+    parse_report,
 )
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
@@ -209,10 +209,10 @@ def test_eval_and_draw_json_are_self_consistent() -> None:
     assert sum(1 for label in evals if label == "traub_soma_dc") == 1
     assert sum(1 for label in evals if label.startswith("traub19_somastim#")) == 5
 
-    report = ReportSpec.from_dict(json.loads((conf_dir / "draw.json").read_text()))
+    report = parse_report(json.loads((conf_dir / "draw.json").read_text()))
     names = {spec.name for spec in evals.values()}
-    assert set(report.results) <= names
-    for comparison in report.compares.values():
+    assert set(report["results"]) <= names
+    for comparison in report["compares"].values():
         assert set(comparison["evals"]) <= names
 
 
@@ -333,12 +333,16 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
         )
         for (_label, run_id), result in sindy_results.items()
     }
-    report = ReportSpec(results={"読んだ系列": {"eval_comp": "soma"}})
+    report = {
+        "results": {"読んだ系列": {"eval_comp": "soma"}},
+        "compares": {},
+        "kinds": {},
+    }
     entries = eval_report(renamed, {"r0": sindy}, report)
     assert any(e.name.startswith("読んだ系列/") for e in entries)
 
     dangling = {"evals": ["未実行"], "eval_comp": "soma"}
-    report_with_compare = ReportSpec(compares={"c": dangling})
+    report_with_compare = {"results": {}, "compares": {"c": dangling}, "kinds": {}}
     assert eval_report({}, {"r0": sindy}, report_with_compare) == []
 
 
@@ -346,7 +350,7 @@ def test_report_spec_results_are_per_label_with_no_default_fallback() -> None:
     """`draw.json` の `results[]` は label ごとに完結する宣言 (既定値からの override
     ではない): 指定したキーだけ効き、欠落キーは `DEFAULT_DRAW` の既定値。宣言に無い
     label は `DEFAULT_DRAW` そのもの (グローバル既定を持たない)。"""
-    report = ReportSpec.from_dict(
+    report = parse_report(
         {"results": [{"eval": "traub19_dendstim", "eval_comp": "c09"}]}
     )
     assert draw_for(report, "traub19_dendstim") == {**DEFAULT_DRAW, "eval_comp": "c09"}

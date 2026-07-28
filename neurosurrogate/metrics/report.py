@@ -10,25 +10,23 @@ marimo 非依存 (marimo は artifact 読込 + surrogate ロードだけ持ち�
 
 **描く対象は結果 `results` 自身**で、シミュ入力の設定 (`eval.json`) は受け取らない:
 結果 artifact は入力仕様を自分で持つので、設定ファイルと無関係に (別セッションで
-回した結果でも) 描ける。描画宣言のスキーマ (`ReportSpec`) はここが持つ (`eval.spec`
-が計算仕様 `SimSpec` を持つのと同じ関係)。**dict を見るのは `ReportSpec.from_dict`
-までで**、以降は `ReportSpec` で渡す。系列ごとの表示設定 (`draw`) / compare 宣言
-(`spec`) は dataclass 化せず dict のまま持ち回る — フィールドが多くても「表示にだけ
-使う名前付き値の束」で、以降は個々のキーへ都度アクセスするだけなので構造体化する
-意味が薄い。キーの意味と既定値は `DEFAULT_DRAW`/`draw_for` が持つ。
+回した結果でも) 描ける。描画宣言 (`draw.json`) は `parse_report` が正規化するだけで
+以降も dict のまま持ち回る — `results[]`/`compare[]`/`kinds` は「表示にだけ使う
+名前付き値の束」で、個々のキーへ都度アクセスするだけなので構造体化する意味が薄い。
+キーの意味と既定値は `DEFAULT_DRAW`/`draw_for` が持つ。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Self
 
 import matplotlib.pyplot as plt
 
 from ..core.network import NeuronGraph
 from ..eval.run import SimKey
-from ..eval.store import SimResult
+from ..eval.store import SimResult, artifacts, load_all
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.diagnostics import preprocessed_latent
 from . import select
@@ -51,32 +49,24 @@ from .artifact._internal.wave import dm_of
 from .save import SaveEntry, save_entries, slug
 
 
-@dataclass(frozen=True, kw_only=True)
-class ReportSpec:
-    """描画宣言全体 (`draw.json`) の型 = 系列名ごとの設定 + compare。
-    **dict を見るのはここまで**で、以降 (`model_report`/`eval_report`) は
-    `ReportSpec` で渡す (`eval.spec.parse_evals` が計算入力に対してやるのと同じ
-    役目)。絞り込み判定 (`wants`/`draw_for`/`for_results`) はこのモジュールが持つ。
+def parse_report(d: dict) -> dict:
+    """`draw.json` の生 dict → 正規化した dict (`results`/`compares`/`kinds`)。
+    `results[]`/`compare[]` は配列 → 名前キーの dict に畳み (`eval`/`name` キー
+    自体は要素から取り除く)。以降 (`model_report`/`eval_report`) はこの dict を
+    そのまま渡す (`eval.spec.parse_evals` が計算入力に対してやるのと同じ役目)。
+    絞り込み判定 (`wants`/`draw_for`/`for_results`) はこのモジュールが持つ。
     """
-
-    results: dict[str, dict] = field(default_factory=dict)
-    compares: dict[str, dict] = field(default_factory=dict)
-    # 未指定キー = 全部描く既定は `wants` が持つ (ここは dict を素通しするだけ)。
-    kinds: dict[str, bool] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Self:
-        return cls(
-            results={
-                str(r["eval"]): {k: v for k, v in r.items() if k != "eval"}
-                for r in d.get("results", ())
-            },
-            compares={
-                str(c["name"]): {k: v for k, v in c.items() if k != "name"}
-                for c in d.get("compare", ())
-            },
-            kinds={str(k): bool(v) for k, v in d.get("kinds", {}).items()},
-        )
+    return {
+        "results": {
+            str(r["eval"]): {k: v for k, v in r.items() if k != "eval"}
+            for r in d.get("results", ())
+        },
+        "compares": {
+            str(c["name"]): {k: v for k, v in c.items() if k != "name"}
+            for c in d.get("compare", ())
+        },
+        "kinds": {str(k): bool(v) for k, v in d.get("kinds", {}).items()},
+    }
 
 
 # `kinds` を指定しなければ手元の結果を全種描く既定 = 何も書かなくても動く (最初の
@@ -103,31 +93,33 @@ DEFAULT_DRAW: dict = {
 }
 
 
-def wants(report: ReportSpec, kind: str) -> bool:
-    """この種類の図/表を保存するか (`report.kinds` による絞り込み)。未指定キーは
+def wants(report: dict, kind: str) -> bool:
+    """この種類の図/表を保存するか (`report["kinds"]` による絞り込み)。未指定キーは
     描く既定 (`kinds` を明示指定したものだけが上書きされる)。"""
-    return report.kinds.get(kind, True)
+    return bool(report["kinds"].get(kind, True))
 
 
-def draw_for(report: ReportSpec, name: str) -> dict:
+def draw_for(report: dict, name: str) -> dict:
     """系列名の表示設定 (`results[]` に無ければ `DEFAULT_DRAW` そのもの。指定した
     キーだけ既定を上書きする — `eval_comp` が空だと `_eval_report_one` がエラー図を
     出す = 未指定は黙って何か描くのでなく気付ける形にする)。"""
-    return {**DEFAULT_DRAW, **report.results.get(name, {})}
+    return {**DEFAULT_DRAW, **report["results"].get(name, {})}
 
 
 def for_results(
-    report: ReportSpec, results: dict[SimKey, SimResult]
+    report: dict, results: dict[SimKey, SimResult]
 ) -> list[tuple[str, dict]]:
-    """描く対象 (系列名, draw) 列。`report.results` が空なら手元の結果を全部描く
+    """描く対象 (系列名, draw) 列。`report["results"]` が空なら手元の結果を全部描く
     既定。非空なら **`results` に列挙した系列名だけへ絞り込む** (artifact が増える
     ほど draw 出力も比例して増えるのを避ける)。手元に無い名前は黙って落とす
     (`_compare_report` の「参照は宣言、欠落は宣言とのズレ」という扱いと揃える)。
     """
     names = select.series(results)
-    if not report.results:
+    if not report["results"]:
         return [(name, draw_for(report, name)) for name in names]
-    return [(name, draw_for(report, name)) for name in names if name in report.results]
+    return [
+        (name, draw_for(report, name)) for name in names if name in report["results"]
+    ]
 
 
 def view_comp_ids(draw: dict, net: NeuronGraph) -> list[int] | None:
@@ -147,9 +139,9 @@ def metric_ylim(draw: dict) -> tuple[float, float] | None:
 def model_report(
     bundles: dict[str, SurrogateBundle],
     results: dict[SimKey, SimResult],
-    report: ReportSpec,
+    report: dict,
 ) -> list[SaveEntry]:
-    """静的モデル図 + 学習側サマリ表 + 電流プレビュー。`report.kinds` で種類ごとに
+    """静的モデル図 + 学習側サマリ表 + 電流プレビュー。`report["kinds"]` で種類ごとに
     出す/出さないを選べる (既定は全種類)。
 
     closure/preprocessor/train は**代表 run (先頭) のみ** — 全 run 分描くと学習
@@ -276,11 +268,11 @@ def _eval_report_one(
     results: dict[SimKey, SimResult],
     bundles: dict[str, SurrogateBundle],
     draw: dict,
-    report: ReportSpec,
+    report: dict,
 ) -> list[SaveEntry]:
     """1 系列分: 波形格子 (点 × run) → 選択点の詳細図 → 点軸メトリクス折れ線。
     折れ線は**点が 2 つ以上のときだけ** (単発で 1 点の折れ線を出さない)。
-    `report.kinds` で種類ごとに出す/出さないを選べる。"""
+    `report["kinds"]` で種類ごとに出す/出さないを選べる。"""
     labels = select.labels_of(results, name)
     net = results[(labels[0], None)].spec.net
     if draw["eval_comp"] not in net.names:
@@ -352,7 +344,7 @@ def _compare_report(
 def eval_report(
     results: dict[SimKey, SimResult],
     bundles: dict[str, SurrogateBundle],
-    report: ReportSpec,
+    report: dict,
 ) -> list[SaveEntry]:
     """結果 (図 + メトリクス) → compare の格子図。
 
@@ -365,14 +357,14 @@ def eval_report(
     for name, draw in for_results(report, results):
         entries += _eval_report_one(name, results, bundles, draw, report)
     if wants(report, "compare_grid_fig"):
-        entries += _compare_report(report.compares, results)
+        entries += _compare_report(report["compares"], results)
     return entries
 
 
 def render_report(
     bundles: dict[str, SurrogateBundle],
     results: dict[SimKey, SimResult],
-    report: ReportSpec,
+    report: dict,
     dest: Path,
     style_paths: list[Path],
 ) -> list[Path]:
@@ -387,3 +379,26 @@ def render_report(
         results, bundles, report
     )
     return save_entries(entries, dest)
+
+
+def load_and_render_report(
+    draw_json: Path,
+    artifact_dir: Path,
+    sel_id: str | None,
+    dest: Path,
+    style_paths: list[Path],
+    load_surrogate_model: Callable[[str], SurrogateBundle],
+) -> list[Path]:
+    """draw.json 読込から `render_report` までを一括した唯一の入口。呼び出し側
+    (`scripts/marimo.py` の描画ボタン) は surrogate ロード (mlflow 依存) だけ
+    `load_surrogate_model` として注入し、artifact 読込・組立・保存はここへ委譲する。
+    """
+    report = parse_report(json.loads(draw_json.read_text()))
+    arts = artifacts(artifact_dir, sel_id)
+    res = load_all(arts)
+    bundles_for_draw = {
+        a.meta.spec.run_id: load_surrogate_model(a.meta.spec.run_id)
+        for a in arts
+        if a.meta.spec.run_id is not None
+    }
+    return render_report(bundles_for_draw, res, report, dest, style_paths)

@@ -18,8 +18,8 @@ def _():
     )
 
     from neurosurrogate.eval.spec import parse_evals, usable
-    from neurosurrogate.eval.store import artifacts, load_all, run_and_save
-    from neurosurrogate.metrics.report import ReportSpec, render_report
+    from neurosurrogate.eval.store import run_and_save
+    from neurosurrogate.metrics.report import load_and_render_report
 
     CONF_DIR = Path(__file__).resolve().parent / "conf"
     EVAL_JSON = CONF_DIR / "eval.json"
@@ -42,15 +42,11 @@ def _():
         DRAW_JSON,
         PLT_STYLE,
         RESULT_DIR,
-        ReportSpec,
         STYLE_DIR,
-        artifacts,
-        json,
-        load_all,
+        load_and_render_report,
         load_bundles,
         load_surrogate_model,
         mo,
-        render_report,
         run_and_save,
         runs_df,
         specs,
@@ -165,14 +161,10 @@ def _(
     DRAW_JSON,
     PLT_STYLE,
     RESULT_DIR,
-    ReportSpec,
     STYLE_DIR,
-    artifacts,
-    json,
-    load_all,
+    load_and_render_report,
     load_surrogate_model,
     mo,
-    render_report,
     run_panel,
     sel_id,
 ):
@@ -180,23 +172,18 @@ def _(
     # draw.json 調整後の再描画も含む)。今保存した学習 run (`sel_id`) の artifact
     # だけを描く。surrogate は artifact に焼き込まれていない (閉包項が要る図
     # diff/attractor 用に MLflow から引き直す。load_surrogate_model は run_id ごとに
-    # @cache 済み)。図表の組立/保存は `render_report` (metrics 層) に委譲する。
+    # @cache 済み)。artifact 読込・組立・保存は `load_and_render_report` (metrics 層)
+    # に委譲し、marimo は surrogate ロード (mlflow 依存) だけ注入する。
     saved = []
     if run_panel.value["draw"]:
-        report = ReportSpec.from_dict(json.loads(DRAW_JSON.read_text()))
-        arts = artifacts(ARTIFACT_DIR, sel_id)
-        res = load_all(arts)
-        bundles_for_draw = {
-            a.meta.spec.run_id: load_surrogate_model(a.meta.spec.run_id)
-            for a in arts
-            if a.meta.spec.run_id is not None
-        }
         style_paths = [
             STYLE_DIR / "base.mplstyle",
             STYLE_DIR / f"{PLT_STYLE}.mplstyle",
         ]
         dest = RESULT_DIR / run_panel.value["dir"]
-        saved = render_report(bundles_for_draw, res, report, dest, style_paths)
+        saved = load_and_render_report(
+            DRAW_JSON, ARTIFACT_DIR, sel_id, dest, style_paths, load_surrogate_model
+        )
     (
         mo.vstack([mo.md(f"✅ `{p.relative_to(RESULT_DIR)}`") for p in saved])
         if saved
