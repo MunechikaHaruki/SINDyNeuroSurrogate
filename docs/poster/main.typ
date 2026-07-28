@@ -265,7 +265,14 @@
     ],
     // ======== 右列: ① 画像を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
+      *Replace soma compartment to surrogate model*
 
+      #align(center)[
+        #figure(
+          image("pic/inject_steady_current.png", width: 70%),
+          numbering: none,
+          supplement: none,
+        )]
 
       #align(center)[
         #figure(
@@ -275,6 +282,14 @@
           supplement: none,
         )
       ]
+
+
+      #align(center)[
+        #figure(
+          image("pic/inject_periodic_current.png", width: 70%),
+          numbering: none,
+          supplement: none,
+        )]
       #align(center)[
         #figure(
           image("result/traces.png", width: 100%),

@@ -56,11 +56,11 @@
     // --- 膜容量 + イオン電流の枝 ---
     capacitor("Cm", "Mc", "Gc", label: lab[$C_m$])
     resistor("gL", "Mleak", (rel: (0, -2.6), to: "Mleak"), label: lab[$overline(g)_"L"$])
-    battery("EL", (), "Gleak", cells: 1, label: lab[$E_"L"$])
+    battery("EL", "Gleak", (rel: (0, -2.6), to: "Mleak"), cells: 1, label: lab[$E_"L"$])
     resistor("gNa", "Mna", (rel: (0, -2.6), to: "Mna"), variable: true, label: lab[$overline(g)_"Na" m^2 h$])
     battery("ENa", (), "Gna", cells: 1, label: lab[$E_"Na"$])
     resistor("gK", "Mk", (rel: (0, -2.6), to: "Mk"), variable: true, label: lab[$overline(g)_"K(DR)" n$])
-    battery("EK", (), "Gk", cells: 1, label: lab[$E_"K"$])
+    battery("EK", "Gk", (rel: (0, -2.6), to: "Mk"), cells: 1, label: lab[$E_"K"$])
     content("Mdots", text(size: label-size + 2pt)[$dots.c$], anchor: "west", padding: 10pt)
     content("Gdots", text(size: label-size + 2pt)[$dots.c$], anchor: "west", padding: 10pt)
 
