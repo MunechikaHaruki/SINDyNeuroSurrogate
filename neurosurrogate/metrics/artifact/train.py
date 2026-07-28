@@ -50,6 +50,16 @@ def _shown(
     ]
 
 
+def _soma_ids(bundle: SurrogateBundle) -> list[int]:
+    """soma comp_id 一覧。全モデル共通で "soma" 固定命名 (neurons/__init__.py)。"""
+    nodes = bundle.meta.dataset.net.nodes
+    return [
+        i
+        for i in bundle.ansatz.train_source(bundle.meta).comp_ids
+        if nodes[i].name == "soma"
+    ]
+
+
 def _latents(bundle: SurrogateBundle, comp_ids: Sequence[int]) -> list[np.ndarray]:
     """comp ごとの潜在軌道 (time, n_components)。閉包項が実際に見た入力。"""
     source = bundle.ansatz.train_source(bundle.meta)
@@ -60,19 +70,26 @@ def _latents(bundle: SurrogateBundle, comp_ids: Sequence[int]) -> list[np.ndarra
 
 
 def train_raw_fig(
-    bundle: SurrogateBundle, comps: Sequence[int] | None = None
+    bundle: SurrogateBundle,
+    comps: Sequence[int] | None = None,
+    i_ext_ylim: tuple[float, float] | None = None,
 ) -> Figure:
     """生の学習軌道: 注入電流・学習 comp の V・表示先頭 comp のゲート。
 
     どの comp の軌道を食わせたかを V パネルで見る。ゲートは表示 comp の先頭 1 個のみ
     (全 comp 分を重ねると本数が comp×gate で潰れる。他 comp のゲートは同一多様体上
-    に乗る前提なので、被覆のズレは coverage 図が受け持つ)。
+    に乗る前提なので、被覆のズレは coverage 図が受け持つ)。i_ext_ylim は diff.png の
+    I_ext(t) と軸を揃えたいとき呼び出し側から渡す (発表用)。
     """
     source = bundle.ansatz.train_source(bundle.meta)
-    shown = _shown(bundle, comps)
+    shown = _shown(bundle, _soma_ids(bundle))
     return draw_engine(
         [
-            PanelSpec("I_ext", [TraceSpec(*access.i_ext(bundle.train_xr))]),
+            PanelSpec(
+                "I_ext",
+                [TraceSpec(*access.i_ext(bundle.train_xr), color="#FFC107")],
+                ylim=i_ext_ylim,
+            ),
             PanelSpec(
                 "V(t) [mV]",
                 [
@@ -113,12 +130,17 @@ def train_preprocessed_fig(
     inputs = bundle.ansatz.train_inputs(
         bundle.meta, bundle.train_xr, bundle.preprocessor
     )
-    shown = _shown(bundle, comps)
+    shown = _shown(bundle, _soma_ids(bundle))
     panels = [
         PanelSpec(
             name,
             [
-                TraceSpec(access.time(bundle.train_xr), mats[pos][:, k], label=label)
+                TraceSpec(
+                    access.time(bundle.train_xr),
+                    mats[pos][:, k],
+                    label=label,
+                    color="blue" if name == access.POTENTIAL_VAR else "red",
+                )
                 for pos, _, label in shown
             ],
         )

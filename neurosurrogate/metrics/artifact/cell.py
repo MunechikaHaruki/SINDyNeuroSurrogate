@@ -90,9 +90,14 @@ def panels_diff(
     preprocessed: xr.Dataset,
     surrogate: xr.Dataset,
     comp_id: int,
+    i_ext_ylim: tuple[float, float] | None = None,
 ) -> list[PanelSpec]:
     return [
-        PanelSpec("I_ext(t)", [TraceSpec(*access.i_ext(original), color="gold")]),
+        PanelSpec(
+            "I_ext(t)",
+            [TraceSpec(*access.i_ext(original), color="gold")],
+            ylim=i_ext_ylim,
+        ),
         PanelSpec(
             "V [mV]",
             [
@@ -115,7 +120,7 @@ def panels_diff(
                 [
                     TraceSpec(
                         *access.trace(preprocessed, comp_id, latent),
-                        label=f"target {latent}",
+                        label=f"orig {latent}",
                         color="blue",
                     ),
                     TraceSpec(

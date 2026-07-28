@@ -4,8 +4,8 @@ figure.dpi: 100
 # --- Font (Serif) ---
 font.family: serif
 font.serif: Times New Roman
-font.size: 8
-axes.titlesize: 10
+font.size: 10
+axes.titlesize: 11
 axes.labelsize: 9
 xtick.labelsize: 8
 ytick.labelsize: 8
@@ -22,5 +22,5 @@ xtick.direction: in
 ytick.direction: in
 
 # --- Legend ---
-legend.fontsize: 7
+legend.fontsize: 9
 legend.frameon: False

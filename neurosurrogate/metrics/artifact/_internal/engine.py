@@ -46,7 +46,7 @@ def place_legend(ax: Axes, handles: Sequence[Artist] | None = None) -> None:
         loc="upper left",
         bbox_to_anchor=(1.01, 1.0),
         borderaxespad=0.0,
-        fontsize="small",
+        fontsize="large",
         frameon=False,
         ncols=ncols,
     )
@@ -98,6 +98,7 @@ class TraceSpec:
 class PanelSpec:
     ylabel: str
     traces: list[TraceSpec] = field(default_factory=list)
+    ylim: tuple[float, float] | None = None
 
 
 def draw_engine(
@@ -117,6 +118,8 @@ def draw_engine(
         for tr in p.traces:
             ax.plot(tr.t, tr.y, label=tr.label, color=tr.color, linestyle=tr.style)
         ax.set_ylabel(p.ylabel)
+        if p.ylim is not None:
+            ax.set_ylim(p.ylim)
         labels = {tr.label for tr in p.traces if tr.label is not None}
         if not labels or labels <= seen_labels:
             continue  # 全段同一 label 集合の反復 (comp 重ね) は凡例も反復せず 1 回のみ

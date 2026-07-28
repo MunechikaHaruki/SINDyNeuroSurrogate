@@ -83,12 +83,13 @@ def cell_figs(
     comp_id: int,
     latent: Callable[[], xr.Dataset],
     comps: Sequence[int] | None = None,
+    i_ext_ylim: tuple[float, float] | None = None,
 ) -> ArtifactEntries:
     """1 セルの全描画を識別子付きで一括生成 (失敗の畳み込みは `collect`)。
     呼び出し側は種別を知らず (id, fig) を保存/表示に流すだけ。
 
     comp_id=比較対象 (diff/attractor は 1 comp の話)、comps=全 comp を並べる図
-    (simple) の表示制限。
+    (simple) の表示制限。i_ext_ylim=train_raw.png と軸を揃えたいとき渡す (発表用)。
 
     `latent` (原系ゲートの潜在射影) は **callable で受けて lazy 参照**: 学習ドメイン
     外 comp では raise するので diff/attractor でのみ評価する (simple は呼ばない)。
@@ -96,7 +97,7 @@ def cell_figs(
     return collect(
         {
             "diff": lambda: draw_engine(
-                panels_diff(original, latent(), surrogate, comp_id)
+                panels_diff(original, latent(), surrogate, comp_id, i_ext_ylim)
             ),
             "simple": lambda: draw_engine(panels_simple(original, comps)),
             "attractor": lambda: attractor_fig(latent(), surrogate, comp_id),
@@ -138,16 +139,19 @@ def neuron_graph_figs(
 
 
 def train_figs(
-    bundle: SurrogateBundle, comps: Sequence[int] | None = None
+    bundle: SurrogateBundle,
+    comps: Sequence[int] | None = None,
+    i_ext_ylim: tuple[float, float] | None = None,
 ) -> ArtifactEntries:
     """学習データ図を識別子付きで一括生成 (`sim.draw_all` と同じ `collect` 規約)。
-    comps=描く comp の制限 (None=学習 comp 全部)。
+    comps=描く comp の制限 (None=学習 comp 全部)。i_ext_ylim=diff.png と軸を
+    揃えたいとき渡す (発表用)。
 
     train_xr の再生成はここで初めて走る (cached_property) → 呼ばなければコスト 0。
     """
     return collect(
         {
-            "train_raw": lambda: train_raw_fig(bundle, comps),
+            "train_raw": lambda: train_raw_fig(bundle, comps, i_ext_ylim),
             "train_preprocessed": lambda: train_preprocessed_fig(bundle, comps),
             "train_recon": lambda: train_recon_fig(bundle, comps),
             "train_v_coverage": lambda: train_v_coverage_fig(bundle, comps),

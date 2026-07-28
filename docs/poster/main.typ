@@ -234,7 +234,7 @@
         columns: (1fr,1fr),
         gutter: 1em
       )[
-      *Data*
+      *Training Data to capture gate dynamics*
       #align(center)[
         #figure(
           image("result/train_raw.png", width: 82%),
@@ -242,7 +242,7 @@
           numbering: none,
           supplement: none,
         )
-        #sym.arrow.b Compress
+        #sym.arrow.b compress
         #figure(
           image("result/train_preprocessed.png", width: 82%),
           caption: [Latent trajectories used to fit the SINDy library.],
@@ -270,7 +270,7 @@
 
       #v(0.3em)
       // -------- ④ SINDy 係数 --------
-      *④ Identified latent equations*
+      *Identified latent equations*
       #align(center)[
         #figure(
           image("result/model.png", width: 100%),
@@ -307,6 +307,63 @@
 
       // 訳: 20 Hz 以上で一致、10 Hz では後続スパイクを落とす。
       - Matches for $f gt.eq 20$ Hz; *drops later spikes* at 10 Hz.
+
+      #v(0.5em)
+      // -------- ⑤ 刺激部位と置換部位の模式図 --------
+      *Stimulus and replacement sites*
+      #align(center)[
+        #figure(
+          cetz.canvas({
+            import cetz.draw: *
+            let w = 3.2
+            let h = 1.1
+            let font = 16pt
+
+            // dendrite - soma - axon の3コンパートメントを横に連結
+            rect((0, 0), (w, h), name: "dendrite")
+            rect((w, 0), (2 * w, h), name: "soma")
+            rect((2 * w, 0), (3 * w, h), name: "axon")
+            content((w / 2, h / 2), text(size: font)[dendrite])
+            content((3 * w / 2, h / 2), text(size: font)[soma])
+            content((5 * w / 2, h / 2), text(size: font)[axon])
+
+            // steady current: 一定振幅の矩形波形 → dendrite へ注入
+            let wf-y0 = h + 1.7
+            let wf-h = 0.5
+            let wf-x0 = w / 2 - 0.5
+            line(
+              (wf-x0, wf-y0), (wf-x0, wf-y0 + wf-h),
+              (wf-x0 + 1, wf-y0 + wf-h),
+              stroke: 1.5pt + blue,
+            )
+            line((w / 2, wf-y0 - 0.2), (w / 2, h), mark: (end: ">"), stroke: 1.5pt + blue)
+            content((w / 2, wf-y0 + wf-h + 0.35), anchor: "east", text(size: font, fill: blue)[steady current])
+
+            // pulse current: 矩形パルス列 → soma へ注入
+            let px0 = 3 * w / 2 - 0.6
+            let pw = 0.25
+            let gap = 0.2
+            line(
+              (px0, wf-y0),
+              (px0, wf-y0 + wf-h), (px0 + pw, wf-y0 + wf-h), (px0 + pw, wf-y0),
+              (px0 + pw + gap, wf-y0),
+              (px0 + pw + gap, wf-y0 + wf-h), (px0 + 2 * pw + gap, wf-y0 + wf-h), (px0 + 2 * pw + gap, wf-y0),
+              (px0 + 2 * pw + 2 * gap, wf-y0),
+              (px0 + 2 * pw + 2 * gap, wf-y0 + wf-h), (px0 + 3 * pw + 2 * gap, wf-y0 + wf-h), (px0 + 3 * pw + 2 * gap, wf-y0),
+              stroke: 1.5pt + red,
+            )
+            line((3 * w / 2, wf-y0 - 0.2), (3 * w / 2, h), mark: (end: ">"), stroke: 1.5pt + red)
+            content((3 * w / 2, wf-y0 + wf-h + 0.35), anchor: "west", text(size: font, fill: red)[pulse current])
+
+            // soma を surrogate で置換することを示す注記 (右へずらしキャプションと重ならないようにする)
+            line((3 * w / 2, -0.2), (3 * w / 2, -1.1), mark: (end: ">"), stroke: 1.5pt + eastern)
+            content((3 * w / 2 + 1.3, -0.75), text(size: font, fill: eastern)[replace soma w/ surrogate])
+          }),
+          caption: [Steady current drives the dendrite; a pulse train drives the soma, whose compartment is replaced by the surrogate.],
+          numbering: none,
+          supplement: none,
+        )
+      ]
     ],
   )
 ]

@@ -24,6 +24,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from ..core import access
 from ..core.network import NeuronGraph
 from ..eval.run import SimKey
 from ..eval.store import SimResult, artifacts, load_all
@@ -133,6 +134,22 @@ def metric_ylim(draw: dict) -> tuple[float, float] | None:
     return None if draw["metric_yauto"] else (draw["metric_ymin"], draw["metric_ymax"])
 
 
+def i_ext_ylim(
+    bundles: dict[str, SurrogateBundle], results: dict[SimKey, SimResult]
+) -> tuple[float, float] | None:
+    """train_raw.png と diff.png の I_ext パネルで揃える共通 y レンジ (発表用、
+    5% パディング)。学習軌道 (train_xr) と評価結果の原系軌道すべてを見て決める。"""
+    arrays = [access.i_ext_values(b.train_xr) for b in bundles.values()] + [
+        access.i_ext_values(r.dataset) for r in results.values()
+    ]
+    if not arrays:
+        return None
+    lo = min(float(a.min()) for a in arrays)
+    hi = max(float(a.max()) for a in arrays)
+    pad = (hi - lo) * 0.05 or 1.0
+    return (lo - pad, hi + pad)
+
+
 # --- model (run のロードのみ。置換シミュ不要) -----------------------------------
 
 
@@ -140,6 +157,7 @@ def model_report(
     bundles: dict[str, SurrogateBundle],
     results: dict[SimKey, SimResult],
     report: dict,
+    i_ext_ylim: tuple[float, float] | None = None,
 ) -> list[SaveEntry]:
     """静的モデル図 + 学習側サマリ表 + 電流プレビュー。`report["kinds"]` で種類ごとに
     出す/出さないを選べる (既定は全種類)。
@@ -211,7 +229,7 @@ def model_report(
     if wants(report, "train_figs"):
         entries += [
             SaveEntry(name, fig, sources=(rep_run_id,))
-            for name, fig in train_figs(bundle, comps)
+            for name, fig in train_figs(bundle, comps, i_ext_ylim)
         ]
     return entries
 
@@ -224,6 +242,7 @@ def _cell_entries(
     results: dict[SimKey, SimResult],
     bundles: dict[str, SurrogateBundle],
     draw: dict,
+    i_ext_ylim: tuple[float, float] | None = None,
 ) -> list[SaveEntry]:
     """選択した 1 点 × 各 run の詳細図 + メトリクス df (名前は `<name>/<run>/...`)。
 
@@ -250,6 +269,7 @@ def _cell_entries(
                 bundles[rid], net, orig.dataset, comp_id
             ),
             view_comp_ids(draw, net),
+            i_ext_ylim,
         )
         metrics = wave_report(
             dm_of(orig, surr, comp_id), draw["spike_orig"], draw["spike_surr"]
@@ -269,6 +289,7 @@ def _eval_report_one(
     bundles: dict[str, SurrogateBundle],
     draw: dict,
     report: dict,
+    i_ext_ylim: tuple[float, float] | None = None,
 ) -> list[SaveEntry]:
     """1 系列分: 波形格子 (点 × run) → 選択点の詳細図 → 点軸メトリクス折れ線。
     折れ線は**点が 2 つ以上のときだけ** (単発で 1 点の折れ線を出さない)。
@@ -293,7 +314,7 @@ def _eval_report_one(
             )
         )
     if wants(report, "cell_figs"):
-        entries += _cell_entries(name, results, bundles, draw)
+        entries += _cell_entries(name, results, bundles, draw, i_ext_ylim)
     if wants(report, "metric_fig") and len(labels) > 1:
         entries.append(
             SaveEntry(
@@ -345,6 +366,7 @@ def eval_report(
     results: dict[SimKey, SimResult],
     bundles: dict[str, SurrogateBundle],
     report: dict,
+    i_ext_ylim: tuple[float, float] | None = None,
 ) -> list[SaveEntry]:
     """結果 (図 + メトリクス) → compare の格子図。
 
@@ -355,7 +377,7 @@ def eval_report(
     """
     entries: list[SaveEntry] = []
     for name, draw in for_results(report, results):
-        entries += _eval_report_one(name, results, bundles, draw, report)
+        entries += _eval_report_one(name, results, bundles, draw, report, i_ext_ylim)
     if wants(report, "compare_grid_fig"):
         entries += _compare_report(report["compares"], results)
     return entries
@@ -375,8 +397,9 @@ def render_report(
     (draw.json 丸ごとの snapshot は持たない)。"""
     for p in style_paths:
         plt.style.use(p)
-    entries = model_report(bundles, results, report) + eval_report(
-        results, bundles, report
+    ylim = i_ext_ylim(bundles, results)
+    entries = model_report(bundles, results, report, ylim) + eval_report(
+        results, bundles, report, ylim
     )
     return save_entries(entries, dest)
 
