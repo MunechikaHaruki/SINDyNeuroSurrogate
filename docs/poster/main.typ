@@ -17,6 +17,7 @@
 #set text(lang: "en")
 
 #let body-size = 33pt
+#let poster-number = "3P-479"
 
 // --- mini box helper ---
 #let mini-box(title: "Heading", color: blue, title-size: 35pt, body-inset: 8pt, body) = {
@@ -49,8 +50,15 @@
   text(size: 60pt)[
     A Surrogate Model for Reducing the Computational Cost of Neuron Simulations #v(-3em)
   ],
-  authors: "Haruki Munechika, Taira Kobayashi",
-  institutes: "",
+  authors: "⚪︎ Haruki Munechika, Taira Kobayashi",
+  institutes: "Grad Sch of Sci and Tech for Innov, Yamaguchi University (f032vbw@yamaguchi-u.ac.jp)",
+)
+
+#place(
+  top + right,
+  dx: -1cm,
+  dy: 5cm,
+  text(size: 70pt, weight: "bold", fill: white)[#poster-number],
 )
 
 
@@ -61,13 +69,14 @@
     gutter: 1em,
     // ======== 左: 実際の錐体細胞と、そのコンパートメント分割 ========
     [
+      #v(0.5em)
       #figure(
         image("pic/ref/pyramidal.png", width: 90%),
         caption: [guinea pig CA3 pyramidal neuron@pyramidal],
         numbering: none,
         supplement: none,
       )
-      #v(0.4em)
+      #v(2em)
       #figure(
         cetz.canvas({
           import cetz.draw: *
@@ -140,8 +149,8 @@
         ],
       )
       #v(0.4em)
-      #mini-box(title: "Goal")[
-        Development of a surrogate model with few gate variables capable of reproducing the membrane potential response of a multi-compartment neuron model.
+      #mini-box(title:"Goal")[
+        Development of a multi-compartment neuron's surrogate model capable of reproducing  the membrane potential response with few gate variables.
       ]
     ],
   )
