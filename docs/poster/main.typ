@@ -201,7 +201,7 @@
   // 掲載は全て同一 run: hybrid / n=5 / AE / traub_sr_physics を traub19 の全 comp へ適用
   // 構成: 2 列。左列 = train_raw + train_preprocessed 縦積み → ④SINDy係数。右列 = ①画像 → ②③。
   #grid(
-    columns: (1.4fr, 1fr),
+    columns: (1.3fr, 1fr),
     gutter: 1.5em,
     // ======== 左列: train_raw / train_preprocessed を先頭、以下④ ========
     [
@@ -212,14 +212,14 @@
       *Training Data to capture gate dynamics*
       #align(center)[
         #figure(
-          image("result/train_raw.png", width: 82%),
+          image("result/train_raw.png", width: 100%),
           caption: [Raw training trajectories.],
           numbering: none,
           supplement: none,
         )
         #sym.arrow.b compress
         #figure(
-          image("result/train_preprocessed.png", width: 82%),
+          image("result/train_preprocessed.png", width: 100%),
           caption: [Latent trajectories used to fit the SINDy library.],
           numbering: none,
           supplement: none,
@@ -235,6 +235,7 @@
             supplement: none,
           )
         ]
+        #v(1.5em)
         #text(size: 25pt)[
           // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms。
           - latency err *0.3 ms*, AHP timing gap *3.1 ms*.

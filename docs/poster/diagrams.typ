@@ -39,36 +39,33 @@
     content((3 * w / 2, h / 2), text(size: font)[soma])
     content((5 * w / 2, h / 2), text(size: font)[axon])
 
-    // steady current: 一定振幅の矩形波形 → dendrite へ注入
+    // 矩形パルス1つ分の点列 (ベースライン→立上り→頂上→立下り→ベースライン) を x0 起点・幅 bw・高さ bh・前後ベースライン長 lead/trail で生成
+    let rect-pulse-points(x0, y0, bw, bh, lead: 0.2, trail: 0.2) = (
+      (x0 - lead, y0), (x0, y0), (x0, y0 + bh), (x0 + bw, y0 + bh), (x0 + bw, y0), (x0 + bw + trail, y0),
+    )
+
+    // steady current: 矩形ひとつ → dendrite と soma の両方へ注入
     let wf-y0 = h + 1.7
     let wf-h = 0.5
-    let wf-x0 = w / 2 - 0.5
-    line(
-      (wf-x0, wf-y0), (wf-x0, wf-y0 + wf-h),
-      (wf-x0 + 1, wf-y0 + wf-h),
-      stroke: 1.5pt + blue,
-    )
-    line((w / 2, wf-y0 - 0.2), (w / 2, h), mark: (end: ">"), stroke: 1.5pt + blue)
-    content((w / 2, wf-y0 + wf-h + 0.35), anchor: "east", text(size: font, fill: blue)[steady current])
+    let steady-cx = (w / 2 + 3 * w / 2) / 2
+    let wf-x0 = steady-cx - 0.5
+    line(..rect-pulse-points(wf-x0, wf-y0, 1, wf-h), stroke: 1.5pt + blue)
+    line((steady-cx, wf-y0 - 0.2), (w / 2, h), mark: (end: ">"), stroke: 1.5pt + blue)
+    line((steady-cx, wf-y0 - 0.2), (3 * w / 2 - 0.5, h), mark: (end: ">"), stroke: 1.5pt + blue)
+    content((steady-cx, wf-y0 + wf-h + 1), text(size: font, fill: blue)[steady current])
 
-    // pulse current: 矩形パルス列 → soma へ注入
-    let px0 = 3 * w / 2 - 0.6
-    let pw = 0.25
-    let gap = 0.2
-    line(
-      (px0, wf-y0),
-      (px0, wf-y0 + wf-h), (px0 + pw, wf-y0 + wf-h), (px0 + pw, wf-y0),
-      (px0 + pw + gap, wf-y0),
-      (px0 + pw + gap, wf-y0 + wf-h), (px0 + 2 * pw + gap, wf-y0 + wf-h), (px0 + 2 * pw + gap, wf-y0),
-      (px0 + 2 * pw + 2 * gap, wf-y0),
-      (px0 + 2 * pw + 2 * gap, wf-y0 + wf-h), (px0 + 3 * pw + 2 * gap, wf-y0 + wf-h), (px0 + 3 * pw + 2 * gap, wf-y0),
-      stroke: 1.5pt + red,
-    )
+    // pulse current: 矩形みっつ → soma へ注入
+    let px0 = 3 * w / 2 - 0
+    let bw = 0.8
+    let gap = 0.4
+    for k in range(3) {
+      line(..rect-pulse-points(px0 + k * (bw + gap), wf-y0, bw, wf-h), stroke: 1.5pt + red)
+    }
     line((3 * w / 2, wf-y0 - 0.2), (3 * w / 2, h), mark: (end: ">"), stroke: 1.5pt + red)
-    content((3 * w / 2+1.5, wf-y0 + wf-h + 0.35), anchor: "west", text(size: font, fill: red)[pulse current])
+    content((3 * w / 2 + 2, wf-y0 + wf-h + 1), anchor: "west", text(size: font, fill: red)[pulse current])
 
     // soma を surrogate で置換することを示す注記 (右へずらしキャプションと重ならないようにする)
     line((3 * w / 2, -0.2), (3 * w / 2, -1.8), mark: (start: ">"), stroke: 1.5pt + eastern)
-    content((3 * w / 2 + 1.3, -2.8), text(size: font, fill: eastern)[replace soma / surrogate])
+    content((3 * w / 2 + 1.3, -2.8), text(size: font, fill: eastern)[replace soma])
   })
 }
