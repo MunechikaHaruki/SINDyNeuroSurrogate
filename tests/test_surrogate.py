@@ -44,10 +44,11 @@ from neurosurrogate.metrics.artifact._internal.wave import (
 )
 from neurosurrogate.metrics.artifact.cell import panels_simple
 from neurosurrogate.metrics.report import (
-    CompareSpec,
-    DrawSpec,
+    DEFAULT_DRAW,
     ReportSpec,
+    draw_for,
     eval_report,
+    metric_ylim,
 )
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
@@ -212,7 +213,7 @@ def test_eval_and_draw_json_are_self_consistent() -> None:
     names = {spec.name for spec in evals.values()}
     assert set(report.results) <= names
     for comparison in report.compares.values():
-        assert set(comparison.evals) <= names
+        assert set(comparison["evals"]) <= names
 
 
 def _sweep_specs(name: str, values: list[float]) -> dict[str, SimSpec]:
@@ -262,18 +263,18 @@ def _renamed(
 def test_compare_grid_rows_are_current_then_one_per_eval(
     sindy: SurrogateBundle,
 ) -> None:
-    """compare 図の行 = [I_ext] + [評価ごとの V]、列 = 点。点数が揃わない結果を
+    """compare 図の行 = 評価ごとの V。点数が揃わない結果を
     混ぜると列の意味が行ごとにずれる → raise。"""
     bundles = {"r0": sindy}
     results_a = _run_named(bundles, _sweep_specs("a", [5.0, 10.0]), "r0")
     results = {**results_a, **_renamed(results_a, "a", "b")}
     fig = compare_grid_fig(results, ["a", "b"], "soma")
-    assert len(fig.axes) == 3 * 2  # (I_ext + a + b) 行 × 2 点
-    assert [ax.get_ylabel() for ax in fig.axes[::2]] == ["I_ext", "a", "b"]
+    assert len(fig.axes) == 2 * 2  # (a + b) 行 × 2 点
+    assert [ax.get_ylabel() for ax in fig.axes[::2]] == ["a", "b"]
 
-    # 同じ格子骨格を run 軸で開くと行 = [I_ext] + [run] (行の組み方だけが違う)。
+    # 同じ格子骨格を run 軸で開くと行 = [run] (行の組み方だけが違う)。
     run_fig = trace_grid_fig(results, "a", "soma")
-    assert [ax.get_ylabel() for ax in run_fig.axes[::2]] == ["I_ext", "r0"]
+    assert [ax.get_ylabel() for ax in run_fig.axes[::2]] == ["r0"]
 
     results_b3 = _run_named(bundles, _sweep_specs("b", [5.0, 10.0, 15.0]), "r0")
     short = {**results, **results_b3}
@@ -332,36 +333,40 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
         )
         for (_label, run_id), result in sindy_results.items()
     }
-    report = ReportSpec(results={"読んだ系列": DrawSpec(eval_comp="soma")})
+    report = ReportSpec(results={"読んだ系列": {"eval_comp": "soma"}})
     entries = eval_report(renamed, {"r0": sindy}, report)
     assert any(e.name.startswith("読んだ系列/") for e in entries)
 
-    dangling = CompareSpec(evals=["未実行"], eval_comp="soma")
+    dangling = {"evals": ["未実行"], "eval_comp": "soma"}
     report_with_compare = ReportSpec(compares={"c": dangling})
     assert eval_report({}, {"r0": sindy}, report_with_compare) == []
 
 
 def test_report_spec_results_are_per_label_with_no_default_fallback() -> None:
     """`draw.json` の `results[]` は label ごとに完結する宣言 (既定値からの override
-    ではない): 指定したキーだけ効き、欠落キーは `DrawSpec` の型既定値。宣言に無い
-    label は `DrawSpec()` そのもの (グローバル既定を持たない)。"""
+    ではない): 指定したキーだけ効き、欠落キーは `DEFAULT_DRAW` の既定値。宣言に無い
+    label は `DEFAULT_DRAW` そのもの (グローバル既定を持たない)。"""
     report = ReportSpec.from_dict(
         {"results": [{"eval": "traub19_dendstim", "eval_comp": "c09"}]}
     )
-    assert report.draw_for("traub19_dendstim") == DrawSpec(eval_comp="c09")
-    assert report.draw_for("宣言に無い label") == DrawSpec()
+    assert draw_for(report, "traub19_dendstim") == {**DEFAULT_DRAW, "eval_comp": "c09"}
+    assert draw_for(report, "宣言に無い label") == DEFAULT_DRAW
 
 
 def test_draw_settings_are_typed_and_failed_figs_fold_into_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """表示設定は widget/保存 dict を読む型 1 つが源 (欠落キーは既定値)。描画 job の
-    失敗は列を保ったまま error 図へ畳む = 1 図の失敗で他の図まで落とさない。"""
-    assert DrawSpec.from_dict({}).metric_ylim() is None  # 既定は y auto
-    drawn = DrawSpec.from_dict(
-        {"eval_comp": "soma", "metric_yauto": False, "metric_ymax": 40}
-    )
-    assert (drawn.eval_comp, drawn.metric_ylim()) == ("soma", (0.0, 40.0))
+    """表示設定は widget/保存 dict をそのまま読む (欠落キーは `DEFAULT_DRAW` の
+    既定値)。描画 job の失敗は列を保ったまま error 図へ畳む = 1 図の失敗で他の図まで
+    落とさない。"""
+    assert metric_ylim(DEFAULT_DRAW) is None  # 既定は y auto
+    drawn = {
+        **DEFAULT_DRAW,
+        "eval_comp": "soma",
+        "metric_yauto": False,
+        "metric_ymax": 40,
+    }
+    assert (drawn["eval_comp"], metric_ylim(drawn)) == ("soma", (0.0, 40.0))
 
     def boom() -> Figure:
         raise KeyError("missing var")

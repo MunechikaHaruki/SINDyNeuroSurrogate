@@ -15,7 +15,6 @@ Figure/DataFrame を返さないのでここでは公開しない (必要なら 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from functools import partial
 
 import pandas as pd
@@ -70,11 +69,12 @@ __all__ = [
 ArtifactEntries = Sequence[tuple[str, Figure | pd.DataFrame]]
 
 
-def summary_df(bundles: dict[str, SurrogateBundle]) -> pd.DataFrame:
+def summary_df(bundles: dict[str, SurrogateBundle]) -> ArtifactEntries:
     """run 軸の学習側指標サマリ (評価結果に依らないので results 無しでも出せる)。"""
-    return pd.DataFrame(
+    df = pd.DataFrame(
         [{"label": label, **surrogate_metrics(s)} for label, s in bundles.items()]
     ).set_index("label")
+    return [("summary", df)]
 
 
 def cell_figs(
@@ -156,21 +156,15 @@ def train_figs(
     )
 
 
-@dataclass(frozen=True)
-class WaveReport:
-    """波形+スパイク指標を統合した評価レポート。df をそのまま表示/保存へ流す。"""
-
-    df_metrics: pd.DataFrame  # 波形行 (+ 指定 spike が両信号にあればその特徴量)
-    df_scalar: pd.DataFrame  # 全スカラーを縦持ち
-
-
 def wave_report(
     dm: DynamicMetrics,
     spike_orig: int = 0,
     spike_surr: int = 0,
-) -> WaveReport:
-    """dm から波形/スパイク指標を計算し DataFrame まで組み立てて返す。指定した
-    spike index が両信号の範囲内にあるときだけ、その AP の特徴量と形状相関を足す。"""
+) -> ArtifactEntries:
+    """dm から波形/スパイク指標を計算し DataFrame まで組み立てて返す
+    (metrics=波形行+指定 spike があればその特徴量、metrics_scalar=全スカラーを
+    縦持ち)。指定した spike index が両信号の範囲内にあるときだけ、その AP の特徴量
+    と形状相関を足す。"""
     n_orig, n_surr = n_spikes(dm)
     df_metrics = waveform_summary_df(dm)
     scalar = waveform_summary(dm)
@@ -179,15 +173,13 @@ def wave_report(
         df_spike.index.name = "metric"
         df_metrics = pd.concat([df_metrics, df_spike])
         scalar.update(spike_shape_corr(dm))
-    return WaveReport(
-        df_metrics=df_metrics,
-        df_scalar=pd.DataFrame(scalar.items(), columns=["metric", "value"]).set_index(
-            "metric"
-        ),
+    df_scalar = pd.DataFrame(scalar.items(), columns=["metric", "value"]).set_index(
+        "metric"
     )
+    return [("metrics", df_metrics), ("metrics_scalar", df_scalar)]
 
 
-# `declare.ALL_KINDS` の単一源。関数名がそのまま `draw.json` の `kinds` キーになる
+# `report.ALL_KINDS` の単一源。関数名がそのまま `draw.json` の `kinds` キーになる
 # ので、ここへ関数を並べておけば rename が自動で追従する (文字列を手で書き写して
 # ズレる余地を無くす)。`cell` 系だけは `cell_figs` の呼び出しに付随して
 # `wave_report` も呼ぶ複合キーだが、キー名自体は `cell_figs` で足りる。

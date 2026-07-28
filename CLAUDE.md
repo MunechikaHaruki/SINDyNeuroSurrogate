@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 大きな改装が終わったら、just test でエラーが出ないことを確認,tests/ 以下のテストは自由に追加して良い ただし、20s以下に抑えること
 - Hooksで実行されるjust lint、just formatのエラーは都度対処すること
 - 研究のまとめは、docs/poster、docs/slideディレクトリ以下にtypstとしてまとめる
-
+- __init__.pyに__all__フィールドは定義しないこと　過剰な複雑さ
 [以下のセクションは永続メモリとして上書きしても構いません。
 ただし、基本的なコマンドやディレクトリ構成などの目録のみを記述すること]
 

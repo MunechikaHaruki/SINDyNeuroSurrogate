@@ -10,23 +10,30 @@ marimo 非依存 (marimo は artifact 読込 + surrogate ロードだけ持ち�
 
 **描く対象は結果 `results` 自身**で、シミュ入力の設定 (`eval.json`) は受け取らない:
 結果 artifact は入力仕様を自分で持つので、設定ファイルと無関係に (別セッションで
-回した結果でも) 描ける。描画の宣言のスキーマ (`DrawSpec`/`ReportSpec`/`CompareSpec`)
-は `declare.py` が持つ (計算仕様 `SimSpec` を `eval.spec` が持つのと同じ関係、ここは
-型を受け取って組み立てるだけ)。
+回した結果でも) 描ける。描画宣言のスキーマ (`ReportSpec`) はここが持つ (`eval.spec`
+が計算仕様 `SimSpec` を持つのと同じ関係)。**dict を見るのは `ReportSpec.from_dict`
+までで**、以降は `ReportSpec` で渡す。系列ごとの表示設定 (`draw`) / compare 宣言
+(`spec`) は dataclass 化せず dict のまま持ち回る — フィールドが多くても「表示にだけ
+使う名前付き値の束」で、以降は個々のキーへ都度アクセスするだけなので構造体化する
+意味が薄い。キーの意味と既定値は `DEFAULT_DRAW`/`draw_for` が持つ。
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Self
 
 import matplotlib.pyplot as plt
 
+from ..core.network import NeuronGraph
 from ..eval.run import SimKey
 from ..eval.store import SimResult
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.diagnostics import preprocessed_latent
 from . import select
 from .artifact import (
+    KIND_FUNCS,
     cell_figs,
     closure_figs,
     compare_grid_fig,
@@ -41,8 +48,98 @@ from .artifact import (
     wave_report,
 )
 from .artifact._internal.wave import dm_of
-from .declare import CompareSpec, DrawSpec, ReportSpec
 from .save import SaveEntry, save_entries, slug
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReportSpec:
+    """描画宣言全体 (`draw.json`) の型 = 系列名ごとの設定 + compare。
+    **dict を見るのはここまで**で、以降 (`model_report`/`eval_report`) は
+    `ReportSpec` で渡す (`eval.spec.parse_evals` が計算入力に対してやるのと同じ
+    役目)。絞り込み判定 (`wants`/`draw_for`/`for_results`) はこのモジュールが持つ。
+    """
+
+    results: dict[str, dict] = field(default_factory=dict)
+    compares: dict[str, dict] = field(default_factory=dict)
+    # 未指定キー = 全部描く既定は `wants` が持つ (ここは dict を素通しするだけ)。
+    kinds: dict[str, bool] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Self:
+        return cls(
+            results={
+                str(r["eval"]): {k: v for k, v in r.items() if k != "eval"}
+                for r in d.get("results", ())
+            },
+            compares={
+                str(c["name"]): {k: v for k, v in c.items() if k != "name"}
+                for c in d.get("compare", ())
+            },
+            kinds={str(k): bool(v) for k, v in d.get("kinds", {}).items()},
+        )
+
+
+# `kinds` を指定しなければ手元の結果を全種描く既定 = 何も書かなくても動く (最初の
+# 1 回はここから)。絞り込みたくなったら明示的に列挙する。キー名は `KIND_FUNCS`
+# (`metrics/artifact/__init__.py`) の関数名から取る = 文字列を手で書き写さないので
+# rename しても自動で追従する。
+ALL_KINDS = tuple(f.__name__ for f in KIND_FUNCS)
+
+# 表示設定 (`draw.json` の `results[]` 1 件) のキーと既定値の唯一の源。**評価
+# (系列名) ごとに固有の値** (適用先が変われば comp 名も変わる) — グローバルな既定値
+# を持たない (描画スタイルは呼び出し側 `scripts/marimo.py` の定数の関心で、ここには
+# 持たない)。
+DEFAULT_DRAW: dict = {
+    "eval_comp": "",  # 比較対象 comp (1 件)。適用先ごとに違うので既定を持たない
+    "view_comps": (),  # 全 comp を並べる図の表示制限 (空=全部)
+    "detail_point": 0,  # 詳細図 (diff/attractor/指標) を描く点の index
+    "spike_orig": 0,
+    "spike_surr": 0,
+    # 点軸メトリクス図 (点が 2 つ以上のときだけ描く折れ線)
+    "metric": "spike_count",
+    "metric_yauto": True,
+    "metric_ymin": 0.0,
+    "metric_ymax": 1.0,
+}
+
+
+def wants(report: ReportSpec, kind: str) -> bool:
+    """この種類の図/表を保存するか (`report.kinds` による絞り込み)。未指定キーは
+    描く既定 (`kinds` を明示指定したものだけが上書きされる)。"""
+    return report.kinds.get(kind, True)
+
+
+def draw_for(report: ReportSpec, name: str) -> dict:
+    """系列名の表示設定 (`results[]` に無ければ `DEFAULT_DRAW` そのもの。指定した
+    キーだけ既定を上書きする — `eval_comp` が空だと `_eval_report_one` がエラー図を
+    出す = 未指定は黙って何か描くのでなく気付ける形にする)。"""
+    return {**DEFAULT_DRAW, **report.results.get(name, {})}
+
+
+def for_results(
+    report: ReportSpec, results: dict[SimKey, SimResult]
+) -> list[tuple[str, dict]]:
+    """描く対象 (系列名, draw) 列。`report.results` が空なら手元の結果を全部描く
+    既定。非空なら **`results` に列挙した系列名だけへ絞り込む** (artifact が増える
+    ほど draw 出力も比例して増えるのを避ける)。手元に無い名前は黙って落とす
+    (`_compare_report` の「参照は宣言、欠落は宣言とのズレ」という扱いと揃える)。
+    """
+    names = select.series(results)
+    if not report.results:
+        return [(name, draw_for(report, name)) for name in names]
+    return [(name, draw_for(report, name)) for name in names if name in report.results]
+
+
+def view_comp_ids(draw: dict, net: NeuronGraph) -> list[int] | None:
+    """全 comp を並べる図に描く comp。UI では名前、描画側は comp_id で受ける。
+    空選択 = 制限なし (None)。"""
+    return [net.name_to_idx(c) for c in draw["view_comps"]] or None
+
+
+def metric_ylim(draw: dict) -> tuple[float, float] | None:
+    """点軸メトリクス図の y レンジ (auto なら None = matplotlib 任せ)。"""
+    return None if draw["metric_yauto"] else (draw["metric_ymin"], draw["metric_ymax"])
+
 
 # --- model (run のロードのみ。置換シミュ不要) -----------------------------------
 
@@ -57,12 +154,12 @@ def model_report(
 
     closure/preprocessor/train は**代表 run (先頭) のみ** — 全 run 分描くと学習
     データの再生成が run 数だけ走る (指標の run 横断比較は `summary` 表が担う)。
-    neurograph は**結果の適用先ごと** (置換ノードが違う) = `report.for_results(results)`
-    の spec から引く (`eval_report` と同じ絞り込みに従う。計算入力の宣言
+    neurograph は**結果の適用先ごと** (置換ノードが違う) = `for_results` の spec
+    から引く (`eval_report` と同じ絞り込みに従う。計算入力の宣言
     `eval.json` はここでも見ない = 描画は結果だけを見るという不変条件を model 図にも
     適用する)。電流プレビューは回した入力そのものの確認用で系列ごとに 1 枚。
     """
-    targets = report.for_results(results)
+    targets = for_results(report, results)
 
     def _first(name: str) -> SimResult:
         label = select.labels_of(results, name)[0]
@@ -81,7 +178,7 @@ def model_report(
             )
             for name, draw in targets
         ]
-        if report.wants("current_preview_fig")
+        if wants(report, "current_preview_fig")
         else []
     )
     if not bundles:
@@ -93,32 +190,33 @@ def model_report(
     # 代表系列 (先頭の results override) で名前解決 (学習 comp 名は target を
     # 跨いで共通)。
     comps = (
-        targets[0][1].view_comp_ids(next(iter(nets.values())))
+        view_comp_ids(targets[0][1], next(iter(nets.values())))
         if targets and nets
         else None
     )
-    if report.wants("summary_df"):
-        entries.append(
-            SaveEntry("summary", summary_df(bundles), sources=tuple(bundles.keys()))
-        )
-    if report.wants("closure_figs"):
+    if wants(report, "summary_df"):
+        entries += [
+            SaveEntry(name, df, sources=tuple(bundles.keys()))
+            for name, df in summary_df(bundles)
+        ]
+    if wants(report, "closure_figs"):
         entries += [
             SaveEntry(name, fig, sources=(rep_run_id,))
             for name, fig in closure_figs(bundle.closure)
         ]
-    if report.wants("preprocessor_figs"):
+    if wants(report, "preprocessor_figs"):
         entries += [
             SaveEntry(name, fig, sources=(rep_run_id,))
             for name, fig in preprocessor_figs(bundle.preprocessor)
         ]
-    if report.wants("neuron_graph_figs"):
+    if wants(report, "neuron_graph_figs"):
         target_sources = (s for name, _ in targets for s in _source_of(_first(name)))
         net_sources = tuple(dict.fromkeys((rep_run_id, *target_sources)))
         entries += [
             SaveEntry(name, fig, sources=net_sources)
             for name, fig in neuron_graph_figs(nets, bundle.meta)
         ]
-    if report.wants("train_figs"):
+    if wants(report, "train_figs"):
         entries += [
             SaveEntry(name, fig, sources=(rep_run_id,))
             for name, fig in train_figs(bundle, comps)
@@ -133,7 +231,7 @@ def _cell_entries(
     name: str,
     results: dict[SimKey, SimResult],
     bundles: dict[str, SurrogateBundle],
-    draw: DrawSpec,
+    draw: dict,
 ) -> list[SaveEntry]:
     """選択した 1 点 × 各 run の詳細図 + メトリクス df (名前は `<name>/<run>/...`)。
 
@@ -142,11 +240,11 @@ def _cell_entries(
     """
     labels = select.labels_of(results, name)
     run_ids = select.run_ids_of(results, name)
-    index = min(draw.detail_point, len(labels) - 1)
+    index = min(draw["detail_point"], len(labels) - 1)
     label = labels[index]
     orig = results[(label, None)]
     net = orig.spec.net
-    comp_id = net.name_to_idx(draw.eval_comp)
+    comp_id = net.name_to_idx(draw["eval_comp"])
     entries: list[SaveEntry] = []
     for run_id in run_ids:
         surr = results[(label, run_id)]
@@ -159,28 +257,16 @@ def _cell_entries(
             lambda rid=run_id: preprocessed_latent(  # type: ignore[misc]
                 bundles[rid], net, orig.dataset, comp_id
             ),
-            draw.view_comp_ids(net),
+            view_comp_ids(draw, net),
         )
-        rep = wave_report(dm_of(orig, surr, comp_id), draw.spike_orig, draw.spike_surr)
+        metrics = wave_report(
+            dm_of(orig, surr, comp_id), draw["spike_orig"], draw["spike_surr"]
+        )
         # run 表示名は凡例向けに改行/`/` を含む → 名前に混ぜる分だけ slug 化
         run = slug(run_label)
         entries += [
-            *[
-                SaveEntry(f"{name}/{run}/{fname}", fig, sources=sources, draw=draw)
-                for fname, fig in figs
-            ],
-            SaveEntry(
-                f"{name}/{run}/metrics",
-                rep.df_metrics,
-                sources=sources,
-                draw=draw,
-            ),
-            SaveEntry(
-                f"{name}/{run}/metrics_scalar",
-                rep.df_scalar,
-                sources=sources,
-                draw=draw,
-            ),
+            SaveEntry(f"{name}/{run}/{fname}", artifact, sources=sources, draw=draw)
+            for fname, artifact in (*figs, *metrics)
         ]
     return entries
 
@@ -189,7 +275,7 @@ def _eval_report_one(
     name: str,
     results: dict[SimKey, SimResult],
     bundles: dict[str, SurrogateBundle],
-    draw: DrawSpec,
+    draw: dict,
     report: ReportSpec,
 ) -> list[SaveEntry]:
     """1 系列分: 波形格子 (点 × run) → 選択点の詳細図 → 点軸メトリクス折れ線。
@@ -197,30 +283,31 @@ def _eval_report_one(
     `report.kinds` で種類ごとに出す/出さないを選べる。"""
     labels = select.labels_of(results, name)
     net = results[(labels[0], None)].spec.net
-    if draw.eval_comp not in net.names:
+    if draw["eval_comp"] not in net.names:
         # matplotlib テキストとして描かれる (CJK グリフ非対応) → 英語で書く。
         target = results[(labels[0], None)].spec.target
-        msg = f"{name}: eval_comp {draw.eval_comp!r} not in {target!r}"
+        eval_comp = draw["eval_comp"]
+        msg = f"{name}: eval_comp {eval_comp!r} not in {target!r}"
         return [SaveEntry(f"{name}/error", error_fig(msg))]
     sources = select.sources_of(results, name)
     entries: list[SaveEntry] = []
-    if report.wants("trace_grid_fig"):
+    if wants(report, "trace_grid_fig"):
         entries.append(
             SaveEntry(
                 f"{name}/traces",
-                trace_grid_fig(results, name, draw.eval_comp),
+                trace_grid_fig(results, name, draw["eval_comp"]),
                 sources=sources,
                 draw=draw,
             )
         )
-    if report.wants("cell_figs"):
+    if wants(report, "cell_figs"):
         entries += _cell_entries(name, results, bundles, draw)
-    if report.wants("metric_fig") and len(labels) > 1:
+    if wants(report, "metric_fig") and len(labels) > 1:
         entries.append(
             SaveEntry(
                 f"{name}/metric",
                 metric_fig(
-                    results, name, draw.eval_comp, draw.metric, draw.metric_ylim()
+                    results, name, draw["eval_comp"], draw["metric"], metric_ylim(draw)
                 ),
                 sources=sources,
                 draw=draw,
@@ -230,7 +317,7 @@ def _eval_report_one(
 
 
 def _compare_report(
-    compares: dict[str, CompareSpec], results: dict[SimKey, SimResult]
+    compares: dict[str, dict], results: dict[SimKey, SimResult]
 ) -> list[SaveEntry]:
     """compare spec ごとの格子図 (行=系列、列=点)。compare 自身はシミュを増やさず、
     既に回した結果を並べるだけ。
@@ -243,20 +330,21 @@ def _compare_report(
     names = set(select.series(results))
     entries: list[SaveEntry] = []
     for label, spec in compares.items():
-        if any(s not in names for s in spec.evals):
+        if any(s not in names for s in spec["evals"]):
             continue
         nets_ok = all(
-            spec.eval_comp
+            spec["eval_comp"]
             in results[(select.labels_of(results, s)[0], None)].spec.net.names
-            for s in spec.evals
+            for s in spec["evals"]
         )
         if not nets_ok:
-            msg = f"{label}: some evals don't have eval_comp {spec.eval_comp!r}"
+            eval_comp = spec["eval_comp"]
+            msg = f"{label}: some evals don't have eval_comp {eval_comp!r}"
             entries.append(SaveEntry(f"compare_{label}/error", error_fig(msg)))
             continue
-        spec_sources = (s for n in spec.evals for s in select.sources_of(results, n))
+        spec_sources = (s for n in spec["evals"] for s in select.sources_of(results, n))
         sources = tuple(dict.fromkeys(spec_sources))
-        fig = compare_grid_fig(results, spec.evals, spec.eval_comp)
+        fig = compare_grid_fig(results, spec["evals"], spec["eval_comp"])
         entries.append(SaveEntry(f"compare_{label}", fig, sources=sources, draw=spec))
     return entries
 
@@ -268,15 +356,15 @@ def eval_report(
 ) -> list[SaveEntry]:
     """結果 (図 + メトリクス) → compare の格子図。
 
-    描く対象は `report.for_results(results)` が決める: `draw.json` の `results` が
+    描く対象は `for_results(report, results)` が決める: `draw.json` の `results` が
     空なら手元の結果を全部、非空ならそこに列挙した系列名だけ (計算入力の設定
     ファイル `eval.json` とは突き合わせない — artifact は別セッションの宣言で
-    回したものでも描けるべき)。表示設定は `report.draw_for(name)`。
+    回したものでも描けるべき)。表示設定は `draw_for(report, name)`。
     """
     entries: list[SaveEntry] = []
-    for name, draw in report.for_results(results):
+    for name, draw in for_results(report, results):
         entries += _eval_report_one(name, results, bundles, draw, report)
-    if report.wants("compare_grid_fig"):
+    if wants(report, "compare_grid_fig"):
         entries += _compare_report(report.compares, results)
     return entries
 

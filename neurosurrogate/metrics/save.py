@@ -12,13 +12,9 @@ import json
 import re
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pandas as pd
 from matplotlib.figure import Figure
-
-if TYPE_CHECKING:
-    from .report import CompareSpec, DrawSpec
 
 _UNSAFE = re.compile(r"[\s/\\:]+")
 
@@ -37,14 +33,16 @@ class SaveEntry:
     **保存名は表示名から決まる** (拡張子だけ中身の型で分かれる) ので別に持たない =
     表示と保存で名前が食い違わない。書き出し方も中身の型で決まるのでここが持つ。
     `sources`/`draw` は `meta.json` の対応する value にそのまま落ちる = 「どの
-    リソースからどう描いたか」を成果物 1 件ごとに追跡できる。`draw` は型のまま
-    持つ (dict 化は `save_entries` が meta.json へ書き出す境界でだけ行う)。
+    リソースからどう描いたか」を成果物 1 件ごとに追跡できる。`draw` はどの dataclass
+    (`DrawSpec`/`CompareSpec`) でも中身を見ず `is_dataclass` でしか判定しない
+    (dict 化は `save_entries` が meta.json へ書き出す境界でだけ行う) → 具体型への
+    依存を持たない。
     """
 
     name: str
     obj: Figure | pd.DataFrame
     sources: tuple[str, ...] = ()  # 参照した artifact パス/run_id (由来なしは空)
-    draw: DrawSpec | CompareSpec | None = None  # 使った表示設定 (無ければ None)
+    draw: object | None = None  # 使った表示設定 dataclass (無ければ None)
 
     @property
     def path(self) -> str:
@@ -69,7 +67,9 @@ def _entries_meta(entries: list[SaveEntry]) -> dict:
     return {
         e.path: {
             "sources": list(e.sources),
-            "draw": asdict(e.draw) if is_dataclass(e.draw) else None,
+            "draw": asdict(e.draw)
+            if is_dataclass(e.draw) and not isinstance(e.draw, type)
+            else None,
         }
         for e in entries
     }

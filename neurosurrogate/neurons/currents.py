@@ -299,3 +299,16 @@ CURRENT_MAP: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     **RANDOM_FUNC,
     **PERIODIC_FUNC,
 }
+
+
+PARAM_UNITS: dict[str, str] = {
+    "value": "μA/cm²",
+    "amplitude": "μA/cm²",
+    "baseline": "μA/cm²",
+    "max_val": "μA/cm²",
+    "sigma": "μA/cm²",
+    "frequency": "Hz",
+    "f_start": "Hz",
+    "f_stop": "Hz",
+    "rate": "Hz",
+}

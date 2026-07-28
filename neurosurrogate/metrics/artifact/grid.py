@@ -16,6 +16,7 @@ from matplotlib.figure import Figure
 
 from ...core import access
 from ...core.diverge import diverged
+from ...neurons import currents
 from .. import select
 from ._internal.engine import new_figure, place_legend
 from .wave_table import metrics_df
@@ -138,30 +139,27 @@ def _grid_fig(
     混ぜると列の意味が行ごとにずれる → raise。点が 1 つ (掃引軸なし) なら列見出しも
     軸名も出さない = 単発が「1 列の格子」に素直に退化する。
     """
-    n_col, n_row = len(header), 1 + len(rows)
+    n_col = len(header)
     if any(len(r.cells) != n_col for r in rows):
         raise ValueError("並べる結果は点数を揃える必要がある")
-    fig = new_figure(figsize=(2.6 * n_col, 1.8 * n_row))
-    axes = fig.subplots(n_row, n_col, squeeze=False, sharex=True)
-    i_ylim = _shared_ylim([access.i_ext_values(ds) for _, ds in header])
+    fig = new_figure(figsize=(2.6 * n_col, 1.8 * len(rows)))
+    axes = fig.subplots(len(rows), n_col, squeeze=False, sharex=True)
     v_ylim = _shared_ylim(
         [access.potential(ds, r.comp_id) for r in rows for ds, _ in r.cells]
     )
+    unit = currents.PARAM_UNITS.get(axis_name or "", "")
 
-    for c, (value, orig_ds) in enumerate(header):
-        axes[0][c].plot(*access.i_ext(orig_ds), lw=0.8, color="tab:gray")
-        axes[0][c].set_ylim(*i_ylim)
+    for c, (value, _) in enumerate(header):
         if value is not None and axis_name:
-            axes[0][c].set_title(f"{axis_name}={value:.3g}")
-    for r, row in enumerate(rows, start=1):
+            axes[0][c].set_title(f"{value:.3g} {unit}".strip())
+    for r, row in enumerate(rows):
         axes[r][0].set_ylabel(row.label, fontsize="small")
         for c, (orig_ds, surrs) in enumerate(row.cells):
             axes[r][c].set_ylim(*v_ylim)
             _trace_cell(axes[r][c], orig_ds, surrs, row.comp_id)
-    axes[0][0].set_ylabel("I_ext")
     for c in range(n_col):
         axes[-1][c].set_xlabel("t [ms]")
-    place_legend(axes[1][-1])
+    place_legend(axes[0][-1])
     prefix = f"{axis_name} " if axis_name else ""
     fig.suptitle(f"{prefix}waveform ({comp_name})")
     return fig
