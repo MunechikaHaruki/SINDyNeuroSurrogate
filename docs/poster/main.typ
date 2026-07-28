@@ -69,7 +69,7 @@
       #v(0.4em)
       #figure(
         image("pic/ref/traub_comp.png", width: 100%),
-        caption: [Modelled as *19 compartments* @Traub-1991-ModelCA3HippocampalPyramidal],
+        caption: [Modelled as *19 comps* @Traub-1991-ModelCA3HippocampalPyramidal],
         numbering: none,
         supplement: none,
       )<comp>
@@ -147,12 +147,12 @@
       #stage_compress(unit: 1.05cm, label-size: 20pt)
       #v(0.5em)
       // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
-      *6 voltage-dependent gates* ride a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n=5$. #text(blue)[$V$] *stays uncompressed*.
+      *6 gates* ride a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n=5$.
     ],
     // ======== ③ [V, z] から潜在の支配方程式を同定 (図は簡略化し、展開式は図の下に置く) ========
     [
       // 訳: ③ 潜在の支配方程式を同定する。
-      *#text(blue)[③] Identify the latent ODEs*
+      *#text(blue)[③] Identify the latent variables of ODEs*
       #v(2em)
       #stage_identify(unit: 1.5cm, label-size: 20pt)
       #v(0.2em)
@@ -214,7 +214,7 @@
         )
       ]
       ][
-        * Action Potential comparison*
+        * Action Potential reproduction*
         #align(center)[
           #figure(
             image("result/diff.png", width: 100%),
@@ -225,9 +225,9 @@
         ]
         #text(size: 25pt)[
           // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms。
-          - *When* it fires is accurate (latency err *0.3 ms*, AHP timing gap *3.1 ms*).
+          - latency err *0.3 ms*, AHP timing gap *3.1 ms*.
           // 訳: どれだけ大きいかは系統的過小評価: ピーク13mV低い(振幅差12.9mV)、立ち上がり/立ち下がり速度差21.0/10.3 mV/ms。一方AHP深さ差0.28mVと静止電位付近は正確。
-          - *How big* is systematically *underestimated* — peak *13 mV low* (amplitude gap *12.9 mV*), rise #sym.slash fall rate gap *21.0* #sym.slash *10.3 mV/ms* — yet AHP depth gap is only *0.28 mV*.
+          - peak *13 mV low* (amplitude gap *12.9 mV*), rise #sym.slash fall rate gap *21.0* #sym.slash *10.3 mV/ms* — yet AHP depth gap is only *0.28 mV*.
         ]
       ]
 
@@ -248,7 +248,7 @@
     // ======== 右列: ① 画像を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
       #v(0.3em)
-      *② New stimulus site*
+      *② New stimulus*
       #align(center)[
         #figure(
           image("result/compare_stim_site.png", width: 100%),
@@ -257,18 +257,17 @@
           supplement: none,
         )
       ]
-      // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
-      - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
-      #v(0.3em)
-      *③ Unseen periodic drive*
       #align(center)[
         #figure(
           image("result/traces.png", width: 100%),
-          caption: [Pulse train, 10–50 Hz — *outside training*.],
+          caption: [Pulse train, 10–50 Hz],
           numbering: none,
           supplement: none,
         )
       ]
+      // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
+      - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
+
       // 訳: 20 Hz 以上で一致、10 Hz では後続スパイクを落とす。
       - Matches for $f gt.eq 20$ Hz; *drops later spikes* at 10 Hz.
     ],
