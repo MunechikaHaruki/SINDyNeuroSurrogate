@@ -63,7 +63,7 @@
 
     // --- 全 comp から時系列を取り出す (学習軌道 = 19 comp 全部) ---
     line((5.3, 6.4), (5.3, 5.9), (5.8, 5.5), mark: (end: "stealth", scale: 0.5))
-    content((6.0, 5.7), lab[record *every* compartment], anchor: "west")
+    content((6.0, 5.9), lab[record *every* compartment], anchor: "west")
 
     // 膜電位 V (圧縮しないので別枠)
     line(.._spike-pts(6.0, 4.7, 3.4, 0.9, (0.2, 0.45, 0.72)), stroke: 1.6pt + blue)
@@ -77,7 +77,7 @@
     content((9.7, 3.8), lab[$M$], anchor: "west")
     content((9.7, 2.6), lab[$N$], anchor: "west")
     content((9.7, 1.4), lab[$C$], anchor: "west")
-    content((10.6, 2.6), text(size: label-size * 4.0)[\{])
+    content((10.9, 2.6), text(size: label-size * 4.0)[\{])
     content((11.1, 2.6), lab[6 gates], anchor: "west")
   },
 )
@@ -91,10 +91,10 @@
     let lab = (..a) => text(size: label-size, ..a)
 
     // --- V は圧縮せず素通し ---
-    line(.._spike-pts(0.1, 6.5, 2.3, 0.9, (0.2, 0.5, 0.78)), stroke: 1.6pt + blue)
-    content((2.6, 6.9), lab(fill: blue)[$V$], anchor: "west")
-    line((3.3, 6.9), (10.6, 6.9), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
-    content((6.9, 7.15), lab(fill: blue)[passes through, *not* compressed], anchor: "south")
+    // line(.._spike-pts(0.1, 6.5, 2.3, 0.9, (0.2, 0.5, 0.78)), stroke: 1.6pt + blue)
+    // content((2.6, 6.9), lab(fill: blue)[$V$], anchor: "west")
+    // line((3.3, 6.9), (10.6, 6.9), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
+    // content((6.9, 7.15), lab(fill: blue)[passes through, *not* compressed], anchor: "south")
 
     // --- ゲート群 ---
     line(.._smooth-pts(0.1, 4.3, 2.3, 0.8, freq: 1.4, phase: 0.6))
@@ -102,7 +102,7 @@
     line(.._smooth-pts(0.1, 1.9, 2.3, 0.8, freq: 1.1, phase: 4.0))
     content((1.3, 1.4), lab[$dots.v$])
     content((2.8, 3.3), text(size: label-size * 4.0)[\{])
-    content((3.2, 3.3), lab[6 gates], anchor: "west")
+    content((3.3, 3.8), lab[6 gates], anchor: "west")
 
     // --- 圧縮器 ---
     line((4.9, 3.3), (5.6, 3.3), mark: (end: "stealth", scale: 0.5))
@@ -205,7 +205,7 @@
     line((11.1 + dx, 3.3), (11.8 + dx, 3.3), mark: (end: "stealth", scale: 0.5))
     rect((11.9 + dx, 2.3), (14.9 + dx, 4.3), stroke: 2.4pt + rgb("#8a2020"))
     content((13.4 + dx, 3.7), lab(fill: rgb("#8a2020"))[equiv.#linebreak()circuit])
-    content((13.4 + dx, 2.7), lab(fill: rgb("#8a2020"), size: label-size * 0.65)[$dot(V) = f(dot)$,#linebreak()*unchanged*])
+    content((13.4 + dx, 2.7), lab(fill: rgb("#8a2020"), size: label-size * 0.65)[$dot(V) = f(dot)$,#linebreak()])
     line((15.0 + dx, 3.3), (15.7 + dx, 3.3), mark: (end: "stealth", scale: 0.5))
     content((15.8 + dx, 3.3), lab[$dot(V)$], anchor: "west")
 
@@ -213,7 +213,7 @@
     line((0.7, 3.0), (0.7, 1.1), (11.1 + dx, 1.1), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + green.darken(25%))
     line((0.1, 4.6), (0.1, 0.3), (11.1 + dx, 0.3), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
     rect((11.9 + dx, -0.1), (14.9 + dx, 1.5), stroke: 2.4pt)
-    content((13.4 + dx, 1.0), lab[SINDy $xi$])
+    content((13.4 + dx, 1.0), lab[ $xi$])
     content((13.4 + dx, 0.4), lab(size: label-size * 0.65)[learned in ③])
     line((15.0 + dx, 0.7), (15.7 + dx, 0.7), mark: (end: "stealth", scale: 0.5))
     content((15.8 + dx, 0.7), lab[$dot(bold(z))$], anchor: "west")

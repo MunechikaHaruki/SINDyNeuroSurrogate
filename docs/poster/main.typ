@@ -2,7 +2,7 @@
 #import "@preview/typsium:0.3.1": *
 #import "circuit.typ": traub_circuit
 #import "pipeline.typ": stage_compress, stage_identify, stage_simulate, stage_simulate_loop
-#import "diagrams.typ": comp-annotated, stim-replace-diagram
+#import "diagrams.typ": comp-annotated
 
 #set page("a0", margin: (x: 2cm, top: 2cm, bottom: 0.1cm))
 #pop.set-poster-layout(pop.layout-a0)
@@ -72,14 +72,14 @@
       #v(0.5em)
       #figure(
         image("pic/ref/pyramidal.png", width: 90%),
-        caption: [guinea pig CA3 pyramidal neuron@pyramidal],
+        caption: [Guinea pig CA3 pyramidal neuron@pyramidal],
         numbering: none,
         supplement: none,
       )
       #v(2em)
       #figure(
         comp-annotated(w: 18, font: 20pt),
-        caption: [Modelled as *19 comps* @Traub-1991-ModelCA3HippocampalPyramidal],
+        caption: [Modelled as\ *19 Compartments(comps)* @Traub-1991-ModelCA3HippocampalPyramidal],
         numbering: none,
         supplement: none,
       )<comp>
@@ -97,6 +97,13 @@
             supplement: none,
           )<circuit>
           // 訳: 各コンパートメント = 膜容量 + 可変イオンコンダクタンス + 隣接との軸方向結合。
+          #figure(
+            text(size: 28pt)[
+              $ C_m (d V) / (d t) = -g_"leak" (V - V_"leak") - overline(g)_"Na" m^2 h (V - V_"Na") - overline(g)_"K" n (V - V_"K") + I_"ext" $
+            ],
+            numbering: none,
+            supplement: none,
+          )
         ],
         // -------- 右: 可変コンダクタンスの中身 (ゲート変数とレート関数) --------
         [
@@ -125,7 +132,7 @@
       )
       #v(0.4em)
       #mini-box(title:"Goal")[
-        Development of a multi-compartment neuron's surrogate model capable of reproducing  the membrane potential response with few gate variables.
+        Development of a multi-compartment neuron's surrogate model capable of reproducing  the membrane potential response with fewer gate variables.
       ]
     ],
   )
@@ -155,9 +162,9 @@
     [
       // 訳: ② 電位依存ゲートだけを圧縮する。
       *#text(blue)[②] Compress gates*
-      #v(0.2em)
+      #v(2em)
       #stage_compress(unit: 1.05cm, label-size: 20pt)
-      #v(0.5em)
+      #v(1.5em)
       // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
       *6 gates* ride a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n=5$.
     ],
@@ -183,10 +190,8 @@
     [
       // 訳: ④ 推論時: decoder-in-the-loop でシミュレーションする。
       *#text(blue)[④] Simulate: decoder-in-the-loop*
-      #v(1.5em)
-      #stage_simulate_loop(unit: 1.05cm, label-size: 17pt, body-size: 18pt)
-      #v(2.3em)
-      // 訳: 各ステップで z→decode→gates、等価回路の dV/dt 式(赤枠)は不変のまま評価。z 自身は同じステップで SINDy(ξ) が更新し、次ステップへ積分。
+      #image("pic/ref/model.png",width:70%)
+
       Each step: $bold(z) ->$ *decode* $->$ gates feed the *unchanged* equivalent-circuit $dot(V)$; SINDy updates $bold(z)$ in place of the original gate ODEs.
     ],
   )
@@ -260,16 +265,6 @@
     ],
     // ======== 右列: ① 画像を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
-
-      #align(center)[
-        #figure(
-          stim-replace-diagram(),
-          caption: [ #v(2em)Steady current drives the dendrite; a pulse train drives the soma, whose compartment is replaced by the surrogate.],
-          numbering: none,
-          supplement: none,
-        )
-      ]
-
 
 
       #align(center)[
