@@ -166,7 +166,9 @@
       #stage_compress(unit: 1.05cm, label-size: 20pt)
       #v(1.5em)
       // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
-      *6 gates* are compressed to \ 5-dimentional latent variable by AutoEncoder.
+      // 訳: AE 仕様。encoder/decoder それぞれ隠れ層 1 層、損失は MSE ベースの再構成誤差。
+      *6 gates* are compressed to 5 latent variables by AutoEncoder(encoder and decoder have one hidden layer).
+      #v(0.2em)
     ],
     // ======== ③ [V, z] から潜在の支配方程式を同定 (図は簡略化し、展開式は図の下に置く) ========
     [

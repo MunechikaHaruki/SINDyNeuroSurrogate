@@ -104,10 +104,20 @@
     content((2.8, 3.3), text(size: label-size * 4.0)[\{])
     content((3.3, 3.8), lab[6 gates], anchor: "west")
 
-    // --- 圧縮器 ---
+    let ae_input_x=5.7
+    let ae_output_x=8.7
+    let ae_y_middle=3.3
+    // --- 圧縮器 (台形 = 次元が絞られる encoder) ---
     line((4.9, 3.3), (5.6, 3.3), mark: (end: "stealth", scale: 0.5))
-    rect((5.7, 2.4), (8.7, 4.2), stroke: 2.4pt)
-    content((7.2, 3.3), lab[ AE])
+    line(
+      (ae_input_x, ae_y_middle + 1.4),
+      (ae_output_x, ae_y_middle + 0.5),
+      (ae_output_x, ae_y_middle - 0.5),
+      (ae_input_x, ae_y_middle - 1.4),
+      close: true,
+      stroke: 2.4pt,
+    )
+    content((7.1, 3.4), lab[AE#v(-2.4em)\ #text(size: label-size * 0.8)[encoder]])
     line((8.8, 3.3), (9.5, 3.3), mark: (end: "stealth", scale: 0.5))
 
     // --- 潜在変数 ---
