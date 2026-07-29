@@ -142,7 +142,10 @@ def _grid_fig(
     n_col = len(header)
     if any(len(r.cells) != n_col for r in rows):
         raise ValueError("並べる結果は点数を揃える必要がある")
-    fig = new_figure(figsize=(2.6 * n_col, 1.8 * len(rows)))
+    # 高さは行数比例 + 固定オーバーヘッド。suptitle/列見出し/x 軸ラベルは行数に
+    # よらず一定高を占める → 比例分だけだと行数が少ないほど 1 行が潰れ、行数違い
+    # の図を並べたとき波形の縦倍率が揃わない。
+    fig = new_figure(figsize=(2.6 * n_col, 1.8 * len(rows) + 0.9))
     axes = fig.subplots(len(rows), n_col, squeeze=False, sharex=True)
     v_ylim = _shared_ylim(
         [access.potential(ds, r.comp_id) for r in rows for ds, _ in r.cells]

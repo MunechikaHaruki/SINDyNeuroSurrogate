@@ -240,7 +240,7 @@
             supplement: none,
           )
         ]
-        #v(1.5em)
+        #v(1em)
         #text(size: 25pt)[
           // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms。
           - latency err *0.3 ms*, AHP timing gap *3.1 ms*.
@@ -277,7 +277,7 @@
       #align(center)[
         #figure(
           image("result/compare_stim_site.png", width: 100%),
-          caption: [Amplitude sweep). *Top*: Inject to soma. *Bottom*: Inject to dendrite.],
+          caption: [Amplitude sweep) *Top*: Inject to soma. *Bottom*: Inject to dendrite.],
           numbering: none,
           supplement: none,
         )
@@ -298,11 +298,11 @@
           supplement: none,
         )
       ]
-      // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
-      - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
+      // // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
+      // - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
 
-      // 訳: 20 Hz 以上で一致、10 Hz では後続スパイクを落とす。
-      - Matches for $f gt.eq 20$ Hz; *drops later spikes* at 10 Hz.
+      // // 訳: 20 Hz 以上で一致、10 Hz では後続スパイクを落とす。
+      // - Matches for $f gt.eq 20$ Hz; *drops later spikes* at 10 Hz.
 
 
     ],

@@ -63,7 +63,7 @@
 
     // --- 全 comp から時系列を取り出す (学習軌道 = 19 comp 全部) ---
     line((5.3, 6.4), (5.3, 5.9), (5.8, 5.5), mark: (end: "stealth", scale: 0.5))
-    content((6.0, 5.9), lab[record *every* compartment], anchor: "west")
+    content((6.0, 5.9), lab[record compartment data], anchor: "west")
 
     // 膜電位 V (圧縮しないので別枠)
     line(.._spike-pts(6.0, 4.7, 3.4, 0.9, (0.2, 0.45, 0.72)), stroke: 1.6pt + blue)

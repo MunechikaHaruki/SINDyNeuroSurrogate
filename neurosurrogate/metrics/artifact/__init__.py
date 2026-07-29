@@ -19,6 +19,7 @@ from functools import partial
 
 import pandas as pd
 import xarray as xr
+from matplotlib import rcParams
 from matplotlib.figure import Figure
 
 from ...core.network import NeuronGraph
@@ -97,7 +98,11 @@ def cell_figs(
     return collect(
         {
             "diff": lambda: draw_engine(
-                panels_diff(original, latent(), surrogate, comp_id, i_ext_ylim)
+                panels_diff(original, latent(), surrogate, comp_id, i_ext_ylim),
+                figsize=(
+                    rcParams["figure.figsize"][0],
+                    rcParams["figure.figsize"][1] * 1.3,
+                ),
             ),
             "simple": lambda: draw_engine(panels_simple(original, comps)),
             "attractor": lambda: attractor_fig(latent(), surrogate, comp_id),
