@@ -180,21 +180,26 @@
       // 訳: 実際に同定された式の展開 (z1, z2)。基底は 1 項だけ丸で強調していた昨年図の代わりに、ここで具体形を示す。
       #text(size: 20pt)[
         $
-          dot(z)_1 &= xi_11 alpha_M (V) + xi_12 beta_M (V) z_1 + dots.c \
-          dot(z)_2 &= xi_21 alpha_N (V) + dots.c
+          dot(z)_1 &= xi_11 alpha_m (V) + xi_12 beta_m (V) z_1 + dots.c \
+          dot(z)_2 &= xi_21 alpha_m (V) + xi_22 beta_m (V)z_1+ dots.c \
+          dots.v
         $
       ]
       #v(1.3em)
-      // 訳: 潜在だけスパース同定、dV/dt と Ca サブ系は元の物理式のまま。基底はゲート自身のレート関数 α, β (昨年の 41 項汎用ライブラリを置換)。
-      *SINDy* @Champion-2019-DatadrivenDiscoveryCoordinatesGoverning fits *only* $dot(bold(z))$; $dot(V)$ keeps *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$.
+
+
+      Capture latent variables dynamics with *SINDy*@Champion-2019-DatadrivenDiscoveryCoordinatesGoverning.
+      SINDy fits coefficients $Xi$
+      // *SINDy*  fits *only* $dot(bold(z))$; $dot(V)$ keeps *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$.
     ],
     // ======== ④ 学習済み decoder/SINDy を等価回路の gate 計算へ差し込んでシミュレーション ========
     [
       // 訳: ④ 推論時: decoder-in-the-loop でシミュレーションする。
-      *#text(blue)[④] Simulate: decoder-in-the-loop*
+      *#text(blue)[④] How to simulate*
       #image("pic/ref/model.png",width:70%)
 
-      Each step: $bold(z) ->$ *decode* $->$ gates feed the *unchanged* equivalent-circuit $dot(V)$; SINDy updates $bold(z)$ in place of the original gate ODEs.
+      Each step: $bold(z) ->$ *decode* $->$ gates feed the equivalent-circuit $dot(V)$.\
+      SINDy updates $bold(z)$ in place of the original gate ODEs.
     ],
   )
 ]
@@ -227,7 +232,7 @@
         #sym.arrow.b compress
         #figure(
           image("result/train_preprocessed.png", width: 100%),
-          caption: [Latent trajectories used to fit the SINDy library.],
+          caption: [Latent variables and membrane potential  used to fit SINDy.],
           numbering: none,
           supplement: none,
         )

@@ -142,20 +142,20 @@
 
     // --- 入力 [V, z] ---
     content((0.1, 3.4), lab(fill: blue)[$V$], anchor: "west")
-    line((0.7, 3.35), (1.8, 2.95), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
+    line((0.5, 3.35), (1.6, 2.95), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
     content((0.1, 1.5), lab(fill: green.darken(25%))[$bold(z)$], anchor: "west")
     line(
-      (0.7, 1.55),
-      (1.8, 1.95),
+      (0.5, 1.55),
+      (1.6, 1.95),
       mark: (end: "stealth", scale: 0.5),
       stroke: 1.6pt + green.darken(25%),
     )
 
     // --- SINDy: ライブラリ基底 = ゲートのレート関数 (図はここまでに簡略化) ---
-    rect((1.9, 1.4), (4.6, 3.5), stroke: 2.4pt + red)
-    content((3.25, 2.45), lab[SINDy\ #text(fill:red,size:label-size*0.9)[basis: \ $alpha(V), beta(V)$]])
+    rect((1.55, 1.4), (4.7, 3.5), stroke: 2.4pt)
+    content((3.15, 2.4), lab[SINDy\ #text(fill:red,size:label-size*0.9)[rate based basis ]])
     line((4.7, 2.45), (5.5, 2.45), mark: (end: "stealth", scale: 0.5))
-    content((5.7, 2.45), lab[$dot(bold(z)) = xi thin Theta(V, bold(z))$], anchor: "west")
+    content((5.7, 2.45), lab[$dot(bold(z)) (bold(z),V) =  thin Theta (bold(z),V)Xi$], anchor: "west")
   },
 )
 
