@@ -67,16 +67,16 @@
 
     // 膜電位 V (圧縮しないので別枠)
     line(.._spike-pts(6.0, 4.7, 3.4, 0.9, (0.2, 0.45, 0.72)), stroke: 1.6pt + blue)
-    content((9.7, 5.1), lab(fill: blue)[$V$], anchor: "west")
+    content((9.7, 5.1), lab(fill: blue)[$v(t)$], anchor: "west")
 
     // ゲート変数群
     line(.._smooth-pts(6.0, 3.4, 3.4, 0.8, freq: 1.4, phase: 0.6))
     line(.._smooth-pts(6.0, 2.2, 3.4, 0.8, freq: 1.9, phase: 2.2))
     line(.._smooth-pts(6.0, 1.0, 3.4, 0.8, freq: 1.1, phase: 4.0))
     content((7.7, 0.5), lab[$dots.v$])
-    content((9.7, 3.8), lab[$M$], anchor: "west")
-    content((9.7, 2.6), lab[$N$], anchor: "west")
-    content((9.7, 1.4), lab[$C$], anchor: "west")
+    content((9.7, 3.8), lab[$m(t)$], anchor: "west")
+    content((9.7, 2.6), lab[$n(t)$], anchor: "west")
+    content((9.7, 1.4), lab[$h(t)$], anchor: "west")
     content((10.9, 2.6), text(size: label-size * 4.0)[\{])
     content((11.1, 2.6), lab[6 gates], anchor: "west")
   },
@@ -123,10 +123,10 @@
     // --- 潜在変数 ---
     line(.._smooth-pts(9.7, 3.5, 2.0, 0.8, freq: 1.2, phase: 1.0), stroke: 1.6pt + green.darken(25%))
     line(.._smooth-pts(9.7, 2.1, 2.0, 0.8, freq: 0.9, phase: 3.4), stroke: 1.6pt + green.darken(25%))
-    content((11.9, 3.9), lab(fill: green.darken(25%))[$z_1$], anchor: "west")
-    content((11.9, 2.5), lab(fill: green.darken(25%))[$z_2$], anchor: "west")
+    content((11.9, 3.9), lab(fill: green.darken(25%))[$z_1 (t)$], anchor: "west")
+    content((11.9, 2.5), lab(fill: green.darken(25%))[$z_2 (t)$], anchor: "west")
     content((10.7, 1.6), lab[$dots.v$])
-    content((10.7, 1.1), lab[$bold(z) in RR^n$], anchor: "north")
+    content((10.7, 1.1), lab[5 latent variables], anchor: "north")
   },
 )
 
@@ -141,9 +141,9 @@
     let lab = (..a) => text(size: label-size, ..a)
 
     // --- 入力 [V, z] ---
-    content((0.1, 3.4), lab(fill: blue)[$V$], anchor: "west")
+    content((0.1, 3.4), lab(fill: blue)[$v(t)$], anchor: "west")
     line((0.5, 3.35), (1.6, 2.95), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
-    content((0.1, 1.5), lab(fill: green.darken(25%))[$bold(z)$], anchor: "west")
+    content((0.1, 1.5), lab(fill: green.darken(25%))[$z(t)$], anchor: "west")
     line(
       (0.5, 1.55),
       (1.6, 1.95),
@@ -155,7 +155,7 @@
     rect((1.55, 1.4), (4.7, 3.5), stroke: 2.4pt)
     content((3.15, 2.4), lab[SINDy\ #text(fill:red,size:label-size*0.9)[rate based basis ]])
     line((4.7, 2.45), (5.5, 2.45), mark: (end: "stealth", scale: 0.5))
-    content((5.7, 2.45), lab[$dot(bold(z)) (bold(z),V) =  thin Theta (bold(z),V)Xi$], anchor: "west")
+    content((5.7, 2.45), lab[$(d z_1) / (d t), dots, (d z_5) / (d t)$], anchor: "west")
   },
 )
 

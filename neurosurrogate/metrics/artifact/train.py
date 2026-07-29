@@ -86,12 +86,12 @@ def train_raw_fig(
     return draw_engine(
         [
             PanelSpec(
-                "I_ext",
+                "I_ext(t)\n[μA/cm²]",
                 [TraceSpec(*access.i_ext(bundle.train_xr), color="#FFC107")],
                 ylim=i_ext_ylim,
             ),
             PanelSpec(
-                "V(t) [mV]",
+                "v(t) [mV]",
                 [
                     TraceSpec(
                         *access.trace(bundle.train_xr, i, access.POTENTIAL_VAR),
@@ -106,7 +106,8 @@ def train_raw_fig(
                     TraceSpec(
                         access.time(bundle.train_xr),
                         source.gate(bundle.train_xr, shown[0][1])[:, k],
-                        label=name,
+                        # 表記はポスター本文 (m, n, h, ...) に揃える
+                        label=name.lower(),
                     )
                     for k, name in enumerate(
                         bundle.meta.comp_type.gate_names[: source.n_gate]
@@ -121,11 +122,11 @@ def train_raw_fig(
 def train_preprocessed_fig(
     bundle: SurrogateBundle, comps: Sequence[int] | None = None
 ) -> Figure:
-    """同定器へ渡す**直前**のデータ (状態列 x と入力列 u を 1 列 1 段、comp 重ね)。
+    """同定器へ渡す**直前**の圧縮済みデータ (状態列 x を 1 列 1 段、comp 重ね)。
 
-    fit と同じ `ansatz.train_inputs` を呼ぶ → 図に出るのが学習に入ったもの。列構造は
-    定式化ごとに違う (sindy=[V, z1..zN] + u / hybrid=[z1..zN] + V) が、view は列名を
-    そのまま並べるだけで両方に効く。
+    fit と同じ `ansatz.train_inputs` を呼ぶ → 図に出るのが学習に入ったもの。V は圧縮
+    対象でない (hybrid では入力 u、sindy では x の 1 列として素通し) ので、圧縮後の図
+    には出さない。
     """
     inputs = bundle.ansatz.train_inputs(
         bundle.meta, bundle.train_xr, bundle.preprocessor
@@ -139,15 +140,15 @@ def train_preprocessed_fig(
                     access.time(bundle.train_xr),
                     mats[pos][:, k],
                     label=label,
-                    color="blue" if name == access.POTENTIAL_VAR else "red",
+                    color="red",
                 )
                 for pos, _, label in shown
             ],
         )
-        for mats, names in ((inputs.x, inputs.x_names), (inputs.u, inputs.u_names))
+        for mats, names in ((inputs.x, inputs.x_names),)
         for k, name in enumerate(names)
+        if name != access.POTENTIAL_VAR  # V は圧縮していない → 圧縮後の図には出さない
     ]
-    panels.sort(key=lambda p: p.ylabel != access.POTENTIAL_VAR)
     return draw_engine(panels, figsize=_figsize(3))
 
 
@@ -207,7 +208,7 @@ def train_v_coverage_fig(
             histtype="step",
             label=name,
         )
-    ax.set_xlabel("V [mV]")
+    ax.set_xlabel("v [mV]")
     ax.set_ylabel("count")
     ax.set_title("Training V coverage")
     place_legend(ax)

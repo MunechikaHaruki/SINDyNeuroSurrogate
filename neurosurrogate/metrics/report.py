@@ -397,10 +397,11 @@ def render_report(
     (draw.json 丸ごとの snapshot は持たない)。"""
     for p in style_paths:
         plt.style.use(p)
-    ylim = i_ext_ylim(bundles, results)
-    entries = model_report(bundles, results, report, ylim) + eval_report(
-        results, bundles, report, ylim
-    )
+    # 学習側 (train_raw) は全軌道を覆うレンジ、評価側 (diff) は panels_diff の
+    # 発表用既定に任せる (共有すると学習パルスの最大値で評価 step が潰れる)。
+    entries = model_report(
+        bundles, results, report, i_ext_ylim(bundles, results)
+    ) + eval_report(results, bundles, report)
     return save_entries(entries, dest)
 
 

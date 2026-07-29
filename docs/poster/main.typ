@@ -99,7 +99,7 @@
           // 訳: 各コンパートメント = 膜容量 + 可変イオンコンダクタンス + 隣接との軸方向結合。
           #figure(
             text(size: 28pt)[
-              $ C_m (d V) / (d t) = -g_"leak" (V - V_"leak") & - overline(g)_"Na" m^2 h (V - V_"Na") - overline(g)_"K" n (V - V_"K") \
+              $ C_m (d v) / (d t) = -g_"leak" (v - E_"leak") & - overline(g)_"Na" m^2 h (v - E_"Na") - overline(g)_"K" n (v - E_"K") \
               & + I_"other ionic currents" + I_"ext" $
             ],
             numbering: none,
@@ -109,15 +109,15 @@
         // -------- 右: 可変コンダクタンスの中身 (ゲート変数とレート関数) --------
         [
           // 訳: コンダクタンスはゲート変数に依存し、ゲートはレート関数の ODE に従う。
-          The conductances depend on *gate variables*, which follow ODEs with rate functions $alpha, beta$:
+          The conductances depend on *gate variables*, which follow ODEs with the rate functions $alpha, beta$:
           #v(1em)
           #figure(
             text(size: 28pt)[
               $
-                I_#ce("Na") &= overline(g)_#ce("Na") med m^2 h med (V - E_#ce("Na")) \
-                frac(d m, d t) &= alpha_m (V) (1 - m) - beta_m (V) m \
-                alpha_m (V) &= 0.32 (13.1 - V) \/ (exp((13.1 - V) \/ 4) - 1) \
-                beta_m (V) &= 0.28 (V - 40.1) \/ (exp((V - 40.1) \/ 5) - 1) \
+                I_#ce("Na") &= overline(g)_#ce("Na") med m^2 h med (v - E_#ce("Na")) \
+                frac(d m, d t) &= alpha_m (v) (1 - m) - beta_m (v) m \
+                alpha_m (v) &= 0.32 (13.1 - v) \/ (exp((13.1 - v) \/ 4) - 1) \
+                beta_m (v) &= 0.28 (v - 40.1) \/ (exp((v - 40.1) \/ 5) - 1) \
               $
             ],
             kind: "equation",
@@ -126,14 +126,14 @@
           )
           #v(0.8em)
           // 訳: 1 コンパートメント 11 状態変数 → 19 comp で 209 → 並列シミュレーションでメモリボトルネック。
-          $->$ *11 states (10 gates and V) per comp* \
-          $->$ *209* states for 19 comps; \
-          In large scale network simulations, the number of gate variables becomes a *memory bottleneck*.
+          $->$ *10 gates and the potential $v$ per comp* \
+          $->$ *190 gates* for the 19 comps; \
+          In large scale network simulations, the *large number of gate variables* becomes a *memory bottleneck*.
         ],
       )
       #v(0.4em)
       #mini-box(title:"Purpose")[
-        Development of a multi-compartment neuron surrogate model capable of reproducing the membrane potential response with fewer gate variables.
+        Development of a surrogate model for the multi-compartment model, capable of reproducing the membrane potential response with fewer gate variables.
       ]
     ],
   )
@@ -157,7 +157,7 @@
       #stage_simulate(unit: 1.1cm, label-size: 20pt)
       #v(0.2em)
       // 訳: Traub 19-comp の soma へランダムパルス列を注入し、V と純電位依存の 6 ゲートを記録 (Ca 依存系は対象外)。
-      Inject a *random pulse train* at the soma; record $V$ and *6 gates*.
+      Inject a *random pulse train* at the soma; record $v(t)$ and the *6 gates* $m(t), n(t), dots$.
       #v(0.2em)
       #text(size: 20pt)[
         (The remaining gates, driven by #ce("Ca^2+") dynamics, are left untouched.)
@@ -166,51 +166,46 @@
     // ======== ② 純電位依存ゲート 6 本だけ潜在へ圧縮 (V と Ca サブ系は素通し) ========
     [
       // 訳: ② 電位依存ゲートだけを圧縮する。
-      *#text(blue)[②] Compress the gates*
+      *#text(blue)[②] Compress the 6 gates*
       #v(2em)
       #stage_compress(unit: 1.05cm, label-size: 20pt)
-      #v(3.8em)
+      #v(2.6em)
       // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
       // 訳: AE 仕様。encoder/decoder それぞれ隠れ層 1 層、損失は MSE ベースの再構成誤差。
-      The *6 gates* are compressed to 5 latent variables by an AutoEncoder (encoder and decoder each with one hidden layer).
+      The *6 gates* $m(t), n(t), dots$ are compressed to the *5 latent variables* $z_1 (t), dots, z_5 (t)$ by the encoder of an AutoEncoder (one hidden layer). $v(t)$ is *not* compressed.
       #v(0.2em)
     ],
     // ======== ③ [V, z] から潜在の支配方程式を同定 (図は簡略化し、展開式は図の下に置く) ========
     [
       // 訳: ③ 潜在の支配方程式を同定する。
-      *#text(blue)[③] Identify ODEs of the latent variables*
+      *#text(blue)[③] Identify ODEs of the latent variables $z(t)$*
       #v(2em)
       #stage_identify(unit: 1.5cm, label-size: 20pt)
       #v(0.2em)
       // 訳: 実際に同定された式の展開 (z1, z2)。基底は 1 項だけ丸で強調していた昨年図の代わりに、ここで具体形を示す。
       #text(size: 20pt)[
         $
-          dot(z)_1 &= xi_11 alpha_m (V) + xi_12 beta_m (V) z_1 + dots.c \
-          dot(z)_2 &= xi_21 alpha_m (V) + xi_22 beta_m (V)z_1+ dots.c \
+          (d z_1) / (d t) &= xi_11 alpha_m (v) + xi_12 beta_m (v) z_1 + dots.c \
+          (d z_2) / (d t) &= xi_21 alpha_m (v) + xi_22 beta_m (v) z_1 + dots.c \
           dots.v
         $
       ]
-      #v(1.8em)
+      #v(1.0em)
 
 
-      Capture the latent variable dynamics with *SINDy*@Champion-2019-DatadrivenDiscoveryCoordinatesGoverning.
-      SINDy fits coefficients $Xi$.
+      To write the ODEs $(d z) / (d t)$ of the time series $z(t)$ as a linear sum of *basis functions*, the machine learning model *SINDy*@Champion-2019-DatadrivenDiscoveryCoordinatesGoverning identifies the coefficients $xi_(i j)$.
       #v(0.2em)
       #text(size: 20pt)[
-        The library is *physics-informed*: it is built from the gates'  $alpha(V), beta(V)$.
+        The basis functions are the rate functions $alpha(v), beta(v)$ of the gate variables, and their products with $z_1 (t), dots, z_5 (t)$.
       ]
     ],
     // ======== ④ 学習済み decoder/SINDy を等価回路の gate 計算へ差し込んでシミュレーション ========
     [
       // 訳: ④ 推論時: decoder-in-the-loop でシミュレーションする。
-      *#text(blue)[④] How to apply the surrogate model*
+      *#text(blue)[④] How to calculate the $v(t)$ with the compressed $z(t)$*
       #image("pic/ref/model.png",width:100%)
-      #v(0.5em)
-
-      // Each step: $bold(z) ->$ *decode* $->$ gates feed the equivalent-circuit $dot(V)$.\
-      // SINDy updates $bold(z)$ in place of the original gate ODEs.
-      The derivative of *$V$* is computed with the *decoded gates*.
-      Across time steps, *only the latent variables and the membrane potential need to be stored*.
+      #v(0.2em)
+      $v(t + Delta t)$ is calculated using the gate variables ($m(t), n(t), dots$) decoded by the *decoder* of the AutoEncoder from the latent variables ($z_1 (t), z_2 (t), dots$).
     ],
   )
 ]
@@ -220,7 +215,7 @@
 #show figure: set figure(gap: 0em)
 
 #pop.column-box(heading: "Results and Discussion")[
-  #set text(size: 29pt)
+  #set text(size: 25pt)
   // 掲載は全て同一 run: hybrid / n=5 / AE / traub_sr_physics を traub19 の全 comp へ適用
   // 構成: 2 列。左列 = train_raw + train_preprocessed 縦積み → ④SINDy係数。右列 = ①画像 → ②③。
   #grid(
@@ -232,28 +227,28 @@
         columns: (1fr,1fr),
         gutter: 1em
       )[
-      *Training Data to capture gate dynamics*
+      *Training data to capture the gate dynamics*
       #align(center)[
         #figure(
           image("result/train_raw.png", width: 100%),
-          caption: [Raw training trajectories.],
+          caption: none,
           numbering: none,
           supplement: none,
         )
-        #sym.arrow.b compress gates by AutoEncoder
+        #sym.arrow.b *The 6 gates* are compressed into *5 latent variables*
         #figure(
           image("result/train_preprocessed.png", width: 100%),
-          caption: [Training data for ODE identification.],
+          caption: none,
           numbering: none,
           supplement: none,
         )
       ]
       ][
-        *Action Potential reproduction*
+        *Reproducibility of a somatic surrogate model*
         #align(center)[
           #figure(
             image("result/diff.png", width: 100%),
-            caption: [20 ms, 3 #sym.mu#h(0em)A/cm#super[2] step: $V$ and the *5 AE latents*.],
+            caption: none,
             numbering: none,
             supplement: none,
           )
@@ -268,17 +263,19 @@
 
       #v(1em)
       // -------- ④ SINDy 係数 --------
-      *Identified latent equations* #h(3em) SINDy coefficients: 79.6% non-zero
+      *Identified equations of the latent variables*
       #figure(
           image("result/model.png", width: 100%),
           numbering: none,
           supplement: none,
         )
+      #v(0.2em)
+      79.6 % of the coefficients of $(d z) / (d t)$ are non-zero.
 
     ],
     // ======== 右列: ① 画像を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
-      *Replace the soma compartment with the surrogate model*
+      *Reproducibility of a multi-compartment model in which the soma compartment was replaced by the somatic surrogate model*
 
       #text(fill:red)[soma compartment (9th comp)] is replaced with the surrogate model.
 
@@ -291,15 +288,16 @@
 
       #align(center)[
         #figure(
-          image("result/compare_stim_site.png", width: 100%),
-          caption: [Amplitude sweep: *Top*: Inject to soma. *Bottom*: Inject to dendrite.],
+          image("result/compare_stim_site.png", width: 95%),
+          caption: [*Top*: Inject to soma. *Bottom*: Inject to dendrite.],
           numbering: none,
           supplement: none,
         )
       ]
 
-      // 訳: 自発発火は再現できず。I≥2.5 でバースト出現、閾値付近では遅れるが I≥5 では時刻良好。バースト後の静止電位は高すぎる。
-      - Spontaneous firing is *not reproduced*. *Bursts appear for $I gt.eq 2.5$*: delayed near threshold, but well timed for $I gt.eq 5$. The post-burst resting potential is *more depolarized* than the original.
+      // 訳: 定電流入力に対して膜電位をよく再現。自発活動 (0 µA/cm²) は示さず、学習データに自発活動が含まれないことが原因かもしれない。
+      - The surrogate model *reproduced the membrane potential well* for the constant currents.
+      - It did *not show the spontaneous firing* of the original model (left). The training data may not contain the spontaneous firing.
 
       #align(center)[
         #figure(
@@ -309,15 +307,16 @@
         )]
       #align(center)[
         #figure(
-          image("result/traces.png", width: 100%),
-          caption: [Frequency sweep: Inject to soma.],
+          image("result/traces.png", width: 95%),
+          caption: none,
           numbering: none,
           supplement: none,
         )
       ]
 
-    // 訳: 30Hz以上ではモデルが応答をよく再現。10Hzでは約10ms早く発火し、静止電位が高すぎる。
-    - For $f gt.eq 30$ Hz, the model reproduces the response well. At 10 Hz, it fires about 10 ms early.
+    // 訳: パルス入力も同様。30 Hz 以上ではよく再現、10 Hz では自発活動を再現できず約 10 ms 早く発火。
+    - For the pulse currents, the surrogate model *reproduced the membrane potential well* for $f gt.eq 30$ Hz.
+    - At 10 Hz, it fired about 10 ms earlier than the original model, and it did not show the spontaneous firing between the pulses.
 
       // // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
       // - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
@@ -336,31 +335,27 @@
     columns: (1.5fr, 1fr),
     gutter: 1em,[
     #mini-box(title: "Conclusion", title-size: 30pt, body-inset: 6pt)[
-      #set text(size: 29pt)
-      #set par(leading: 0.4em)
+      #set text(size: 24pt)
+      #set par(leading: 0.3em)
       // #set block(spacing: 0.35em)
-      // 訳: サロゲートは soma 区画のみを置換 (ゲート変数 6→5)、マルチコンパートメントニューロンのサロゲートモデルへの第一歩として。
-      - The surrogate replaces the *soma* compartment only (11 $->$ 10 states), as a first step toward a multi-compartment neuron surrogate model.
-      // 訳: 学習に用いた刺激条件下では波形を良好に再現。
-      - Waveforms are *well reproduced* under the training stimulus conditions.
-      // 訳: 自発発火など、学習データ外のダイナミクスは再現できず。
-      - Dynamics *outside the training data*, such as spontaneous firing, are *not reproduced*.
-
+      // 訳: soma のみをゲート変数 6→5 のサロゲートに置換してシミュレーション。再現性は良好だが、学習データに無いダイナミクスは再現できず。
+      - We simulated the multi-compartment model in which only the *soma compartment* was replaced by the surrogate model with *fewer gate variables (6 $->$ 5)*.
+      - The surrogate model *reproduced the membrane potential well*, but it did not reproduce the dynamics that were *not contained in the training data*.
 
     ]
     #v(0.5em)
-    #set par(leading: 0.4em)
-    #set text(size: 29pt)
+    #set par(leading: 0.3em)
+    #set text(size: 24pt)
     *Future work*
-    // 訳: 元の方程式の構造をより強く捉える次元圧縮・ODE 同定手法を試す。
-    - Explore dimensionality reduction and ODE identification methods that capture the *structure of the original equations* more strongly.
-    // 訳: ゲート変数をさらに削減しつつ、全コンパートメントを正確に置換。
-    - Replace *all compartments* accurately, with further reduction of gate variables.
+    // 訳: ゲート変数をさらに減らした場合の再現性を確かめる。
+    - Check the reproducibility when the number of gate variables is reduced further.
+    // 訳: soma 以外も置換した full surrogate model の再現性を確かめる。
+    - Check the reproducibility of the *full surrogate model*, in which the compartments other than the soma are also replaced.
     ],
     [
-      #text(size: 20pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")[github.com/MunechikaHaruki/SINDyNeuroSurrogate]]
+      #text(size: 18pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")[github.com/MunechikaHaruki/SINDyNeuroSurrogate]]
       #v(0.5em)
-      #show bibliography: set text(size: 20pt)
+      #show bibliography: set text(size: 15pt)
       #bibliography("bibliography.bib", title: none)
       #v(0.3em)
       #block(

@@ -63,11 +63,11 @@ def panels_simple(
 
     spec.append(
         PanelSpec(
-            "V(t) [mV]",
+            "v(t) [mV]",
             [
                 TraceSpec(
                     *access.trace(ds, i, POTENTIAL_VAR),
-                    label=f"V (Comp {i})" if multi else None,
+                    label=f"v (Comp {i})" if multi else None,
                 )
                 for i in comp_ids
             ],
@@ -94,21 +94,23 @@ def panels_diff(
 ) -> list[PanelSpec]:
     return [
         PanelSpec(
-            "I_ext(t)",
+            "I_ext(t)\n[μA/cm²]",
             [TraceSpec(*access.i_ext(original), color="gold")],
-            ylim=i_ext_ylim,
+            # 未指定は評価刺激が読める発表用レンジ (train_raw と共有すると学習パルスの
+            # 最大値に引っ張られ、評価の step が潰れる)。
+            ylim=i_ext_ylim or (0.0, 5.0),
         ),
         PanelSpec(
-            "V [mV]",
+            "v(t) [mV]",
             [
                 TraceSpec(
                     *access.trace(original, comp_id, POTENTIAL_VAR),
-                    label="orig V",
+                    label="orig v",
                     color="blue",
                 ),
                 TraceSpec(
                     *access.trace(surrogate, comp_id, POTENTIAL_VAR),
-                    label="surr V",
+                    label="surr v",
                     color="red",
                     style="--",
                 ),

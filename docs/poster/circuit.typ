@@ -78,7 +78,7 @@
       mark: (start: "stealth", end: "stealth", scale: 0.35),
     )
     content((xj - 2 * dx - 1.95, (ytop + ybot) / 2), lab[
-    #h(7em)$V_i$ \
+    #h(7em)$v_i$ \
       (i th Compartment \ membrane potential)], anchor: "east")
   }, length: unit)
 }
