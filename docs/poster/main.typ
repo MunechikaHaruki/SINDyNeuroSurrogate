@@ -1,7 +1,7 @@
 #import "@preview/peace-of-posters:0.5.6" as pop
 #import "@preview/typsium:0.3.1": *
 #import "circuit.typ": traub_circuit
-#import "pipeline.typ": stage_compress, stage_identify, stage_simulate, stage_simulate_loop
+#import "pipeline.typ": stage_compress, stage_identify, stage_simulate
 #import "diagrams.typ": comp-annotated
 
 #set page("a0", margin: (x: 2cm, top: 2cm, bottom: 0.1cm))
@@ -277,13 +277,13 @@
       #align(center)[
         #figure(
           image("result/compare_stim_site.png", width: 100%),
-          caption: [Amplitude sweep). *Top*: soma, as trained. *Bottom*: dendrite, *unseen*.],
+          caption: [Amplitude sweep). *Top*: Inject to soma. *Bottom*: Inject to dendrite.],
           numbering: none,
           supplement: none,
         )
       ]
 
-
+      #v(2em)
       #align(center)[
         #figure(
           image("pic/inject_periodic_current.png", width: 70%),
@@ -293,7 +293,7 @@
       #align(center)[
         #figure(
           image("result/traces.png", width: 100%),
-          caption: [Pulse train, 10–50 Hz],
+          caption: [Frequency sweep)  Inject to soma.],
           numbering: none,
           supplement: none,
         )

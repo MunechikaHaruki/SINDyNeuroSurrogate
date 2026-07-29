@@ -17,7 +17,7 @@
     content((px-to-x(50), py-to-y(-40)), text(size: font, fill: red)[dendrite])
 
     // soma (comp9) を指す矢印
-    line((px-to-x(457), py-to-y(-20)), (px-to-x(457), py-to-y(20)), mark: (end: ">"), stroke: 1.5pt + blue)
+    // line((px-to-x(457), py-to-y(-20)), (px-to-x(457), py-to-y(20)), mark: (end: ">"), stroke: 1.5pt + blue)
     content((px-to-x(457), py-to-y(-40)), text(size: font, fill: blue)[soma])
 
     // apical dendrite (comp10-19, 右側) を指す矢印
