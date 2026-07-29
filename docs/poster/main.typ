@@ -166,7 +166,7 @@
       #stage_compress(unit: 1.05cm, label-size: 20pt)
       #v(1.5em)
       // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
-      *6 gates* ride a *low-dimensional manifold* $->$ $bold(z) in RR^n$, $n=5$.
+      *6 gates* are compressed to \ 5-dimentional latent variable by AutoEncoder.
     ],
     // ======== ③ [V, z] から潜在の支配方程式を同定 (図は簡略化し、展開式は図の下に置く) ========
     [
@@ -260,8 +260,7 @@
           supplement: none,
         )
       ]
-      // 訳: 79.6% が非ゼロ = スパースでない。
-      - *79.6% non-zero* — accurate but *not sparse*.
+
     ],
     // ======== 右列: ① 画像を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
@@ -304,6 +303,10 @@
       // // 訳: 20 Hz 以上で一致、10 Hz では後続スパイクを落とす。
       // - Matches for $f gt.eq 20$ Hz; *drops later spikes* at 10 Hz.
 
+
+      #v(2em)
+      // 訳: 79.6% が非ゼロ = スパースでない。
+      *SINDy Coef* : *79.6% non-zero* — not sparse.
 
     ],
   )

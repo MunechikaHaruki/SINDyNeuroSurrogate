@@ -35,7 +35,7 @@
     // --- ノードから膜レールへ 1 本の縦線で接続 ---
     node("M", (xj, ytop))
     wire("J", "M")
-    content("M", lab[$V_i$ (intracellular)], anchor: "south-west", padding: 10pt)
+    content("M", lab[intracellular], anchor: "south-west", padding: 10pt)
 
     // --- 膜レール ---
     node("Mc", (xj - 2 * dx, ytop))
