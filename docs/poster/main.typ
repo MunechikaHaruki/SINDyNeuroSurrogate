@@ -99,7 +99,8 @@
           // 訳: 各コンパートメント = 膜容量 + 可変イオンコンダクタンス + 隣接との軸方向結合。
           #figure(
             text(size: 28pt)[
-              $ C_m (d V) / (d t) = -g_"leak" (V - V_"leak") - overline(g)_"Na" m^2 h (V - V_"Na") - overline(g)_"K" n (V - V_"K") + I_"ext" $
+              $ C_m (d V) / (d t) = -g_"leak" (V - V_"leak") & - overline(g)_"Na" m^2 h (V - V_"Na") - overline(g)_"K" n (V - V_"K") \
+              & + I_"other ionic currents" + I_"ext" $
             ],
             numbering: none,
             supplement: none,
@@ -108,7 +109,7 @@
         // -------- 右: 可変コンダクタンスの中身 (ゲート変数とレート関数) --------
         [
           // 訳: コンダクタンスはゲート変数に依存し、ゲートはレート関数の ODE に従う。
-          Conductances have *gate variables*, ODEs with rate functions $alpha, beta$:
+          The conductances have *gate variables*, ODEs with rate functions $alpha, beta$:
           #v(1em)
           #figure(
             text(size: 28pt)[
@@ -125,13 +126,13 @@
           )<eq-gate>
           #v(0.8em)
           // 訳: 1 コンパートメント 11 状態変数 → 19 comp で 209 → 並列シミュレーションでメモリボトルネック。
-          $->$ *11 states per compartment* \
-          $->$ *209* for 19 comps; \
-          At large scale network simulation, the gates become a *memory bottleneck*.
+          $->$ *11 states (10 gates and V) per comp* \
+          $->$ *209* states for 19 comps; \
+          In large scale network simulation, number of large gate variables become a *memory bottleneck*.
         ],
       )
       #v(0.4em)
-      #mini-box(title:"Goal")[
+      #mini-box(title:"Purpose")[
         Development of a multi-compartment neuron's surrogate model capable of reproducing  the membrane potential response with fewer gate variables.
       ]
     ],
@@ -189,7 +190,7 @@
 
 
       Capture latent variables dynamics with *SINDy*@Champion-2019-DatadrivenDiscoveryCoordinatesGoverning.
-      SINDy fits coefficients $Xi$
+      SINDy fits coefficients $Xi$.
       // *SINDy*  fits *only* $dot(bold(z))$; $dot(V)$ keeps *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$.
     ],
     // ======== ④ 学習済み decoder/SINDy を等価回路の gate 計算へ差し込んでシミュレーション ========
@@ -202,7 +203,7 @@
       // Each step: $bold(z) ->$ *decode* $->$ gates feed the equivalent-circuit $dot(V)$.\
       // SINDy updates $bold(z)$ in place of the original gate ODEs.
       The derivative of *$V$* is computed with the *decoded latent variables*.
-      Across time steps, only the latent variables and the membrane potential need to be preserved.
+      Across time steps, *only the latent variables and the membrane potential need to be preserved*.
     ],
   )
 ]
