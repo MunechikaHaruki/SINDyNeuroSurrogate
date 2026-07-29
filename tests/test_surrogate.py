@@ -31,7 +31,6 @@ from neurosurrogate.eval.store import SimResult, artifacts, load_all, save, save
 from neurosurrogate.metrics.artifact import (
     cell_figs,
     compare_grid_fig,
-    equation_texs,
     preprocessor_figs,
     trace_grid_fig,
     train_figs,
@@ -43,6 +42,7 @@ from neurosurrogate.metrics.artifact._internal.wave import (
     extract_metric,
 )
 from neurosurrogate.metrics.artifact.cell import panels_simple
+from neurosurrogate.metrics.artifact.model import feature_tex, tex
 from neurosurrogate.metrics.report import (
     DEFAULT_DRAW,
     draw_for,
@@ -270,11 +270,12 @@ def test_compare_grid_rows_are_current_then_one_per_eval(
     results = {**results_a, **_renamed(results_a, "a", "b")}
     fig = compare_grid_fig(results, ["a", "b"], "soma")
     assert len(fig.axes) == 2 * 2  # (a + b) 行 × 2 点
-    assert [ax.get_ylabel() for ax in fig.axes[::2]] == ["a", "b"]
+    # 行名は描かない (格子は列見出しと凡例で読む)。
+    assert not any(ax.get_ylabel() for ax in fig.axes)
 
     # 同じ格子骨格を run 軸で開くと行 = [run] (行の組み方だけが違う)。
     run_fig = trace_grid_fig(results, "a", "soma")
-    assert [ax.get_ylabel() for ax in run_fig.axes[::2]] == ["r0"]
+    assert len(run_fig.axes) == 1 * 2
 
     results_b3 = _run_named(bundles, _sweep_specs("b", [5.0, 10.0, 15.0]), "r0")
     short = {**results, **results_b3}
@@ -501,17 +502,15 @@ def test_duplicate_library_types_are_rejected(sindy_closure: SINDyBundle) -> Non
         library.bound_exprs(sindy_closure.columns)
 
 
-def test_equations_render_as_tex(sindy_closure: SINDyBundle) -> None:
-    texs = equation_texs(sindy_closure)
-    # target 数が _EQ_HEAD_TARGETS を超える分は展開せず "\vdots" 1 行にまとめる
-    assert len(texs) == len(sindy_closure.targets) - 1
+def test_feature_tex_drops_model_suffix(sindy_closure: SINDyBundle) -> None:
+    """レート関数は未定義 Function → sympy が自動でギリシャ文字化。model は下付きへ
+    回すが、heatmap の軸ラベルでは冗長 → 落とす (tex は括弧へ整形して残す)。"""
+    texs = [feature_tex(e) for e in sindy_closure.feature_exprs]
     assert all(t.startswith("$") and t.endswith("$") for t in texs)
-    # 見出しは抜粋 → 先頭数項のみで残りは \cdots に畳む (末尾の \vdots 行を除く)
-    assert all(r"+ \cdots" in t for t in texs[:-1])
-    assert texs[-1] == r"$\vdots$"
-    # レート関数は未定義 Function → sympy が自動でギリシャ文字化。model は下付きへ
-    # 回し、表示時に括弧へ整形 (mathtext が下付き内の空白を詰めるため)
-    assert any(r"\alpha_{m(hh)}{\left(V \right)}" in t for t in texs)
+    assert any(r"\alpha_{m}{\left(V \right)}" in t for t in texs)
+    assert not any("(hh)" in t for t in texs)
+    full = [tex(e) for e in sindy_closure.feature_exprs]
+    assert any(r"\alpha_{m(hh)}{\left(V \right)}" in t for t in full)
 
 
 @pytest.mark.parametrize(

@@ -119,10 +119,9 @@ def _trace_cell(
 
 @dataclass(frozen=True)
 class _Row:
-    """波形格子の 1 行 = 行名 + 列 (点) ごとの (原系, 重ねる置換系群) と対象 comp。
+    """波形格子の 1 行 = 列 (点) ごとの (原系, 重ねる置換系群) と対象 comp。
     行が run 軸か系列軸かの違いは、この列を組む側だけが知る。"""
 
-    label: str
     comp_id: int
     cells: list[tuple[xr.Dataset, dict[str, xr.Dataset]]]
 
@@ -131,7 +130,6 @@ def _grid_fig(
     header: list[tuple[float | None, xr.Dataset]],
     rows: list[_Row],
     axis_name: str | None,
-    comp_name: str,
 ) -> Figure:
     """波形格子の骨格 (列=点)。行1=I_ext (header の原系)、行2以降=`rows`。
 
@@ -142,7 +140,7 @@ def _grid_fig(
     n_col = len(header)
     if any(len(r.cells) != n_col for r in rows):
         raise ValueError("並べる結果は点数を揃える必要がある")
-    # 高さは行数比例 + 固定オーバーヘッド。suptitle/列見出し/x 軸ラベルは行数に
+    # 高さは行数比例 + 固定オーバーヘッド。列見出し/x 軸ラベルは行数に
     # よらず一定高を占める → 比例分だけだと行数が少ないほど 1 行が潰れ、行数違い
     # の図を並べたとき波形の縦倍率が揃わない。
     fig = new_figure(figsize=(2.6 * n_col, 1.8 * len(rows) + 0.9))
@@ -156,15 +154,12 @@ def _grid_fig(
         if value is not None and axis_name:
             axes[0][c].set_title(f"{value:.3g} {unit}".strip())
     for r, row in enumerate(rows):
-        axes[r][0].set_ylabel(row.label, fontsize="small")
         for c, (orig_ds, surrs) in enumerate(row.cells):
             axes[r][c].set_ylim(*v_ylim)
             _trace_cell(axes[r][c], orig_ds, surrs, row.comp_id)
     for c in range(n_col):
         axes[-1][c].set_xlabel("t [ms]")
     place_legend(axes[0][-1])
-    prefix = f"{axis_name} " if axis_name else ""
-    fig.suptitle(f"{prefix}waveform ({comp_name})")
     return fig
 
 
@@ -187,7 +182,6 @@ def trace_grid_fig(
     comp_id = results[(labels[0], None)].spec.net.name_to_idx(comp_name)
     rows = [
         _Row(
-            select.run_label_of(results, name, run_id),
             comp_id,
             [
                 (
@@ -204,7 +198,7 @@ def trace_grid_fig(
         for run_id in run_ids
     ]
     axis_name = results[(labels[0], None)].spec.sweep_param
-    return _grid_fig(_header(results, name), rows, axis_name, comp_name)
+    return _grid_fig(_header(results, name), rows, axis_name)
 
 
 def compare_grid_fig(
@@ -226,7 +220,6 @@ def compare_grid_fig(
         run_label = select.run_label_of(results, name, run_id)
         rows.append(
             _Row(
-                name,
                 comp_id,
                 [
                     (
@@ -239,4 +232,4 @@ def compare_grid_fig(
         )
     first_label = select.labels_of(results, first_name)[0]
     axis_name = results[(first_label, None)].spec.sweep_param
-    return _grid_fig(_header(results, first_name), rows, axis_name, comp_name)
+    return _grid_fig(_header(results, first_name), rows, axis_name)

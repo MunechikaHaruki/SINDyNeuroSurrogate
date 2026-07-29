@@ -36,16 +36,9 @@ _EDGE_WIDTH = 2.0
 _EDGE_COLOR = "#666666"
 _EDGE_LABEL_FONTSIZE = 25
 _STIM_LINEWIDTH = 3.0
-_COEF_DIGITS = 3  # 方程式表示の係数有効桁
-_EQ_HEAD_TERMS = 3  # 見出しに出す先頭項数 (残りは \cdots)
-_EQ_HEAD_TARGETS = (
-    2  # 見出しで右辺を展開する先頭 target 数 (残りは行を保ち右辺だけ \cdots)
-)
-_EQ_FONTSIZE = 8
 _FEATURE_FONTSCALE = (
     0.22 * 4  # heatmap X軸 basis 関数のフォント倍率 (全件表示、かぶらない最小限)
 )
-_T = sp.Symbol("t")
 
 
 def neuron_graph_fig(
@@ -148,6 +141,13 @@ def tex(e: sp.Basic) -> str:
     return f"${_latex(e)}$"
 
 
+def feature_tex(e: sp.Basic) -> str:
+    """library 特徴量ラベル用。1 図中の項は全て同じモデル由来 → 下付きの model 名
+    (α_{m(hh)} の (hh)) は冗長なので落とす。"""
+    stripped = re.sub(r"_\{(\w+) \w+\}", r"_{\1}", sp.latex(e))
+    return f"${stripped}$"
+
+
 def pca_scree_fig(prep: PCAPreprocessor) -> Figure:
     """PCA scree 図: 成分別寄与率 (棒) + 累積寄与率 (折れ線)。保持成分を色で区別し、
     捨てた成分も含めて描く → n_components の選択が累積の飽和点に対し妥当かを見る。"""
@@ -216,9 +216,7 @@ def _sindy_coef_fig(result: SINDyBundle, figsize=(15, 3)):
     cbar.set_ticks(cbar.get_ticks()[::2])
     cbar.ax.tick_params(labelsize=plt.rcParams["font.size"] * 0.8)
 
-    # 図題は suptitle に上げ、その下 (heatmap との間) に各 target の式を抜粋表示。
-    fig.suptitle("SINDy Coefficients (SymLog Scale)")
-    ax.set_title("\n".join(equation_texs(result)), fontsize=_EQ_FONTSIZE)
+    ax.set_title("SINDy Coefficients (SymLog Scale)")
 
     if len(result.targets) == xi_matrix.shape[0]:
         ax.set_yticks(np.arange(len(result.targets)) + 0.5)
@@ -228,7 +226,7 @@ def _sindy_coef_fig(result: SINDyBundle, figsize=(15, 3)):
     if len(result.feature_exprs) == xi_matrix.shape[1]:
         ax.set_xticks(np.arange(xi_matrix.shape[1]) + 0.5)
         ax.set_xticklabels(
-            [tex(e) for e in result.feature_exprs],
+            [feature_tex(e) for e in result.feature_exprs],
             rotation=90,
             ha="center",
             fontsize=plt.rcParams["font.size"] * _FEATURE_FONTSCALE,
@@ -236,32 +234,3 @@ def _sindy_coef_fig(result: SINDyBundle, figsize=(15, 3)):
         ax.set_xlabel("Library Features")
 
     return fig
-
-
-def equation_texs(bundle: SINDyBundle) -> list[str]:
-    """target ごとの d(target)/dt = Σ ξ·θ を先頭数項だけ切り出した数式 (図の見出し
-    用の抜粋。全項は heatmap 本体が示す)。先頭 `_EQ_HEAD_TARGETS` 個の target だけ
-    右辺を展開し、残りは 1 行の "\\vdots" (以下略) にまとめる。target をまとめて
-    1 本の式 "d/dt(z3, z4, z5) = ..." に書くと別々の式が 1 本に見え意味が変わるので、
-    それはせず「以下略」の記号 1 行だけ足す (残り target の数だけ行を使わない)。
-    係数の丸めと 0 係数落としは表示都合で、xi 本体は触らない。"""
-    exprs = bundle.feature_exprs
-    texs = []
-    for target, row in zip(
-        bundle.targets[:_EQ_HEAD_TARGETS], bundle.xi[:_EQ_HEAD_TARGETS], strict=False
-    ):
-        terms = [
-            sp.Float(c, _COEF_DIGITS) * expr
-            for c, expr in zip(row, exprs, strict=True)
-            if c != 0
-        ]
-        head = sp.Eq(
-            sp.Derivative(target, _T),
-            sum(terms[:_EQ_HEAD_TERMS], sp.S.Zero),
-            evaluate=False,
-        )
-        tail = r" + \cdots" if len(terms) > _EQ_HEAD_TERMS else ""
-        texs.append(f"${_latex(head)}{tail}$")
-    if len(bundle.targets) > _EQ_HEAD_TARGETS:
-        texs.append(r"$\vdots$")
-    return texs

@@ -35,7 +35,7 @@ from ._internal.engine import collect, draw_engine, error_fig
 from ._internal.wave import DynamicMetrics, n_spikes, spike_shape_corr, waveform_summary
 from .cell import attractor_fig, current_preview_fig, panels_diff, panels_simple
 from .grid import compare_grid_fig, metric_fig, trace_grid_fig
-from .model import _sindy_coef_fig, equation_texs, neuron_graph_fig, pca_scree_fig
+from .model import _sindy_coef_fig, neuron_graph_fig, pca_scree_fig
 from .train import (
     train_manifold_fig,
     train_preprocessed_fig,
@@ -52,7 +52,6 @@ __all__ = [
     "closure_figs",
     "compare_grid_fig",
     "current_preview_fig",
-    "equation_texs",
     "error_fig",
     "metric_fig",
     "neuron_graph_figs",

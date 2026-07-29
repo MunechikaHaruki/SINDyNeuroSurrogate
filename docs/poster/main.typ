@@ -9,7 +9,7 @@
 #pop.set-theme(pop.uni-fr)
 #set text(size: pop.layout-a0.at("body-size"))
 #set text(font: ("New Computer Modern", "Hiragino Kaku Gothic ProN"))
-#let box-spacing = 0.15em
+#let box-spacing = 0em
 #set columns(gutter: box-spacing)
 #set block(spacing: box-spacing)
 #pop.update-poster-layout(spacing: box-spacing)
@@ -133,7 +133,7 @@
       )
       #v(0.4em)
       #mini-box(title:"Purpose")[
-        Development of a surrogate model of a multi-compartment neuron capable of reproducing the membrane potential response with fewer gate variables.
+        Development of a surrogate model of the multi-compartment neuron capable of reproducing the membrane potential response with fewer gate variables.
       ]
     ],
   )
@@ -251,7 +251,6 @@
             supplement: none,
           )
         ]
-        #v(1em)
         #text(size: 25pt)[
           // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms。
           - latency err *0.3 ms*, AHP timing gap *3.1 ms*.
@@ -262,8 +261,7 @@
 
       #v(0.3em)
       // -------- ④ SINDy 係数 --------
-      *Identified latent equations*
-
+      *Identified latent equations* #h(3em) SINDy coefficients: 79.6% non-zero
       #figure(
           image("result/model.png", width: 100%),
           numbering: none,
@@ -274,6 +272,8 @@
     // ======== 右列: ① 画像を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
       *Replace the soma compartment with the surrogate model*
+
+      #text(fill:red)[soma compartment (9th comp)] is replaced with the surrogate model.
 
       #align(center)[
         #figure(
@@ -291,7 +291,9 @@
         )
       ]
 
-      #v(2em)
+      // 訳: 自発発火 (I=0) は再現できないが、I≥2.5 では両注入点でバーストを再現。閾値付近 (2.5) は発火が遅れ、I≥5 で一致。バースト後の静止電位はやや高い。
+      - The model failed at spontaneous firing but reproduced *bursts for $I gt.eq 2.5$*: delayed near threshold, and matching spike timing with an elevated post-burst rest for $I gt.eq 5$.
+
       #align(center)[
         #figure(
           image("pic/inject_periodic_current.png", width: 70%),
@@ -306,45 +308,51 @@
           supplement: none,
         )
       ]
+
+    // 訳: 30Hz以上では初期バーストも後続の閾値下応答も一致。10-20Hzでは後続スパイクの時刻がずれる(10Hzで約50ms前倒し)。
+    - The response to the periodic current is reproduced with high accuracy, despite a slight phase shift.
+
       // // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
       // - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
 
       // // 訳: 20 Hz 以上で一致、10 Hz では後続スパイクを落とす。
       // - Matches for $f gt.eq 20$ Hz; *drops later spikes* at 10 Hz.
-
-
-      #v(2em)
-      *SINDy coefficients*: 79.6% non-zero
+      // 
 
     ],
   )
 ]
 
 // ======== Footer: Conclusion / Code / References / COI (poster 全体の下部) ========
-#block(width: 100%, above: 1em, below: 0em)[
+#block(width: 100%, above: 0.5em, below: 1em)[
   #grid(
-    columns: (2.4fr, 1fr),
-    gutter: 1em,
-    mini-box(title: "Conclusion", title-size: 30pt, body-inset: 6pt)[
-      #set text(size: 29pt)
+    columns: (1.5fr, 1fr),
+    gutter: 1em,[
+    #mini-box(title: "Conclusion", title-size: 30pt, body-inset: 6pt)[
+      // #set text(size: 29pt)
       #set par(leading: 0.4em)
-      #set block(spacing: 0.35em)
-      // 訳: 潜在ダイナミクスはタイミング(位相情報)を保持している。
-      - Latent dynamics preserve *timing*.
-      // 訳: → SINDyライブラリでなく、AE(n=5)側が急峻な遷移の情報を圧縮しきれていない可能性。
-      - Error concentrates in the *fast, steep transition* — suggests that the *AE encoding (n=5)*, not the SINDy library, fails to preserve it.
-      // 訳: 全19区画置換、発散せず、未見の刺激部位・周波数にも転移。
-      - Replaced *all 19 compartments*, no divergence; transfers to *unseen site #sym.dot.c frequency*.
-      // 訳: 核心: SINDyが学習できたのは圧縮したから(n=6→5)ではない。⑤(無圧縮PCA, n=6)でも同じ結果 → 効いているのは座標変換そのもの。
-      - *Core finding*: SINDy succeeds *not because we compressed* ($n$: 6→5) — ⑤ shows the *same result uncompressed* ($n=6$), so it is the *coordinate change itself* that makes gate dynamics learnable.
-      // 訳: だからコスト削減は圧縮の副産物にすぎず、ξが密(79.6%非ゼロ)な現状ではまだ実証できていない。
-      - Cost reduction follows *only if* compression matters — so it remains *unproven*: $xi$ is still dense (*79.6%* non-zero).
-      $->$ *Future*: sparsify $xi$, push $n$ down, test on other channel models.
+      // #set block(spacing: 0.35em)
+      // 訳: soma 区画のみ、ゲート変数 6→5 のサロゲートへ置換。
+      - Replaced the *soma* compartment only, reducing one gate variable gate variable.
+      // 訳: 学習した刺激条件では波形を良好に再現。
+      - Waveforms are *accurately reproduced* within the trained stimulus condition.
+      // 訳: 学習データ外のダイナミクスは再現できず。
+      - Dynamics *outside the training data* like spotaneous firing are *not reproduced*.
+
+
+    ]
+    #v(0.5em)
+    #set par(leading: 0.4em)
+    *Future work*
+    // 訳: 元の方程式の構造をより強く捉える次元圧縮・ODE 同定手法を試す。
+    - Explore dimensionality reduction and ODE identification methods that capture the *structure of the original equations* more strongly.
+    // 訳: ゲート変数をさらに減らしつつ、全コンパートメントを高精度に置換する。
+    - Replace *all compartments* accurately, with the gate variables reduced further.
     ],
     [
-      #text(size: 15pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")[github.com/MunechikaHaruki/SINDyNeuroSurrogate]]
+      #text(size: 20pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")[github.com/MunechikaHaruki/SINDyNeuroSurrogate]]
       #v(0.5em)
-      #show bibliography: set text(size: 17pt)
+      #show bibliography: set text(size: 20pt)
       #bibliography("bibliography.bib", title: none)
       #v(0.3em)
       #block(

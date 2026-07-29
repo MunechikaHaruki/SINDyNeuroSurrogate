@@ -127,5 +127,7 @@ def draw_engine(
         place_legend(ax)
     if n_rows:  # 横軸は全段共有 (sharex) → ラベルは最下段だけ
         axs[-1].set_xlabel("Time [ms]")
+    # 段ごとに y 目盛の桁数が違う → 既定では ylabel の x 位置が段ごとにずれる。
+    fig.align_ylabels(axs)
 
     return fig
