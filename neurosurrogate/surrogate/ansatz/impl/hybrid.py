@@ -13,7 +13,7 @@ from .sindy_fit import fit_sindy
 
 
 class HybridAnsatz(Ansatz[SINDyBundle]):
-    """Hybrid + 潜在方程式を SINDy で同定 (前処理と別学習、SINDy 入力順 g1..,V)。
+    """Hybrid + 潜在方程式を SINDy で同定 (前処理と別学習、SINDy 入力順 z1..,V)。
 
     kernel 骨格は `hybrid_kernel.py` の共有関数が持ち、ここは SINDy 固有の同定 (fit) と
     潜在方程式の評価 (ξ 内積) だけを担う。
@@ -41,7 +41,7 @@ class HybridAnsatz(Ansatz[SINDyBundle]):
         spec: dict,
     ) -> SINDyBundle:
         inputs = self.train_inputs(meta, train_xr, preprocessor)
-        # 列構造: [g1..gN, V]。gate 群が先頭、末尾に V。u は入力に無し。
+        # 列構造: [z1..zN, V]。gate 群が先頭、末尾に V。u は入力に無し。
         roles = Roles(V=meta.n_components, g=list(range(meta.n_components)))
         return fit_sindy(inputs, access.time(train_xr), roles, spec)
 

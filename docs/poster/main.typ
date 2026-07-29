@@ -79,7 +79,7 @@
       #v(2em)
       #figure(
         comp-annotated(w: 18, font: 20pt),
-        caption: [Modelled as\ *19 Compartments(comps)* @Traub-1991-ModelCA3HippocampalPyramidal],
+        caption: [Modelled as\ *19 Compartments (comps)* @Traub-1991-ModelCA3HippocampalPyramidal],
         numbering: none,
         supplement: none,
       )<comp>
@@ -109,7 +109,7 @@
         // -------- 右: 可変コンダクタンスの中身 (ゲート変数とレート関数) --------
         [
           // 訳: コンダクタンスはゲート変数に依存し、ゲートはレート関数の ODE に従う。
-          The conductances have *gate variables*, ODEs with rate functions $alpha, beta$:
+          The conductances depend on *gate variables*, which follow ODEs with rate functions $alpha, beta$:
           #v(1em)
           #figure(
             text(size: 28pt)[
@@ -128,12 +128,12 @@
           // 訳: 1 コンパートメント 11 状態変数 → 19 comp で 209 → 並列シミュレーションでメモリボトルネック。
           $->$ *11 states (10 gates and V) per comp* \
           $->$ *209* states for 19 comps; \
-          In large scale network simulation, number of large gate variables become a *memory bottleneck*.
+          In large scale network simulations, the number of large gate variables becomes a *memory bottleneck*.
         ],
       )
       #v(0.4em)
       #mini-box(title:"Purpose")[
-        Development of a multi-compartment neuron's surrogate model capable of reproducing  the membrane potential response with fewer gate variables.
+        Development of a surrogate model of a multi-compartment neuron capable of reproducing the membrane potential response with fewer gate variables.
       ]
     ],
   )
@@ -162,19 +162,19 @@
     // ======== ② 純電位依存ゲート 8 本だけ潜在へ圧縮 (V と Ca サブ系は素通し) ========
     [
       // 訳: ② 電位依存ゲートだけを圧縮する。
-      *#text(blue)[②] Compress gates*
+      *#text(blue)[②] Compress the gates*
       #v(2em)
       #stage_compress(unit: 1.05cm, label-size: 20pt)
       #v(1.5em)
       // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
       // 訳: AE 仕様。encoder/decoder それぞれ隠れ層 1 層、損失は MSE ベースの再構成誤差。
-      *6 gates* are compressed to 5 latent variables by AutoEncoder(encoder and decoder have one hidden layer).
+      The *6 gates* are compressed to 5 latent variables by an AutoEncoder (encoder and decoder each with one hidden layer).
       #v(0.2em)
     ],
     // ======== ③ [V, z] から潜在の支配方程式を同定 (図は簡略化し、展開式は図の下に置く) ========
     [
       // 訳: ③ 潜在の支配方程式を同定する。
-      *#text(blue)[③] Identify the latent variables of ODEs*
+      *#text(blue)[③] Identify ODEs of the latent variables*
       #v(2em)
       #stage_identify(unit: 1.5cm, label-size: 20pt)
       #v(0.2em)
@@ -189,7 +189,7 @@
       #v(1.3em)
 
 
-      Capture latent variables dynamics with *SINDy*@Champion-2019-DatadrivenDiscoveryCoordinatesGoverning.
+      Capture the latent variable dynamics with *SINDy*@Champion-2019-DatadrivenDiscoveryCoordinatesGoverning.
       SINDy fits coefficients $Xi$.
       // *SINDy*  fits *only* $dot(bold(z))$; $dot(V)$ keeps *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$.
     ],
@@ -197,7 +197,7 @@
     [
       // 訳: ④ 推論時: decoder-in-the-loop でシミュレーションする。
       *#text(blue)[④] How to apply the surrogate model*
-      #image("pic/ref/model.svg",width:100%)
+      #image("pic/ref/model.png",width:100%)
       #v(0.5em)
 
       // Each step: $bold(z) ->$ *decode* $->$ gates feed the equivalent-circuit $dot(V)$.\
@@ -233,16 +233,16 @@
           numbering: none,
           supplement: none,
         )
-        #sym.arrow.b compress
+        #sym.arrow.b compress gates by AutoEncoder
         #figure(
           image("result/train_preprocessed.png", width: 100%),
-          caption: [Latent variables and membrane potential  used to fit SINDy.],
+          caption: [Teaching data to identify the ODEs.],
           numbering: none,
           supplement: none,
         )
       ]
       ][
-        * Action Potential reproduction*
+        *Action Potential reproduction*
         #align(center)[
           #figure(
             image("result/diff.png", width: 100%),
@@ -263,19 +263,17 @@
       #v(0.3em)
       // -------- ④ SINDy 係数 --------
       *Identified latent equations*
-      #align(center)[
-        #figure(
+
+      #figure(
           image("result/model.png", width: 100%),
-          caption: [$xi$ over the physics-informed library.],
           numbering: none,
           supplement: none,
         )
-      ]
 
     ],
     // ======== 右列: ① 画像を先頭、以下②③ を縦に重ねて配置 + 説明 ========
     [
-      *Replace soma compartment to surrogate model*
+      *Replace the soma compartment with the surrogate model*
 
       #align(center)[
         #figure(
@@ -287,7 +285,7 @@
       #align(center)[
         #figure(
           image("result/compare_stim_site.png", width: 100%),
-          caption: [Amplitude sweep) *Top*: Inject to soma. *Bottom*: Inject to dendrite.],
+          caption: [Amplitude sweep: *Top*: Inject to soma. *Bottom*: Inject to dendrite.],
           numbering: none,
           supplement: none,
         )
@@ -303,7 +301,7 @@
       #align(center)[
         #figure(
           image("result/traces.png", width: 100%),
-          caption: [Frequency sweep)  Inject to soma.],
+          caption: [Frequency sweep: Inject to soma.],
           numbering: none,
           supplement: none,
         )
@@ -316,8 +314,7 @@
 
 
       #v(2em)
-      // 訳: 79.6% が非ゼロ = スパースでない。
-      *SINDy Coef* : *79.6% non-zero* — not sparse.
+      *SINDy coefficients*: 79.6% non-zero
 
     ],
   )
@@ -335,7 +332,7 @@
       // 訳: 潜在ダイナミクスはタイミング(位相情報)を保持している。
       - Latent dynamics preserve *timing*.
       // 訳: → SINDyライブラリでなく、AE(n=5)側が急峻な遷移の情報を圧縮しきれていない可能性。
-      - Error concentrates in the *fast, steep transition* — suggests the *AE encoding (n=5)*, not the SINDy library, fails to preserve it.
+      - Error concentrates in the *fast, steep transition* — suggests that the *AE encoding (n=5)*, not the SINDy library, fails to preserve it.
       // 訳: 全19区画置換、発散せず、未見の刺激部位・周波数にも転移。
       - Replaced *all 19 compartments*, no divergence; transfers to *unseen site #sym.dot.c frequency*.
       // 訳: 核心: SINDyが学習できたのは圧縮したから(n=6→5)ではない。⑤(無圧縮PCA, n=6)でも同じ結果 → 効いているのは座標変換そのもの。

@@ -78,7 +78,7 @@ def set_coords(raw, u, coords, dt) -> xr.Dataset:
 def set_latent_coords(
     v: np.ndarray, latent: np.ndarray, u: np.ndarray, comp_id: int, dt: float
 ) -> xr.Dataset:
-    """単一 comp の [V, g1..gN] を preprocessed Dataset に組立 (surrogate用)。"""
+    """単一 comp の [V, z1..zN] を preprocessed Dataset に組立 (surrogate用)。"""
     n_latent = latent.shape[1]
     acc = StateAccumulator()
     acc.add(comp_id, [access.POTENTIAL_VAR], [False], [0.0])

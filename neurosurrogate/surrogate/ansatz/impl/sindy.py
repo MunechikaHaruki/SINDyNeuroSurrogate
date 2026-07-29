@@ -23,7 +23,7 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
         train_xr: xr.Dataset,
         preprocessor: Preprocessor,
     ) -> TrainInputs:
-        # 状態 [V, g1..gN] 丸ごと、入力は流入電流 (transform_gate が I_internal を u
+        # 状態 [V, z1..zN] 丸ごと、入力は流入電流 (transform_gate が I_internal を u
         # 列へ)。comp ごとに 1 軌道 (縦連結は偽微分)。
         comp_ids = self.train_source(meta).comp_ids
         preprocessed = [
@@ -48,7 +48,7 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
     ) -> SINDyBundle:
         inputs = self.train_inputs(meta, train_xr, preprocessor)
         n = meta.n_components
-        # 列構造: [V, g1..gN, u]。V=0, gate 群, 末尾に外部電流。
+        # 列構造: [V, z1..zN, u]。V=0, gate 群, 末尾に外部電流。
         roles = Roles(V=0, g=list(range(1, 1 + n)), u=1 + n)
         return fit_sindy(inputs, access.time(train_xr), roles, spec)
 
@@ -63,7 +63,7 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
         n_latent = meta.n_components
 
         def surr_kernel(params, i_t, v, state):
-            # 束縛順 [V, g1..gN, u]、xi の行も同順 (0=V, 1..=latent)。
+            # 束縛順 [V, z1..zN, u]、xi の行も同順 (0=V, 1..=latent)。
             theta = compute_theta(v, *(state[i] for i in range(n_latent)), i_t)
             return xi[0] @ theta, xi[1:] @ theta
 

@@ -242,7 +242,7 @@ def equation_texs(bundle: SINDyBundle) -> list[str]:
     """target ごとの d(target)/dt = Σ ξ·θ を先頭数項だけ切り出した数式 (図の見出し
     用の抜粋。全項は heatmap 本体が示す)。先頭 `_EQ_HEAD_TARGETS` 個の target だけ
     右辺を展開し、残りは 1 行の "\\vdots" (以下略) にまとめる。target をまとめて
-    1 本の式 "d/dt(g3, g4, g5) = ..." に書くと別々の式が 1 本に見え意味が変わるので、
+    1 本の式 "d/dt(z3, z4, z5) = ..." に書くと別々の式が 1 本に見え意味が変わるので、
     それはせず「以下略」の記号 1 行だけ足す (残り target の数だけ行を使わない)。
     係数の丸めと 0 係数落としは表示都合で、xi 本体は触らない。"""
     exprs = bundle.feature_exprs

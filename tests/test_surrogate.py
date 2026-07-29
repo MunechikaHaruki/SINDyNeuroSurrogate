@@ -77,7 +77,7 @@ from neurosurrogate.surrogate.replace import (
 )
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
-LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, g1..gN, u] の両端
+LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, z1..zN, u] の両端
 
 
 @cache
@@ -156,7 +156,7 @@ def sindy_closure(sindy: SurrogateBundle) -> SINDyBundle:
 
 @pytest.mark.parametrize("n_components", LATENT_DIMS)
 def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
-    """列構造 [V, g1..gN, u] は latent 次元によらず置換シミュまで通る。"""
+    """列構造 [V, z1..zN, u] は latent 次元によらず置換シミュまで通る。"""
     surrogate = fit_surrogate("_test_hh_sindy", n_components)
     assert isinstance(surrogate.closure, SINDyBundle)
     assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent

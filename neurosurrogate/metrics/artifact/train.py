@@ -124,7 +124,7 @@ def train_preprocessed_fig(
     """同定器へ渡す**直前**のデータ (状態列 x と入力列 u を 1 列 1 段、comp 重ね)。
 
     fit と同じ `ansatz.train_inputs` を呼ぶ → 図に出るのが学習に入ったもの。列構造は
-    定式化ごとに違う (sindy=[V, g1..gN] + u / hybrid=[g1..gN] + V) が、view は列名を
+    定式化ごとに違う (sindy=[V, z1..zN] + u / hybrid=[z1..zN] + V) が、view は列名を
     そのまま並べるだけで両方に効く。
     """
     inputs = bundle.ansatz.train_inputs(
@@ -226,7 +226,7 @@ def train_manifold_fig(
     latents = _latents(bundle, [i for _, i, _ in shown])
     latent_names = access.latent_vars(bundle.meta.n_components)
     if bundle.meta.n_components < 2:
-        # 潜在が 1 次元なら軌道が描けない → V を横軸に取る (g1 の V 依存を見る)。
+        # 潜在が 1 次元なら軌道が描けない → V を横軸に取る (z1 の V 依存を見る)。
         x_label, y_label = access.POTENTIAL_VAR, latent_names[0]
         xs = [access.potential(bundle.train_xr, i) for _, i, _ in shown]
         ys = [lat[:, 0] for lat in latents]
