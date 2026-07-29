@@ -79,7 +79,7 @@
       #v(2em)
       #figure(
         comp-annotated(w: 18, font: 20pt),
-        caption: [Modelled as\ *19 Compartments (comps)* @Traub-1991-ModelCA3HippocampalPyramidal],
+        caption: [Modeled as\ *19 Compartments (comps)* @Traub-1991-ModelCA3HippocampalPyramidal],
         numbering: none,
         supplement: none,
       )<comp>
@@ -128,12 +128,12 @@
           // 訳: 1 コンパートメント 11 状態変数 → 19 comp で 209 → 並列シミュレーションでメモリボトルネック。
           $->$ *11 states (10 gates and V) per comp* \
           $->$ *209* states for 19 comps; \
-          In large scale network simulations, the number of large gate variables becomes a *memory bottleneck*.
+          In large scale network simulations, the number of gate variables becomes a *memory bottleneck*.
         ],
       )
       #v(0.4em)
       #mini-box(title:"Purpose")[
-        Development of a surrogate model of the multi-compartment neuron capable of reproducing the membrane potential response with fewer gate variables.
+        Development of a multi-compartment neuron surrogate model capable of reproducing the membrane potential response with fewer gate variables.
       ]
     ],
   )
@@ -152,7 +152,7 @@
     // ======== ① 刺激を入れ、全 comp の V とゲートの時系列を収集 ========
     [
       // 訳: ① 教師データを集める。
-      *#text(blue)[①] Sample the training data*
+      *#text(blue)[①] Sample training data*
       #v(0.2em)
       #stage_simulate(unit: 1.1cm, label-size: 20pt)
       #v(0.2em)
@@ -291,8 +291,8 @@
         )
       ]
 
-      // 訳: 自発発火 (I=0) は再現できないが、I≥2.5 では両注入点でバーストを再現。閾値付近 (2.5) は発火が遅れ、I≥5 で一致。バースト後の静止電位はやや高い。
-      - The model failed at spontaneous firing but reproduced *bursts for $I gt.eq 2.5$*: delayed near threshold, and matching spike timing with an elevated post-burst rest for $I gt.eq 5$.
+      // 訳: 自発発火は再現できず。I≥2.5 でバースト出現、閾値付近では遅れるが I≥5 では時刻良好。バースト後の静止電位は高すぎる。
+      - Spontaneous firing is *not reproduced*. *Bursts appear for $I gt.eq 2.5$*: delayed near threshold, but well timed for $I gt.eq 5$. The post-burst rest potential is too high.
 
       #align(center)[
         #figure(
@@ -309,8 +309,8 @@
         )
       ]
 
-    // 訳: 30Hz以上では初期バーストも後続の閾値下応答も一致。10-20Hzでは後続スパイクの時刻がずれる(10Hzで約50ms前倒し)。
-    - The response to the periodic current is reproduced with high accuracy, despite a slight phase shift.
+    // 訳: 30Hz以上ではモデルが応答をよく再現。10Hzでは約10ms早く発火し、静止電位が高すぎる。
+    - For $f gt.eq 30$ Hz, the model reproduces the response well. At 10 Hz, it fires about 10 ms early and its rest potential is too high.
 
       // // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
       // - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
@@ -329,25 +329,26 @@
     columns: (1.5fr, 1fr),
     gutter: 1em,[
     #mini-box(title: "Conclusion", title-size: 30pt, body-inset: 6pt)[
-      // #set text(size: 29pt)
+      #set text(size: 29pt)
       #set par(leading: 0.4em)
       // #set block(spacing: 0.35em)
-      // 訳: soma 区画のみ、ゲート変数 6→5 のサロゲートへ置換。
-      - Replaced the *soma* compartment only, reducing one gate variable gate variable.
-      // 訳: 学習した刺激条件では波形を良好に再現。
-      - Waveforms are *accurately reproduced* within the trained stimulus condition.
-      // 訳: 学習データ外のダイナミクスは再現できず。
-      - Dynamics *outside the training data* like spotaneous firing are *not reproduced*.
+      // 訳: サロゲートは soma 区画のみを置換 (ゲート変数 6→5)、マルチコンパートメントニューロンのサロゲートモデルへの第一歩として。
+      - The surrogate replaces the *soma* compartment only (6 $->$ 5 gate variables), as a first step toward a multi-compartment neuron surrogate model.
+      // 訳: 学習に用いた刺激条件下では波形を良好に再現。
+      - Waveforms are *well reproduced* under the training stimulus conditions.
+      // 訳: 自発発火など、学習データ外のダイナミクスは再現できず。
+      - Dynamics *outside the training data*, such as spontaneous firing, are *not reproduced*.
 
 
     ]
     #v(0.5em)
     #set par(leading: 0.4em)
+    #set text(size: 29pt)
     *Future work*
     // 訳: 元の方程式の構造をより強く捉える次元圧縮・ODE 同定手法を試す。
     - Explore dimensionality reduction and ODE identification methods that capture the *structure of the original equations* more strongly.
-    // 訳: ゲート変数をさらに減らしつつ、全コンパートメントを高精度に置換する。
-    - Replace *all compartments* accurately, with the gate variables reduced further.
+    // 訳: ゲート変数をさらに削減しつつ、全コンパートメントを正確に置換。
+    - Replace *all compartments* accurately, with further reduction of gate variables.
     ],
     [
       #text(size: 20pt)[*Code* — #link("https://github.com/MunechikaHaruki/SINDyNeuroSurrogate")[github.com/MunechikaHaruki/SINDyNeuroSurrogate]]
