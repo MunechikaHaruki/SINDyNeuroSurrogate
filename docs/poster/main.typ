@@ -51,7 +51,8 @@
     A Surrogate Model for Reducing the Computational Cost of Neuron Simulations #v(-3em)
   ],
   authors: "⚪︎ Haruki Munechika, Taira Kobayashi",
-  institutes: "Grad Sch of Sci and Tech for Innov, Yamaguchi University (f032vbw@yamaguchi-u.ac.jp)",
+  institutes: "Graduate School of Sciences and Technology for Innovation, Yamaguchi University (f032vbw@yamaguchi-u.ac.jp)",
+  institutes-size: 32pt,
 )
 
 #place(
@@ -71,7 +72,7 @@
     [
       #v(0.5em)
       #figure(
-        image("pic/ref/pyramidal.png", width: 90%),
+        image("pic/ref/pyramidal.png", width: 95%),
         caption: [Guinea pig CA3 pyramidal neuron@pyramidal],
         numbering: none,
         supplement: none,
