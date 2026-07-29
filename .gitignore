@@ -18,5 +18,7 @@ results/
 docs/slide/result/_*
 docs/slide/main.pdf
 
+graphify-out/
+
 .DS_Store
 **/.DS_Store
