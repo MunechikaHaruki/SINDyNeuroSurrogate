@@ -145,7 +145,7 @@
   #set text(size: 24pt)
 
   #grid(
-    columns: (0.8fr, 0.8fr, 1fr, 1.5fr),
+    columns: (0.8fr, 0.8fr, 1fr, 1.3fr),
     gutter: 3em,
     row-gutter: 0.4em,
     // ======== ① 刺激を入れ、全 comp の V とゲートの時系列を収集 ========
@@ -195,11 +195,14 @@
     // ======== ④ 学習済み decoder/SINDy を等価回路の gate 計算へ差し込んでシミュレーション ========
     [
       // 訳: ④ 推論時: decoder-in-the-loop でシミュレーションする。
-      *#text(blue)[④] How to simulate*
+      *#text(blue)[④] How to apply the surrogate model*
       #image("pic/ref/model.png",width:70%)
+      #v(0.5em)
 
-      Each step: $bold(z) ->$ *decode* $->$ gates feed the equivalent-circuit $dot(V)$.\
-      SINDy updates $bold(z)$ in place of the original gate ODEs.
+      // Each step: $bold(z) ->$ *decode* $->$ gates feed the equivalent-circuit $dot(V)$.\
+      // SINDy updates $bold(z)$ in place of the original gate ODEs.
+      The derivative of *$V$* is computed with the *decoded latent variables*.
+      Across time steps, only the latent variables and the membrane potential need to be preserved.
     ],
   )
 ]
