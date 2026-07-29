@@ -153,7 +153,7 @@
     [
       // 訳: ① 教師データを集める。
       *#text(blue)[①] Sample training data*
-      #v(0.2em)
+      #v(0.5em)
       #stage_simulate(unit: 1.1cm, label-size: 20pt)
       #v(0.2em)
       // 訳: Traub 19-comp の soma へランダムパルス列を注入し、V と純電位依存の 6 ゲートを記録 (Ca 依存系は対象外)。
@@ -167,9 +167,9 @@
     [
       // 訳: ② 電位依存ゲートだけを圧縮する。
       *#text(blue)[②] Compress the 6 gates*
-      #v(2em)
+      #v(3em)
       #stage_compress(unit: 1.05cm, label-size: 20pt)
-      #v(2.6em)
+      #v(4em)
       // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
       // 訳: AE 仕様。encoder/decoder それぞれ隠れ層 1 層、損失は MSE ベースの再構成誤差。
       The *6 gates* $m(t), n(t), dots$ are compressed to the *5 latent variables* $z_1 (t), dots, z_5 (t)$ by the encoder of an AutoEncoder (one hidden layer). $v(t)$ is *not* compressed.

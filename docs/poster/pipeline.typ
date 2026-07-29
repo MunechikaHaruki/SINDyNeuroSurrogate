@@ -77,8 +77,8 @@
     content((9.7, 3.8), lab[$m(t)$], anchor: "west")
     content((9.7, 2.6), lab[$n(t)$], anchor: "west")
     content((9.7, 1.4), lab[$h(t)$], anchor: "west")
-    content((10.9, 2.6), text(size: label-size * 4.0)[\{])
-    content((11.1, 2.6), lab[6 gates], anchor: "west")
+    content((12, 2.6), text(size: label-size * 4.0)[\{])
+    content((12.3, 2.6), lab[6 gates], anchor: "west")
   },
 )
 
@@ -141,12 +141,12 @@
     let lab = (..a) => text(size: label-size, ..a)
 
     // --- 入力 [V, z] ---
-    content((0.1, 3.4), lab(fill: blue)[$v(t)$], anchor: "west")
-    line((0.5, 3.35), (1.6, 2.95), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
-    content((0.1, 1.5), lab(fill: green.darken(25%))[$z(t)$], anchor: "west")
+    content((-0.5, 3.4), lab(fill: blue)[$v(t)$], anchor: "west")
+    line((0.5, 3.35), (1.5, 2.95), mark: (end: "stealth", scale: 0.5), stroke: 1.6pt + blue)
+    content((-0.5, 1.5), lab(fill: green.darken(25%))[$z(t)$], anchor: "west")
     line(
       (0.5, 1.55),
-      (1.6, 1.95),
+      (1.5, 1.95),
       mark: (end: "stealth", scale: 0.5),
       stroke: 1.6pt + green.darken(25%),
     )
