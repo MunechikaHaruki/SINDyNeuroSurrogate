@@ -79,10 +79,10 @@
       #v(2em)
       #figure(
         comp-annotated(w: 18, font: 20pt),
-        caption: [Modeled as\ *19 Compartments (comps)* @Traub-1991-ModelCA3HippocampalPyramidal],
+        caption: [Modeled as\ *19 compartments (comps)* @Traub-1991-ModelCA3HippocampalPyramidal],
         numbering: none,
         supplement: none,
-      )<comp>
+      )
     ],
     // ======== 中央+右: 等価回路 / 可変コンダクタンスの中身、その下に Goal を跨がせる ========
     [
@@ -95,7 +95,7 @@
             traub_circuit(unit: 1.02cm, label-size: 24pt, stroke-w: 1.6pt),
             numbering: none,
             supplement: none,
-          )<circuit>
+          )
           // 訳: 各コンパートメント = 膜容量 + 可変イオンコンダクタンス + 隣接との軸方向結合。
           #figure(
             text(size: 28pt)[
@@ -116,14 +116,14 @@
               $
                 I_#ce("Na") &= overline(g)_#ce("Na") med m^2 h med (V - E_#ce("Na")) \
                 frac(d m, d t) &= alpha_m (V) (1 - m) - beta_m (V) m \
-                alpha_m (V) &= 0.32 (13.1 - u) \/ (exp((13.1 - u) \/ 4) - 1) \
-                beta_m (V) &= 0.28 (u - 40.1) \/ (exp((u - 40.1) \/ 5) - 1) \
+                alpha_m (V) &= 0.32 (13.1 - V) \/ (exp((13.1 - V) \/ 4) - 1) \
+                beta_m (V) &= 0.28 (V - 40.1) \/ (exp((V - 40.1) \/ 5) - 1) \
               $
             ],
             kind: "equation",
             numbering: none,
             supplement: none,
-          )<eq-gate>
+          )
           #v(0.8em)
           // 訳: 1 コンパートメント 11 状態変数 → 19 comp で 209 → 並列シミュレーションでメモリボトルネック。
           $->$ *11 states (10 gates and V) per comp* \
@@ -147,7 +147,7 @@
 
   #grid(
     columns: (0.8fr, 0.8fr, 1fr, 1.3fr),
-    gutter: 0em,
+    gutter: 0.5em,
     row-gutter: 0.4em,
     // ======== ① 刺激を入れ、全 comp の V とゲートの時系列を収集 ========
     [
@@ -156,16 +156,20 @@
       #v(0.2em)
       #stage_simulate(unit: 1.1cm, label-size: 20pt)
       #v(0.2em)
-      // 訳: Traub 19-comp の soma へランダムパルス列を注入し、19 comp すべての V と 10 ゲートを記録。
+      // 訳: Traub 19-comp の soma へランダムパルス列を注入し、V と純電位依存の 6 ゲートを記録 (Ca 依存系は対象外)。
       Inject a *random pulse train* at the soma; record $V$ and *6 gates*.
+      #v(0.2em)
+      #text(size: 20pt)[
+        (The remaining gates, driven by #ce("Ca^2+") dynamics, are left untouched.)
+      ]
     ],
-    // ======== ② 純電位依存ゲート 8 本だけ潜在へ圧縮 (V と Ca サブ系は素通し) ========
+    // ======== ② 純電位依存ゲート 6 本だけ潜在へ圧縮 (V と Ca サブ系は素通し) ========
     [
       // 訳: ② 電位依存ゲートだけを圧縮する。
       *#text(blue)[②] Compress the gates*
       #v(2em)
       #stage_compress(unit: 1.05cm, label-size: 20pt)
-      #v(1.5em)
+      #v(3.8em)
       // 訳: 純電位依存の 6 ゲートは低次元多様体に乗る → n 次元潜在 z へ (n=5)。V と Ca サブ系 (S,R,Q,ξ) は圧縮しない。
       // 訳: AE 仕様。encoder/decoder それぞれ隠れ層 1 層、損失は MSE ベースの再構成誤差。
       The *6 gates* are compressed to 5 latent variables by an AutoEncoder (encoder and decoder each with one hidden layer).
@@ -186,12 +190,15 @@
           dots.v
         $
       ]
-      #v(1.3em)
+      #v(1.8em)
 
 
       Capture the latent variable dynamics with *SINDy*@Champion-2019-DatadrivenDiscoveryCoordinatesGoverning.
       SINDy fits coefficients $Xi$.
-      // *SINDy*  fits *only* $dot(bold(z))$; $dot(V)$ keeps *original physics*. Library is *physics-informed*: gates' own $alpha(V), beta(V)$.
+      #v(0.2em)
+      #text(size: 20pt)[
+        The library is *physics-informed*: it is built from the gates'  $alpha(V), beta(V)$.
+      ]
     ],
     // ======== ④ 学習済み decoder/SINDy を等価回路の gate 計算へ差し込んでシミュレーション ========
     [
@@ -202,8 +209,8 @@
 
       // Each step: $bold(z) ->$ *decode* $->$ gates feed the equivalent-circuit $dot(V)$.\
       // SINDy updates $bold(z)$ in place of the original gate ODEs.
-      The derivative of *$V$* is computed with the *decoded latent variables*.
-      Across time steps, *only the latent variables and the membrane potential need to be preserved*.
+      The derivative of *$V$* is computed with the *decoded gates*.
+      Across time steps, *only the latent variables and the membrane potential need to be stored*.
     ],
   )
 ]
@@ -236,7 +243,7 @@
         #sym.arrow.b compress gates by AutoEncoder
         #figure(
           image("result/train_preprocessed.png", width: 100%),
-          caption: [Teaching data to identify the ODEs.],
+          caption: [Training data for ODE identification.],
           numbering: none,
           supplement: none,
         )
@@ -246,20 +253,20 @@
         #align(center)[
           #figure(
             image("result/diff.png", width: 100%),
-            caption: [20 ms, 3 #sym.mu A/cm#super[2] step: $V$ and the *5 AE latents*.],
+            caption: [20 ms, 3 #sym.mu#h(0em)A/cm#super[2] step: $V$ and the *5 AE latents*.],
             numbering: none,
             supplement: none,
           )
         ]
         #text(size: 25pt)[
           // 訳: いつ起きるか(タイミング)は正確: 潜時誤差0.3ms、AHPタイミング誤差3.1ms。
-          - latency err *0.3 ms*, AHP timing gap *3.1 ms*.
+          - spike latency error *0.3 ms*, AHP timing gap *3.1 ms*.
           // 訳: どれだけ大きいかは系統的過小評価: ピーク13mV低い(振幅差12.9mV)、立ち上がり/立ち下がり速度差21.0/10.3 mV/ms。一方AHP深さ差0.28mVと静止電位付近は正確。
           - peak *13 mV low* (amplitude gap *12.9 mV*), rise #sym.slash fall rate gap *21.0* #sym.slash *10.3 mV/ms* — yet AHP depth gap is only *0.28 mV*.
         ]
       ]
 
-      #v(0.3em)
+      #v(1em)
       // -------- ④ SINDy 係数 --------
       *Identified latent equations* #h(3em) SINDy coefficients: 79.6% non-zero
       #figure(
@@ -292,7 +299,7 @@
       ]
 
       // 訳: 自発発火は再現できず。I≥2.5 でバースト出現、閾値付近では遅れるが I≥5 では時刻良好。バースト後の静止電位は高すぎる。
-      - Spontaneous firing is *not reproduced*. *Bursts appear for $I gt.eq 2.5$*: delayed near threshold, but well timed for $I gt.eq 5$. The post-burst rest potential is too high.
+      - Spontaneous firing is *not reproduced*. *Bursts appear for $I gt.eq 2.5$*: delayed near threshold, but well timed for $I gt.eq 5$. The post-burst resting potential is *more depolarized* than the original.
 
       #align(center)[
         #figure(
@@ -310,7 +317,7 @@
       ]
 
     // 訳: 30Hz以上ではモデルが応答をよく再現。10Hzでは約10ms早く発火し、静止電位が高すぎる。
-    - For $f gt.eq 30$ Hz, the model reproduces the response well. At 10 Hz, it fires about 10 ms early and its rest potential is too high.
+    - For $f gt.eq 30$ Hz, the model reproduces the response well. At 10 Hz, it fires about 10 ms early.
 
       // // 訳: I≥5 で両注入点ともバースト再現、閾値付近は前倒し。
       // - Bursts reproduced at *both sites* for $I gt.eq 5$; fires *too early* near threshold.
@@ -333,7 +340,7 @@
       #set par(leading: 0.4em)
       // #set block(spacing: 0.35em)
       // 訳: サロゲートは soma 区画のみを置換 (ゲート変数 6→5)、マルチコンパートメントニューロンのサロゲートモデルへの第一歩として。
-      - The surrogate replaces the *soma* compartment only (6 $->$ 5 gate variables), as a first step toward a multi-compartment neuron surrogate model.
+      - The surrogate replaces the *soma* compartment only (11 $->$ 10 states), as a first step toward a multi-compartment neuron surrogate model.
       // 訳: 学習に用いた刺激条件下では波形を良好に再現。
       - Waveforms are *well reproduced* under the training stimulus conditions.
       // 訳: 自発発火など、学習データ外のダイナミクスは再現できず。
