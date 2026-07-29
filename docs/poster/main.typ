@@ -146,7 +146,7 @@
 
   #grid(
     columns: (0.8fr, 0.8fr, 1fr, 1.3fr),
-    gutter: 3em,
+    gutter: 0em,
     row-gutter: 0.4em,
     // ======== ① 刺激を入れ、全 comp の V とゲートの時系列を収集 ========
     [
@@ -196,7 +196,7 @@
     [
       // 訳: ④ 推論時: decoder-in-the-loop でシミュレーションする。
       *#text(blue)[④] How to apply the surrogate model*
-      #image("pic/ref/model.png",width:70%)
+      #image("pic/ref/model.svg",width:100%)
       #v(0.5em)
 
       // Each step: $bold(z) ->$ *decode* $->$ gates feed the equivalent-circuit $dot(V)$.\
