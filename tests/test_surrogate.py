@@ -21,12 +21,7 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.eval.run import (
-    SimKey,
-    SimResult,
-    run_results,
-)
-from neurosurrogate.eval.spec import SimSpec, parse_evals
+from neurosurrogate.eval import EVALS, SimSpec, labeled, sweep
 from neurosurrogate.metrics.artifact import (
     cell_figs,
     compare_grid_fig,
@@ -54,6 +49,7 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
+from neurosurrogate.runs import SimKey, SimResult, run_results
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
     hybrid_physics,
@@ -191,40 +187,40 @@ def test_sindy_draws_all_figs(
     assert [name for name, _ in figs] == ["diff", "simple", "attractor"]
 
 
-def test_eval_and_draw_json_are_self_consistent() -> None:
-    """marimo の既定設定が自己整合: `eval.json` の全 entry の電流が掃引点まで
-    含めて構築でき、`draw.json` の `results`/`compare` が参照する label は
-    `eval.json` の label に実在する (2 ファイルに分けたことで生まれうる typo/ズレを
-    テストで担保する)。単発 entry も「点 1 つ」として同じ経路を通る。"""
-    conf_dir = Path(__file__).parents[1] / "scripts/conf"
-    evals = parse_evals(json.loads((conf_dir / "eval.json").read_text()))
-    for spec in evals.values():
+def test_catalog_and_draw_json_are_self_consistent() -> None:
+    """marimo の既定設定が自己整合: `EVALS` の全 entry の電流が掃引点まで含めて
+    構築でき、`draw.json` の `results`/`compare` が参照する系列名は `EVALS` に
+    実在する。評価条件が型になった今、ズレるのは常に draw.json 側 (唯一残った
+    設定ファイル) と特定できる。単発 entry も「点 1 つ」として同じ経路を通る。"""
+    for spec in EVALS.values():
         assert len(spec.dataset().build_current()) > 0
-    # 掃引展開: 掃引なし entry は 1 label、掃引ありは steps 本 (name#0.. name#4)
-    assert sum(1 for label in evals if label == "traub_soma_dc") == 1
-    assert sum(1 for label in evals if label.startswith("traub19_somastim#")) == 5
+    # 掃引展開: 掃引なしは 1 label、掃引ありは値の数だけ (name#0.. name#4)
+    assert sum(1 for label in EVALS if label == "traub_soma_dc") == 1
+    assert sum(1 for label in EVALS if label.startswith("traub19_somastim#")) == 5
 
-    report = parse_report(json.loads((conf_dir / "draw.json").read_text()))
-    names = {spec.name for spec in evals.values()}
+    draw_json = Path(__file__).parents[1] / "scripts/conf/draw.json"
+    report = parse_report(json.loads(draw_json.read_text()))
+    names = {spec.name for spec in EVALS.values()}
     assert set(report["results"]) <= names
     for comparison in report["compares"].values():
         assert set(comparison["evals"]) <= names
 
 
 def _sweep_specs(name: str, values: list[float]) -> dict[str, SimSpec]:
-    """`SweepAxis` 展開後の形を手で組む (掃引点ごとに `current_params` 確定済み)。"""
-    base = {"duration": 30.0, "silence_duration": 0.0}
-    return {
-        f"{name}#{i}": SimSpec(
-            name=name,
-            target="hh",
-            current_type="lin&steady",
-            dt=0.05,
-            current_params={**base, "value": v},
-            sweep_param="value",
+    """掃引展開後の形 (掃引点ごとに `current_params` 確定済み)。"""
+    return labeled(
+        sweep(
+            SimSpec(
+                name=name,
+                target="hh",
+                current_type="lin&steady",
+                dt=0.05,
+                current_params={"duration": 30.0, "silence_duration": 0.0},
+            ),
+            "value",
+            values,
         )
-        for i, v in enumerate(values)
-    }
+    )
 
 
 def _run_named(

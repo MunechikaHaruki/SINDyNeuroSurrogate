@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     import xarray as xr
     from matplotlib.axes import Axes
 
-    from ...eval.run import SimKey, SimResult
+    from ...runs import SimKey, SimResult
 
 
 def metric_fig(

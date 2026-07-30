@@ -6,7 +6,6 @@ app = marimo.App(width="columns")
 
 @app.cell(column=0)
 def _():
-    import json
     from pathlib import Path
 
     import marimo as mo
@@ -19,11 +18,11 @@ def _():
         sweep_siblings,
     )
 
-    from neurosurrogate.eval.spec import parse_evals, usable
+    from neurosurrogate.eval import EVALS
     from neurosurrogate.metrics.report import load_and_render_report
+    from neurosurrogate.runs import usable
 
     CONF_DIR = Path(__file__).resolve().parent / "conf"
-    EVAL_JSON = CONF_DIR / "eval.json"
     DRAW_JSON = CONF_DIR / "draw.json"
     STYLE_DIR = CONF_DIR / "style"
     RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
@@ -34,11 +33,11 @@ def _():
     # と描画 (→ 図保存) はボタンを分け、CLI は持たない (二重管理を避け、この 2
     # ボタンが唯一の実行経路)。組み立ての中身はどれも呼び先 1 関数に畳んであり、
     # セルは呼ぶだけ。
-    specs = parse_evals(json.loads(EVAL_JSON.read_text()))
     runs_df = get_runs_df()
     return (
         ALL_PRESETS,
         DRAW_JSON,
+        EVALS,
         PLT_STYLE,
         RESULT_DIR,
         STYLE_DIR,
@@ -49,7 +48,6 @@ def _():
         mo,
         run_and_log,
         runs_df,
-        specs,
         sweep_siblings,
         usable,
     )
@@ -69,15 +67,15 @@ def _(ALL_PRESETS, mo, runs_df):
 
 
 @app.cell
-def _(ALL_PRESETS, mo, preset, runs_df, specs, usable):
+def _(ALL_PRESETS, EVALS, mo, preset, runs_df, usable):
     # marimo に残す唯一の「入力」= run を 1 件選ぶだけ。適用先 / sweep 対象 (兄弟 run)
     # は選択後に自動決定。preset で絞り、宣言された適用先 (eval entry の target) の
     # どれかへ**実際に置換できる** 代表 run (hydra sweep 親/単発 = parent_id 欠損)
-    # だけ出す (子は隠す)。互換判定は `eval.spec.usable` に委ね UI に複製しない。
+    # だけ出す (子は隠す)。互換判定は `eval.usable` に委ね UI に複製しない。
     in_preset = (
         runs_df if preset == ALL_PRESETS else runs_df[runs_df["preset"] == preset]
     )
-    usable_mask = in_preset["meta"].map(lambda m: usable(m, specs))
+    usable_mask = in_preset["meta"].map(lambda m: usable(m, EVALS.values()))
     reps = in_preset[usable_mask & in_preset["parent_id"].isna()]
     runs = reps[["tags.mlflow.runName", "comp_type", "run_id"]]
     run_selector = mo.ui.table(
@@ -151,11 +149,11 @@ def _(load_bundles, run_ids_list):
 
 
 @app.cell
-def _(bundles, run_and_log, run_ids, run_panel, sel_id, specs):
+def _(EVALS, bundles, run_and_log, run_ids, run_panel, sel_id):
     # 評価ボタン: 評価 → 評価 run 保存だけ (描画はしない)。既に同じ入力の評価 run が
     # あればシミュごとスキップされる (force で回し直す)。
     if run_panel.value["eval"]:
-        run_and_log(bundles, specs, run_ids, sel_id, force=run_panel.value["force"])
+        run_and_log(bundles, EVALS, run_ids, sel_id, force=run_panel.value["force"])
     return
 
 

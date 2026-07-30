@@ -5,7 +5,7 @@ group/filter する** (eval 側の関心にしない)。marimo/mlflow 非依存�
 
 from __future__ import annotations
 
-from ..eval.run import SimKey, SimResult
+from ..runs import SimKey, SimResult
 
 
 def series(results: dict[SimKey, SimResult]) -> list[str]:

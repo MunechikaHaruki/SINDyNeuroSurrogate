@@ -10,7 +10,6 @@ from ...core.opcost import OpCost
 from .common import _gate_ode, _inf_ode, lin_exp_form
 
 TRAUB_V_LEAK = -60.0
-TRAUB_V_INIT = -60.0
 
 
 def _traub_u(v):

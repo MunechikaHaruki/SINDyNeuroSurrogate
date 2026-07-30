@@ -28,7 +28,7 @@ def slug(name: str) -> str:
 
 @dataclass(frozen=True)
 class SaveEntry:
-    """1 成果物 = 表示名 + 中身 (図 or 表) + 由来 (参照 artifact/run と描画設定)。
+    """1 成果物 = 表示名 + 中身 (図 or 表) + 由来 (参照した評価 run と描画設定)。
 
     **保存名は表示名から決まる** (拡張子だけ中身の型で分かれる) ので別に持たない =
     表示と保存で名前が食い違わない。書き出し方も中身の型で決まるのでここが持つ。
@@ -41,7 +41,7 @@ class SaveEntry:
 
     name: str
     obj: Figure | pd.DataFrame
-    sources: tuple[str, ...] = ()  # 参照した artifact パス/run_id (由来なしは空)
+    sources: tuple[str, ...] = ()  # 参照した評価 run の id (由来なしは空)
     draw: object | None = None  # 使った表示設定 dataclass (無ければ None)
 
     @property

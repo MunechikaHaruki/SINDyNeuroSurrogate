@@ -27,8 +27,8 @@ from mlflow.entities import Run
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
-from neurosurrogate.eval.run import SimKey, SimResult, expand, simulate
-from neurosurrogate.eval.spec import SimSpec, run_labels
+from neurosurrogate.eval import SimSpec, simulate
+from neurosurrogate.runs import SimKey, SimResult, expand, run_labels
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
@@ -104,7 +104,7 @@ def load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
 def load_bundles(
     run_ids: list[str],
 ) -> tuple[dict[str, SurrogateBundle], dict[str, str]]:
-    """run_id 列 → (run_id→surrogate, run_id→表示名)。`eval.run`/`eval.store` は
+    """run_id 列 → (run_id→surrogate, run_id→表示名)。`neurosurrogate.eval` は
     surrogate を **run_id をキーに**扱う (`SimSpec.run_id` が MLflow run_id
     そのものなので、他層は表示名でなく run_id で引く) → ここで揃えて返す。
     marimo からはこれ 1 回の呼び出しで済ませる。"""

@@ -31,7 +31,8 @@ from ...surrogate.meta import SurrogateMeta
 from ...surrogate.preprocessor.base import Preprocessor
 from ...surrogate.preprocessor.impl.pca import PCAPreprocessor
 from ...surrogate.replace import replaced_names
-from ._internal.engine import collect, draw_engine, error_fig
+from ._internal.engine import collect, draw_engine
+from ._internal.engine import error_fig as error_fig  # 外部公開 API の再輸出
 from ._internal.wave import DynamicMetrics, n_spikes, spike_shape_corr, waveform_summary
 from .cell import attractor_fig, current_preview_fig, panels_diff, panels_simple
 from .grid import compare_grid_fig, metric_fig, trace_grid_fig
@@ -44,23 +45,6 @@ from .train import (
     train_v_coverage_fig,
 )
 from .wave_table import spike_features_df, waveform_summary_df
-
-__all__ = [
-    "ArtifactEntries",
-    "KIND_FUNCS",
-    "cell_figs",
-    "closure_figs",
-    "compare_grid_fig",
-    "current_preview_fig",
-    "error_fig",
-    "metric_fig",
-    "neuron_graph_figs",
-    "preprocessor_figs",
-    "summary_df",
-    "trace_grid_fig",
-    "train_figs",
-    "wave_report",
-]
 
 # 集約関数が返す (識別子, 成果物) 列の要素型。今は Figure しか返さないが、
 # 将来 DataFrame を返す集約関数が増えても型で表現できるようにしておく。

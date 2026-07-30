@@ -23,7 +23,7 @@ from ._internal.wave import (
 )
 
 if TYPE_CHECKING:
-    from ...eval.run import SimKey, SimResult
+    from ...runs import SimKey, SimResult
 
 
 def _row(name: str, o: float, s: float, col: str = "metric") -> dict:

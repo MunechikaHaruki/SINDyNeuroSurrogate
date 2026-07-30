@@ -51,10 +51,9 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
-  eval/  spec.py                 # SimSpec/SweepAxis + parse_evals (計算入力のみ)
-         run.py                  # SimKey/SimResult + expand/simulate/run_results (spec → 結果。永続化は知らない)
+  eval.py                        # SimSpec (+ sweep/labeled) / EVALS (回したい条件の宣言) / simulate (1 シミュ) の 3 点セット
+  runs.py                        # SimKey/SimResult + expand/run_results (条件 × run 軸 → 結果の束) + usable/run_labels。永続化は知らない
   metrics/  select.py            # 結果 (SimKey→SimResult) からの群 (系列名/label/run_id) 選択
-            declare.py           # 描画宣言の型 DrawSpec/ReportSpec/CompareSpec (draw.json のスキーマ)
             report.py            # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
             save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ)
             artifact/__init__.py # 外部公開 API (Figure/DataFrame を返す集約関数のみ: cell_figs/closure_figs/preprocessor_figs/neuron_graph_figs/train_figs/wave_report + grid.py の re-export)
@@ -80,11 +79,12 @@ results/  <保存名>/               # marimo 描画ボタンが書く図 + meta
 - `scripts/conf/config.yaml` + `surrogate/<preset>.yaml` — 学習設定。`surrogate` 直下は
   `meta` / `preprocessor` / `ansatz` の 3 ブロックで `SurrogateBundle.setup` の宛先と 1 対 1。
   `_test_*.yaml` はテスト専用 preset (tests は preset 名を指すだけ)。
-- `scripts/conf/eval.json` — シミュ入力のみ (entry の配列。1 entry = target +
-  current_type + dt + current_params、掃引したいときだけ `sweep`:{param,start,stop,steps})。
-  marimo が入口で `EvalSpec` へ落とし、以降 domain は型でしか受け取らない。
-- `scripts/conf/draw.json` — 描画宣言のみ (計算入力と完全分離。artifact が入力仕様を
-  自分で持つので描画側は `eval.json` を読まない)。`default` (グローバル設定は
+- 評価条件は設定ファイルを持たない → `neurosurrogate/eval.py` の `EVALS`
+  (型で宣言。掃引は `sweep`、label は `labeled` が `name` から導出)。実験条件は滅多に
+  変わらず、変えたら別の実験 = コードに焼いて差分に出す方が正しい。
+- `scripts/conf/draw.json` — 描画宣言のみ (計算入力と完全分離。結果が入力仕様を
+  自分で持つので描画側は評価条件を読まない)。**唯一残った設定ファイル** = 図を
+  調整するたびに書き換える対象だから設定のまま。`default` (グローバル設定は
   `plt_style` のみ。`eval_comp` 等は適用先ごとに違うので既定を持たせない) /
   `results` (空=手元の結果を全部描く既定。非空なら列挙した label だけへ絞り込み。
   1件 = `{"eval": label, ...DrawSpec のキー}`。override でなく label ごとに完結する

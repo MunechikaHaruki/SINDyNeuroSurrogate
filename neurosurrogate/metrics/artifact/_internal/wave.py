@@ -4,7 +4,7 @@ marimo/mlflow 非依存。
 **DataFrame 化 (表として並べる/どの列名にするか) はここの関心でない**: それは
 「結果をどう見せるか」= 描画層の仕事 (`metrics/figs/wave_table.py`)。ここは
 `DynamicMetrics` を引数に取り、スカラーや (orig, surr) のタプル/dict を返す
-純粋関数群だけを持つ。発散判定 (`diverged`) は `eval/run.py` の発散ログからも
+純粋関数群だけを持つ。発散判定 (`diverged`) は `eval.py` の発散ログからも
 呼ばれる共通述語なので `core/diverge.py` に置く。
 """
 
@@ -23,7 +23,7 @@ import xarray as xr
 from ....core import access
 
 if TYPE_CHECKING:
-    from ....eval.run import SimResult
+    from ....runs import SimResult
 
 T = TypeVar("T")
 R = TypeVar("R")
