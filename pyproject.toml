@@ -58,6 +58,11 @@ exclude = ["scripts/"]
 module = ["sklearn.*", "pysindy", "sympy.*", "efel", "joblib", "optax", "networkx", "seaborn"]
 ignore_missing_imports = true
 
+# scripts/ は型検査の対象外 (exclude) だが、テストは MLflow I/O をそこから読む。
+[[tool.mypy.overrides]]
+module = ["mlflow_io"]
+ignore_missing_imports = true
+
 [tool.ruff]
 target-version = "py311"
 

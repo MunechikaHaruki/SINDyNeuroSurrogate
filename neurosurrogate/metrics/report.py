@@ -1,5 +1,5 @@
 """評価結果 → 保存できる `SaveEntry` 列の組立、および `render_report` での保存まで。
-marimo 非依存 (marimo は artifact 読込 + surrogate ロードだけ持ち、組立/保存は
+marimo 非依存 (marimo は結果読込 + surrogate ロードだけ持ち、組立/保存は
 ここに委譲する)。
 
 `eval.run` が「何を回して何が出たか」を持つのに対し、ここは **どの図をどの名前で
@@ -26,8 +26,7 @@ import matplotlib.pyplot as plt
 
 from ..core import access
 from ..core.network import NeuronGraph
-from ..eval.run import SimKey
-from ..eval.store import SimResult, artifacts, load_all
+from ..eval.run import SimKey, SimResult
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.diagnostics import preprocessed_latent
 from . import select
@@ -407,22 +406,20 @@ def render_report(
 
 def load_and_render_report(
     draw_json: Path,
-    artifact_dir: Path,
-    sel_id: str | None,
+    results: dict[SimKey, SimResult],
     dest: Path,
     style_paths: list[Path],
     load_surrogate_model: Callable[[str], SurrogateBundle],
 ) -> list[Path]:
     """draw.json 読込から `render_report` までを一括した唯一の入口。呼び出し側
-    (`scripts/marimo.py` の描画ボタン) は surrogate ロード (mlflow 依存) だけ
-    `load_surrogate_model` として注入し、artifact 読込・組立・保存はここへ委譲する。
-    """
+    (`scripts/marimo.py` の描画ボタン) は結果の読込と surrogate ロード (どちらも
+    mlflow 依存) だけを持ち、draw.json のパース・組立・保存はここへ委譲する。
+    surrogate は結果に焼き込まれていない (`SimSpec.run_id` を持つだけ) ので、
+    閉包項が要る図のために `load_surrogate_model` で引き直す。"""
     report = parse_report(json.loads(draw_json.read_text()))
-    arts = artifacts(artifact_dir, sel_id)
-    res = load_all(arts)
     bundles_for_draw = {
-        a.meta.spec.run_id: load_surrogate_model(a.meta.spec.run_id)
-        for a in arts
-        if a.meta.spec.run_id is not None
+        r.spec.run_id: load_surrogate_model(r.spec.run_id)
+        for r in results.values()
+        if r.spec.run_id is not None
     }
-    return render_report(bundles_for_draw, res, report, dest, style_paths)
+    return render_report(bundles_for_draw, results, report, dest, style_paths)

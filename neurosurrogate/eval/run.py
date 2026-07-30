@@ -4,8 +4,13 @@
 **結果は 1 シミュ = 1 key = 1 Dataset のフラットな dict**: `SimKey = (label, run_id)`。
 掃引点も run もどちらも `SimSpec` 自身のフィールドなので、束ねる型 (旧 `EvalGrid`) を
 持たない — 軸を組み替える処理は呼び出し側 (`metrics.select`) が dict を舐めるだけ。
+
+**永続化はここの関心でない**: 結果の保存/読込は MLflow の評価 experiment が持ち
+(`scripts/mlflow_io.py`)、この層は「spec → 結果」だけを知る。`SimResult.source` は
+その出所を指す不透明な識別子で、何を指すか (MLflow run) はここでは決めない。
 """
 
+from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 
 import xarray as xr
@@ -17,6 +22,16 @@ from ..surrogate.replace import apply_surrogate, replaced_names
 from .spec import SimSpec
 
 SimKey = tuple[str, str | None]  # (label, run_id)。run_id=None は原系
+
+
+@dataclass(frozen=True)
+class SimResult:
+    """1 SimSpec 分の実行結果 = 仕様 + 表示名 + 波形。"""
+
+    spec: SimSpec
+    run_label: str | None  # 表示名 (凡例/行見出し)。None=原系
+    dataset: xr.Dataset
+    source: str | None = None  # 出所の識別子 (実行直後は無い = None)
 
 
 # --- 実行 (spec → シミュ) -----------------------------------------------------------
@@ -54,12 +69,18 @@ def simulate(spec: SimSpec, surrogate: SurrogateBundle | None) -> xr.Dataset:
     return surr_ds
 
 
-def run_sims(
-    specs: dict[str, SimSpec], surrogates: dict[str, SurrogateBundle]
-) -> dict[SimKey, xr.Dataset]:
-    """`expand` した各 key を並走シミュし `SimKey → Dataset` を返す。"""
-    expanded = expand(specs, surrogates)
+def run_results(
+    specs: dict[str, SimSpec],
+    surrogates: dict[str, SurrogateBundle],
+    run_labels: dict[str, str],
+) -> dict[SimKey, SimResult]:
+    """`expand` した各 key を並走シミュし `SimKey → SimResult` を返す
+    (**spec → 結果の唯一の入口**)。`run_labels` = run_id → 表示名。"""
     return {
-        key: simulate(spec, surrogates[key[1]] if key[1] is not None else None)
-        for key, spec in expanded.items()
+        key: SimResult(
+            spec,
+            run_labels[key[1]] if key[1] is not None else None,
+            simulate(spec, surrogates[key[1]] if key[1] is not None else None),
+        )
+        for key, spec in expand(specs, surrogates).items()
     }

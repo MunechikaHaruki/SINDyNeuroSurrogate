@@ -13,12 +13,13 @@ def _():
     from mlflow_io import (
         get_runs_df,
         load_bundles,
+        load_eval_results,
         load_surrogate_model,
+        run_and_log,
         sweep_siblings,
     )
 
     from neurosurrogate.eval.spec import parse_evals, usable
-    from neurosurrogate.eval.store import run_and_save
     from neurosurrogate.metrics.report import load_and_render_report
 
     CONF_DIR = Path(__file__).resolve().parent / "conf"
@@ -26,11 +27,10 @@ def _():
     DRAW_JSON = CONF_DIR / "draw.json"
     STYLE_DIR = CONF_DIR / "style"
     RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
-    ARTIFACT_DIR = RESULT_DIR / "artifacts"
     ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
     PLT_STYLE = "presentation"  # 描画スタイル (draw.json の関心でない = ここで固定)
 
-    # marimo に残す操作は「run 選択」「評価」「描画」の 3 つ。評価 (→ artifact 保存)
+    # marimo に残す操作は「run 選択」「評価」「描画」の 3 つ。評価 (→ 評価 run 保存)
     # と描画 (→ 図保存) はボタンを分け、CLI は持たない (二重管理を避け、この 2
     # ボタンが唯一の実行経路)。組み立ての中身はどれも呼び先 1 関数に畳んであり、
     # セルは呼ぶだけ。
@@ -38,16 +38,16 @@ def _():
     runs_df = get_runs_df()
     return (
         ALL_PRESETS,
-        ARTIFACT_DIR,
         DRAW_JSON,
         PLT_STYLE,
         RESULT_DIR,
         STYLE_DIR,
         load_and_render_report,
         load_bundles,
+        load_eval_results,
         load_surrogate_model,
         mo,
-        run_and_save,
+        run_and_log,
         runs_df,
         specs,
         sweep_siblings,
@@ -92,16 +92,18 @@ def _(ALL_PRESETS, mo, preset, runs_df, specs, usable):
 
 @app.cell
 def _(mo, sel_name):
-    # 実行パネル: 評価 (→ artifact 保存) と描画 (→ 図保存) はボタンを分ける
+    # 実行パネル: 評価 (→ 評価 run 保存) と描画 (→ 図保存) はボタンを分ける
     # (draw.json 調整後の再描画だけ、評価だけを別々に回せる)。どちらも CLI は持たず、
-    # この 2 ボタンが唯一の実行経路 (marimo と CLI の二重管理を避ける)。保存先の
-    # 既定名は選択 run の runName 入り。
+    # この 2 ボタンが唯一の実行経路 (marimo と CLI の二重管理を避ける)。保存先 (図)
+    # の既定名は選択 run の runName 入り。`force` は既存の評価 run を無視して
+    # 回し直す (既定はスキップ = シミュが決定的なので同じ入力は再計算しない)。
     run_panel = mo.ui.dictionary(
         {
             "dir": mo.ui.text(
                 value=f"{sel_name}_result" if sel_name else "_result", label="保存先"
             ),
-            "eval": mo.ui.run_button(label="評価 (→ artifact 保存)"),
+            "force": mo.ui.checkbox(label="評価を回し直す (force)"),
+            "eval": mo.ui.run_button(label="評価 (→ 評価 run 保存)"),
             "draw": mo.ui.run_button(label="描画 (→ 図保存)"),
         }
     )
@@ -109,6 +111,7 @@ def _(mo, sel_name):
         [
             mo.md("### 実行パネル"),
             run_panel["dir"],
+            run_panel["force"],
             run_panel["eval"],
             run_panel["draw"],
         ]
@@ -148,32 +151,33 @@ def _(load_bundles, run_ids_list):
 
 
 @app.cell
-def _(ARTIFACT_DIR, bundles, run_and_save, run_ids, run_panel, sel_id, specs):
-    # 評価ボタン: 評価 → artifact 保存だけ (描画はしない)。
+def _(bundles, run_and_log, run_ids, run_panel, sel_id, specs):
+    # 評価ボタン: 評価 → 評価 run 保存だけ (描画はしない)。既に同じ入力の評価 run が
+    # あればシミュごとスキップされる (force で回し直す)。
     if run_panel.value["eval"]:
-        run_and_save(bundles, specs, ARTIFACT_DIR, run_ids, sel_id)
+        run_and_log(bundles, specs, run_ids, sel_id, force=run_panel.value["force"])
     return
 
 
 @app.cell
 def _(
-    ARTIFACT_DIR,
     DRAW_JSON,
     PLT_STYLE,
     RESULT_DIR,
     STYLE_DIR,
     load_and_render_report,
+    load_eval_results,
     load_surrogate_model,
     mo,
+    run_ids_list,
     run_panel,
-    sel_id,
 ):
-    # 描画ボタン: artifact + draw.json → dest へ図/表を書き出す (手元の artifact =
-    # draw.json 調整後の再描画も含む)。今保存した学習 run (`sel_id`) の artifact
-    # だけを描く。surrogate は artifact に焼き込まれていない (閉包項が要る図
-    # diff/attractor 用に MLflow から引き直す。load_surrogate_model は run_id ごとに
-    # @cache 済み)。artifact 読込・組立・保存は `load_and_render_report` (metrics 層)
-    # に委譲し、marimo は surrogate ロード (mlflow 依存) だけ注入する。
+    # 描画ボタン: 評価 run + draw.json → dest へ図/表を書き出す (再シミュ無しの
+    # 再描画 = draw.json 調整後もここだけ回せる)。選択した学習 run (とその sweep
+    # 兄弟) が出した評価結果だけを描く。surrogate は評価 run に焼き込まれていない
+    # (閉包項が要る図 diff/attractor 用に MLflow から引き直す。load_surrogate_model
+    # は run_id ごとに @cache 済み)。結果読込 (mlflow 依存) だけ marimo が持ち、
+    # 組立・保存は `load_and_render_report` (metrics 層) へ委譲する。
     saved = []
     if run_panel.value["draw"]:
         style_paths = [
@@ -182,7 +186,11 @@ def _(
         ]
         dest = RESULT_DIR / run_panel.value["dir"]
         saved = load_and_render_report(
-            DRAW_JSON, ARTIFACT_DIR, sel_id, dest, style_paths, load_surrogate_model
+            DRAW_JSON,
+            load_eval_results(run_ids_list),
+            dest,
+            style_paths,
+            load_surrogate_model,
         )
     (
         mo.vstack([mo.md(f"✅ `{p.relative_to(RESULT_DIR)}`") for p in saved])

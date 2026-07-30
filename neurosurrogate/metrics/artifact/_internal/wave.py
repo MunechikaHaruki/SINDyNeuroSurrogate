@@ -23,7 +23,7 @@ import xarray as xr
 from ....core import access
 
 if TYPE_CHECKING:
-    from ....eval.store import SimResult
+    from ....eval.run import SimResult
 
 T = TypeVar("T")
 R = TypeVar("R")

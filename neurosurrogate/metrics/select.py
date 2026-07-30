@@ -5,8 +5,7 @@ group/filter する** (eval 側の関心にしない)。marimo/mlflow 非依存�
 
 from __future__ import annotations
 
-from ..eval.run import SimKey
-from ..eval.store import SimResult
+from ..eval.run import SimKey, SimResult
 
 
 def series(results: dict[SimKey, SimResult]) -> list[str]:
@@ -55,7 +54,7 @@ def pair(
 
 
 def sources_of(results: dict[SimKey, SimResult], name: str) -> tuple[str, ...]:
-    """`name` の系列が参照した artifact パス (読込元が無い = 実行直後の結果は除く。
+    """`name` の系列が参照した出所 (評価 run。読込元が無い = 実行直後の結果は除く。
     重複除去は順序を保ったまま)。"""
     return tuple(
         dict.fromkeys(

@@ -17,6 +17,7 @@ entry の dict。1 entry = 適用先 target × 電流 + 任意の `sweep` 軸)�
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass, field
@@ -130,9 +131,13 @@ class SimSpec:
 
     def key(self) -> str:
         """**同じ入力とみなす単位**の正規化文字列 (dict 順序に依らず一致する)。
-        artifact の同一系列判定や保存先 dir 名の hash 元など、「この spec と同じか」
-        を問う側はここを経由する。"""
+        「この spec と同じか」を問う側はここを経由する。"""
         return json.dumps(self.to_dict(), sort_keys=True, default=str)
+
+    def hash(self) -> str:
+        """`key()` の短縮ハッシュ。保存側が「同じ入力を既に回したか」を引くための
+        キー (完全な仕様は別に持つので、衝突しない長さがあれば足りる)。"""
+        return hashlib.sha1(self.key().encode()).hexdigest()[:8]
 
     @property
     def net(self) -> NeuronGraph:

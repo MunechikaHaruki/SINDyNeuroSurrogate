@@ -1,3 +1,15 @@
+"""MLflow I/O = **MLflow を知る唯一の場所**。2 つの experiment を持つ。
+
+- `TARGET_EXP` (学習): surrogate の pickle + meta.json を artifact に持つ run。
+- `EVAL_EXP` (評価): 1 run = 1 `SimSpec` = 1 波形。**親 run = 原系 / 子 run =
+  置換系**で、同じ刺激条件の原系と置換系が 1 グループになる (比較の単位が run 階層
+  そのもの)。原系は学習 run に依らないので刺激条件ごとに 1 本だけ作られ、学習 run
+  を増やしても複製されない。子は `tags.source_run_id` で学習 run を指す。
+
+再実行はシミュが決定的 (Euler、乱数なし) なことを使って `tags.spec_hash` 一致で
+スキップする。`force=True` のときだけ回し直して新しい run を積む。
+"""
+
 import json
 import logging
 import os
@@ -6,13 +18,17 @@ from functools import cache
 from pathlib import Path
 from typing import cast
 
+import joblib
 import mlflow
 import mlflow.artifacts
 import pandas as pd
+import xarray as xr
+from mlflow.entities import Run
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
-from neurosurrogate.eval.spec import run_labels
+from neurosurrogate.eval.run import SimKey, SimResult, expand, simulate
+from neurosurrogate.eval.spec import SimSpec, run_labels
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
@@ -154,6 +170,149 @@ def get_runs_df():
     # には入れない)。列名の mlflow 依存はここで吸収し、未記録 run 込みで欠損許容。
     runs_df["preset"] = runs_df.get("params.preset")
     return runs_df
+
+
+# --- 評価 experiment (1 run = 1 SimSpec) ------------------------------------------
+
+# smoke test は本番の評価結果を汚さない別 experiment へ (学習側の MLFLOW_EXPERIMENT
+# と同じ流儀)。
+EVAL_EXP = os.environ.get("MLFLOW_EVAL_EXPERIMENT", "eval")
+WAVE_FILE = "wave.joblib"  # 波形 artifact のファイル名 (1 run に 1 つ)
+WAVE_DTYPE = "float32"  # 保存精度 (表示にも指標にも十分で容量は半分)
+_KIND_ORIGINAL = "original"
+_KIND_SURROGATE = "surrogate"
+
+
+def _eval_exp_id() -> str:
+    """評価 experiment の id (無ければ作る)。`set_experiment` は学習側の既定を
+    書き換えてしまうので使わず、run ごとに experiment_id を指定する。"""
+    exp = mlflow.get_experiment_by_name(EVAL_EXP)
+    return exp.experiment_id if exp else mlflow.create_experiment(EVAL_EXP)
+
+
+def _find_eval(spec: SimSpec) -> Run | None:
+    """同じ入力の評価 run (最新)。決定的なシミュなので、あれば回し直す必要はない。"""
+    found = mlflow.search_runs(
+        experiment_ids=[_eval_exp_id()],
+        filter_string=f"tags.spec_hash = '{spec.hash()}'",
+        order_by=["attributes.start_time DESC"],
+        max_results=1,
+        output_format="list",
+    )
+    return found[0] if found else None
+
+
+def _log_eval(
+    label: str, result: SimResult, source_run_id: str | None, parent_id: str | None
+) -> str:
+    """1 SimResult を 1 評価 run へ。`spec` param が入力仕様の単一源 (読み戻しは
+    ここから)、平坦化した param は MLflow UI での絞り込み/比較用の索引。"""
+    spec = result.spec
+    with mlflow.start_run(experiment_id=_eval_exp_id(), run_name=label) as run:
+        mlflow.log_params(
+            {
+                "spec": spec.key(),
+                "label": label,
+                "name": spec.name,
+                "target": spec.target,
+                "current_type": spec.current_type,
+                "dt": spec.dt,
+                "sweep_param": spec.sweep_param,
+                "sweep_value": spec.sweep_value,
+                **{f"cp.{k}": v for k, v in spec.current_params.items()},
+            }
+        )
+        mlflow.set_tags(
+            {
+                "spec_hash": spec.hash(),
+                "kind": _KIND_ORIGINAL if parent_id is None else _KIND_SURROGATE,
+                **({"run_label": result.run_label} if result.run_label else {}),
+                **({"source_run_id": source_run_id} if source_run_id else {}),
+                **({MLFLOW_PARENT_RUN_ID: parent_id} if parent_id else {}),
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / WAVE_FILE
+            joblib.dump(
+                result.dataset.map(lambda v: v.astype(WAVE_DTYPE), keep_attrs=True),
+                path,
+                compress=1,  # float32 波形はほぼ非圧縮 → 高レベルは時間の無駄
+            )
+            mlflow.log_artifact(str(path))
+        logger.info("評価 run 保存: %s (%s)", label, run.info.run_id)
+        return run.info.run_id
+
+
+def run_and_log(
+    bundles: dict[str, SurrogateBundle],
+    specs: dict[str, SimSpec],
+    run_labels_by_id: dict[str, str],
+    source_run_id: str,
+    force: bool = False,
+) -> list[str]:
+    """評価実行 + 評価 run 保存 (marimo の評価ボタンが呼ぶ唯一の関数)。原系を親、
+    置換系をその子として積む。既に同じ入力の run があればシミュごとスキップする
+    (`force=True` で回し直す)。返すのは保存した子 run の id。"""
+    if not bundles:
+        return []
+    expanded = expand(specs, bundles)
+    parents: dict[str, str] = {}  # label → 原系 run_id
+    logged: list[str] = []
+    for (label, run_id), spec in expanded.items():
+        found = None if force else _find_eval(spec)
+        if run_id is None:
+            parents[label] = (
+                found.info.run_id
+                if found
+                else _log_eval(label, _simulated(spec, None), None, None)
+            )
+            continue
+        if found:
+            continue
+        result = _simulated(spec, bundles[run_id], run_labels_by_id[run_id])
+        logged.append(_log_eval(label, result, source_run_id, parents[label]))
+    return logged
+
+
+def _simulated(
+    spec: SimSpec, bundle: SurrogateBundle | None, run_label: str | None = None
+) -> SimResult:
+    return SimResult(spec, run_label, simulate(spec, bundle))
+
+
+def _result_of(run: Run) -> SimResult:
+    """評価 run → SimResult (波形 artifact を読む)。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        local = mlflow.artifacts.download_artifacts(
+            f"runs:/{run.info.run_id}/{WAVE_FILE}", dst_path=tmp
+        )
+        dataset = cast(xr.Dataset, joblib.load(local))
+    return SimResult(
+        SimSpec.from_dict(json.loads(run.data.params["spec"])),
+        run.data.tags.get("run_label"),
+        dataset,
+        source=run.info.run_id,
+    )
+
+
+def load_eval_results(source_run_ids: list[str]) -> dict[SimKey, SimResult]:
+    """学習 run 群 (sweep 兄弟) が出した評価結果 → `SimKey → SimResult`。子 run
+    (置換系) を引き、その親 run から原系を辿る = 原系が 1 本しか無くても run 軸の
+    全系列に対して同じ原系が付く。"""
+    out: dict[SimKey, SimResult] = {}
+    for source_run_id in source_run_ids:
+        for child in mlflow.search_runs(
+            experiment_ids=[_eval_exp_id()],
+            filter_string=f"tags.source_run_id = '{source_run_id}'",
+            output_format="list",
+        ):
+            label = child.data.params["label"]
+            result = _result_of(child)
+            out[(label, result.spec.run_id)] = result
+            if (label, None) not in out:
+                parent = mlflow.get_run(child.data.tags[MLFLOW_PARENT_RUN_ID])
+                out[(label, None)] = _result_of(parent)
+    return out
 
 
 def _safe_meta(run_id: str) -> SurrogateMeta | None:

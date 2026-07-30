@@ -23,11 +23,10 @@ from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.eval.run import (
     SimKey,
-    expand,
-    simulate,
+    SimResult,
+    run_results,
 )
 from neurosurrogate.eval.spec import SimSpec, parse_evals
-from neurosurrogate.eval.store import SimResult, artifacts, load_all, save, save_all
 from neurosurrogate.metrics.artifact import (
     cell_figs,
     compare_grid_fig,
@@ -130,15 +129,11 @@ def _run_results(
     bundles: dict[str, SurrogateBundle], spec: SimSpec
 ) -> dict[SimKey, SimResult]:
     """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした結果。"""
-    expanded = expand({spec.name: spec}, bundles)
-    return {
-        key: SimResult(
-            s,
-            bundles[key[1]].meta.label if key[1] is not None else None,
-            simulate(s, bundles[key[1]] if key[1] is not None else None),
-        )
-        for key, s in expanded.items()
-    }
+    return run_results(
+        {spec.name: spec},
+        bundles,
+        {run_id: b.meta.label for run_id, b in bundles.items()},
+    )
 
 
 @pytest.fixture(scope="module")
@@ -236,15 +231,7 @@ def _run_named(
     bundles: dict[str, SurrogateBundle], specs: dict[str, SimSpec], run_label: str
 ) -> dict[SimKey, SimResult]:
     """複数系列 (名前ごとの掃引展開済み specs) を一括シミュし run 表示名を固定する。"""
-    expanded = expand(specs, bundles)
-    return {
-        key: SimResult(
-            s,
-            run_label if key[1] is not None else None,
-            simulate(s, bundles[key[1]] if key[1] is not None else None),
-        )
-        for key, s in expanded.items()
-    }
+    return run_results(specs, bundles, dict.fromkeys(bundles, run_label))
 
 
 def _renamed(
@@ -281,44 +268,6 @@ def test_compare_grid_rows_are_current_then_one_per_eval(
     short = {**results, **results_b3}
     with pytest.raises(ValueError, match="点数"):
         compare_grid_fig(short, ["a", "b"], "soma")
-
-
-def test_result_artifacts_round_trip_without_resimulating(
-    sindy_results: dict[SimKey, SimResult], tmp_path: Path
-) -> None:
-    """結果 artifact = **1 SimSpec = 1 Dataset**。保存 → 読込で再シミュ無しに
-    同じ波形が戻り、`(label, run_id)` ごとに分かれて保存され読込で束ね直る。
-    artifact に surrogate は焼き込まず出所 run_id (`SimSpec.run_id`) だけを持つ。
-    """
-    root = tmp_path / "artifacts"
-    root.mkdir()
-    orig = sindy_results[("hh_dc", None)]
-    surr_base = sindy_results[("hh_dc", "r0")]
-    surr = dc_replace(surr_base, spec=dc_replace(surr_base.spec, run_id="RID"))
-
-    n = len(save_all({("hh_dc", None): orig, ("hh_dc", "RID"): surr}, root, "PARENT"))
-    assert n == 2  # 原系 + run 軸 1 本
-
-    # 同じ (label, run_id) で入力仕様だけ変えて回し直した系列 (束ねたら点の意味がずれる)
-    other_spec = dc_replace(surr.spec, dt=surr.spec.dt * 2)
-    other = SimResult(other_spec, "r1", surr.dataset)
-    save("hh_dc", other, root, "PARENT")
-
-    arts = artifacts(root)
-    assert {a.meta.spec.run_id for a in arts if a.meta.spec.run_id} == {"RID"}
-
-    # (label, run_id) で束ね、同じ key の衝突は新しい系列 (`created` が新しい方) が勝つ
-    loaded = load_all(arts)
-    assert set(loaded) == {("hh_dc", None), ("hh_dc", "RID")}
-    assert loaded[("hh_dc", "RID")].spec.dt == other_spec.dt
-    assert loaded[("hh_dc", "RID")].run_label == "r1"
-    # 入力仕様から dataset を復元でき、波形は float32 で往復する
-    assert loaded[("hh_dc", "RID")].spec.dataset().model_name == orig.spec.target
-    np.testing.assert_allclose(
-        access.potential(loaded[("hh_dc", "RID")].dataset, 0),
-        access.potential(surr.dataset, 0),
-        rtol=1e-5,
-    )
 
 
 def test_report_draws_the_results_at_hand_not_the_declaration(

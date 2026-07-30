@@ -51,9 +51,8 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
-  eval/  spec.py                 # EvalSpec/SweepAxis + parse_evals (計算入力のみ)
-         eval.py                 # EvalGrid/EvalPoint (点軸 × run 軸の純粋データ型) + evaluate/run_evals
-         store.py                # 評価結果 artifact の save/load (results/artifacts/、永続化のみ)
+  eval/  spec.py                 # SimSpec/SweepAxis + parse_evals (計算入力のみ)
+         run.py                  # SimKey/SimResult + expand/simulate/run_results (spec → 結果。永続化は知らない)
   metrics/  select.py            # 結果 (SimKey→SimResult) からの群 (系列名/label/run_id) 選択
             declare.py           # 描画宣言の型 DrawSpec/ReportSpec/CompareSpec (draw.json のスキーマ)
             report.py            # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
@@ -67,13 +66,13 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
             artifact/_internal/engine.py # 描画プリミティブ (Figure/DataFrame を返さない実装詳細)
             artifact/_internal/wave.py   # DynamicMetrics/diverged (eFEL 計算、Figure/DataFrame を返さない計算層)
 scripts/  main.py                # Hydra エントリ
-          mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)
+          mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)。学習 experiment (surrogate) と評価 experiment (1 run = 1 SimSpec、親=原系/子=置換系、波形 artifact) の両方
           marimo.py              # notebook 本体 (run 選択 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
           poster_assets.py       # results/<dir> → docs/poster/result へ poster 使用分だけコピー
           conf/                  # 下記「設定ファイル」参照
-tests/    conftest.py / test_surrogate.py / test_inits.py
+tests/    conftest.py / test_surrogate.py / test_inits.py / test_eval_mlflow.py (評価 run の保存/読込。tracking 先は tmp へ差し替え)
 docs/     poster/ slide/         # typst
-results/  <保存名>/               # marimo 描画ボタンが書く図 + meta.json / artifacts/ に評価結果 (計算)
+results/  <保存名>/               # marimo 描画ボタンが書く図 + meta.json (評価結果そのものは MLflow の評価 experiment)
 ```
 
 ## 設定ファイル
