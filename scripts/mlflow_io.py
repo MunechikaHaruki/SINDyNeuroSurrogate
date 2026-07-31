@@ -28,8 +28,8 @@ from mlflow.entities import Run
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
-from neurosurrogate.eval import EvalSeries, SimSpec, simulate
-from neurosurrogate.runs import SimKey, SimResult, expand, run_labels
+from neurosurrogate.eval import SimSpec, simulate
+from neurosurrogate.runs import EvalSeries, SimKey, SimResult, expand, run_labels
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 

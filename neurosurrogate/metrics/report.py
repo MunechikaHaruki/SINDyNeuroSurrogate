@@ -8,7 +8,7 @@ marimo 非依存 (marimo は結果読込 + surrogate ロードだけ持ち、組
 流すだけ。**単発と掃引で経路を分けない** — 点が 1 つなら格子が 1 列になり点軸の
 折れ線が出ないだけ。
 
-**描く対象は結果 `results` 自身**で、評価条件の宣言 (`eval.EVALS`) は受け取らない:
+**描く対象は結果 `results` 自身**で、評価条件の宣言 (`runs.SERIES`) は受け取らない:
 結果 artifact は入力仕様を自分で持つので、設定ファイルと無関係に (別セッションで
 回した結果でも) 描ける。描画宣言 (`draw.json`) は `parse_report` が正規化するだけで
 以降も dict のまま持ち回る — `results[]`/`compare[]`/`kinds` は「表示にだけ使う
@@ -165,7 +165,7 @@ def model_report(
     データの再生成が run 数だけ走る (指標の run 横断比較は `summary` 表が担う)。
     neurograph は**結果の適用先ごと** (置換ノードが違う) = `for_results` の spec
     から引く (`eval_report` と同じ絞り込みに従う。計算入力の宣言
-    `eval.EVALS` はここでも見ない = 描画は結果だけを見るという不変条件を model 図にも
+    `runs.SERIES` はここでも見ない = 描画は結果だけを見るという不変条件を model 図にも
     適用する)。電流プレビューは回した入力そのものの確認用で系列ごとに 1 枚。
     """
     targets = for_results(report, results)
@@ -371,7 +371,7 @@ def eval_report(
 
     描く対象は `for_results(report, results)` が決める: `draw.json` の `results` が
     空なら手元の結果を全部、非空ならそこに列挙した系列名だけ (計算入力の設定
-    条件の宣言 (`eval.EVALS`) とは突き合わせない — 結果は別セッションの宣言で
+    条件の宣言 (`runs.SERIES`) とは突き合わせない — 結果は別セッションの宣言で
     回したものでも描けるべき)。表示設定は `draw_for(report, name)`。
     """
     entries: list[SaveEntry] = []

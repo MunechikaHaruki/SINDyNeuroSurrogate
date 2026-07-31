@@ -1,12 +1,13 @@
-"""run 軸 (surrogate) を評価条件に掛けて結果を束ねる層。marimo/mlflow 非依存。
+"""**1 シミュを超えた組み合わせ**を扱う層: 掃引 (点列) と run 軸 (surrogate)。
+marimo/mlflow 非依存。
 
-`eval.py` が「1 シミュとは何か / 何を回すか / どう回すか」を持つのに対し、ここは
-**どの surrogate と掛け合わせて何本回すか**: 系列 (点列) × run の直積を作り
+`eval.py` は 1 シミュだけを知る (仕様 `SimSpec` と素材倉庫 `EVALS`)。ここはその素材を
+軸で振って系列に組み立て (`sweep` / `SERIES`)、さらに run 軸を掛けた直積を作り
 (`expand`)、並走シミュして `SimKey → SimResult` のフラットな dict にする。
 
 **label と系列名はここの関心**: `SimSpec` は純粋な計算入力で識別を持たないので、
-`EVALS` のキー (系列名) から label (単発は `系列名`、掃引は `系列名#i`) を作るのは
-`expand` 1 箇所。結果側は `SimResult.series` として持ち回る。
+`SERIES` のキー (系列名) から label (単発は `系列名`、掃引は `系列名#i`) を作るのは
+`labels` 1 箇所。結果側は `SimResult.series` として持ち回る。
 
 **束ねる型を持たない**: 軸を組み替える処理は呼び出し側 (`metrics.select`) が dict を
 舐めるだけ。
@@ -19,14 +20,59 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
+from dataclasses import replace as dc_replace
 
+import numpy as np
 import xarray as xr
 
-from .eval import EvalSeries, SimSpec, simulate
+from .eval import EVALS, SimSpec, simulate
 from .surrogate.bundle import SurrogateBundle
 from .surrogate.meta import SurrogateMeta
 from .surrogate.replace import replaced_names
+
+# --- 系列 (掃引) ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EvalSeries:
+    """1 系列 = 軸 + その上の点列。**軸は系列の性質**なので点 (`SimSpec`) は持たない
+    (単発は軸なし = 点 1 つ)。点の x 座標は `current_params[axis]` に確定済み。"""
+
+    points: list[SimSpec]
+    axis: str | None = None  # 掃引した電流パラメータ名 (None=単発)。図の x 軸
+
+
+def sweep(spec: SimSpec, param: str, values: Iterable[float]) -> EvalSeries:
+    """1 spec を電流パラメータ `param` の値ごとに振った系列。値列は呼び出し側が
+    そのまま渡す (等間隔なら `np.linspace`、そうでなくてもよい)。"""
+    return EvalSeries(
+        [
+            dc_replace(spec, current_params={**spec.current_params, param: float(v)})
+            for v in values
+        ],
+        axis=param,
+    )
+
+
+# --- カタログ (この研究で回したい系列) ------------------------------------------------
+
+# **系列名の単一源**。素材は `eval.EVALS` から名前で引き、ここで軸と点を与える
+# (単発も「点 1 つの系列」として同じ経路を通る)。
+SERIES: dict[str, EvalSeries] = {
+    "traub_soma_dc": EvalSeries([EVALS["traub_soma_dc"]]),
+    "traub19_somastim": sweep(
+        EVALS["traub19_somastim"], "value", np.linspace(0.0, 10.0, 5)
+    ),
+    "traub19_dendstim": sweep(
+        EVALS["traub19_dendstim"], "value", np.linspace(0.0, 10.0, 5)
+    ),
+    "traub19_pulse_freq": sweep(
+        EVALS["traub19_pulse_freq"], "frequency", np.linspace(10.0, 50.0, 5)
+    ),
+}
+
 
 # --- 条件 × run → 結果 --------------------------------------------------------------
 
@@ -41,7 +87,7 @@ class SimResult:
     表示名・出所。`SimSpec` は純粋な計算入力に保つ。"""
 
     spec: SimSpec
-    series: str  # 系列名 (`EVALS` のキー。掃引しても不変 = 図の系列識別)
+    series: str  # 系列名 (`SERIES` のキー。掃引しても不変 = 図の系列識別)
     axis: str | None  # 掃引軸の電流パラメータ名 (None=単発)。図の x 軸
     run_id: str | None  # どの surrogate で回したか (None=原系)
     run_label: str | None  # 表示名 (凡例/行見出し)。None=原系

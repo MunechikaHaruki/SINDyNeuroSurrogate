@@ -18,9 +18,8 @@ def _():
         sweep_siblings,
     )
 
-    from neurosurrogate.eval import EVALS
     from neurosurrogate.metrics.report import load_and_render_report
-    from neurosurrogate.runs import usable
+    from neurosurrogate.runs import SERIES, usable
 
     CONF_DIR = Path(__file__).resolve().parent / "conf"
     DRAW_JSON = CONF_DIR / "draw.json"
@@ -37,9 +36,9 @@ def _():
     return (
         ALL_PRESETS,
         DRAW_JSON,
-        EVALS,
         PLT_STYLE,
         RESULT_DIR,
+        SERIES,
         STYLE_DIR,
         load_and_render_report,
         load_bundles,
@@ -67,15 +66,15 @@ def _(ALL_PRESETS, mo, runs_df):
 
 
 @app.cell
-def _(ALL_PRESETS, EVALS, mo, preset, runs_df, usable):
+def _(ALL_PRESETS, SERIES, mo, preset, runs_df, usable):
     # marimo に残す唯一の「入力」= run を 1 件選ぶだけ。適用先 / sweep 対象 (兄弟 run)
-    # は選択後に自動決定。preset で絞り、宣言された適用先 (eval entry の target) の
+    # は選択後に自動決定。preset で絞り、宣言された適用先 (SERIES の点の target) の
     # どれかへ**実際に置換できる** 代表 run (hydra sweep 親/単発 = parent_id 欠損)
-    # だけ出す (子は隠す)。互換判定は `eval.usable` に委ね UI に複製しない。
+    # だけ出す (子は隠す)。互換判定は `runs.usable` に委ね UI に複製しない。
     in_preset = (
         runs_df if preset == ALL_PRESETS else runs_df[runs_df["preset"] == preset]
     )
-    usable_mask = in_preset["meta"].map(lambda m: usable(m, EVALS))
+    usable_mask = in_preset["meta"].map(lambda m: usable(m, SERIES))
     reps = in_preset[usable_mask & in_preset["parent_id"].isna()]
     runs = reps[["tags.mlflow.runName", "comp_type", "run_id"]]
     run_selector = mo.ui.table(
@@ -149,11 +148,11 @@ def _(load_bundles, run_ids_list):
 
 
 @app.cell
-def _(EVALS, bundles, run_and_log, run_ids, run_panel, sel_id):
+def _(SERIES, bundles, run_and_log, run_ids, run_panel, sel_id):
     # 評価ボタン: 評価 → 評価 run 保存だけ (描画はしない)。既に同じ入力の評価 run が
     # あればシミュごとスキップされる (force で回し直す)。
     if run_panel.value["eval"]:
-        run_and_log(bundles, EVALS, run_ids, sel_id, force=run_panel.value["force"])
+        run_and_log(bundles, SERIES, run_ids, sel_id, force=run_panel.value["force"])
     return
 
 

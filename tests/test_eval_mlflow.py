@@ -14,7 +14,8 @@ import pytest
 from test_surrogate import fit_surrogate
 
 from neurosurrogate.core import access
-from neurosurrogate.eval import EvalSeries, SimSpec, simulate
+from neurosurrogate.eval import SimSpec, simulate
+from neurosurrogate.runs import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))

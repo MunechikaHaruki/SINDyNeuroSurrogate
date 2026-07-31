@@ -51,8 +51,8 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
-  eval.py                        # SimSpec (target/current/dt/params だけの純粋な計算入力) + EvalSeries/sweep (軸+点列) / EVALS (系列名→EvalSeries) / simulate (1 シミュ)
-  runs.py                        # SimKey/SimResult (系列名/軸/run_id/表示名/出所 = 識別は全部こちら) + labels/expand/run_results + usable/run_labels。label 規約はここだけ。永続化は知らない
+  eval.py                        # 1 シミュ専念: SimSpec (target/current/dt/params だけの純粋な計算入力) + EVALS (条件名→SimSpec の素材倉庫) + simulate (1 シミュ)
+  runs.py                        # 1 シミュを超えた組み合わせ: EvalSeries/sweep/SERIES (系列名→軸+点列) + SimKey/SimResult (識別は全部こちら) + labels/expand/run_results + usable/run_labels。label 規約はここだけ。永続化は知らない
   metrics/  select.py            # 結果 (SimKey→SimResult) からの群 (系列名/label/run_id) 選択
             report.py            # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
             save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ)
@@ -79,9 +79,9 @@ results/  <保存名>/               # marimo 描画ボタンが書く図 + meta
 - `scripts/conf/config.yaml` + `surrogate/<preset>.yaml` — 学習設定。`surrogate` 直下は
   `meta` / `preprocessor` / `ansatz` の 3 ブロックで `SurrogateBundle.setup` の宛先と 1 対 1。
   `_test_*.yaml` はテスト専用 preset (tests は preset 名を指すだけ)。
-- 評価条件は設定ファイルを持たない → `neurosurrogate/eval.py` の `EVALS`
-  (型で宣言。掃引は `sweep`、label は `labeled` が `name` から導出)。実験条件は滅多に
-  変わらず、変えたら別の実験 = コードに焼いて差分に出す方が正しい。
+- 評価条件は設定ファイルを持たない → 素材 (1 条件) は `neurosurrogate/eval.py` の
+  `EVALS`、系列 (掃引) は `neurosurrogate/runs.py` の `SERIES` (`sweep` で組む)。
+  実験条件は滅多に変わらず、変えたら別の実験 = コードに焼いて差分に出す方が正しい。
 - `scripts/conf/draw.json` — 描画宣言のみ (計算入力と完全分離。結果が入力仕様を
   自分で持つので描画側は評価条件を読まない)。**唯一残った設定ファイル** = 図を
   調整するたびに書き換える対象だから設定のまま。`default` (グローバル設定は

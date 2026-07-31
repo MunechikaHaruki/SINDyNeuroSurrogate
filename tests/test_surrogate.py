@@ -21,7 +21,7 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.eval import EVALS, EvalSeries, SimSpec, sweep
+from neurosurrogate.eval import SimSpec
 from neurosurrogate.metrics.artifact import (
     cell_figs,
     compare_grid_fig,
@@ -49,7 +49,15 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
-from neurosurrogate.runs import SimKey, SimResult, labels, run_results
+from neurosurrogate.runs import (
+    SERIES,
+    EvalSeries,
+    SimKey,
+    SimResult,
+    labels,
+    run_results,
+    sweep,
+)
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
     hybrid_physics,
@@ -187,20 +195,20 @@ def test_sindy_draws_all_figs(
 
 
 def test_catalog_and_draw_json_are_self_consistent() -> None:
-    """marimo の既定設定が自己整合: `EVALS` の全 entry の電流が掃引点まで含めて
-    構築でき、`draw.json` の `results`/`compare` が参照する系列名は `EVALS` に
+    """marimo の既定設定が自己整合: `SERIES` の全系列の電流が掃引点まで含めて
+    構築でき、`draw.json` の `results`/`compare` が参照する系列名は `SERIES` に
     実在する。評価条件が型になった今、ズレるのは常に draw.json 側 (唯一残った
-    設定ファイル) と特定できる。単発 entry も「点 1 つ」として同じ経路を通る。"""
-    for ev in EVALS.values():
+    設定ファイル) と特定できる。単発系列も「点 1 つ」として同じ経路を通る。"""
+    for ev in SERIES.values():
         for spec in ev.points:
             assert len(spec.dataset().build_current()) > 0
     # label 展開: 単発は系列名そのもの、掃引は 点の数だけ (series#0.. series#4)
-    assert set(labels(EVALS)) >= {"traub_soma_dc", "traub19_somastim#0"}
-    assert sum(1 for lb in labels(EVALS) if lb.startswith("traub19_somastim#")) == 5
+    assert set(labels(SERIES)) >= {"traub_soma_dc", "traub19_somastim#0"}
+    assert sum(1 for lb in labels(SERIES) if lb.startswith("traub19_somastim#")) == 5
 
     draw_json = Path(__file__).parents[1] / "scripts/conf/draw.json"
     report = parse_report(json.loads(draw_json.read_text()))
-    names = set(EVALS)
+    names = set(SERIES)
     assert set(report["results"]) <= names
     for comparison in report["compares"].values():
         assert set(comparison["evals"]) <= names

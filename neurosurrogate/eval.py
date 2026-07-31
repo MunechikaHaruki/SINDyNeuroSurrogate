@@ -1,31 +1,22 @@
-"""評価の 3 点セット: **1 シミュの仕様 (`SimSpec`) / 回したい条件 (`EVALS`) /
-1 シミュの実行 (`simulate`)**。marimo/mlflow 非依存の純粋ドメイン層。
+"""**1 回のシミュレーション**だけを扱う層: 仕様 (`SimSpec`) / 名前付きの条件倉庫
+(`EVALS`) / 実行 (`simulate`)。marimo/mlflow 非依存の純粋ドメイン層。
 
-この 3 つは同じ問い「何を回すか」の表と裏なので 1 枚に置く。run 軸 (surrogate) を
-掛けて複数本を束ねるのは別の関心 → `runs.py`。
+ここには「複数シミュ」の概念が一切ない — 掃引 (点列) も run 軸 (surrogate) も
+`runs.py` の関心。`EVALS` は 1 名前 = 1 条件の素材倉庫で、それを軸で振って系列に
+組み立てるのは `runs.SERIES`。
 
-**基本単位は 1 回のシミュレーション**: 掃引点も run も `SimSpec` 自身のフィールドで、
-「どのシミュを指すか」を決める同格のパラメータ。掃引は `sweep` が点ごとの `SimSpec`
-へ展開し尽くす — 展開後に「掃引軸」という型は残らず、点が自分の軸名 (`sweep_param`)
-を持つだけ。run は `run_id` (`None` = 原系)。
-
-**評価したい条件は `EVALS` が型で宣言する** (設定ファイルを持たない = スキーマという
-型の弱い写しを二重に管理しない)。形は **系列名 → `EvalSeries` (軸 + 点列)** で、
-系列名は dict のキーが単一源 (`SimSpec` は識別も軸も持たない)。描画の宣言だけは
-設定ファイル `scripts/conf/draw.json` に残る — あちらは図を調整するたびに
-書き換える対象で性格が違う。
+**評価したい条件は型で宣言する** (設定ファイルを持たない = スキーマという型の弱い
+写しを二重に管理しない)。描画の宣言だけは設定ファイル `scripts/conf/draw.json` に
+残る — あちらは図を調整するたびに書き換える対象で性格が違う。
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
 from dataclasses import dataclass, field
-from dataclasses import replace as dc_replace
 from typing import Self
 
-import numpy as np
 import xarray as xr
 
 from .core.diverge import log_divergence
@@ -43,7 +34,7 @@ class SimSpec:
     """1 回のシミュレーションの仕様 = **純粋な計算入力**: 適用先 target × 電流
     (掃引点は `current_params` に確定済み)。これだけで波形が決まる。
 
-    **識別は一切持たない** — 系列名/label は `EVALS` の構造と `runs` の規約、
+    **識別は一切持たない** — 系列名/label は `runs.SERIES` の構造と規約、
     どの surrogate で回すかは `simulate` の引数、出所は結果側 (`runs.SimResult`)。
     おかげで `hash()` が「同じ波形を出す入力か」と正確に一致する。
     """
@@ -97,80 +88,40 @@ class SimSpec:
         )
 
 
-@dataclass(frozen=True)
-class EvalSeries:
-    """1 系列 = 軸 + その上の点列。**軸は系列の性質**なので点 (`SimSpec`) は持たない
-    (単発は軸なし = 点 1 つ)。点の x 座標は `current_params[axis]` に確定済み。"""
+# --- 条件の倉庫 (この研究で回したい素材) ----------------------------------------------
 
-    points: list[SimSpec]
-    axis: str | None = None  # 掃引した電流パラメータ名 (None=単発)。図の x 軸
-
-
-def sweep(spec: SimSpec, param: str, values: Iterable[float]) -> EvalSeries:
-    """1 spec を電流パラメータ `param` の値ごとに振った系列。値列は呼び出し側が
-    そのまま渡す (等間隔なら `np.linspace`、そうでなくてもよい)。"""
-    return EvalSeries(
-        [
-            dc_replace(spec, current_params={**spec.current_params, param: float(v)})
-            for v in values
-        ],
-        axis=param,
-    )
-
-
-# --- カタログ (この研究で回したい条件) ------------------------------------------------
-
-# 掃引つき評価の共通電流パラメータ (刺激前の静穏 + 本体長)。
+# 掃引つき評価の共通電流パラメータ (刺激前の静穏 + 本体長)。掃引軸の値は入らない
+# (`runs.sweep` が点ごとに埋める)。
 _STIM = {"silence_duration": 10.0, "duration": 300.0}
 _DT = 0.01
 
-EVALS: dict[str, EvalSeries] = {
-    # 単体 traub の素の応答 (置換の足場が動くかを最短で見る)。
-    "traub_soma_dc": EvalSeries(
-        [
-            SimSpec(
-                target="traub",
-                current_type="lin&steady",
-                dt=_DT,
-                current_params={
-                    "silence_duration": 10.0,
-                    "duration": 40.0,
-                    "value": 3.0,
-                },
-            )
-        ]
+EVALS: dict[str, SimSpec] = {
+    # 単体 traub の素の応答 (置換の足場が動くかを最短で見る)。掃引なしで完結。
+    "traub_soma_dc": SimSpec(
+        target="traub",
+        current_type="lin&steady",
+        dt=_DT,
+        current_params={"silence_duration": 10.0, "duration": 40.0, "value": 3.0},
     ),
     # 刺激部位だけを変えた対照ペア (soma / dend)。同じ電流軸で比べる。
-    "traub19_somastim": sweep(
-        SimSpec(
-            target="traub19_soma",
-            current_type="lin&steady",
-            dt=_DT,
-            current_params=_STIM,
-        ),
-        "value",
-        np.linspace(0.0, 10.0, 5),
+    "traub19_somastim": SimSpec(
+        target="traub19_soma",
+        current_type="lin&steady",
+        dt=_DT,
+        current_params=_STIM,
     ),
-    "traub19_dendstim": sweep(
-        SimSpec(
-            target="traub19_soma_dendstim",
-            current_type="lin&steady",
-            dt=_DT,
-            current_params=_STIM,
-        ),
-        "value",
-        np.linspace(0.0, 10.0, 5),
+    "traub19_dendstim": SimSpec(
+        target="traub19_soma_dendstim",
+        current_type="lin&steady",
+        dt=_DT,
+        current_params=_STIM,
     ),
     # 入力の速さに対する追従 (パルス周波数掃引)。
-    "traub19_pulse_freq": sweep(
-        SimSpec(
-            target="traub19_soma",
-            current_type="periodic&pulse",
-            dt=_DT,
-            current_params={**_STIM, "amplitude": 20, "baseline": 0.0},
-        ),
-        "frequency",
-        np.linspace(10.0, 50.0, 5),
+    "traub19_pulse_freq": SimSpec(
+        target="traub19_soma",
+        current_type="periodic&pulse",
+        dt=_DT,
+        current_params={**_STIM, "amplitude": 20, "baseline": 0.0},
     ),
 }
 
@@ -184,7 +135,7 @@ def simulate(spec: SimSpec, surrogate: SurrogateBundle | None) -> xr.Dataset:
     if surrogate is None:
         return unified_simulator(dset)
     surr_ds = unified_simulator(apply_surrogate(surrogate, dset))
-    # 系列名は spec が持たない (EVALS のキーが単一源) → 入力そのもので名乗る。
+    # 系列名は spec が持たない (SERIES のキーが単一源) → 入力そのもので名乗る。
     where = f"{spec.target}/{spec.current_type} / {surrogate.meta.label}"
     log_divergence(spec.net, surr_ds, where)
     return surr_ds
