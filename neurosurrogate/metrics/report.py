@@ -414,12 +414,12 @@ def load_and_render_report(
     """draw.json 読込から `render_report` までを一括した唯一の入口。呼び出し側
     (`scripts/marimo.py` の描画ボタン) は結果の読込と surrogate ロード (どちらも
     mlflow 依存) だけを持ち、draw.json のパース・組立・保存はここへ委譲する。
-    surrogate は結果に焼き込まれていない (`SimSpec.run_id` を持つだけ) ので、
+    surrogate は結果に焼き込まれていない (`SimResult.run_id` を持つだけ) ので、
     閉包項が要る図のために `load_surrogate_model` で引き直す。"""
     report = parse_report(json.loads(draw_json.read_text()))
     bundles_for_draw = {
-        r.spec.run_id: load_surrogate_model(r.spec.run_id)
+        r.run_id: load_surrogate_model(r.run_id)
         for r in results.values()
-        if r.spec.run_id is not None
+        if r.run_id is not None
     }
     return render_report(bundles_for_draw, results, report, dest, style_paths)

@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import tempfile
+from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from typing import cast
@@ -27,7 +28,7 @@ from mlflow.entities import Run
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
-from neurosurrogate.eval import SimSpec, simulate
+from neurosurrogate.eval import EvalSeries, SimSpec, simulate
 from neurosurrogate.runs import SimKey, SimResult, expand, run_labels
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
@@ -190,11 +191,12 @@ def _eval_exp_id() -> str:
     return exp.experiment_id if exp else mlflow.create_experiment(EVAL_EXP)
 
 
-def _find_eval(spec: SimSpec) -> Run | None:
-    """同じ入力の評価 run (最新)。決定的なシミュなので、あれば回し直す必要はない。"""
+def _find_eval(spec: SimSpec, run_id: str | None) -> Run | None:
+    """同じ入力を同じ surrogate で回した評価 run (最新)。決定的なシミュなので、
+    あれば回し直す必要はない。"""
     found = mlflow.search_runs(
         experiment_ids=[_eval_exp_id()],
-        filter_string=f"tags.spec_hash = '{spec.hash()}'",
+        filter_string=f"tags.spec_hash = '{_eval_hash(spec, run_id)}'",
         order_by=["attributes.start_time DESC"],
         max_results=1,
         output_format="list",
@@ -205,26 +207,28 @@ def _find_eval(spec: SimSpec) -> Run | None:
 def _log_eval(
     label: str, result: SimResult, source_run_id: str | None, parent_id: str | None
 ) -> str:
-    """1 SimResult を 1 評価 run へ。`spec` param が入力仕様の単一源 (読み戻しは
-    ここから)、平坦化した param は MLflow UI での絞り込み/比較用の索引。"""
+    """1 SimResult を 1 評価 run へ。`spec` param が計算入力の単一源 (読み戻しは
+    ここから)、識別 (系列/軸/run) は別 param、平坦化した param は MLflow UI での
+    絞り込み/比較用の索引。"""
     spec = result.spec
     with mlflow.start_run(experiment_id=_eval_exp_id(), run_name=label) as run:
         mlflow.log_params(
             {
                 "spec": spec.key(),
                 "label": label,
-                "name": spec.name,
+                "series": result.series,
+                "run_id": result.run_id or "",
                 "target": spec.target,
                 "current_type": spec.current_type,
                 "dt": spec.dt,
-                "sweep_param": spec.sweep_param,
-                "sweep_value": spec.sweep_value,
+                "axis": result.axis,
+                "point": result.point,
                 **{f"cp.{k}": v for k, v in spec.current_params.items()},
             }
         )
         mlflow.set_tags(
             {
-                "spec_hash": spec.hash(),
+                "spec_hash": _eval_hash(spec, result.run_id),
                 "kind": _KIND_ORIGINAL if parent_id is None else _KIND_SURROGATE,
                 **({"run_label": result.run_label} if result.run_label else {}),
                 **({"source_run_id": source_run_id} if source_run_id else {}),
@@ -243,9 +247,15 @@ def _log_eval(
         return run.info.run_id
 
 
+def _eval_hash(spec: SimSpec, run_id: str | None) -> str:
+    """「同じ評価を既に回したか」のキー = 計算入力 + どの surrogate で回したか。
+    `SimSpec` は run を持たない (純粋な入力) ので、ここで組にして効かせる。"""
+    return spec.hash() if run_id is None else f"{spec.hash()}-{run_id[:8]}"
+
+
 def run_and_log(
     bundles: dict[str, SurrogateBundle],
-    specs: dict[str, SimSpec],
+    evals: dict[str, EvalSeries],
     run_labels_by_id: dict[str, str],
     source_run_id: str,
     force: bool = False,
@@ -255,29 +265,36 @@ def run_and_log(
     (`force=True` で回し直す)。返すのは保存した子 run の id。"""
     if not bundles:
         return []
-    expanded = expand(specs, bundles)
     parents: dict[str, str] = {}  # label → 原系 run_id
     logged: list[str] = []
-    for (label, run_id), spec in expanded.items():
-        found = None if force else _find_eval(spec)
+    for (label, run_id), (series, spec) in expand(evals, bundles).items():
+        found = None if force else _find_eval(spec, run_id)
+        axis = evals[series].axis
         if run_id is None:
             parents[label] = (
                 found.info.run_id
                 if found
-                else _log_eval(label, _simulated(spec, None), None, None)
+                else _log_eval(label, _simulated(series, axis, spec, None), None, None)
             )
             continue
         if found:
             continue
-        result = _simulated(spec, bundles[run_id], run_labels_by_id[run_id])
+        result = _simulated(
+            series, axis, spec, run_id, bundles[run_id], run_labels_by_id[run_id]
+        )
         logged.append(_log_eval(label, result, source_run_id, parents[label]))
     return logged
 
 
 def _simulated(
-    spec: SimSpec, bundle: SurrogateBundle | None, run_label: str | None = None
+    series: str,
+    axis: str | None,
+    spec: SimSpec,
+    run_id: str | None,
+    bundle: SurrogateBundle | None = None,
+    run_label: str | None = None,
 ) -> SimResult:
-    return SimResult(spec, run_label, simulate(spec, bundle))
+    return SimResult(spec, series, axis, run_id, run_label, simulate(spec, bundle))
 
 
 def _result_of(run: Run) -> SimResult:
@@ -289,6 +306,9 @@ def _result_of(run: Run) -> SimResult:
         dataset = cast(xr.Dataset, joblib.load(local))
     return SimResult(
         SimSpec.from_dict(json.loads(run.data.params["spec"])),
+        run.data.params["series"],
+        run.data.params["axis"] or None,
+        run.data.params["run_id"] or None,
         run.data.tags.get("run_label"),
         dataset,
         source=run.info.run_id,
@@ -298,7 +318,11 @@ def _result_of(run: Run) -> SimResult:
 def load_eval_results(source_run_ids: list[str]) -> dict[SimKey, SimResult]:
     """学習 run 群 (sweep 兄弟) が出した評価結果 → `SimKey → SimResult`。子 run
     (置換系) を引き、その親 run から原系を辿る = 原系が 1 本しか無くても run 軸の
-    全系列に対して同じ原系が付く。"""
+    全系列に対して同じ原系が付く。
+
+    **原系の系列名/軸は子から取る**: `SimSpec` は識別を持たないので、別系列でも入力が
+    同じなら親 run は 1 本に共有される (その run の `series`/`axis` param は先に
+    回した方のもの)。読み戻し側では今引いている子の系列に揃える。"""
     out: dict[SimKey, SimResult] = {}
     for source_run_id in source_run_ids:
         for child in mlflow.search_runs(
@@ -308,10 +332,12 @@ def load_eval_results(source_run_ids: list[str]) -> dict[SimKey, SimResult]:
         ):
             label = child.data.params["label"]
             result = _result_of(child)
-            out[(label, result.spec.run_id)] = result
+            out[(label, result.run_id)] = result
             if (label, None) not in out:
                 parent = mlflow.get_run(child.data.tags[MLFLOW_PARENT_RUN_ID])
-                out[(label, None)] = _result_of(parent)
+                out[(label, None)] = replace(
+                    _result_of(parent), series=result.series, axis=result.axis
+                )
     return out
 
 

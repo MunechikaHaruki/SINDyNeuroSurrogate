@@ -51,8 +51,8 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
-  eval.py                        # SimSpec (+ sweep/labeled) / EVALS (回したい条件の宣言) / simulate (1 シミュ) の 3 点セット
-  runs.py                        # SimKey/SimResult + expand/run_results (条件 × run 軸 → 結果の束) + usable/run_labels。永続化は知らない
+  eval.py                        # SimSpec (target/current/dt/params だけの純粋な計算入力) + EvalSeries/sweep (軸+点列) / EVALS (系列名→EvalSeries) / simulate (1 シミュ)
+  runs.py                        # SimKey/SimResult (系列名/軸/run_id/表示名/出所 = 識別は全部こちら) + labels/expand/run_results + usable/run_labels。label 規約はここだけ。永続化は知らない
   metrics/  select.py            # 結果 (SimKey→SimResult) からの群 (系列名/label/run_id) 選択
             report.py            # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
             save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ)

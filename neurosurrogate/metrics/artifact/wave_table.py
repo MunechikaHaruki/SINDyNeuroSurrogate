@@ -61,7 +61,7 @@ def metrics_df(
     for label in labels:
         orig = results[(label, None)]
         comp_id = orig.spec.net.name_to_idx(comp_name)
-        row: dict = {"point": orig.spec.sweep_value}
+        row: dict = {"point": orig.point}
         for run_id in run_ids:
             o, s = select.pair(results, label, run_id)
             value, orig_value = extract_metric(dm_of(o, s, comp_id), metric_key)

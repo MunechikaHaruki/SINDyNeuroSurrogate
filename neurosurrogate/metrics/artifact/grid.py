@@ -39,7 +39,7 @@ def metric_fig(
     data = metrics_df(results, name, comp_name, metric_key)
     run_ids = select.run_ids_of(results, name)
     labels = select.labels_of(results, name)
-    axis = results[(labels[0], None)].spec.sweep_param or "point"
+    axis = results[(labels[0], None)].axis or "point"
     fig = new_figure()
     ax = fig.subplots()
     if "original" in data.columns:
@@ -167,7 +167,7 @@ def _header(
 ) -> list[tuple[float | None, xr.Dataset]]:
     """列 (点) の見出しと I_ext 行に使う原系。"""
     return [
-        (results[(label, None)].spec.sweep_value, results[(label, None)].dataset)
+        (results[(label, None)].point, results[(label, None)].dataset)
         for label in select.labels_of(results, name)
     ]
 
@@ -196,7 +196,7 @@ def trace_grid_fig(
         )
         for run_id in run_ids
     ]
-    axis_name = results[(labels[0], None)].spec.sweep_param
+    axis_name = results[(labels[0], None)].axis
     return _grid_fig(_header(results, name), rows, axis_name)
 
 
@@ -230,5 +230,5 @@ def compare_grid_fig(
             )
         )
     first_label = select.labels_of(results, first_name)[0]
-    axis_name = results[(first_label, None)].spec.sweep_param
+    axis_name = results[(first_label, None)].axis
     return _grid_fig(_header(results, first_name), rows, axis_name)

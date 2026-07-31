@@ -75,7 +75,7 @@ def _(ALL_PRESETS, EVALS, mo, preset, runs_df, usable):
     in_preset = (
         runs_df if preset == ALL_PRESETS else runs_df[runs_df["preset"] == preset]
     )
-    usable_mask = in_preset["meta"].map(lambda m: usable(m, EVALS.values()))
+    usable_mask = in_preset["meta"].map(lambda m: usable(m, EVALS))
     reps = in_preset[usable_mask & in_preset["parent_id"].isna()]
     runs = reps[["tags.mlflow.runName", "comp_type", "run_id"]]
     run_selector = mo.ui.table(

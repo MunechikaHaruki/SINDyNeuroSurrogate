@@ -21,7 +21,7 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.eval import EVALS, SimSpec, labeled, sweep
+from neurosurrogate.eval import EVALS, EvalSeries, SimSpec, sweep
 from neurosurrogate.metrics.artifact import (
     cell_figs,
     compare_grid_fig,
@@ -49,7 +49,7 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
-from neurosurrogate.runs import SimKey, SimResult, run_results
+from neurosurrogate.runs import SimKey, SimResult, labels, run_results
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
     hybrid_physics,
@@ -109,11 +109,10 @@ def sindy() -> SurrogateBundle:
     return fit_surrogate("_test_hh_sindy")
 
 
-def _spec_of(bundle: SurrogateBundle, name: str = "hh_dc") -> SimSpec:
+def _spec_of(bundle: SurrogateBundle) -> SimSpec:
     """学習データと同じ入力の評価仕様 (掃引軸なし = 点 1 つ)。"""
     ds = bundle.meta.dataset
     return SimSpec(
-        name=name,
         target=ds.model_name,
         current_type=ds.current_type,
         dt=ds.dt,
@@ -122,11 +121,11 @@ def _spec_of(bundle: SurrogateBundle, name: str = "hh_dc") -> SimSpec:
 
 
 def _run_results(
-    bundles: dict[str, SurrogateBundle], spec: SimSpec
+    bundles: dict[str, SurrogateBundle], spec: SimSpec, series: str = "hh_dc"
 ) -> dict[SimKey, SimResult]:
     """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした結果。"""
     return run_results(
-        {spec.name: spec},
+        {series: EvalSeries([spec])},
         bundles,
         {run_id: b.meta.label for run_id, b in bundles.items()},
     )
@@ -192,26 +191,26 @@ def test_catalog_and_draw_json_are_self_consistent() -> None:
     構築でき、`draw.json` の `results`/`compare` が参照する系列名は `EVALS` に
     実在する。評価条件が型になった今、ズレるのは常に draw.json 側 (唯一残った
     設定ファイル) と特定できる。単発 entry も「点 1 つ」として同じ経路を通る。"""
-    for spec in EVALS.values():
-        assert len(spec.dataset().build_current()) > 0
-    # 掃引展開: 掃引なしは 1 label、掃引ありは値の数だけ (name#0.. name#4)
-    assert sum(1 for label in EVALS if label == "traub_soma_dc") == 1
-    assert sum(1 for label in EVALS if label.startswith("traub19_somastim#")) == 5
+    for ev in EVALS.values():
+        for spec in ev.points:
+            assert len(spec.dataset().build_current()) > 0
+    # label 展開: 単発は系列名そのもの、掃引は 点の数だけ (series#0.. series#4)
+    assert set(labels(EVALS)) >= {"traub_soma_dc", "traub19_somastim#0"}
+    assert sum(1 for lb in labels(EVALS) if lb.startswith("traub19_somastim#")) == 5
 
     draw_json = Path(__file__).parents[1] / "scripts/conf/draw.json"
     report = parse_report(json.loads(draw_json.read_text()))
-    names = {spec.name for spec in EVALS.values()}
+    names = set(EVALS)
     assert set(report["results"]) <= names
     for comparison in report["compares"].values():
         assert set(comparison["evals"]) <= names
 
 
-def _sweep_specs(name: str, values: list[float]) -> dict[str, SimSpec]:
-    """掃引展開後の形 (掃引点ごとに `current_params` 確定済み)。"""
-    return labeled(
-        sweep(
+def _sweep_specs(name: str, values: list[float]) -> dict[str, EvalSeries]:
+    """1 系列 = 掃引展開後の点列 (点ごとに `current_params` 確定済み)。"""
+    return {
+        name: sweep(
             SimSpec(
-                name=name,
                 target="hh",
                 current_type="lin&steady",
                 dt=0.05,
@@ -220,14 +219,14 @@ def _sweep_specs(name: str, values: list[float]) -> dict[str, SimSpec]:
             "value",
             values,
         )
-    )
+    }
 
 
 def _run_named(
-    bundles: dict[str, SurrogateBundle], specs: dict[str, SimSpec], run_label: str
+    bundles: dict[str, SurrogateBundle], evals: dict[str, EvalSeries], run_label: str
 ) -> dict[SimKey, SimResult]:
-    """複数系列 (名前ごとの掃引展開済み specs) を一括シミュし run 表示名を固定する。"""
-    return run_results(specs, bundles, dict.fromkeys(bundles, run_label))
+    """複数系列 (系列名ごとの点列) を一括シミュし run 表示名を固定する。"""
+    return run_results(evals, bundles, dict.fromkeys(bundles, run_label))
 
 
 def _renamed(
@@ -237,9 +236,7 @@ def _renamed(
     out = {}
     for (label, run_id), result in results.items():
         new_label = label.replace(old_name, new_name, 1)
-        out[(new_label, run_id)] = dc_replace(
-            result, spec=dc_replace(result.spec, name=new_name)
-        )
+        out[(new_label, run_id)] = dc_replace(result, series=new_name)
     return out
 
 
@@ -274,9 +271,7 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     図になり、逆に参照先が手元に無い compare は error 図でなく**黙って落ちる**
     (宣言とのズレは呼び出し側の関心) = 計算と描画が切れている。"""
     renamed = {
-        ("読んだ系列", run_id): dc_replace(
-            result, spec=dc_replace(result.spec, name="読んだ系列")
-        )
+        ("読んだ系列", run_id): dc_replace(result, series="読んだ系列")
         for (_label, run_id), result in sindy_results.items()
     }
     report = {

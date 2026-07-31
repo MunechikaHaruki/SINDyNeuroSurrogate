@@ -9,11 +9,11 @@ from ..runs import SimKey, SimResult
 
 
 def series(results: dict[SimKey, SimResult]) -> list[str]:
-    """系列名 (`SimSpec.name`。掃引しても不変) を最初に現れた順で並べたもの。
+    """系列名 (`SimResult.series`。掃引しても不変) を最初に現れた順で並べたもの。
     掃引したエントリは複数 label (`name#0`, `name#1`, ...) が同じ名前へ集まる。"""
     seen: list[str] = []
     for _label, result in results.items():
-        name = result.spec.name
+        name = result.series
         if name not in seen:
             seen.append(name)
     return seen
@@ -22,18 +22,16 @@ def series(results: dict[SimKey, SimResult]) -> list[str]:
 def labels_of(results: dict[SimKey, SimResult], name: str) -> list[str]:
     """`name` の系列に属する label を掃引点の値順に並べたもの (掃引が無ければ 1 件)。"""
     labels = {
-        label for label, run_id in results if results[(label, run_id)].spec.name == name
+        label for label, run_id in results if results[(label, run_id)].series == name
     }
-    return sorted(
-        labels, key=lambda label: results[(label, None)].spec.sweep_value or 0.0
-    )
+    return sorted(labels, key=lambda label: results[(label, None)].point or 0.0)
 
 
 def run_ids_of(results: dict[SimKey, SimResult], name: str) -> list[str]:
     """`name` の系列で使われた run_id (原系を除く。与えた順)。"""
     seen: list[str] = []
     for label, run_id in results:
-        if run_id is None or results[(label, run_id)].spec.name != name:
+        if run_id is None or results[(label, run_id)].series != name:
             continue
         if run_id not in seen:
             seen.append(run_id)
@@ -60,6 +58,6 @@ def sources_of(results: dict[SimKey, SimResult], name: str) -> tuple[str, ...]:
         dict.fromkeys(
             str(r.source)
             for r in results.values()
-            if r.spec.name == name and r.source is not None
+            if r.series == name and r.source is not None
         )
     )
