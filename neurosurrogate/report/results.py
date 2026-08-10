@@ -3,12 +3,11 @@
 
 **run 軸を持ち込むのはここ**: `eval.EvalSeries` が持つ surrogate は 1 つで run_id を
 知らない。カタログ (`eval.SERIES`) に run ごとの surrogate を載せた系列を組むのは
-`series_matrix` ただ 1 つで、回して集めた結果 (`ResultSet.simulate`) も保存/読込を
-経由した結果 (`ResultSet.from_flat`) も同じ形に落ちる。
+`series_matrix` ただ 1 つで、その場で回す経路 (`ResultSet.simulate`) も永続化を
+経由する経路 (`scripts/mlflow_io.py`) も同じ組合せを通る。
 
-**描画側は dict を舐めない**: 「この系列の点は値順に何個で、どの run が居るか」を
-毎回引き直す代わりに、`SeriesView` が既に並べ終えたものを持つ。生のキー
-(`SimKey`) が要るのは永続化の境界 (`scripts/mlflow_io.py`) だけ。
+**点は識別子を持たない**: 保存の単位が 1 系列 = 1 評価 run なので、点の並びは常に
+`EvalSeries.points` が単一源。結果を「並べ直す」処理はどこにも無い。
 """
 
 from __future__ import annotations
@@ -21,25 +20,20 @@ from ..core.network import NeuronGraph
 from ..eval import EvalSeries, SimResult
 from ..surrogate.bundle import SurrogateBundle
 
-# (系列名, 点 index, run_id)。run_id=None は原系。**永続化の境界で使う平坦キー**で、
-# 点軸と run 軸を 1 つの文字列へ潰さないためだけに存在する (描画側は `SeriesView`)。
-SimKey = tuple[str, int, str | None]
-
 
 def series_matrix(
-    catalog: dict[str, dict], bundles: dict[str, SurrogateBundle]
+    catalog: dict[str, EvalSeries], bundles: dict[str, SurrogateBundle]
 ) -> list[tuple[str, EvalSeries, dict[str, EvalSeries]]]:
-    """カタログ (`eval.SERIES` = 系列名 → `EvalSeries` の構築引数) × run 軸 →
+    """カタログ (`eval.SERIES` = 系列名 → 素の `EvalSeries`) × run 軸 →
     (系列名, 原系, run_id → 置換系) の列。**run 軸を掛ける唯一の場所**。
 
     1 本も置換できない系列は落とす (回しても比較対象が無い)。回すのも保存するのも
     呼び出し側の関心で、ここは「どの組合せを回すか」だけを決める。
     """
     out = []
-    for name, kwargs in catalog.items():
-        original = EvalSeries(**kwargs)
+    for name, original in catalog.items():
         surrs = {
-            run_id: EvalSeries(**kwargs, surrogate=bundle)
+            run_id: original.with_surrogate(bundle)
             for run_id, bundle in bundles.items()
             if original.replaceable(bundle.meta)
         }
@@ -139,56 +133,21 @@ class ResultSet:
 
     @classmethod
     def simulate(
-        cls, catalog: dict[str, dict], bundles: dict[str, SurrogateBundle]
+        cls, catalog: dict[str, EvalSeries], bundles: dict[str, SurrogateBundle]
     ) -> ResultSet:
         """カタログ × run 軸を**その場で回して**集める (保存を経由しない経路)。
-        永続化した結果を読む経路は `from_flat`。"""
-        return cls(
-            {
-                name: SeriesView(
-                    name,
-                    original.simulate(),
-                    {rid: s.simulate() for rid, s in surrs.items()},
-                )
-                for name, original, surrs in series_matrix(catalog, bundles)
-            }
-        )
+        永続化した結果を読む経路は `scripts/mlflow_io.py`。
 
-    @classmethod
-    def from_flat(
-        cls,
-        flat: dict[SimKey, SimResult],
-        origins: dict[SimKey, str] | None = None,
-    ) -> ResultSet:
-        """永続化の境界 (`scripts/mlflow_io.py`) が持つ平坦な
-        `(系列名, 点 index, run_id) → SimResult` を両軸へ開き直す。
-
-        点は**掃引値の順**に並べ直す (保存順や点 index の振り方に依らない)。
-        `origins` は同じキーの「どの評価 run から読んだか」で、成果物の由来
-        (`meta.json`) に落とすためだけの副次情報 = 結果そのものには持たせない。
-        """
-        origins = origins or {}
+        原系は掃引の内容 (`EvalSeries.hash`) で共有する = 同じ掃引を宣言した系列が
+        2 つあっても原系のシミュは 1 度だけ (保存側の再利用と同じ鍵で効く)。"""
+        originals: dict[str, list[SimResult]] = {}
         out: dict[str, SeriesView] = {}
-        for name in dict.fromkeys(n for n, _p, _r in flat):
-            keys = sorted(
-                (p for n, p, r in flat if n == name and r is None),
-                key=lambda p: flat[(name, p, None)].point or 0.0,
-            )
-            run_ids = dict.fromkeys(
-                r for n, _p, r in flat if n == name and r is not None
-            )
+        for name, original, surrs in series_matrix(catalog, bundles):
+            if original.hash() not in originals:
+                originals[original.hash()] = original.simulate()
             out[name] = SeriesView(
                 name,
-                [flat[(name, p, None)] for p in keys],
-                {
-                    rid: [flat[(name, p, rid)] for p in keys]
-                    for rid in run_ids
-                    if all((name, p, rid) in flat for p in keys)
-                },
-                tuple(
-                    dict.fromkeys(
-                        origins[k] for k in flat if k[0] == name and k in origins
-                    )
-                ),
+                originals[original.hash()],
+                {rid: s.simulate() for rid, s in surrs.items()},
             )
         return cls(out)

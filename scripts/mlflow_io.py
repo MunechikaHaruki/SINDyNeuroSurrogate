@@ -1,12 +1,13 @@
 """MLflow I/O = **MLflow を知る唯一の場所**。2 つの experiment を持つ。
 
 - `TARGET_EXP` (学習): surrogate の pickle + meta.json を artifact に持つ run。
-- `EVAL_EXP` (評価): 1 run = 1 `SimSpec` = 1 波形。**親 run = 原系 / 子 run =
-  置換系**で、同じ刺激条件の原系と置換系が 1 グループになる (比較の単位が run 階層
-  そのもの)。原系は学習 run に依らないので刺激条件ごとに 1 本だけ作られ、学習 run
-  を増やしても複製されない。子は `tags.source_run_id` で学習 run を指す。
+- `EVAL_EXP` (評価): **1 run = 1 `EvalSeries`** = 掃引点の波形をまとめた 1 artifact。
+  原系の run (`kind=original`) と置換系の run (`kind=surrogate`) がフラットに並び、
+  置換系は `tags.original_hash` で自分の原系を、`tags.source_run_id` で学習 run を
+  名指す。原系は掃引の内容だけで同一性が決まるので、学習 run を増やしても複製
+  されない。
 
-再実行はシミュが決定的 (Euler、乱数なし) なことを使って `tags.spec_hash` 一致で
+再実行はシミュが決定的 (Euler、乱数なし) なことを使って `tags.series_hash` 一致で
 スキップする。`force=True` のときだけ回し直して新しい run を積む。
 """
 
@@ -14,7 +15,6 @@ import json
 import logging
 import os
 import tempfile
-from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from typing import cast
@@ -28,8 +28,8 @@ from mlflow.entities import Run
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
-from neurosurrogate.eval import EvalSeries, SimResult, SimSpec, simulate
-from neurosurrogate.report import ResultSet, SimKey, series_matrix
+from neurosurrogate.eval import EvalSeries, SimResult
+from neurosurrogate.report import ResultSet, SeriesView, series_matrix
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
@@ -167,12 +167,21 @@ def get_runs_df():
     return runs_df
 
 
-# --- 評価 experiment (1 run = 1 SimSpec) ------------------------------------------
+# --- 評価 experiment (1 run = 1 EvalSeries) ----------------------------------------
 
+# 評価結果だけを集める experiment。**1 run = 1 系列** (掃引点の波形を順に並べた
+# artifact 1 つ) で、中身は 2 種類が並ぶだけ:
+#
+#   kind=original  … 掃引の原系。surrogate に依存しないので `series_hash` で共有される
+#   kind=surrogate … その掃引を 1 つの学習 run の surrogate で回したもの
+#
+# 親子関係は張らない。置換系は `original_hash` で自分の原系を名指しするので、
+# 同じ原系を何本の置換系が参照しても run 階層は平坦なまま。点は run の中の並び順
+# そのもの (点ごとの run も点ごとの識別子も無い)。
 # smoke test は本番の評価結果を汚さない別 experiment へ (学習側の MLFLOW_EXPERIMENT
 # と同じ流儀)。
-EVAL_EXP = os.environ.get("MLFLOW_EVAL_EXPERIMENT", "eval")
-WAVE_FILE = "wave.joblib"  # 波形 artifact のファイル名 (1 run に 1 つ)
+EVAL_EXP = os.environ.get("MLFLOW_EVAL_EXPERIMENT", "eval_series")
+WAVES_FILE = "waves.joblib"  # 点の順に並べた波形列 (1 run = 1 系列 = 1 ファイル)
 WAVE_DTYPE = "float32"  # 保存精度 (表示にも指標にも十分で容量は半分)
 _KIND_ORIGINAL = "original"
 _KIND_SURROGATE = "surrogate"
@@ -185,12 +194,23 @@ def _eval_exp_id() -> str:
     return exp.experiment_id if exp else mlflow.create_experiment(EVAL_EXP)
 
 
-def _find_eval(spec: SimSpec, run_id: str | None) -> Run | None:
-    """同じ入力を同じ surrogate で回した評価 run (最新)。決定的なシミュなので、
+def _series_hash(series: EvalSeries, run_id: str | None) -> str:
+    """「この掃引をこの surrogate で既に回したか」の鍵。`EvalSeries.hash` は掃引の
+    内容だけ (surrogate を含まない) なので、run_id はここで組む = 原系は鍵が掃引だけに
+    なり、学習 run を増やしても共有される。"""
+    return series.hash() if run_id is None else f"{series.hash()}-{run_id[:8]}"
+
+
+def _find_eval(series: EvalSeries, run_id: str | None) -> Run | None:
+    """同じ掃引を同じ surrogate で回した評価 run (最新)。決定的なシミュなので、
     あれば回し直す必要はない。"""
+    return _by_series_hash(_series_hash(series, run_id))
+
+
+def _by_series_hash(series_hash: str) -> Run | None:
     found = mlflow.search_runs(
         experiment_ids=[_eval_exp_id()],
-        filter_string=f"tags.spec_hash = '{_eval_hash(spec, run_id)}'",
+        filter_string=f"tags.series_hash = '{series_hash}'",
         order_by=["attributes.start_time DESC"],
         max_results=1,
         output_format="list",
@@ -198,165 +218,145 @@ def _find_eval(spec: SimSpec, run_id: str | None) -> Run | None:
     return found[0] if found else None
 
 
-def _eval_name(series: str, point: int, n_points: int) -> str:
-    """評価 run の表示名。単発は系列名そのもの、掃引は `系列名#i` (点の並び順)。
-    **表示名の規約はここだけ** — キー (`SimKey`) は構造タプルのままで、これは
-    MLflow UI 上の見出しに過ぎない。"""
-    return series if n_points == 1 else f"{series}#{point}"
-
-
-def _log_eval(
-    key: SimKey,
-    result: SimResult,
+def _log_series(
     name: str,
+    series: EvalSeries,
+    results: list[SimResult],
+    run_id: str | None,
     source_run_id: str | None,
-    parent_id: str | None,
 ) -> str:
-    """1 SimResult を 1 評価 run へ。`spec` param が計算入力の単一源 (読み戻しは
-    ここから)、識別 (系列/点/run) は別 param、平坦化した param は MLflow UI での
-    絞り込み/比較用の索引。"""
-    series, point, run_id = key
-    spec = result.spec
-    with mlflow.start_run(experiment_id=_eval_exp_id(), run_name=name) as run:
+    """1 系列 (点列まるごと) を 1 評価 run へ。`series` param が掃引の単一源で、
+    読み戻しはそこからの `EvalSeries.attach` = 点ごとの識別子は保存しない。
+    平坦化した param は MLflow UI での絞り込み/比較用の索引。
+
+    run 名は同じ系列の原系と置換系が UI 上で並ぶので kind を添える (置換系はさらに
+    どの学習 run のものかを短縮 id で分ける)。**表示名でしかない** — 読み戻しは
+    `name` param と tag だけを見る。"""
+    kind = _KIND_ORIGINAL if run_id is None else f"{_KIND_SURROGATE}:{run_id[:8]}"
+    with mlflow.start_run(
+        experiment_id=_eval_exp_id(), run_name=f"{name} [{kind}]"
+    ) as run:
         mlflow.log_params(
             {
-                "spec": spec.key(),
-                "series": series,
-                "point_index": point,
-                "run_id": run_id or "",
-                "target": spec.target,
-                "current_type": spec.current_type,
-                "dt": spec.dt,
+                "series": json.dumps(series.to_dict(), sort_keys=True, default=str),
+                "name": name,
                 # MLflow の param は文字列 → None は "None" と書かれて読み戻しで
-                # 区別できない。空文字を「無し」の綴りに統一する (`run_id` と同じ)。
-                "axis": result.axis or "",
-                "point": "" if result.point is None else result.point,
-                **{f"cp.{k}": v for k, v in spec.current_params.items()},
+                # 区別できない。空文字を「無し」の綴りに統一する。
+                "run_id": run_id or "",
+                "axis": series.param or "",
+                "n_points": len(results),
+                "target": series.spec.target,
+                "current_type": series.spec.current_type,
+                "dt": series.spec.dt,
+                **{f"cp.{k}": v for k, v in series.spec.current_params.items()},
             }
         )
         mlflow.set_tags(
             {
-                "spec_hash": _eval_hash(spec, run_id),
-                "kind": _KIND_ORIGINAL if parent_id is None else _KIND_SURROGATE,
+                "series_hash": _series_hash(series, run_id),
+                "kind": _KIND_ORIGINAL if run_id is None else _KIND_SURROGATE,
+                **(
+                    {}
+                    if run_id is None
+                    else {"original_hash": _series_hash(series, None)}
+                ),
                 **({"source_run_id": source_run_id} if source_run_id else {}),
-                **({MLFLOW_PARENT_RUN_ID: parent_id} if parent_id else {}),
             }
         )
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / WAVE_FILE
+            path = Path(tmp) / WAVES_FILE
             joblib.dump(
-                result.dataset.map(lambda v: v.astype(WAVE_DTYPE), keep_attrs=True),
+                [
+                    r.dataset.map(lambda v: v.astype(WAVE_DTYPE), keep_attrs=True)
+                    for r in results
+                ],
                 path,
                 compress=1,  # float32 波形はほぼ非圧縮 → 高レベルは時間の無駄
             )
             mlflow.log_artifact(str(path))
-        logger.info("評価 run 保存: %s (%s)", name, run.info.run_id)
+        logger.info("評価 run 保存: %s [%s] (%s)", name, kind, run.info.run_id)
         return run.info.run_id
-
-
-def _eval_hash(spec: SimSpec, run_id: str | None) -> str:
-    """「同じ評価を既に回したか」のキー = 計算入力 + どの surrogate で回したか。
-    `SimSpec` は run を持たない (純粋な入力) ので、ここで組にして効かせる。"""
-    return spec.hash() if run_id is None else f"{spec.hash()}-{run_id[:8]}"
 
 
 def run_and_log(
     bundles: dict[str, SurrogateBundle],
-    catalog: dict[str, dict],
+    catalog: dict[str, EvalSeries],
     source_run_id: str,
     force: bool = False,
 ) -> list[str]:
-    """評価実行 + 評価 run 保存 (marimo の評価ボタンが呼ぶ唯一の関数)。原系を親、
-    置換系をその子として積む。既に同じ入力の run があればシミュごとスキップする
-    (`force=True` で回し直す)。返すのは保存した子 run の id。
+    """評価実行 + 評価 run 保存 (marimo の評価ボタンが呼ぶ唯一の関数)。系列ごとに
+    原系を 1 本 (既にあれば再利用 = **原系の遅延実行**) と、置換系を run ごとに 1 本
+    ずつ積む。既に同じ掃引の run があれば系列ごとスキップする (`force=True` で
+    回し直す)。返すのは保存した置換系 run の id。
 
-    run 軸を掛ける組合せは `report.series_matrix` が決める (描画側の
-    `ResultSet.simulate` と同じ単一源)。ここが足すのは保存の都合だけ: 点ごとに
-    スキップ判定が要るので `EvalSeries.simulate` (点列一括) でなく点単位で回す。"""
+    run 軸を掛ける組合せは `report.series_matrix` が決める (その場で回す側の
+    `ResultSet.simulate` と同じ単一源)。"""
     logged: list[str] = []
     for name, original, surrs in series_matrix(catalog, bundles):
-        parents = _log_originals(name, original, force)
-        for run_id, series in surrs.items():
-            for point, spec in enumerate(series.points):
-                if not force and _find_eval(spec, run_id):
-                    continue
-                logged.append(
-                    _log_eval(
-                        (name, point, run_id),
-                        replace(simulate(spec, series.surrogate), axis=series.param),
-                        _eval_name(name, point, len(series.points)),
-                        source_run_id,
-                        parents[point],
-                    )
-                )
+        pending = {
+            run_id: series
+            for run_id, series in surrs.items()
+            if force or not _find_eval(series, run_id)
+        }
+        if not pending:
+            continue
+        # 原系は置換系が 1 本でも要るときにだけ回す (無ければ保存もしない)。
+        if force or not _find_eval(original, None):
+            _log_series(name, original, original.simulate(), None, None)
+        for run_id, series in pending.items():
+            logged.append(
+                _log_series(name, series, series.simulate(), run_id, source_run_id)
+            )
     return logged
 
 
-def _log_originals(name: str, series: EvalSeries, force: bool) -> dict[int, str]:
-    """系列の原系を点ごとに 1 本ずつ (既にあれば再利用) → 点 index → 評価 run id。
-    置換系の親になる。"""
-    out: dict[int, str] = {}
-    for point, spec in enumerate(series.points):
-        found = None if force else _find_eval(spec, None)
-        out[point] = (
-            found.info.run_id
-            if found
-            else _log_eval(
-                (name, point, None),
-                replace(simulate(spec, None), axis=series.param),
-                _eval_name(name, point, len(series.points)),
-                None,
-                None,
-            )
-        )
-    return out
-
-
-def _result_of(run: Run) -> SimResult:
-    """評価 run → SimResult (波形 artifact を読む)。"""
+def _datasets_of(run: Run) -> list[xr.Dataset]:
+    """評価 run → 点の順に並んだ波形列 (artifact を読む)。"""
     with tempfile.TemporaryDirectory() as tmp:
         local = mlflow.artifacts.download_artifacts(
-            f"runs:/{run.info.run_id}/{WAVE_FILE}", dst_path=tmp
+            f"runs:/{run.info.run_id}/{WAVES_FILE}", dst_path=tmp
         )
-        dataset = cast(xr.Dataset, joblib.load(local))
-    return SimResult(
-        SimSpec.from_dict(json.loads(run.data.params["spec"])),
-        dataset,
-        axis=run.data.params["axis"] or None,
-    )
+        return cast(list[xr.Dataset], joblib.load(local))
+
+
+def _results_of(run: Run) -> tuple[str, EvalSeries, list[SimResult]]:
+    """評価 run → (系列名, 掃引, 点列の結果)。掃引の定義が run に載っているので、
+    点の並べ直しも点ごとの識別子も要らない (`EvalSeries.attach` が貼る)。"""
+    series = EvalSeries.from_dict(json.loads(run.data.params["series"]))
+    return run.data.params["name"], series, series.attach(_datasets_of(run))
 
 
 def load_eval_results(source_run_ids: list[str]) -> ResultSet:
-    """学習 run 群 (sweep 兄弟) が出した評価結果 → 描画層の `ResultSet`。子 run
-    (置換系) を引き、その親 run から原系を辿る = 原系が 1 本しか無くても run 軸の
-    全系列に対して同じ原系が付く。
+    """学習 run 群 (sweep 兄弟) が出した評価結果 → 描画層の `ResultSet`。
 
-    **平坦キーを組むのはここだけ**: `SimSpec` は識別を持たないので、別系列でも入力が
-    同じなら親 run は 1 本に共有される (その run の `series`/`axis` param は先に
-    回した方のもの)。読み戻し側では今引いている子の系列/点/軸に揃え、両軸へ開く
-    (点の並べ直しも含む) のは `ResultSet.from_flat` に任せる。`origins` は成果物の
-    由来 (`meta.json`) 用で、結果そのもの (`SimResult`) には持たせない。"""
-    flat: dict[SimKey, SimResult] = {}
-    origins: dict[SimKey, str] = {}
+    置換系の run を引き、それぞれが名指しする原系 (`original_hash`) を辿るだけ =
+    原系が 1 本しか無くても run 軸の全系列に同じ原系が付く。系列名が同じ run は
+    同じ `SeriesView` の列になる。`sources` は成果物の由来 (`meta.json`) 用で、
+    結果そのもの (`SimResult`) には持たせない。"""
+    points: dict[str, list[SimResult]] = {}
+    surrs: dict[str, dict[str, list[SimResult]]] = {}
+    sources: dict[str, dict[str, None]] = {}
     for source_run_id in source_run_ids:
-        for child in mlflow.search_runs(
+        for run in mlflow.search_runs(
             experiment_ids=[_eval_exp_id()],
             filter_string=f"tags.source_run_id = '{source_run_id}'",
             output_format="list",
         ):
-            series = child.data.params["series"]
-            point = int(child.data.params["point_index"])
-            result = _result_of(child)
-            key = (series, point, child.data.params["run_id"] or None)
-            flat[key] = result
-            origins[key] = child.info.run_id
-            if (series, point, None) not in flat:
-                parent = mlflow.get_run(child.data.tags[MLFLOW_PARENT_RUN_ID])
-                flat[(series, point, None)] = replace(
-                    _result_of(parent), axis=result.axis
-                )
-                origins[(series, point, None)] = parent.info.run_id
-    return ResultSet.from_flat(flat, origins)
+            name, _series, results = _results_of(run)
+            surrs.setdefault(name, {})[run.data.params["run_id"]] = results
+            sources.setdefault(name, {})[run.info.run_id] = None
+            if name not in points:
+                original = _by_series_hash(run.data.tags["original_hash"])
+                if original is None:
+                    raise ValueError(f"{name}: 原系の評価 run が見つからない")
+                points[name] = _results_of(original)[2]
+                sources[name][original.info.run_id] = None
+    return ResultSet(
+        {
+            name: SeriesView(name, points[name], surrs[name], tuple(sources[name]))
+            for name in surrs
+        }
+    )
 
 
 def _safe_meta(run_id: str) -> SurrogateMeta | None:

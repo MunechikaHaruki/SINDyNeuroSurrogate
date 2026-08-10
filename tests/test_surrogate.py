@@ -118,7 +118,7 @@ def _run_view(
     bundles: dict[str, SurrogateBundle], spec: SimSpec, series: str = "hh_dc"
 ) -> SeriesView:
     """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした 1 系列。"""
-    return ResultSet.simulate({series: {"spec": spec}}, bundles)[series]
+    return ResultSet.simulate({series: EvalSeries(spec=spec)}, bundles)[series]
 
 
 @pytest.fixture(scope="module")
@@ -175,12 +175,12 @@ def test_catalog_and_draw_json_are_self_consistent() -> None:
     構築でき、`draw.json` の `results`/`compare` が参照する系列名は `SERIES` に
     実在する。評価条件が型になった今、ズレるのは常に draw.json 側 (唯一残った
     設定ファイル) と特定できる。単発系列も「点 1 つ」として同じ経路を通る。"""
-    for kw in SERIES.values():
-        for spec in EvalSeries(**kw).points:
+    for series in SERIES.values():
+        for spec in series.points:
             assert len(spec.dataset().build_current()) > 0
     # 点軸: 単発は点 1 つ、掃引は宣言した点数だけ
-    assert len(EvalSeries(**SERIES["traub_soma_dc"]).points) == 1
-    assert len(EvalSeries(**SERIES["traub19_somastim"]).points) == 5
+    assert len(SERIES["traub_soma_dc"].points) == 1
+    assert len(SERIES["traub19_somastim"].points) == 5
 
     report = ReportSpec.load(Path(__file__).parents[1] / "scripts/conf/draw.json")
     names = set(SERIES)
@@ -189,19 +189,19 @@ def test_catalog_and_draw_json_are_self_consistent() -> None:
         assert set(comparison.evals) <= names
 
 
-def _sweep_specs(name: str, values: list[float]) -> dict[str, dict]:
-    """1 系列分のカタログ項目 (`EvalSeries` の構築引数)。"""
+def _sweep_specs(name: str, values: list[float]) -> dict[str, EvalSeries]:
+    """1 系列分のカタログ項目。"""
     return {
-        name: {
-            "spec": SimSpec(
+        name: EvalSeries(
+            spec=SimSpec(
                 target="hh",
                 current_type="lin&steady",
                 dt=0.05,
                 current_params={"duration": 30.0, "silence_duration": 0.0},
             ),
-            "param": "value",
-            "values": values,
-        }
+            param="value",
+            values=values,
+        )
     }
 
 

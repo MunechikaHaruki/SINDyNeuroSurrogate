@@ -52,7 +52,7 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
               figures/           # surrogate の自己記述 (評価結果を受け取らない = 置換シミュ前に描ける)。__init__.py=集約 (summary_df/closure_figs/preprocessor_figs/neuron_graph_figs/train_figs) / train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree
-  eval.py                        # 何をどう回すか (marimo/mlflow 非依存): SimSpec (純粋な計算入力) + simulate → SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) + EvalSeries (spec+param+values+surrogate の 1 掃引実験。points は派生、simulate() は引数なし) + 倉庫 EVALS/SERIES。run_id も表示名も出てこない
+  eval.py                        # 何をどう回すか (marimo/mlflow 非依存): SimSpec (純粋な計算入力) + simulate → SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) + EvalSeries (spec+param+values+surrogate の 1 掃引実験 = **保存の単位でもある**。points は派生、simulate() は引数なし、attach() で保存済み波形を点列へ貼り直す) + 倉庫 EVALS/SERIES。run_id も表示名も出てこない
   plotting.py                    # 描画プリミティブ (new_figure/place_legend/error_fig/collect/PanelSpec/TraceSpec/draw_engine/ArtifactEntries)。**唯一 機能で切った層** = ドメイン知識を入れない
   waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
             dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)
@@ -60,13 +60,13 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
             figures.py           # 波形/差分/相平面の図 + 電流プレビュー
             __init__.py          # 集約 (cell_figs / wave_report)
   report/                        # 結果ドメイン: 軸に開いて宣言に従い報告へ畳む。**ドメインを横断する唯一の層**
-            results.py           # series_matrix (run 軸を掛ける唯一の場所) + SeriesView (1 系列を点軸×run 軸に開いた並び) + ResultSet (simulate=その場で回す / from_flat=SimKey の平坦 dict を開き直す) + run_names
+            results.py           # series_matrix (run 軸を掛ける唯一の場所) + SeriesView (1 系列を点軸×run 軸に開いた並び) + ResultSet (simulate=その場で回す。原系は EvalSeries.hash 単位で共有) + run_names
             spec.py              # 描画宣言 draw.json → 型 (ReportSpec/DrawSpec/CompareSpec) + KIND_FUNCS/ALL_KINDS
             grid.py              # 軸に沿った図表: 点軸メトリクスの表と折れ線 + 波形格子 (行=run / 行=系列)
             save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ)
             build.py             # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
 scripts/  main.py                # Hydra エントリ
-          mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)。学習 experiment (surrogate) と評価 experiment (1 run = 1 SimSpec、親=原系/子=置換系、波形 artifact) の両方
+          mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)。学習 experiment (surrogate) と評価 experiment eval_series (**1 run = 1 EvalSeries** = 点列の波形 1 artifact。kind=original / kind=surrogate がフラットに並び、置換系は tags.original_hash で原系を名指す = 親子関係なし) の両方
           marimo.py              # notebook 本体 (run 選択 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
           poster_assets.py       # results/<dir> → docs/poster/result へ poster 使用分だけコピー
           conf/                  # 下記「設定ファイル」参照
@@ -81,8 +81,8 @@ results/  <保存名>/               # marimo 描画ボタンが書く図 + meta
   `meta` / `preprocessor` / `ansatz` の 3 ブロックで `SurrogateBundle.setup` の宛先と 1 対 1。
   `_test_*.yaml` はテスト専用 preset (tests は preset 名を指すだけ)。
 - 評価条件は設定ファイルを持たない → 素材 (1 条件) は `neurosurrogate/eval.py` の
-  `EVALS`、系列 (掃引) は同じ `eval.py` の `SERIES` (= `EvalSeries` の構築引数
-  `{spec, param, values}` の dict。回す側が `EvalSeries(**SERIES[name], surrogate=...)` と組む)。
+  `EVALS`、系列 (掃引) は同じ `eval.py` の `SERIES` (= surrogate を持たない素の
+  `EvalSeries` の dict。回す側が `SERIES[name].with_surrogate(bundle)` で run 軸を張る)。
   実験条件は滅多に変わらず、変えたら別の実験 = コードに焼いて差分に出す方が正しい。
 - `scripts/conf/draw.json` — 描画宣言のみ (計算入力と完全分離。結果が入力仕様を
   自分で持つので描画側は評価条件を読まない)。**唯一残った設定ファイル** = 図を

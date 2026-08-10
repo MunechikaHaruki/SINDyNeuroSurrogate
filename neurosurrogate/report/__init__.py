@@ -18,7 +18,6 @@ from .build import model_report as model_report
 from .build import render_report as render_report
 from .results import ResultSet as ResultSet
 from .results import SeriesView as SeriesView
-from .results import SimKey as SimKey
 from .results import run_names as run_names
 from .results import series_matrix as series_matrix
 from .save import SaveEntry as SaveEntry

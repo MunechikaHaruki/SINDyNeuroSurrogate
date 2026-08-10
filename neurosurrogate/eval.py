@@ -4,14 +4,18 @@
 
 **軸は点軸 (電流パラメータ) 1 本だけ**: `EvalSeries` が持つ surrogate は 1 つで、
 run_id という識別子はこのモジュールに一切現れない。run ごとに系列を作って回し、
-直積 (`report.SimKey` = `(系列名, 点 index, run_id)`) を組むのは結果を扱う層。
-2 つの軸を 1 箇所で同時に扱わないことが、この分割の目的。
+run 軸を掛けるのは結果を扱う層 (`report.ResultSet`)。2 つの軸を 1 箇所で同時に
+扱わないことが、この分割の目的。
+
+**`EvalSeries` は保存の単位でもある** (1 系列 = 1 評価 run)。点は `points` から
+決まる派生なので、点ごとの識別子 (どの系列の何番目か) はどこにも要らない:
+保存側は波形を点の順に並べて置き、読む側は `attach` で系列に貼り直す。
 
 **評価したい条件は型で宣言する** (設定ファイルを持たない = スキーマという型の弱い
 写しを二重に管理しない)。描画の宣言だけは設定ファイル `scripts/conf/draw.json` に
 残る — あちらは図を調整するたびに書き換える対象で性格が違う。
 
-**表示名も永続化も関心でない**: 凡例や図の見出しは描画層 (`metrics`)、結果の保存/
+**表示名も関心でない**: 凡例や図の見出しは結果を扱う層 (`report`)、結果の保存/
 読込は MLflow の評価 experiment (`scripts/mlflow_io.py`) が持つ。
 """
 
@@ -35,6 +39,13 @@ from .surrogate.bundle import SurrogateBundle
 from .surrogate.meta import SurrogateMeta
 from .surrogate.replace import apply_surrogate
 from .surrogate.replace import replaceable as node_replaceable
+
+
+def _short_hash(key: str) -> str:
+    """正規化文字列 → 短縮ハッシュ。「同じものを既に回したか」を引く鍵の作り方を
+    `SimSpec` と `EvalSeries` で揃える (どちらも完全な仕様を別に持つので短くてよい)。"""
+    return hashlib.sha1(key.encode()).hexdigest()[:8]
+
 
 # --- 仕様 --------------------------------------------------------------------------
 
@@ -80,7 +91,7 @@ class SimSpec:
     def hash(self) -> str:
         """`key()` の短縮ハッシュ。保存側が「同じ入力を既に回したか」を引くための
         キー (完全な仕様は別に持つので、衝突しない長さがあれば足りる)。"""
-        return hashlib.sha1(self.key().encode()).hexdigest()[:8]
+        return _short_hash(self.key())
 
     @property
     def net(self) -> NeuronGraph:
@@ -187,13 +198,43 @@ class EvalSeries:
 
     **run 軸は畳み込まない**: 持つのは surrogate 1 つだけで、run_id という識別子は
     この型にも このモジュールにも無い。複数 run を回すのは呼び出し側が run ごとに
-    `dataclasses.replace(series, surrogate=...)` した系列を回すこと。
+    `with_surrogate` した系列を回すこと。
+
+    **保存の単位でもある**: 1 系列 = 1 評価 run (点列を丸ごと 1 artifact に持つ)
+    なので、「同じ掃引を既に回したか」を引く鍵 (`hash`) と往復の形 (`to_dict` /
+    `from_dict`) をこの型が持つ。surrogate は往復に含まない (置換器は学習 run 側の
+    成果物で、系列はどれで回したかを run_id で名乗る)。
     """
 
     spec: SimSpec
     param: str | None = None  # 掃引する電流パラメータ名 (None=単発)。図の x 軸
     values: Sequence[float] = ()  # 掃引点の値列 (等間隔でなくてもよい)
     surrogate: SurrogateBundle | None = None  # 置換器 (None=原系)
+
+    def with_surrogate(self, surrogate: SurrogateBundle | None) -> EvalSeries:
+        """置換器だけ差し替えた同じ掃引 (カタログの素材 → run 軸の 1 本)。"""
+        return dc_replace(self, surrogate=surrogate)
+
+    def to_dict(self) -> dict:
+        """永続化 (評価 run の param) が持ち回る形 = 掃引の定義そのもの。"""
+        return {
+            "spec": self.spec.to_dict(),
+            "param": self.param,
+            "values": [float(v) for v in self.values],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Self:
+        return cls(
+            spec=SimSpec.from_dict(d["spec"]),
+            param=d["param"] or None,
+            values=[float(v) for v in d["values"]],
+        )
+
+    def hash(self) -> str:
+        """**同じ掃引を既に回したか**の鍵 (surrogate は含まない = 原系の再利用が
+        これ 1 本で効く)。置換系は呼び出し側がここに run_id を組む。"""
+        return _short_hash(json.dumps(self.to_dict(), sort_keys=True, default=str))
 
     @property
     def points(self) -> list[SimSpec]:
@@ -222,28 +263,38 @@ class EvalSeries:
             for spec in self.points
         ]
 
+    def attach(self, datasets: Sequence[xr.Dataset]) -> list[SimResult]:
+        """保存済みの波形列 → 点列の `SimResult` (**再シミュ無しの `simulate`**)。
+
+        点の並びと各点の計算入力は `points` が単一源 = 波形さえ順に保存してあれば
+        点ごとの識別子を持ち回らずに復元できる。"""
+        return [
+            SimResult(spec, ds, axis=self.param)
+            for spec, ds in zip(self.points, datasets, strict=True)
+        ]
+
 
 # --- カタログ (この研究で回したい系列) ------------------------------------------------
 
 # **系列名の単一源**。素材は `eval.EVALS` から名前で引き、ここで軸と点を与える
-# (単発も「点 1 つの系列」として同じ経路を通る)。中身は `EvalSeries` の構築引数
-# そのもので、回す側が surrogate を足して `EvalSeries(**SERIES[name],
-# surrogate=...)` と組む = カタログ自体は surrogate を知らない素材のまま。
-SERIES: dict[str, dict] = {
-    "traub_soma_dc": {"spec": EVALS["traub_soma_dc"]},
-    "traub19_somastim": {
-        "spec": EVALS["traub19_somastim"],
-        "param": "value",
-        "values": np.linspace(0.0, 10.0, 5),
-    },
-    "traub19_dendstim": {
-        "spec": EVALS["traub19_dendstim"],
-        "param": "value",
-        "values": np.linspace(0.0, 10.0, 5),
-    },
-    "traub19_pulse_freq": {
-        "spec": EVALS["traub19_pulse_freq"],
-        "param": "frequency",
-        "values": np.linspace(10.0, 50.0, 5),
-    },
+# (単発も「点 1 つの系列」として同じ経路を通る)。載るのは surrogate を持たない
+# 素の `EvalSeries` = カタログは原系の掃引そのもので、回す側が run ごとに
+# `with_surrogate` して run 軸を張る。
+SERIES: dict[str, EvalSeries] = {
+    "traub_soma_dc": EvalSeries(spec=EVALS["traub_soma_dc"]),
+    "traub19_somastim": EvalSeries(
+        spec=EVALS["traub19_somastim"],
+        param="value",
+        values=np.linspace(0.0, 10.0, 5).tolist(),
+    ),
+    "traub19_dendstim": EvalSeries(
+        spec=EVALS["traub19_dendstim"],
+        param="value",
+        values=np.linspace(0.0, 10.0, 5).tolist(),
+    ),
+    "traub19_pulse_freq": EvalSeries(
+        spec=EVALS["traub19_pulse_freq"],
+        param="frequency",
+        values=np.linspace(10.0, 50.0, 5).tolist(),
+    ),
 }

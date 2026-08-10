@@ -18,7 +18,7 @@ def _():
         sweep_siblings,
     )
 
-    from neurosurrogate.eval import SERIES, EvalSeries
+    from neurosurrogate.eval import SERIES
     from neurosurrogate.report import load_and_render_report
 
     CONF_DIR = Path(__file__).resolve().parent / "conf"
@@ -40,7 +40,6 @@ def _():
         RESULT_DIR,
         SERIES,
         STYLE_DIR,
-        EvalSeries,
         load_and_render_report,
         load_bundles,
         load_eval_results,
@@ -66,7 +65,7 @@ def _(ALL_PRESETS, mo, runs_df):
 
 
 @app.cell
-def _(ALL_PRESETS, SERIES, EvalSeries, mo, preset, runs_df):
+def _(ALL_PRESETS, SERIES, mo, preset, runs_df):
     # marimo に残す唯一の「入力」= run を 1 件選ぶだけ。適用先 / sweep 対象 (兄弟 run)
     # は選択後に自動決定。preset で絞り、宣言された適用先 (SERIES の点の target) の
     # どれかへ**実際に置換できる** 代表 run (hydra sweep 親/単発 = parent_id 欠損)
@@ -76,7 +75,7 @@ def _(ALL_PRESETS, SERIES, EvalSeries, mo, preset, runs_df):
         runs_df if preset == ALL_PRESETS else runs_df[runs_df["preset"] == preset]
     )
     usable_mask = in_preset["meta"].map(
-        lambda m: any(EvalSeries(**kw).replaceable(m) for kw in SERIES.values())
+        lambda m: any(s.replaceable(m) for s in SERIES.values())
     )
     reps = in_preset[usable_mask & in_preset["parent_id"].isna()]
     runs = reps[["tags.mlflow.runName", "comp_type", "run_id"]]
