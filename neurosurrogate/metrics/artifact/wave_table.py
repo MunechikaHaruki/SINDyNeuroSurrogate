@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from .. import select
 from ._internal.wave import (
     DynamicMetrics,
     diff_or_nan,
@@ -23,8 +22,7 @@ from ._internal.wave import (
 )
 
 if TYPE_CHECKING:
-    from ...eval import SimResult
-    from ..select import SimKey
+    from ..results import SeriesView
 
 
 def _row(name: str, o: float, s: float, col: str = "metric") -> dict:
@@ -52,22 +50,19 @@ def spike_features_df(
 
 
 def metrics_df(
-    results: dict[SimKey, SimResult],
+    view: SeriesView,
     names: dict[str, str],
-    name: str,
     comp_name: str,
     metric_key: str,
 ) -> pd.DataFrame:
-    """`name` の系列に沿った metric の DataFrame (列=run 軸、列名は `names` の
+    """系列の点軸に沿った metric の DataFrame (列=run 軸、列名は `names` の
     run_id → 表示名)。原系の値は run に依らないので `original` 列 1 本へ畳む。"""
-    run_ids = select.run_ids_of(results, name)
+    comp_id = view.net.name_to_idx(comp_name)
     rows: list[dict] = []
-    for point in select.points_of(results, name):
-        orig = results[(name, point, None)]
-        comp_id = orig.spec.net.name_to_idx(comp_name)
+    for index, orig in enumerate(view.points):
         row: dict = {"point": orig.point}
-        for run_id in run_ids:
-            o, s = select.pair(results, name, point, run_id)
+        for run_id in view.run_ids:
+            o, s = view.pair(index, run_id)
             value, orig_value = extract_metric(dm_of(o, s, comp_id), metric_key)
             row[names[run_id]] = value
             if orig_value is not None:

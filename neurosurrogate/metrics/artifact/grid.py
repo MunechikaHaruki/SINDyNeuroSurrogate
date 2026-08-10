@@ -2,8 +2,8 @@
 取る波形格子 2 種 (行=run / 行=系列)。
 
 格子の骨格は `_grid_fig` 1 本で、2 種の違いは**行の組み方だけ** (`_Row` 列を作る
-side)。系列名・run_id 列は `metrics.select` が結果 dict から引く = 呼び出し側で
-作り直さない。marimo 非依存。
+side)。点軸/run 軸に開いた並びは `metrics.results.SeriesView` が既に持つ = 図の側で
+組み直さない。marimo 非依存。
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from matplotlib.figure import Figure
 from ...core import access
 from ...core.diverge import diverged
 from ...neurons import currents
-from .. import select
 from ._internal.engine import new_figure, place_legend
 from .wave_table import metrics_df
 
@@ -25,30 +24,27 @@ if TYPE_CHECKING:
     import xarray as xr
     from matplotlib.axes import Axes
 
-    from ...eval import SimResult
-    from ..select import SimKey
+    from ..results import SeriesView
 
 
 def metric_fig(
-    results: dict[SimKey, SimResult],
+    view: SeriesView,
     names: dict[str, str],
-    name: str,
     comp_name: str,
     metric_key: str,
     ylim: tuple[float, float] | None = None,
 ) -> Figure:
     """点軸に沿ったメトリクス折れ線 (Original + 各 run)。`names` は run_id → 表示名。
     marimo 非依存。"""
-    data = metrics_df(results, names, name, comp_name, metric_key)
-    run_ids = select.run_ids_of(results, name)
-    axis = results[(name, select.points_of(results, name)[0], None)].axis or "point"
+    data = metrics_df(view, names, comp_name, metric_key)
+    axis = view.axis or "point"
     fig = new_figure()
     ax = fig.subplots()
     if "original" in data.columns:
         ax.plot(data["point"], data["original"], "k-o", label="Original", zorder=3)
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for idx, run_id in enumerate(run_ids):
+    for idx, run_id in enumerate(view.run_ids):
         ax.plot(
             data["point"],
             data[names[run_id]],
@@ -163,49 +159,31 @@ def _grid_fig(
     return fig
 
 
-def _header(
-    results: dict[SimKey, SimResult], name: str
-) -> list[tuple[float | None, xr.Dataset]]:
+def _header(view: SeriesView) -> list[tuple[float | None, xr.Dataset]]:
     """列 (点) の見出しと I_ext 行に使う原系。"""
-    return [
-        (results[(name, point, None)].point, results[(name, point, None)].dataset)
-        for point in select.points_of(results, name)
-    ]
+    return [(r.point, r.dataset) for r in view.points]
 
 
-def trace_grid_fig(
-    results: dict[SimKey, SimResult],
-    names: dict[str, str],
-    name: str,
-    comp_name: str,
-) -> Figure:
-    """1 系列を run 軸で開いた波形格子 (行=run、セルはその run 1 本だけ重ねる)。
-    `names` は run_id → 表示名。"""
-    points = select.points_of(results, name)
-    run_ids = select.run_ids_of(results, name)
-    comp_id = results[(name, points[0], None)].spec.net.name_to_idx(comp_name)
-    rows = [
-        _Row(
-            comp_id,
-            [
-                (
-                    results[(name, point, None)].dataset,
-                    {names[run_id]: results[(name, point, run_id)].dataset},
-                )
-                for point in points
-            ],
-        )
-        for run_id in run_ids
-    ]
-    axis_name = results[(name, points[0], None)].axis
-    return _grid_fig(_header(results, name), rows, axis_name)
+def _run_row(view: SeriesView, run_id: str, label: str, comp_id: int) -> _Row:
+    """1 run を 1 行に開く (セルは原系 + その run 1 本)。"""
+    return _Row(
+        comp_id,
+        [
+            (orig.dataset, {label: surr.dataset})
+            for orig, surr in zip(view.points, view.surrs[run_id], strict=True)
+        ],
+    )
+
+
+def trace_grid_fig(view: SeriesView, names: dict[str, str], comp_name: str) -> Figure:
+    """1 系列を run 軸で開いた波形格子 (行=run)。`names` は run_id → 表示名。"""
+    comp_id = view.net.name_to_idx(comp_name)
+    rows = [_run_row(view, rid, names[rid], comp_id) for rid in view.run_ids]
+    return _grid_fig(_header(view), rows, view.axis)
 
 
 def compare_grid_fig(
-    results: dict[SimKey, SimResult],
-    run_names: dict[str, str],
-    names: list[str],
-    comp_name: str,
+    views: list[SeriesView], names: dict[str, str], comp_name: str
 ) -> Figure:
     """複数の系列を並べた波形格子 (行=系列、セルは先頭 run 1 本だけ)。
 
@@ -213,24 +191,13 @@ def compare_grid_fig(
     1 回だけ描く (点数が揃わなければ `_grid_fig` が raise)。run 軸は先頭 run
     のみ — 子まで重ねると比較の主眼 (刺激位置差) が run 差に埋もれる。
     """
-    first_name = names[0]
-    rows = []
-    for name in names:
-        points = select.points_of(results, name)
-        run_id = select.run_ids_of(results, name)[0]
-        comp_id = results[(name, points[0], None)].spec.net.name_to_idx(comp_name)
-        rows.append(
-            _Row(
-                comp_id,
-                [
-                    (
-                        results[(name, point, None)].dataset,
-                        {run_names[run_id]: results[(name, point, run_id)].dataset},
-                    )
-                    for point in points
-                ],
-            )
+    rows = [
+        _run_row(
+            view,
+            view.run_ids[0],
+            names[view.run_ids[0]],
+            view.net.name_to_idx(comp_name),
         )
-    first_point = select.points_of(results, first_name)[0]
-    axis_name = results[(first_name, first_point, None)].axis
-    return _grid_fig(_header(results, first_name), rows, axis_name)
+        for view in views
+    ]
+    return _grid_fig(_header(views[0]), rows, views[0].axis)

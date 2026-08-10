@@ -29,7 +29,7 @@ from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
 from neurosurrogate.eval import EvalSeries, SimResult, SimSpec, simulate
-from neurosurrogate.metrics.select import SimKey
+from neurosurrogate.metrics.results import ResultSet, SimKey, series_matrix
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
@@ -104,7 +104,7 @@ def load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
 
 def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
     """run_id 列 → run_id→surrogate。他層は表示名でなく **run_id で** surrogate を
-    引く (表示名が要る描画層は `metrics.select.run_names` で解く)。"""
+    引く (表示名が要る描画層は `metrics.results.run_names` で解く)。"""
     return dict(zip(run_ids, load_runs(run_ids), strict=True))
 
 
@@ -270,19 +270,13 @@ def run_and_log(
     置換系をその子として積む。既に同じ入力の run があればシミュごとスキップする
     (`force=True` で回し直す)。返すのは保存した子 run の id。
 
-    **run 軸を掛けるのはここ**: `catalog` (`runs.SERIES`) の各系列に run ごとの
-    surrogate を載せて 1 本ずつ回し、`(系列名, 点 index, run_id)` のキーで保存する。
-    点ごとにスキップ判定が要るので `EvalSeries.simulate` (点列一括) でなく点単位で
-    回す。"""
+    run 軸を掛ける組合せは `metrics.results.series_matrix` が決める (描画側の
+    `ResultSet.simulate` と同じ単一源)。ここが足すのは保存の都合だけ: 点ごとに
+    スキップ判定が要るので `EvalSeries.simulate` (点列一括) でなく点単位で回す。"""
     logged: list[str] = []
-    for name, kwargs in catalog.items():
-        original = EvalSeries(**kwargs)
-        run_ids = [rid for rid, b in bundles.items() if original.replaceable(b.meta)]
-        if not run_ids:
-            continue
+    for name, original, surrs in series_matrix(catalog, bundles):
         parents = _log_originals(name, original, force)
-        for run_id in run_ids:
-            series = EvalSeries(**kwargs, surrogate=bundles[run_id])
+        for run_id, series in surrs.items():
             for point, spec in enumerate(series.points):
                 if not force and _find_eval(spec, run_id):
                     continue
@@ -329,19 +323,21 @@ def _result_of(run: Run) -> SimResult:
         SimSpec.from_dict(json.loads(run.data.params["spec"])),
         dataset,
         axis=run.data.params["axis"] or None,
-        eval_run_id=run.info.run_id,
     )
 
 
-def load_eval_results(source_run_ids: list[str]) -> dict[SimKey, SimResult]:
-    """学習 run 群 (sweep 兄弟) が出した評価結果 → `SimKey → SimResult`。子 run
+def load_eval_results(source_run_ids: list[str]) -> ResultSet:
+    """学習 run 群 (sweep 兄弟) が出した評価結果 → 描画層の `ResultSet`。子 run
     (置換系) を引き、その親 run から原系を辿る = 原系が 1 本しか無くても run 軸の
     全系列に対して同じ原系が付く。
 
-    **キーは子の param から組む**: `SimSpec` は識別を持たないので、別系列でも入力が
+    **平坦キーを組むのはここだけ**: `SimSpec` は識別を持たないので、別系列でも入力が
     同じなら親 run は 1 本に共有される (その run の `series`/`axis` param は先に
-    回した方のもの)。読み戻し側では今引いている子の系列/点/軸に揃える。"""
-    out: dict[SimKey, SimResult] = {}
+    回した方のもの)。読み戻し側では今引いている子の系列/点/軸に揃え、両軸へ開く
+    (点の並べ直しも含む) のは `ResultSet.from_flat` に任せる。`origins` は成果物の
+    由来 (`meta.json`) 用で、結果そのもの (`SimResult`) には持たせない。"""
+    flat: dict[SimKey, SimResult] = {}
+    origins: dict[SimKey, str] = {}
     for source_run_id in source_run_ids:
         for child in mlflow.search_runs(
             experiment_ids=[_eval_exp_id()],
@@ -351,13 +347,16 @@ def load_eval_results(source_run_ids: list[str]) -> dict[SimKey, SimResult]:
             series = child.data.params["series"]
             point = int(child.data.params["point_index"])
             result = _result_of(child)
-            out[(series, point, child.data.params["run_id"] or None)] = result
-            if (series, point, None) not in out:
+            key = (series, point, child.data.params["run_id"] or None)
+            flat[key] = result
+            origins[key] = child.info.run_id
+            if (series, point, None) not in flat:
                 parent = mlflow.get_run(child.data.tags[MLFLOW_PARENT_RUN_ID])
-                out[(series, point, None)] = replace(
+                flat[(series, point, None)] = replace(
                     _result_of(parent), axis=result.axis
                 )
-    return out
+                origins[(series, point, None)] = parent.info.run_id
+    return ResultSet.from_flat(flat, origins)
 
 
 def _safe_meta(run_id: str) -> SurrogateMeta | None:

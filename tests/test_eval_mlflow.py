@@ -63,26 +63,24 @@ def test_eval_runs_round_trip_without_resimulating(
     logged = mlflow_io.run_and_log({RUN_ID: sindy}, evals, RUN_ID)
     assert len(logged) == 1  # 返すのは子 (置換系) だけ = 原系は親として 1 本
 
-    loaded = mlflow_io.load_eval_results([RUN_ID])
-    assert set(loaded) == {("hh_dc", 0, None), ("hh_dc", 0, RUN_ID)}
+    view = mlflow_io.load_eval_results([RUN_ID])["hh_dc"]
+    assert view.run_ids == [RUN_ID]
+    orig, surr = view.pair(0, RUN_ID)
     # 入力仕様が往復し、そこから dataset を復元できる
-    assert (
-        loaded[("hh_dc", 0, RUN_ID)].spec.dataset().model_name
-        == evals["hh_dc"]["spec"].target
-    )
+    assert surr.spec.dataset().model_name == evals["hh_dc"]["spec"].target
     # 単発 (掃引軸なし) は軸が無いまま戻る (param は文字列なので "None" にならない)
-    assert loaded[("hh_dc", 0, None)].axis is None
-    assert loaded[("hh_dc", 0, None)].point is None
+    assert (view.axis, orig.point) == (None, None)
+    # 由来 (どの評価 run から読んだか) は結果でなく `SeriesView` 側が持つ
+    assert len(view.sources) == 2
     # 波形は float32 で往復し、原系/置換系はそれぞれの run に入っている
     # (原系は surrogate 非依存なので回し直しても一致する)
     np.testing.assert_allclose(
-        access.potential(loaded[("hh_dc", 0, None)].dataset, 0),
+        access.potential(orig.dataset, 0),
         access.potential(simulate(evals["hh_dc"]["spec"], None).dataset, 0),
         rtol=1e-5,
     )
     assert not np.allclose(
-        access.potential(loaded[("hh_dc", 0, RUN_ID)].dataset, 0),
-        access.potential(loaded[("hh_dc", 0, None)].dataset, 0),
+        access.potential(surr.dataset, 0), access.potential(orig.dataset, 0)
     )
 
     # シミュは決定的 → 同じ入力の 2 度目はスキップ (spec_hash 一致)
@@ -97,9 +95,5 @@ def test_eval_runs_round_trip_without_resimulating(
         output_format="list",
     )
     assert len(originals) == 1
-    both = mlflow_io.load_eval_results([RUN_ID, "OTHER"])
-    assert set(both) == {
-        ("hh_dc", 0, None),
-        ("hh_dc", 0, RUN_ID),
-        ("hh_dc", 0, "OTHER"),
-    }
+    both = mlflow_io.load_eval_results([RUN_ID, "OTHER"])["hh_dc"]
+    assert (len(both.points), both.run_ids) == (1, [RUN_ID, "OTHER"])

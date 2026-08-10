@@ -51,8 +51,9 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
-  eval.py                        # 何をどう回すか (marimo/mlflow 非依存): SimSpec (純粋な計算入力) + simulate → SimResult (spec+波形) + EvalSeries (spec+param+values+surrogate の 1 掃引実験。points は派生、simulate() は引数なし) + 倉庫 EVALS/SERIES。run_id も表示名も出てこない
-  metrics/  select.py            # 結果の集まり: SimKey=(系列名, 点 index, run_id) + run_results (run 軸を掛ける唯一の場所) + 群選択 + run_names (表示名解決)
+  eval.py                        # 何をどう回すか (marimo/mlflow 非依存): SimSpec (純粋な計算入力) + simulate → SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) + EvalSeries (spec+param+values+surrogate の 1 掃引実験。points は派生、simulate() は引数なし) + 倉庫 EVALS/SERIES。run_id も表示名も出てこない
+  metrics/  results.py           # 結果の集まり: series_matrix (run 軸を掛ける唯一の場所) + SeriesView (1 系列を点軸×run 軸に開いた並び。描画層はこれだけ見る) + ResultSet (simulate=その場で回す / from_flat=SimKey の平坦 dict を開き直す) + run_names (表示名解決)
+            spec.py              # 描画宣言 draw.json → 型 (ReportSpec/DrawSpec/CompareSpec)。ALL_KINDS もここ
             report.py            # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
             save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ)
             artifact/__init__.py # 外部公開 API (Figure/DataFrame を返す集約関数のみ: cell_figs/closure_figs/preprocessor_figs/neuron_graph_figs/train_figs/wave_report + grid.py の re-export)
@@ -84,14 +85,15 @@ results/  <保存名>/               # marimo 描画ボタンが書く図 + meta
   実験条件は滅多に変わらず、変えたら別の実験 = コードに焼いて差分に出す方が正しい。
 - `scripts/conf/draw.json` — 描画宣言のみ (計算入力と完全分離。結果が入力仕様を
   自分で持つので描画側は評価条件を読まない)。**唯一残った設定ファイル** = 図を
-  調整するたびに書き換える対象だから設定のまま。`default` (グローバル設定は
-  `plt_style` のみ。`eval_comp` 等は適用先ごとに違うので既定を持たせない) /
+  調整するたびに書き換える対象だから設定のまま。グローバル既定は持たない
+  (`eval_comp` 等は適用先ごとに違う。描画スタイルは marimo 側の定数)。
   `results` (空=手元の結果を全部描く既定。非空なら列挙した label だけへ絞り込み。
   1件 = `{"eval": label, ...DrawSpec のキー}`。override でなく label ごとに完結する
   宣言) / `compare` (既に回した結果を label 参照して 1 枚の格子に並べる。`eval_comp`
   は compare 自身が持つ) / `kinds` (保存する図/表の種類の絞り込み。省略時は全種類。
-  種類名は `ReportSpec.ALL_KINDS`)。`ReportSpec.from_dict` が唯一の入口で、以降は型
-  (`DrawSpec`/`ResultSpec`/`CompareSpec`) で渡す。
+  種類名は `metrics/spec.py` の `ALL_KINDS`)。`ReportSpec.from_dict`/`.load` が唯一の
+  入口で、未知のキーはそこで落ちる。以降は型 (`DrawSpec`/`CompareSpec`) で渡し、
+  文字列キーの dict は出てこない。
 - `scripts/conf/style/*.mplstyle` — matplotlib スタイル (paper / presentation)。
 
 ## Agent skills

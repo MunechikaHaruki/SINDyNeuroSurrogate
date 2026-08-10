@@ -143,19 +143,16 @@ EVALS: dict[str, SimSpec] = {
 class SimResult:
     """1 シミュの結果 = 入力 (`SimSpec`) + 波形。`simulate` の返り値。
 
-    **どこの何だったか (系列名 / 点 index / どの run) は持たない**: 系列の中の位置は
-    `EvalSeries.simulate` が返す並び順、run はそれを呼んだ側が知っている。結果を
-    集めて軸を張るのは結果を扱う層 (`metrics.select.SimKey`) の仕事。"""
+    **どこの何だったか (系列名 / 点 index / どの run / どこに保存されたか) は
+    持たない**: 系列の中の位置は `EvalSeries.simulate` が返す並び順、run はそれを
+    呼んだ側が知っている。結果を集めて軸を張るのは結果を扱う層
+    (`metrics.results.SeriesView`)、保存先の id は永続化層の関心。"""
 
     spec: SimSpec
     dataset: xr.Dataset
     # 系列の中で振られていた電流パラメータ名 (単発 / 系列の外で回した = None)。1 シミュ
     # には無い情報なので `EvalSeries.simulate` が書き足す欄で、図の x 軸に使う。
     axis: str | None = None
-    # この波形を読み出した評価 run の id (**読み戻した結果だけが持つ**。回した直後の
-    # 結果はまだどこにも保存されていない = None)。図の `meta.json` に「どの評価 run
-    # から描いたか」を残すためだけに使う。
-    eval_run_id: str | None = None
 
     @property
     def point(self) -> float | None:

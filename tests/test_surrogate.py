@@ -5,7 +5,6 @@ Hydra プリセットを実設定源として読み、UI/実験ログを介さ�
 短縮電流だけ固定したテスト専用プリセット) に置き、テスト側は override しない。
 """
 
-import json
 from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
@@ -21,7 +20,7 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.eval import SERIES, EvalSeries, SimResult, SimSpec
+from neurosurrogate.eval import SERIES, EvalSeries, SimSpec
 from neurosurrogate.metrics.artifact import (
     cell_figs,
     compare_grid_fig,
@@ -37,14 +36,9 @@ from neurosurrogate.metrics.artifact._internal.wave import (
 )
 from neurosurrogate.metrics.artifact.cell import panels_simple
 from neurosurrogate.metrics.artifact.model import feature_tex, tex
-from neurosurrogate.metrics.report import (
-    DEFAULT_DRAW,
-    draw_for,
-    eval_report,
-    metric_ylim,
-    parse_report,
-)
-from neurosurrogate.metrics.select import SimKey, run_results
+from neurosurrogate.metrics.report import eval_report
+from neurosurrogate.metrics.results import ResultSet, SeriesView
+from neurosurrogate.metrics.spec import CompareSpec, DrawSpec, ReportSpec
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
@@ -120,17 +114,17 @@ def _spec_of(bundle: SurrogateBundle) -> SimSpec:
     )
 
 
-def _run_results(
+def _run_view(
     bundles: dict[str, SurrogateBundle], spec: SimSpec, series: str = "hh_dc"
-) -> dict[SimKey, SimResult]:
-    """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした結果。"""
-    return run_results({series: {"spec": spec}}, bundles)
+) -> SeriesView:
+    """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした 1 系列。"""
+    return ResultSet.simulate({series: {"spec": spec}}, bundles)[series]
 
 
 @pytest.fixture(scope="module")
-def sindy_results(sindy: SurrogateBundle) -> dict[SimKey, SimResult]:
-    """単発 = 点 1 つ・run 1 本のフラット結果。"""
-    return _run_results({"r0": sindy}, _spec_of(sindy))
+def sindy_view(sindy: SurrogateBundle) -> SeriesView:
+    """単発 = 点 1 つ・run 1 本の系列。"""
+    return _run_view({"r0": sindy}, _spec_of(sindy))
 
 
 @pytest.fixture(scope="module")
@@ -148,31 +142,25 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
-    results = _run_results({"r0": surrogate}, _spec_of(surrogate))
-    orig = results[("hh_dc", 0, None)]
-    surr = results[("hh_dc", 0, "r0")]
+    orig, surr = _run_view({"r0": surrogate}, _spec_of(surrogate)).pair(0, "r0")
     v = access.potential(surr.dataset, _train_comp(surrogate))
     assert v.shape == access.time(orig.dataset).shape
     assert np.isfinite(v[0])
 
 
-def test_sweep_metric_choices_are_all_extractable(
-    sindy_results: dict[SimKey, SimResult],
-) -> None:
+def test_sweep_metric_choices_are_all_extractable(sindy_view: SeriesView) -> None:
     """UI が出す掃引 metric 選択肢は全て取り出せる = 選んだのに生成されないキーで
     黙って nan の図が出ることが無い (未知キーは extract_metric が KeyError)。"""
-    orig, surr = sindy_results[("hh_dc", 0, None)], sindy_results[("hh_dc", 0, "r0")]
+    orig, surr = sindy_view.pair(0, "r0")
     dm = DynamicMetrics(orig.dataset, surr.dataset, 0, surr.spec.dt)
     assert all(extract_metric(dm, key)[1] is not None for key in METRIC_KEYS)
     with pytest.raises(KeyError):
         extract_metric(dm, "latency_error")
 
 
-def test_sindy_draws_all_figs(
-    sindy_results: dict[SimKey, SimResult], sindy: SurrogateBundle
-) -> None:
+def test_sindy_draws_all_figs(sindy_view: SeriesView, sindy: SurrogateBundle) -> None:
     """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
-    orig, surr = sindy_results[("hh_dc", 0, None)], sindy_results[("hh_dc", 0, "r0")]
+    orig, surr = sindy_view.pair(0, "r0")
     figs = cell_figs(
         orig.dataset,
         surr.dataset,
@@ -194,12 +182,11 @@ def test_catalog_and_draw_json_are_self_consistent() -> None:
     assert len(EvalSeries(**SERIES["traub_soma_dc"]).points) == 1
     assert len(EvalSeries(**SERIES["traub19_somastim"]).points) == 5
 
-    draw_json = Path(__file__).parents[1] / "scripts/conf/draw.json"
-    report = parse_report(json.loads(draw_json.read_text()))
+    report = ReportSpec.load(Path(__file__).parents[1] / "scripts/conf/draw.json")
     names = set(SERIES)
-    assert set(report["results"]) <= names
-    for comparison in report["compares"].values():
-        assert set(comparison["evals"]) <= names
+    assert set(report.results) <= names
+    for comparison in report.compares.values():
+        assert set(comparison.evals) <= names
 
 
 def _sweep_specs(name: str, values: list[float]) -> dict[str, dict]:
@@ -218,21 +205,11 @@ def _sweep_specs(name: str, values: list[float]) -> dict[str, dict]:
     }
 
 
-def _run_named(
-    bundles: dict[str, SurrogateBundle], catalog: dict[str, dict]
-) -> dict[SimKey, SimResult]:
-    """複数系列 (カタログ項目ごとの点列) を一括シミュ。"""
-    return run_results(catalog, bundles)
-
-
-def _renamed(
-    results: dict[SimKey, SimResult], new_name: str
-) -> dict[SimKey, SimResult]:
-    """再シミュ無しに系列名だけ付け替えた複製 (テストの計算コスト削減用)。"""
-    return {
-        (new_name, point, run_id): result
-        for (_name, point, run_id), result in results.items()
-    }
+def _sweep_view(
+    bundles: dict[str, SurrogateBundle], name: str, values: list[float]
+) -> SeriesView:
+    """1 系列分の掃引をシミュした結果。"""
+    return ResultSet.simulate(_sweep_specs(name, values), bundles)[name]
 
 
 def test_compare_grid_rows_are_current_then_one_per_eval(
@@ -242,53 +219,60 @@ def test_compare_grid_rows_are_current_then_one_per_eval(
     混ぜると列の意味が行ごとにずれる → raise。"""
     bundles = {"r0": sindy}
     names = {"r0": sindy.meta.label}
-    results_a = _run_named(bundles, _sweep_specs("a", [5.0, 10.0]))
-    results = {**results_a, **_renamed(results_a, "b")}
-    fig = compare_grid_fig(results, names, ["a", "b"], "soma")
+    view_a = _sweep_view(bundles, "a", [5.0, 10.0])
+    # 再シミュ無しに系列名だけ付け替えた複製 (テストの計算コスト削減)。
+    view_b = dc_replace(view_a, name="b")
+    fig = compare_grid_fig([view_a, view_b], names, "soma")
     assert len(fig.axes) == 2 * 2  # (a + b) 行 × 2 点
     # 行名は描かない (格子は列見出しと凡例で読む)。
     assert not any(ax.get_ylabel() for ax in fig.axes)
 
     # 同じ格子骨格を run 軸で開くと行 = [run] (行の組み方だけが違う)。
-    run_fig = trace_grid_fig(results, names, "a", "soma")
-    assert len(run_fig.axes) == 1 * 2
+    assert len(trace_grid_fig(view_a, names, "soma").axes) == 1 * 2
 
-    results_b3 = _run_named(bundles, _sweep_specs("b", [5.0, 10.0, 15.0]))
-    short = {**results, **results_b3}
     with pytest.raises(ValueError, match="点数"):
-        compare_grid_fig(short, names, ["a", "b"], "soma")
+        compare_grid_fig(
+            [view_a, _sweep_view(bundles, "b", [5.0, 10.0, 15.0])], names, "soma"
+        )
+
+
+def test_series_view_columns_must_line_up_across_runs(sindy_view: SeriesView) -> None:
+    """`SeriesView` は点軸の列が run 間で揃っていることを構築時に保証する
+    (揃わない列を図の側で検出させない)。"""
+    with pytest.raises(ValueError, match="点数"):
+        SeriesView("s", sindy_view.points, {"r0": []})
 
 
 def test_report_draws_the_results_at_hand_not_the_declaration(
-    sindy_results: dict[SimKey, SimResult], sindy: SurrogateBundle
+    sindy_view: SeriesView, sindy: SurrogateBundle
 ) -> None:
     """描画は**手元の結果だけ**を見る (計算入力の設定と突き合わせない): 設定ファイル
     に宣言の無い系列名 — 別セッションで回して artifact から読んだ結果 — もそのまま
     図になり、逆に参照先が手元に無い compare は error 図でなく**黙って落ちる**
     (宣言とのズレは呼び出し側の関心) = 計算と描画が切れている。"""
-    renamed = _renamed(sindy_results, "読んだ系列")
-    report = {
-        "results": {"読んだ系列": {"eval_comp": "soma"}},
-        "compares": {},
-        "kinds": {},
-    }
-    entries = eval_report(renamed, {"r0": sindy}, report)
+    renamed = dc_replace(sindy_view, name="読んだ系列")
+    report = ReportSpec(results={"読んだ系列": DrawSpec(eval_comp="soma")})
+    entries = eval_report(ResultSet({"読んだ系列": renamed}), {"r0": sindy}, report)
     assert any(e.name.startswith("読んだ系列/") for e in entries)
 
-    dangling = {"evals": ["未実行"], "eval_comp": "soma"}
-    report_with_compare = {"results": {}, "compares": {"c": dangling}, "kinds": {}}
-    assert eval_report({}, {"r0": sindy}, report_with_compare) == []
+    dangling = ReportSpec(
+        compares={"c": CompareSpec(evals=("未実行",), eval_comp="soma")}
+    )
+    assert eval_report(ResultSet(), {"r0": sindy}, dangling) == []
 
 
 def test_report_spec_results_are_per_label_with_no_default_fallback() -> None:
     """`draw.json` の `results[]` は label ごとに完結する宣言 (既定値からの override
-    ではない): 指定したキーだけ効き、欠落キーは `DEFAULT_DRAW` の既定値。宣言に無い
-    label は `DEFAULT_DRAW` そのもの (グローバル既定を持たない)。"""
-    report = parse_report(
+    ではない): 指定したキーだけ効き、欠落キーは `DrawSpec` の既定値。宣言に無い
+    label は既定の `DrawSpec` そのもの (グローバル既定を持たない)。綴り間違いは
+    読込時に落ちる (既定のまま描かれて気付けない、が起きない)。"""
+    report = ReportSpec.from_dict(
         {"results": [{"eval": "traub19_dendstim", "eval_comp": "c09"}]}
     )
-    assert draw_for(report, "traub19_dendstim") == {**DEFAULT_DRAW, "eval_comp": "c09"}
-    assert draw_for(report, "宣言に無い label") == DEFAULT_DRAW
+    assert report.draw_for("traub19_dendstim") == DrawSpec(eval_comp="c09")
+    assert report.draw_for("宣言に無い label") == DrawSpec()
+    with pytest.raises(ValueError, match="未知のキー"):
+        ReportSpec.from_dict({"results": [{"eval": "e", "eval_cmop": "soma"}]})
 
 
 def test_draw_settings_are_typed_and_failed_figs_fold_into_error(
@@ -297,14 +281,9 @@ def test_draw_settings_are_typed_and_failed_figs_fold_into_error(
     """表示設定は widget/保存 dict をそのまま読む (欠落キーは `DEFAULT_DRAW` の
     既定値)。描画 job の失敗は列を保ったまま error 図へ畳む = 1 図の失敗で他の図まで
     落とさない。"""
-    assert metric_ylim(DEFAULT_DRAW) is None  # 既定は y auto
-    drawn = {
-        **DEFAULT_DRAW,
-        "eval_comp": "soma",
-        "metric_yauto": False,
-        "metric_ymax": 40,
-    }
-    assert (drawn["eval_comp"], metric_ylim(drawn)) == ("soma", (0.0, 40.0))
+    assert DrawSpec().metric_ylim is None  # 既定は y auto
+    drawn = DrawSpec(eval_comp="soma", metric_yauto=False, metric_ymax=40)
+    assert (drawn.eval_comp, drawn.metric_ylim) == ("soma", (0.0, 40.0))
 
     def boom() -> Figure:
         raise KeyError("missing var")
@@ -314,11 +293,11 @@ def test_draw_settings_are_typed_and_failed_figs_fold_into_error(
 
 
 def test_view_comps_limit_drawn_traces(
-    sindy_results: dict[SimKey, SimResult], sindy: SurrogateBundle
+    sindy_view: SeriesView, sindy: SurrogateBundle
 ) -> None:
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
-    ds = sindy_results[("hh_dc", 0, None)].dataset
+    ds = sindy_view.points[0].dataset
     assert len(panels_simple(ds, comps=[])) < len(panels_simple(ds))
     assert [name for name, _ in train_figs(sindy, comps=[_train_comp(sindy)])] == [
         name for name, _ in train_figs(sindy)
