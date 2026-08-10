@@ -4,8 +4,8 @@
 (`DrawSpec`/`CompareSpec` として持ち回る) = 綴り間違いは読込時に落ち、以降は
 型で守られる。既定値と「どのキーがあるか」の単一源もここ。
 
-図の**種類**は `metrics.artifact.KIND_FUNCS` の関数名から取る (文字列を手で書き
-写さないので rename が自動で追従する)。marimo/mlflow 非依存。
+図の**種類**は各ドメインの集約関数そのものから取る (関数名 = `kinds` のキー。
+文字列を手で書き写さないので rename が自動で追従する)。marimo/mlflow 非依存。
 """
 
 from __future__ import annotations
@@ -15,9 +15,33 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Self
 
-from .artifact import KIND_FUNCS
+from ..surrogate.figures import (
+    closure_figs,
+    neuron_graph_figs,
+    preprocessor_figs,
+    summary_df,
+    train_figs,
+)
+from ..waveform import cell_figs, current_preview_fig
+from .grid import compare_grid_fig, metric_fig, trace_grid_fig
 
-# `draw.json` の `kinds` に書けるキー = 保存できる図/表の種類。
+# `draw.json` の `kinds` に書けるキー = 保存できる図/表の種類の単一源。
+# **報告に載る種類の一覧はドメインを横断する** → 横断できる唯一の層 (report) が持つ。
+# `cell_figs` だけは呼び出しに `wave_report` が付随する複合キーだが、キー名は
+# `cell_figs` で足りる。
+KIND_FUNCS = (
+    current_preview_fig,
+    summary_df,
+    closure_figs,
+    preprocessor_figs,
+    neuron_graph_figs,
+    train_figs,
+    trace_grid_fig,
+    cell_figs,
+    metric_fig,
+    compare_grid_fig,
+)
+
 ALL_KINDS: tuple[str, ...] = tuple(f.__name__ for f in KIND_FUNCS)
 
 

@@ -20,9 +20,9 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from ...core.network import NeuronGraph
-from ...surrogate.closure.sindy import SINDyBundle
-from ...surrogate.preprocessor.impl.pca import PCAPreprocessor
-from ._internal.engine import new_figure, place_legend
+from ...plotting import new_figure, place_legend
+from ..closure.sindy import SINDyBundle
+from ..preprocessor.impl.pca import PCAPreprocessor
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",
@@ -186,7 +186,7 @@ def pca_scree_fig(prep: PCAPreprocessor) -> Figure:
     return fig
 
 
-def _sindy_coef_fig(result: SINDyBundle, figsize=(15, 3)):
+def sindy_coef_fig(result: SINDyBundle, figsize=(15, 3)):
     xi_matrix = np.asarray(result.xi)
     fig = new_figure(figsize=figsize)
     ax = fig.subplots()

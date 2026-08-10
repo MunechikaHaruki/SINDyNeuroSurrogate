@@ -1,9 +1,8 @@
-"""**1 セル (点 × run) の詳細図**: 入力電流プレビューと、原系/置換系の比較
-(波形・差分・相平面)。
+"""**1 ペアの詳細図**: 入力電流プレビューと、原系/置換系の比較 (波形・差分・相平面)。
 
-結果グリッドのどのセルかは呼び出し側が選び、ここは Dataset だけを受ける
-(結果型を知らない)。`cell_figs` が全図を識別子付きで一括生成し、呼び出し側は
-種別を知らず (id, fig) を保存/表示に流すだけ。marimo 非依存。
+どのペアを描くかは呼び出し側が選び、ここは Dataset だけを受ける (結果型
+`SimResult`/`SeriesView` を知らない)。一括生成する `cell_figs` は
+`waveform/__init__.py`。marimo 非依存。
 """
 
 from __future__ import annotations
@@ -15,12 +14,12 @@ import numpy as np
 import xarray as xr
 from matplotlib.figure import Figure
 
-from ...core import access
-from ...core.access import POTENTIAL_VAR
-from ._internal.engine import PanelSpec, TraceSpec, error_fig, new_figure, place_legend
+from ..core import access
+from ..core.access import POTENTIAL_VAR
+from ..plotting import PanelSpec, TraceSpec, error_fig, new_figure, place_legend
 
 if TYPE_CHECKING:
-    from ...core.network import DatasetConfig
+    from ..core.network import DatasetConfig
 
 
 def current_preview_fig(dset: DatasetConfig) -> Figure:

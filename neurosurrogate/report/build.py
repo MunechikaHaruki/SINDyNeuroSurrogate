@@ -10,8 +10,12 @@ marimo 非依存 (marimo は結果読込 + surrogate ロードだけ持ち、組
 
 **描く対象は結果 (`ResultSet`) 自身**で、評価条件の宣言 (`eval.SERIES`) は
 受け取らない: 結果 artifact は入力仕様を自分で持つので、設定ファイルと無関係に
-(別セッションで回した結果でも) 描ける。描画宣言は `ReportSpec` (`metrics/spec.py`)
-が型として持つ = ここに文字列キーは出てこない。
+(別セッションで回した結果でも) 描ける。描画宣言は `ReportSpec` (`.spec`) が型として
+持つ = ここに文字列キーは出てこない。
+
+**ドメインを横断する唯一の層**: 波形 (`neurosurrogate.waveform`) も surrogate の
+自己記述 (`neurosurrogate.surrogate.figures`) も互いを知らず、両者を 1 つの報告へ
+束ねるのはここだけ。
 """
 
 from __future__ import annotations
@@ -23,23 +27,18 @@ import matplotlib.pyplot as plt
 
 from ..core import access
 from ..core.network import NeuronGraph
+from ..plotting import error_fig
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.diagnostics import preprocessed_latent
-from .artifact import (
-    cell_figs,
+from ..surrogate.figures import (
     closure_figs,
-    compare_grid_fig,
-    current_preview_fig,
-    error_fig,
-    metric_fig,
     neuron_graph_figs,
     preprocessor_figs,
     summary_df,
-    trace_grid_fig,
     train_figs,
-    wave_report,
 )
-from .artifact._internal.wave import dm_of
+from ..waveform import cell_figs, current_preview_fig, dm_of, wave_report
+from .grid import compare_grid_fig, metric_fig, trace_grid_fig
 from .results import ResultSet, SeriesView, run_names
 from .save import SaveEntry, save_entries, slug
 from .spec import CompareSpec, DrawSpec, ReportSpec

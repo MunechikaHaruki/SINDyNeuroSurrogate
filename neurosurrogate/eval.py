@@ -4,7 +4,7 @@
 
 **軸は点軸 (電流パラメータ) 1 本だけ**: `EvalSeries` が持つ surrogate は 1 つで、
 run_id という識別子はこのモジュールに一切現れない。run ごとに系列を作って回し、
-直積 (`metrics.select.SimKey` = `(系列名, 点 index, run_id)`) を組むのは結果を扱う層。
+直積 (`report.SimKey` = `(系列名, 点 index, run_id)`) を組むのは結果を扱う層。
 2 つの軸を 1 箇所で同時に扱わないことが、この分割の目的。
 
 **評価したい条件は型で宣言する** (設定ファイルを持たない = スキーマという型の弱い
@@ -146,7 +146,7 @@ class SimResult:
     **どこの何だったか (系列名 / 点 index / どの run / どこに保存されたか) は
     持たない**: 系列の中の位置は `EvalSeries.simulate` が返す並び順、run はそれを
     呼んだ側が知っている。結果を集めて軸を張るのは結果を扱う層
-    (`metrics.results.SeriesView`)、保存先の id は永続化層の関心。"""
+    (`report.SeriesView`)、保存先の id は永続化層の関心。"""
 
     spec: SimSpec
     dataset: xr.Dataset

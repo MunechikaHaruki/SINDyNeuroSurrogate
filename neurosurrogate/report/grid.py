@@ -1,9 +1,10 @@
-"""**フラット結果を軸で見る図**: 点軸 (掃引) に沿ったメトリクス折れ線と、点を列に
-取る波形格子 2 種 (行=run / 行=系列)。
+"""**`SeriesView` を軸で見る成果物**: 点軸 (掃引) に沿ったメトリクスの表と折れ線、
+点を列に取る波形格子 2 種 (行=run / 行=系列)。
 
+ここだけが「点軸 × run 軸に開いた並び」を図/表の形に落とす = 波形ドメイン
+(`neurosurrogate.waveform`) は 1 ペア (原系, 置換系) しか知らず、軸の話は持たない。
 格子の骨格は `_grid_fig` 1 本で、2 種の違いは**行の組み方だけ** (`_Row` 列を作る
-side)。点軸/run 軸に開いた並びは `metrics.results.SeriesView` が既に持つ = 図の側で
-組み直さない。marimo 非依存。
+side)。並び自体は `SeriesView` が既に持つ = 図の側で組み直さない。marimo 非依存。
 """
 
 from __future__ import annotations
@@ -12,19 +13,42 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
+import pandas as pd
 from matplotlib.figure import Figure
 
-from ...core import access
-from ...core.diverge import diverged
-from ...neurons import currents
-from ._internal.engine import new_figure, place_legend
-from .wave_table import metrics_df
+from ..core import access
+from ..core.diverge import diverged
+from ..neurons import currents
+from ..plotting import new_figure, place_legend
+from ..waveform import dm_of, extract_metric
 
 if TYPE_CHECKING:
     import xarray as xr
     from matplotlib.axes import Axes
 
-    from ..results import SeriesView
+    from .results import SeriesView
+
+
+def metrics_df(
+    view: SeriesView,
+    names: dict[str, str],
+    comp_name: str,
+    metric_key: str,
+) -> pd.DataFrame:
+    """系列の点軸に沿った metric の表 (列=run 軸、列名は `names` の run_id → 表示名)。
+    原系の値は run に依らないので `original` 列 1 本へ畳む。"""
+    comp_id = view.net.name_to_idx(comp_name)
+    rows: list[dict] = []
+    for index, orig in enumerate(view.points):
+        row: dict = {"point": orig.point}
+        for run_id in view.run_ids:
+            o, s = view.pair(index, run_id)
+            value, orig_value = extract_metric(dm_of(o, s, comp_id), metric_key)
+            row[names[run_id]] = value
+            if orig_value is not None:
+                row["original"] = orig_value  # run に依らない = 同じ値の上書き
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def metric_fig(

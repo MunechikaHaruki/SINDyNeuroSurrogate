@@ -29,7 +29,7 @@ from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
 from neurosurrogate.eval import EvalSeries, SimResult, SimSpec, simulate
-from neurosurrogate.metrics.results import ResultSet, SimKey, series_matrix
+from neurosurrogate.report import ResultSet, SimKey, series_matrix
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
@@ -104,7 +104,7 @@ def load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
 
 def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
     """run_id 列 → run_id→surrogate。他層は表示名でなく **run_id で** surrogate を
-    引く (表示名が要る描画層は `metrics.results.run_names` で解く)。"""
+    引く (表示名が要る描画層は `report.run_names` で解く)。"""
     return dict(zip(run_ids, load_runs(run_ids), strict=True))
 
 
@@ -270,7 +270,7 @@ def run_and_log(
     置換系をその子として積む。既に同じ入力の run があればシミュごとスキップする
     (`force=True` で回し直す)。返すのは保存した子 run の id。
 
-    run 軸を掛ける組合せは `metrics.results.series_matrix` が決める (描画側の
+    run 軸を掛ける組合せは `report.series_matrix` が決める (描画側の
     `ResultSet.simulate` と同じ単一源)。ここが足すのは保存の都合だけ: 点ごとに
     スキップ判定が要るので `EvalSeries.simulate` (点列一括) でなく点単位で回す。"""
     logged: list[str] = []

@@ -21,29 +21,21 @@ from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.eval import SERIES, EvalSeries, SimSpec
-from neurosurrogate.metrics.artifact import (
-    cell_figs,
-    compare_grid_fig,
-    preprocessor_figs,
-    trace_grid_fig,
-    train_figs,
-)
-from neurosurrogate.metrics.artifact._internal.engine import collect, new_figure
-from neurosurrogate.metrics.artifact._internal.wave import (
-    METRIC_KEYS,
-    DynamicMetrics,
-    extract_metric,
-)
-from neurosurrogate.metrics.artifact.cell import panels_simple
-from neurosurrogate.metrics.artifact.model import feature_tex, tex
-from neurosurrogate.metrics.report import eval_report
-from neurosurrogate.metrics.results import ResultSet, SeriesView
-from neurosurrogate.metrics.spec import CompareSpec, DrawSpec, ReportSpec
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
+from neurosurrogate.plotting import collect, new_figure
+from neurosurrogate.report import (
+    CompareSpec,
+    DrawSpec,
+    ReportSpec,
+    ResultSet,
+    SeriesView,
+    eval_report,
+)
+from neurosurrogate.report.grid import compare_grid_fig, trace_grid_fig
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
     hybrid_physics,
@@ -56,6 +48,8 @@ from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.closure.ude import UDEClosure
 from neurosurrogate.surrogate.diagnostics import preprocessed_latent
+from neurosurrogate.surrogate.figures import preprocessor_figs, train_figs
+from neurosurrogate.surrogate.figures.model import feature_tex, tex
 from neurosurrogate.surrogate.preprocessor.base import Preprocessor
 from neurosurrogate.surrogate.preprocessor.impl.autoencoder import AEPreprocessor
 from neurosurrogate.surrogate.preprocessor.impl.pca import PCAPreprocessor
@@ -63,6 +57,12 @@ from neurosurrogate.surrogate.replace import (
     apply_surrogate,
     replace_nodes,
     replaceables,
+)
+from neurosurrogate.waveform import cell_figs, panels_simple
+from neurosurrogate.waveform.dynamics import (
+    METRIC_KEYS,
+    DynamicMetrics,
+    extract_metric,
 )
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"

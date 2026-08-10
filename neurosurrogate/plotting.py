@@ -1,8 +1,10 @@
 """描画プリミティブ: 図の生成・凡例配置・エラー図と、パネル記述 (`PanelSpec` /
 `TraceSpec`) からの一括描画 (`draw_engine`)、複数図を (id, fig) 列へ畳む `collect`。
 
-`figs/` 配下の各図はここだけを土台にする (matplotlib の作法をここへ閉じ込める)。
-`TraceSpec` は t/y を numpy で持つので Dataset 非依存。marimo 非依存。
+**このリポジトリで唯一「機能で切った」層** — 図を出すドメイン (`waveform` /
+`surrogate.figures` / `report`) がどれも同じ matplotlib の作法を要るから。
+逆に言えばドメインの知識はここに一切入れない: `TraceSpec` は t/y を numpy で持ち
+Dataset も NeuronGraph も知らない。marimo 非依存。
 """
 
 from __future__ import annotations
@@ -14,11 +16,16 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 logger = logging.getLogger(__name__)
+
+# 各ドメインの集約関数が返す (識別子, 成果物) 列の要素型。list は invariant で
+# `collect` の list[tuple[str, Figure]] を受け付けないため covariant な Sequence。
+ArtifactEntries = Sequence[tuple[str, Figure | pd.DataFrame]]
 
 _LEGEND_ROWS = 8  # 凡例 1 列あたりの最大項目数
 _LEGEND_MAX_COLS = 3  # これを超える本数は名前で追えない → 凡例ごと省く

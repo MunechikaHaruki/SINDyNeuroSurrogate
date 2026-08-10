@@ -19,7 +19,7 @@ def _():
     )
 
     from neurosurrogate.eval import SERIES, EvalSeries
-    from neurosurrogate.metrics.report import load_and_render_report
+    from neurosurrogate.report import load_and_render_report
 
     CONF_DIR = Path(__file__).resolve().parent / "conf"
     DRAW_JSON = CONF_DIR / "draw.json"

@@ -17,14 +17,14 @@ import numpy as np
 from matplotlib.figure import Figure
 
 from ...core import access
-from ...surrogate.bundle import SurrogateBundle
-from ._internal.engine import (
+from ...plotting import (
     PanelSpec,
     TraceSpec,
     draw_engine,
     new_figure,
     place_legend,
 )
+from ..bundle import SurrogateBundle
 
 _HIST_BINS = 60
 _PANEL_HEIGHT = 1.6  # 時系列図 1 段の高さ [inch]

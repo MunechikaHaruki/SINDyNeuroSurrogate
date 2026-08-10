@@ -2,7 +2,7 @@
 marimo/mlflow 非依存。
 
 **DataFrame 化 (表として並べる/どの列名にするか) はここの関心でない**: それは
-「結果をどう見せるか」= 描画層の仕事 (`metrics/figs/wave_table.py`)。ここは
+「結果をどう見せるか」= 描画層の仕事 (`waveform/tables.py`)。ここは
 `DynamicMetrics` を引数に取り、スカラーや (orig, surr) のタプル/dict を返す
 純粋関数群だけを持つ。発散判定 (`diverged`) は `eval.py` の発散ログからも
 呼ばれる共通述語なので `core/diverge.py` に置く。
@@ -20,10 +20,10 @@ import efel
 import numpy as np
 import xarray as xr
 
-from ....core import access
+from ..core import access
 
 if TYPE_CHECKING:
-    from ....eval import SimResult
+    from ..eval import SimResult
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -132,7 +132,7 @@ def _at_or_nan(arr, idx: int) -> float:
 
 def diff_or_nan(o: float, s: float) -> float:
     """o - s。ただし片方でも nan なら nan を返す（差分計算の nan 伝播）。
-    描画層 (`metrics/figs`) の DataFrame 組立 (`orig-surr` 列) からも使う公開関数。"""
+    表の組立 (`tables.py` の `orig-surr` 列) からも使う公開関数。"""
     return o - s if not (np.isnan(o) or np.isnan(s)) else _NAN
 
 
@@ -182,7 +182,7 @@ def spike_feature_values(
     spike_surr: int = 0,
 ) -> dict[str, tuple[float, float]]:
     """指定 AP の eFEL 特徴量ごとの (orig, surr)。並べ方 (DataFrame 化) は
-    呼び出し側 (`metrics/figs`) の関心。"""
+    呼び出し側 (`waveform/tables.py`) の関心。"""
     orig_feat, surr_feat = dm.efel
     return {
         feat: (
@@ -227,7 +227,7 @@ def _isi_stat(dm: DynamicMetrics, fn) -> tuple[float, float]:
 
 def waveform_summary_rows(dm: DynamicMetrics) -> dict[str, tuple[float, float]]:
     """spike_count / latency / mean_isi / std_isi の (orig, surr)。並べ方
-    (DataFrame 化) は呼び出し側 (`metrics/figs`) の関心。"""
+    (DataFrame 化) は呼び出し側 (`waveform/tables.py`) の関心。"""
     o_n, s_n = n_spikes(dm)
     return {
         "spike_count": (float(o_n), float(s_n)),

@@ -51,19 +51,20 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
+              figures/           # surrogate の自己記述 (評価結果を受け取らない = 置換シミュ前に描ける)。__init__.py=集約 (summary_df/closure_figs/preprocessor_figs/neuron_graph_figs/train_figs) / train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree
   eval.py                        # 何をどう回すか (marimo/mlflow 非依存): SimSpec (純粋な計算入力) + simulate → SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) + EvalSeries (spec+param+values+surrogate の 1 掃引実験。points は派生、simulate() は引数なし) + 倉庫 EVALS/SERIES。run_id も表示名も出てこない
-  metrics/  results.py           # 結果の集まり: series_matrix (run 軸を掛ける唯一の場所) + SeriesView (1 系列を点軸×run 軸に開いた並び。描画層はこれだけ見る) + ResultSet (simulate=その場で回す / from_flat=SimKey の平坦 dict を開き直す) + run_names (表示名解決)
-            spec.py              # 描画宣言 draw.json → 型 (ReportSpec/DrawSpec/CompareSpec)。ALL_KINDS もここ
-            report.py            # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
+  plotting.py                    # 描画プリミティブ (new_figure/place_legend/error_fig/collect/PanelSpec/TraceSpec/draw_engine/ArtifactEntries)。**唯一 機能で切った層** = ドメイン知識を入れない
+  waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
+            dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)
+            tables.py            # その値を表に並べる (計算を増やさない)
+            figures.py           # 波形/差分/相平面の図 + 電流プレビュー
+            __init__.py          # 集約 (cell_figs / wave_report)
+  report/                        # 結果ドメイン: 軸に開いて宣言に従い報告へ畳む。**ドメインを横断する唯一の層**
+            results.py           # series_matrix (run 軸を掛ける唯一の場所) + SeriesView (1 系列を点軸×run 軸に開いた並び) + ResultSet (simulate=その場で回す / from_flat=SimKey の平坦 dict を開き直す) + run_names
+            spec.py              # 描画宣言 draw.json → 型 (ReportSpec/DrawSpec/CompareSpec) + KIND_FUNCS/ALL_KINDS
+            grid.py              # 軸に沿った図表: 点軸メトリクスの表と折れ線 + 波形格子 (行=run / 行=系列)
             save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ)
-            artifact/__init__.py # 外部公開 API (Figure/DataFrame を返す集約関数のみ: cell_figs/closure_figs/preprocessor_figs/neuron_graph_figs/train_figs/wave_report + grid.py の re-export)
-            artifact/cell.py     # 1 セルの個別図 (diff/simple/attractor) + 電流プレビュー
-            artifact/grid.py     # 点軸メトリクス折れ線 + 波形格子 (行=run / 行=評価)
-            artifact/model.py    # 静的図の個別生成 (neurograph/closure/preprocessor の中身)
-            artifact/train.py    # 学習データの個別図
-            artifact/wave_table.py # _internal/wave.py の計算値 → DataFrame 組立
-            artifact/_internal/engine.py # 描画プリミティブ (Figure/DataFrame を返さない実装詳細)
-            artifact/_internal/wave.py   # DynamicMetrics/diverged (eFEL 計算、Figure/DataFrame を返さない計算層)
+            build.py             # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
 scripts/  main.py                # Hydra エントリ
           mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)。学習 experiment (surrogate) と評価 experiment (1 run = 1 SimSpec、親=原系/子=置換系、波形 artifact) の両方
           marimo.py              # notebook 本体 (run 選択 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
@@ -91,7 +92,7 @@ results/  <保存名>/               # marimo 描画ボタンが書く図 + meta
   1件 = `{"eval": label, ...DrawSpec のキー}`。override でなく label ごとに完結する
   宣言) / `compare` (既に回した結果を label 参照して 1 枚の格子に並べる。`eval_comp`
   は compare 自身が持つ) / `kinds` (保存する図/表の種類の絞り込み。省略時は全種類。
-  種類名は `metrics/spec.py` の `ALL_KINDS`)。`ReportSpec.from_dict`/`.load` が唯一の
+  種類名は `report/spec.py` の `ALL_KINDS`)。`ReportSpec.from_dict`/`.load` が唯一の
   入口で、未知のキーはそこで落ちる。以降は型 (`DrawSpec`/`CompareSpec`) で渡し、
   文字列キーの dict は出てこない。
 - `scripts/conf/style/*.mplstyle` — matplotlib スタイル (paper / presentation)。
