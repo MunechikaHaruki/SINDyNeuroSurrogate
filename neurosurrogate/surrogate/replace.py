@@ -92,14 +92,6 @@ def replaceables(meta: SurrogateMeta, dataset: DatasetConfig) -> set[str]:
     return targets
 
 
-def replaced_names(meta: SurrogateMeta, net: NeuronGraph) -> set[str]:
-    """net 内で surrogate が置換するノード名集合を返す (非raise, 診断用)。
-
-    replaceables と違い params 非両立/皆無でも例外を投げず、描画等の情報表示に使う。
-    """
-    return {n.name for n in net.nodes if replaceable(meta, n)}
-
-
 def replace_nodes(
     net: NeuronGraph,
     new_type: CompartmentType,

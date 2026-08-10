@@ -23,7 +23,8 @@ from ._internal.wave import (
 )
 
 if TYPE_CHECKING:
-    from ...runs import SimKey, SimResult
+    from ...eval import SimResult
+    from ..select import SimKey
 
 
 def _row(name: str, o: float, s: float, col: str = "metric") -> dict:
@@ -51,21 +52,24 @@ def spike_features_df(
 
 
 def metrics_df(
-    results: dict[SimKey, SimResult], name: str, comp_name: str, metric_key: str
+    results: dict[SimKey, SimResult],
+    names: dict[str, str],
+    name: str,
+    comp_name: str,
+    metric_key: str,
 ) -> pd.DataFrame:
-    """`name` の系列に沿った metric の DataFrame (列=run 軸)。原系の値は run に
-    依らないので `original` 列 1 本へ畳む。"""
-    labels = select.labels_of(results, name)
+    """`name` の系列に沿った metric の DataFrame (列=run 軸、列名は `names` の
+    run_id → 表示名)。原系の値は run に依らないので `original` 列 1 本へ畳む。"""
     run_ids = select.run_ids_of(results, name)
     rows: list[dict] = []
-    for label in labels:
-        orig = results[(label, None)]
+    for point in select.points_of(results, name):
+        orig = results[(name, point, None)]
         comp_id = orig.spec.net.name_to_idx(comp_name)
         row: dict = {"point": orig.point}
         for run_id in run_ids:
-            o, s = select.pair(results, label, run_id)
+            o, s = select.pair(results, name, point, run_id)
             value, orig_value = extract_metric(dm_of(o, s, comp_id), metric_key)
-            row[select.run_label_of(results, name, run_id)] = value
+            row[names[run_id]] = value
             if orig_value is not None:
                 row["original"] = orig_value  # run に依らない = 同じ値の上書き
         rows.append(row)

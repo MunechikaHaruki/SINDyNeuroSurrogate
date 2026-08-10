@@ -28,8 +28,8 @@ from mlflow.entities import Run
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
-from neurosurrogate.eval import SimSpec, simulate
-from neurosurrogate.runs import EvalSeries, SimKey, SimResult, expand, run_labels
+from neurosurrogate.eval import EvalSeries, SimResult, SimSpec, simulate
+from neurosurrogate.metrics.select import SimKey
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
@@ -102,16 +102,10 @@ def load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
     return [load_surrogate_model(rid) for rid in run_ids]
 
 
-def load_bundles(
-    run_ids: list[str],
-) -> tuple[dict[str, SurrogateBundle], dict[str, str]]:
-    """run_id 列 → (run_id→surrogate, run_id→表示名)。`neurosurrogate.eval` は
-    surrogate を **run_id をキーに**扱う (`SimSpec.run_id` が MLflow run_id
-    そのものなので、他層は表示名でなく run_id で引く) → ここで揃えて返す。
-    marimo からはこれ 1 回の呼び出しで済ませる。"""
-    bundles = load_runs(run_ids)
-    names = dict(zip(run_ids, run_labels(bundles), strict=True))
-    return dict(zip(run_ids, bundles, strict=True)), names
+def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
+    """run_id 列 → run_id→surrogate。他層は表示名でなく **run_id で** surrogate を
+    引く (表示名が要る描画層は `metrics.select.run_names` で解く)。"""
+    return dict(zip(run_ids, load_runs(run_ids), strict=True))
 
 
 def sweep_siblings(parent_id: str) -> list[str]:
@@ -204,33 +198,46 @@ def _find_eval(spec: SimSpec, run_id: str | None) -> Run | None:
     return found[0] if found else None
 
 
+def _eval_name(series: str, point: int, n_points: int) -> str:
+    """評価 run の表示名。単発は系列名そのもの、掃引は `系列名#i` (点の並び順)。
+    **表示名の規約はここだけ** — キー (`SimKey`) は構造タプルのままで、これは
+    MLflow UI 上の見出しに過ぎない。"""
+    return series if n_points == 1 else f"{series}#{point}"
+
+
 def _log_eval(
-    label: str, result: SimResult, source_run_id: str | None, parent_id: str | None
+    key: SimKey,
+    result: SimResult,
+    name: str,
+    source_run_id: str | None,
+    parent_id: str | None,
 ) -> str:
     """1 SimResult を 1 評価 run へ。`spec` param が計算入力の単一源 (読み戻しは
-    ここから)、識別 (系列/軸/run) は別 param、平坦化した param は MLflow UI での
+    ここから)、識別 (系列/点/run) は別 param、平坦化した param は MLflow UI での
     絞り込み/比較用の索引。"""
+    series, point, run_id = key
     spec = result.spec
-    with mlflow.start_run(experiment_id=_eval_exp_id(), run_name=label) as run:
+    with mlflow.start_run(experiment_id=_eval_exp_id(), run_name=name) as run:
         mlflow.log_params(
             {
                 "spec": spec.key(),
-                "label": label,
-                "series": result.series,
-                "run_id": result.run_id or "",
+                "series": series,
+                "point_index": point,
+                "run_id": run_id or "",
                 "target": spec.target,
                 "current_type": spec.current_type,
                 "dt": spec.dt,
-                "axis": result.axis,
-                "point": result.point,
+                # MLflow の param は文字列 → None は "None" と書かれて読み戻しで
+                # 区別できない。空文字を「無し」の綴りに統一する (`run_id` と同じ)。
+                "axis": result.axis or "",
+                "point": "" if result.point is None else result.point,
                 **{f"cp.{k}": v for k, v in spec.current_params.items()},
             }
         )
         mlflow.set_tags(
             {
-                "spec_hash": _eval_hash(spec, result.run_id),
+                "spec_hash": _eval_hash(spec, run_id),
                 "kind": _KIND_ORIGINAL if parent_id is None else _KIND_SURROGATE,
-                **({"run_label": result.run_label} if result.run_label else {}),
                 **({"source_run_id": source_run_id} if source_run_id else {}),
                 **({MLFLOW_PARENT_RUN_ID: parent_id} if parent_id else {}),
             }
@@ -243,7 +250,7 @@ def _log_eval(
                 compress=1,  # float32 波形はほぼ非圧縮 → 高レベルは時間の無駄
             )
             mlflow.log_artifact(str(path))
-        logger.info("評価 run 保存: %s (%s)", label, run.info.run_id)
+        logger.info("評価 run 保存: %s (%s)", name, run.info.run_id)
         return run.info.run_id
 
 
@@ -255,46 +262,60 @@ def _eval_hash(spec: SimSpec, run_id: str | None) -> str:
 
 def run_and_log(
     bundles: dict[str, SurrogateBundle],
-    evals: dict[str, EvalSeries],
-    run_labels_by_id: dict[str, str],
+    catalog: dict[str, dict],
     source_run_id: str,
     force: bool = False,
 ) -> list[str]:
     """評価実行 + 評価 run 保存 (marimo の評価ボタンが呼ぶ唯一の関数)。原系を親、
     置換系をその子として積む。既に同じ入力の run があればシミュごとスキップする
-    (`force=True` で回し直す)。返すのは保存した子 run の id。"""
-    if not bundles:
-        return []
-    parents: dict[str, str] = {}  # label → 原系 run_id
+    (`force=True` で回し直す)。返すのは保存した子 run の id。
+
+    **run 軸を掛けるのはここ**: `catalog` (`runs.SERIES`) の各系列に run ごとの
+    surrogate を載せて 1 本ずつ回し、`(系列名, 点 index, run_id)` のキーで保存する。
+    点ごとにスキップ判定が要るので `EvalSeries.simulate` (点列一括) でなく点単位で
+    回す。"""
     logged: list[str] = []
-    for (label, run_id), (series, spec) in expand(evals, bundles).items():
-        found = None if force else _find_eval(spec, run_id)
-        axis = evals[series].axis
-        if run_id is None:
-            parents[label] = (
-                found.info.run_id
-                if found
-                else _log_eval(label, _simulated(series, axis, spec, None), None, None)
-            )
+    for name, kwargs in catalog.items():
+        original = EvalSeries(**kwargs)
+        run_ids = [rid for rid, b in bundles.items() if original.replaceable(b.meta)]
+        if not run_ids:
             continue
-        if found:
-            continue
-        result = _simulated(
-            series, axis, spec, run_id, bundles[run_id], run_labels_by_id[run_id]
-        )
-        logged.append(_log_eval(label, result, source_run_id, parents[label]))
+        parents = _log_originals(name, original, force)
+        for run_id in run_ids:
+            series = EvalSeries(**kwargs, surrogate=bundles[run_id])
+            for point, spec in enumerate(series.points):
+                if not force and _find_eval(spec, run_id):
+                    continue
+                logged.append(
+                    _log_eval(
+                        (name, point, run_id),
+                        replace(simulate(spec, series.surrogate), axis=series.param),
+                        _eval_name(name, point, len(series.points)),
+                        source_run_id,
+                        parents[point],
+                    )
+                )
     return logged
 
 
-def _simulated(
-    series: str,
-    axis: str | None,
-    spec: SimSpec,
-    run_id: str | None,
-    bundle: SurrogateBundle | None = None,
-    run_label: str | None = None,
-) -> SimResult:
-    return SimResult(spec, series, axis, run_id, run_label, simulate(spec, bundle))
+def _log_originals(name: str, series: EvalSeries, force: bool) -> dict[int, str]:
+    """系列の原系を点ごとに 1 本ずつ (既にあれば再利用) → 点 index → 評価 run id。
+    置換系の親になる。"""
+    out: dict[int, str] = {}
+    for point, spec in enumerate(series.points):
+        found = None if force else _find_eval(spec, None)
+        out[point] = (
+            found.info.run_id
+            if found
+            else _log_eval(
+                (name, point, None),
+                replace(simulate(spec, None), axis=series.param),
+                _eval_name(name, point, len(series.points)),
+                None,
+                None,
+            )
+        )
+    return out
 
 
 def _result_of(run: Run) -> SimResult:
@@ -306,12 +327,9 @@ def _result_of(run: Run) -> SimResult:
         dataset = cast(xr.Dataset, joblib.load(local))
     return SimResult(
         SimSpec.from_dict(json.loads(run.data.params["spec"])),
-        run.data.params["series"],
-        run.data.params["axis"] or None,
-        run.data.params["run_id"] or None,
-        run.data.tags.get("run_label"),
         dataset,
-        source=run.info.run_id,
+        axis=run.data.params["axis"] or None,
+        eval_run_id=run.info.run_id,
     )
 
 
@@ -320,9 +338,9 @@ def load_eval_results(source_run_ids: list[str]) -> dict[SimKey, SimResult]:
     (置換系) を引き、その親 run から原系を辿る = 原系が 1 本しか無くても run 軸の
     全系列に対して同じ原系が付く。
 
-    **原系の系列名/軸は子から取る**: `SimSpec` は識別を持たないので、別系列でも入力が
+    **キーは子の param から組む**: `SimSpec` は識別を持たないので、別系列でも入力が
     同じなら親 run は 1 本に共有される (その run の `series`/`axis` param は先に
-    回した方のもの)。読み戻し側では今引いている子の系列に揃える。"""
+    回した方のもの)。読み戻し側では今引いている子の系列/点/軸に揃える。"""
     out: dict[SimKey, SimResult] = {}
     for source_run_id in source_run_ids:
         for child in mlflow.search_runs(
@@ -330,13 +348,14 @@ def load_eval_results(source_run_ids: list[str]) -> dict[SimKey, SimResult]:
             filter_string=f"tags.source_run_id = '{source_run_id}'",
             output_format="list",
         ):
-            label = child.data.params["label"]
+            series = child.data.params["series"]
+            point = int(child.data.params["point_index"])
             result = _result_of(child)
-            out[(label, result.run_id)] = result
-            if (label, None) not in out:
+            out[(series, point, child.data.params["run_id"] or None)] = result
+            if (series, point, None) not in out:
                 parent = mlflow.get_run(child.data.tags[MLFLOW_PARENT_RUN_ID])
-                out[(label, None)] = replace(
-                    _result_of(parent), series=result.series, axis=result.axis
+                out[(series, point, None)] = replace(
+                    _result_of(parent), axis=result.axis
                 )
     return out
 

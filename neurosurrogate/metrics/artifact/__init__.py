@@ -30,7 +30,7 @@ from ...surrogate.diagnostics import surrogate_metrics
 from ...surrogate.meta import SurrogateMeta
 from ...surrogate.preprocessor.base import Preprocessor
 from ...surrogate.preprocessor.impl.pca import PCAPreprocessor
-from ...surrogate.replace import replaced_names
+from ...surrogate.replace import replaceable
 from ._internal.engine import collect, draw_engine
 from ._internal.engine import error_fig as error_fig  # 外部公開 API の再輸出
 from ._internal.wave import DynamicMetrics, n_spikes, spike_shape_corr, waveform_summary
@@ -114,12 +114,15 @@ def preprocessor_figs(prep: Preprocessor) -> ArtifactEntries:
 def neuron_graph_figs(
     nets: dict[str, NeuronGraph], meta: SurrogateMeta
 ) -> ArtifactEntries:
-    """適用先ごとのニューロングラフ (識別子 `<target>/neurograph`)。置換ノードの強調は
-    meta から引く = 呼び出し側は「どの適用先を描くか」だけ渡す。"""
+    """適用先ごとのニューロングラフ (識別子 `<target>/neurograph`)。強調するノードは
+    meta との置換可否から引く = 呼び出し側は「どの適用先を描くか」だけ渡す
+    (描画なので置換不可 = 強調ゼロでも例外にしない。検証は `replaceables` の関心)。"""
     return collect(
         {
             f"{target}/neurograph": partial(
-                neuron_graph_fig, net, replaced_names(meta, net)
+                neuron_graph_fig,
+                net,
+                {n.name for n in net.nodes if replaceable(meta, n)},
             )
             for target, net in nets.items()
         }

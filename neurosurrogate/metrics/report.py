@@ -2,13 +2,13 @@
 marimo 非依存 (marimo は結果読込 + surrogate ロードだけ持ち、組立/保存は
 ここに委譲する)。
 
-`eval`/`runs` が「何を回して何が出たか」を持つのに対し、ここは **どの図をどの名前で
+`eval` が「何を回して何が出たか」を持つのに対し、ここは **どの図をどの名前で
 並べるか**: model (置換シミュ不要の静的図 + 学習側サマリ) / eval (系列ごとの
 波形格子・選択セルの詳細図・点軸メトリクス) の 2 グループを組み、呼び出し側は保存に
 流すだけ。**単発と掃引で経路を分けない** — 点が 1 つなら格子が 1 列になり点軸の
 折れ線が出ないだけ。
 
-**描く対象は結果 `results` 自身**で、評価条件の宣言 (`runs.SERIES`) は受け取らない:
+**描く対象は結果 `results` 自身**で、評価条件の宣言 (`eval.SERIES`) は受け取らない:
 結果 artifact は入力仕様を自分で持つので、設定ファイルと無関係に (別セッションで
 回した結果でも) 描ける。描画宣言 (`draw.json`) は `parse_report` が正規化するだけで
 以降も dict のまま持ち回る — `results[]`/`compare[]`/`kinds` は「表示にだけ使う
@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 
 from ..core import access
 from ..core.network import NeuronGraph
-from ..runs import SimKey, SimResult
+from ..eval import SimResult
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.diagnostics import preprocessed_latent
 from . import select
@@ -47,6 +47,7 @@ from .artifact import (
 )
 from .artifact._internal.wave import dm_of
 from .save import SaveEntry, save_entries, slug
+from .select import SimKey
 
 
 def parse_report(d: dict) -> dict:
@@ -165,17 +166,16 @@ def model_report(
     データの再生成が run 数だけ走る (指標の run 横断比較は `summary` 表が担う)。
     neurograph は**結果の適用先ごと** (置換ノードが違う) = `for_results` の spec
     から引く (`eval_report` と同じ絞り込みに従う。計算入力の宣言
-    `runs.SERIES` はここでも見ない = 描画は結果だけを見るという不変条件を model 図にも
+    `eval.SERIES` はここでも見ない = 描画は結果だけを見るという不変条件を model 図にも
     適用する)。電流プレビューは回した入力そのものの確認用で系列ごとに 1 枚。
     """
     targets = for_results(report, results)
 
     def _first(name: str) -> SimResult:
-        label = select.labels_of(results, name)[0]
-        return results[(label, None)]
+        return results[(name, select.points_of(results, name)[0], None)]
 
     def _source_of(r: SimResult) -> tuple[str, ...]:
-        return (str(r.source),) if r.source is not None else ()
+        return (r.eval_run_id,) if r.eval_run_id is not None else ()
 
     entries = (
         [
@@ -240,26 +240,29 @@ def _cell_entries(
     name: str,
     results: dict[SimKey, SimResult],
     bundles: dict[str, SurrogateBundle],
+    names: dict[str, str],
     draw: dict,
     i_ext_ylim: tuple[float, float] | None = None,
 ) -> list[SaveEntry]:
     """選択した 1 点 × 各 run の詳細図 + メトリクス df (名前は `<name>/<run>/...`)。
+    `names` は run_id → 表示名 (`select.run_names`)。
 
     潜在射影は run ごとの surrogate が要るので bundles から引く (結果 artifact は
     surrogate を持たない = 描画側が run_id で対応付ける)。
     """
-    labels = select.labels_of(results, name)
+    points = select.points_of(results, name)
     run_ids = select.run_ids_of(results, name)
-    index = min(draw["detail_point"], len(labels) - 1)
-    label = labels[index]
-    orig = results[(label, None)]
+    point = points[min(draw["detail_point"], len(points) - 1)]
+    orig = results[(name, point, None)]
     net = orig.spec.net
     comp_id = net.name_to_idx(draw["eval_comp"])
     entries: list[SaveEntry] = []
     for run_id in run_ids:
-        surr = results[(label, run_id)]
-        run_label = select.run_label_of(results, name, run_id)
-        sources = tuple(str(r.source) for r in (orig, surr) if r.source is not None)
+        surr = results[(name, point, run_id)]
+        run_label = names[run_id]
+        sources = tuple(
+            r.eval_run_id for r in (orig, surr) if r.eval_run_id is not None
+        )
         figs = cell_figs(
             orig.dataset,
             surr.dataset,
@@ -286,6 +289,7 @@ def _eval_report_one(
     name: str,
     results: dict[SimKey, SimResult],
     bundles: dict[str, SurrogateBundle],
+    names: dict[str, str],
     draw: dict,
     report: dict,
     i_ext_ylim: tuple[float, float] | None = None,
@@ -293,11 +297,11 @@ def _eval_report_one(
     """1 系列分: 波形格子 (点 × run) → 選択点の詳細図 → 点軸メトリクス折れ線。
     折れ線は**点が 2 つ以上のときだけ** (単発で 1 点の折れ線を出さない)。
     `report["kinds"]` で種類ごとに出す/出さないを選べる。"""
-    labels = select.labels_of(results, name)
-    net = results[(labels[0], None)].spec.net
+    points = select.points_of(results, name)
+    net = results[(name, points[0], None)].spec.net
     if draw["eval_comp"] not in net.names:
         # matplotlib テキストとして描かれる (CJK グリフ非対応) → 英語で書く。
-        target = results[(labels[0], None)].spec.target
+        target = results[(name, points[0], None)].spec.target
         eval_comp = draw["eval_comp"]
         msg = f"{name}: eval_comp {eval_comp!r} not in {target!r}"
         return [SaveEntry(f"{name}/error", error_fig(msg))]
@@ -307,19 +311,24 @@ def _eval_report_one(
         entries.append(
             SaveEntry(
                 f"{name}/traces",
-                trace_grid_fig(results, name, draw["eval_comp"]),
+                trace_grid_fig(results, names, name, draw["eval_comp"]),
                 sources=sources,
                 draw=draw,
             )
         )
     if wants(report, "cell_figs"):
-        entries += _cell_entries(name, results, bundles, draw, i_ext_ylim)
-    if wants(report, "metric_fig") and len(labels) > 1:
+        entries += _cell_entries(name, results, bundles, names, draw, i_ext_ylim)
+    if wants(report, "metric_fig") and len(points) > 1:
         entries.append(
             SaveEntry(
                 f"{name}/metric",
                 metric_fig(
-                    results, name, draw["eval_comp"], draw["metric"], metric_ylim(draw)
+                    results,
+                    names,
+                    name,
+                    draw["eval_comp"],
+                    draw["metric"],
+                    metric_ylim(draw),
                 ),
                 sources=sources,
                 draw=draw,
@@ -329,7 +338,9 @@ def _eval_report_one(
 
 
 def _compare_report(
-    compares: dict[str, dict], results: dict[SimKey, SimResult]
+    compares: dict[str, dict],
+    results: dict[SimKey, SimResult],
+    run_names: dict[str, str],
 ) -> list[SaveEntry]:
     """compare spec ごとの格子図 (行=系列、列=点)。compare 自身はシミュを増やさず、
     既に回した結果を並べるだけ。
@@ -346,7 +357,7 @@ def _compare_report(
             continue
         nets_ok = all(
             spec["eval_comp"]
-            in results[(select.labels_of(results, s)[0], None)].spec.net.names
+            in results[(s, select.points_of(results, s)[0], None)].spec.net.names
             for s in spec["evals"]
         )
         if not nets_ok:
@@ -356,7 +367,7 @@ def _compare_report(
             continue
         spec_sources = (s for n in spec["evals"] for s in select.sources_of(results, n))
         sources = tuple(dict.fromkeys(spec_sources))
-        fig = compare_grid_fig(results, spec["evals"], spec["eval_comp"])
+        fig = compare_grid_fig(results, run_names, spec["evals"], spec["eval_comp"])
         entries.append(SaveEntry(f"compare_{label}", fig, sources=sources, draw=spec))
     return entries
 
@@ -371,14 +382,17 @@ def eval_report(
 
     描く対象は `for_results(report, results)` が決める: `draw.json` の `results` が
     空なら手元の結果を全部、非空ならそこに列挙した系列名だけ (計算入力の設定
-    条件の宣言 (`runs.SERIES`) とは突き合わせない — 結果は別セッションの宣言で
+    条件の宣言 (`eval.SERIES`) とは突き合わせない — 結果は別セッションの宣言で
     回したものでも描けるべき)。表示設定は `draw_for(report, name)`。
     """
+    run_names = select.run_names(bundles)
     entries: list[SaveEntry] = []
     for name, draw in for_results(report, results):
-        entries += _eval_report_one(name, results, bundles, draw, report, i_ext_ylim)
+        entries += _eval_report_one(
+            name, results, bundles, run_names, draw, report, i_ext_ylim
+        )
     if wants(report, "compare_grid_fig"):
-        entries += _compare_report(report["compares"], results)
+        entries += _compare_report(report["compares"], results, run_names)
     return entries
 
 
@@ -414,12 +428,11 @@ def load_and_render_report(
     """draw.json 読込から `render_report` までを一括した唯一の入口。呼び出し側
     (`scripts/marimo.py` の描画ボタン) は結果の読込と surrogate ロード (どちらも
     mlflow 依存) だけを持ち、draw.json のパース・組立・保存はここへ委譲する。
-    surrogate は結果に焼き込まれていない (`SimResult.run_id` を持つだけ) ので、
-    閉包項が要る図のために `load_surrogate_model` で引き直す。"""
+    surrogate は結果に焼き込まれていない (キーが run_id を持つだけ) ので、閉包項が
+    要る図のために `load_surrogate_model` で引き直す。"""
     report = parse_report(json.loads(draw_json.read_text()))
-    bundles_for_draw = {
-        r.run_id: load_surrogate_model(r.run_id)
-        for r in results.values()
-        if r.run_id is not None
-    }
+    run_ids = dict.fromkeys(
+        run_id for (_name, _point, run_id) in results if run_id is not None
+    )
+    bundles_for_draw = {run_id: load_surrogate_model(run_id) for run_id in run_ids}
     return render_report(bundles_for_draw, results, report, dest, style_paths)

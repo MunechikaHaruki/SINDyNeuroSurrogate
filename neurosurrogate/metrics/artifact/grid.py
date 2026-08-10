@@ -25,21 +25,23 @@ if TYPE_CHECKING:
     import xarray as xr
     from matplotlib.axes import Axes
 
-    from ...runs import SimKey, SimResult
+    from ...eval import SimResult
+    from ..select import SimKey
 
 
 def metric_fig(
     results: dict[SimKey, SimResult],
+    names: dict[str, str],
     name: str,
     comp_name: str,
     metric_key: str,
     ylim: tuple[float, float] | None = None,
 ) -> Figure:
-    """点軸に沿ったメトリクス折れ線 (Original + 各 run)。marimo 非依存。"""
-    data = metrics_df(results, name, comp_name, metric_key)
+    """点軸に沿ったメトリクス折れ線 (Original + 各 run)。`names` は run_id → 表示名。
+    marimo 非依存。"""
+    data = metrics_df(results, names, name, comp_name, metric_key)
     run_ids = select.run_ids_of(results, name)
-    labels = select.labels_of(results, name)
-    axis = results[(labels[0], None)].axis or "point"
+    axis = results[(name, select.points_of(results, name)[0], None)].axis or "point"
     fig = new_figure()
     ax = fig.subplots()
     if "original" in data.columns:
@@ -47,14 +49,13 @@ def metric_fig(
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     for idx, run_id in enumerate(run_ids):
-        run_label = select.run_label_of(results, name, run_id)
         ax.plot(
             data["point"],
-            data[run_label],
+            data[names[run_id]],
             marker="s",
             linestyle="--",
             color=colors[idx % len(colors)],
-            label=run_label,
+            label=names[run_id],
         )
 
     ax.set_xlabel(axis)
@@ -167,41 +168,44 @@ def _header(
 ) -> list[tuple[float | None, xr.Dataset]]:
     """列 (点) の見出しと I_ext 行に使う原系。"""
     return [
-        (results[(label, None)].point, results[(label, None)].dataset)
-        for label in select.labels_of(results, name)
+        (results[(name, point, None)].point, results[(name, point, None)].dataset)
+        for point in select.points_of(results, name)
     ]
 
 
 def trace_grid_fig(
-    results: dict[SimKey, SimResult], name: str, comp_name: str
+    results: dict[SimKey, SimResult],
+    names: dict[str, str],
+    name: str,
+    comp_name: str,
 ) -> Figure:
-    """1 系列を run 軸で開いた波形格子 (行=run、セルはその run 1 本だけ重ねる)。"""
-    labels = select.labels_of(results, name)
+    """1 系列を run 軸で開いた波形格子 (行=run、セルはその run 1 本だけ重ねる)。
+    `names` は run_id → 表示名。"""
+    points = select.points_of(results, name)
     run_ids = select.run_ids_of(results, name)
-    comp_id = results[(labels[0], None)].spec.net.name_to_idx(comp_name)
+    comp_id = results[(name, points[0], None)].spec.net.name_to_idx(comp_name)
     rows = [
         _Row(
             comp_id,
             [
                 (
-                    results[(label, None)].dataset,
-                    {
-                        select.run_label_of(results, name, run_id): results[
-                            (label, run_id)
-                        ].dataset
-                    },
+                    results[(name, point, None)].dataset,
+                    {names[run_id]: results[(name, point, run_id)].dataset},
                 )
-                for label in labels
+                for point in points
             ],
         )
         for run_id in run_ids
     ]
-    axis_name = results[(labels[0], None)].axis
+    axis_name = results[(name, points[0], None)].axis
     return _grid_fig(_header(results, name), rows, axis_name)
 
 
 def compare_grid_fig(
-    results: dict[SimKey, SimResult], names: list[str], comp_name: str
+    results: dict[SimKey, SimResult],
+    run_names: dict[str, str],
+    names: list[str],
+    comp_name: str,
 ) -> Figure:
     """複数の系列を並べた波形格子 (行=系列、セルは先頭 run 1 本だけ)。
 
@@ -212,23 +216,21 @@ def compare_grid_fig(
     first_name = names[0]
     rows = []
     for name in names:
-        labels = select.labels_of(results, name)
-        run_ids = select.run_ids_of(results, name)
-        run_id = run_ids[0]
-        comp_id = results[(labels[0], None)].spec.net.name_to_idx(comp_name)
-        run_label = select.run_label_of(results, name, run_id)
+        points = select.points_of(results, name)
+        run_id = select.run_ids_of(results, name)[0]
+        comp_id = results[(name, points[0], None)].spec.net.name_to_idx(comp_name)
         rows.append(
             _Row(
                 comp_id,
                 [
                     (
-                        results[(label, None)].dataset,
-                        {run_label: results[(label, run_id)].dataset},
+                        results[(name, point, None)].dataset,
+                        {run_names[run_id]: results[(name, point, run_id)].dataset},
                     )
-                    for label in labels
+                    for point in points
                 ],
             )
         )
-    first_label = select.labels_of(results, first_name)[0]
-    axis_name = results[(first_label, None)].axis
+    first_point = select.points_of(results, first_name)[0]
+    axis_name = results[(first_name, first_point, None)].axis
     return _grid_fig(_header(results, first_name), rows, axis_name)

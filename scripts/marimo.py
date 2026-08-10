@@ -18,8 +18,8 @@ def _():
         sweep_siblings,
     )
 
+    from neurosurrogate.eval import SERIES, EvalSeries
     from neurosurrogate.metrics.report import load_and_render_report
-    from neurosurrogate.runs import SERIES, usable
 
     CONF_DIR = Path(__file__).resolve().parent / "conf"
     DRAW_JSON = CONF_DIR / "draw.json"
@@ -40,6 +40,7 @@ def _():
         RESULT_DIR,
         SERIES,
         STYLE_DIR,
+        EvalSeries,
         load_and_render_report,
         load_bundles,
         load_eval_results,
@@ -48,7 +49,6 @@ def _():
         run_and_log,
         runs_df,
         sweep_siblings,
-        usable,
     )
 
 
@@ -66,15 +66,18 @@ def _(ALL_PRESETS, mo, runs_df):
 
 
 @app.cell
-def _(ALL_PRESETS, SERIES, mo, preset, runs_df, usable):
+def _(ALL_PRESETS, SERIES, EvalSeries, mo, preset, runs_df):
     # marimo に残す唯一の「入力」= run を 1 件選ぶだけ。適用先 / sweep 対象 (兄弟 run)
     # は選択後に自動決定。preset で絞り、宣言された適用先 (SERIES の点の target) の
     # どれかへ**実際に置換できる** 代表 run (hydra sweep 親/単発 = parent_id 欠損)
-    # だけ出す (子は隠す)。互換判定は `runs.usable` に委ね UI に複製しない。
+    # だけ出す (子は隠す)。1 系列ごとの置換可否は `EvalSeries.replaceable` (ドメイン
+    # 側) が持ち、「1 本でも置換できれば出す」という**選択の方針**だけがここ。
     in_preset = (
         runs_df if preset == ALL_PRESETS else runs_df[runs_df["preset"] == preset]
     )
-    usable_mask = in_preset["meta"].map(lambda m: usable(m, SERIES))
+    usable_mask = in_preset["meta"].map(
+        lambda m: any(EvalSeries(**kw).replaceable(m) for kw in SERIES.values())
+    )
     reps = in_preset[usable_mask & in_preset["parent_id"].isna()]
     runs = reps[["tags.mlflow.runName", "comp_type", "run_id"]]
     run_selector = mo.ui.table(
@@ -142,17 +145,17 @@ def _(sel_id, sweep_siblings):
 
 @app.cell
 def _(load_bundles, run_ids_list):
-    # run 軸キー → surrogate / run_id。組み立ては mlflow_io.load_bundles 1 つに畳む。
-    bundles, run_ids = load_bundles(run_ids_list)
-    return bundles, run_ids
+    # run_id → surrogate (表示名は描画層が解く)。
+    bundles = load_bundles(run_ids_list)
+    return (bundles,)
 
 
 @app.cell
-def _(SERIES, bundles, run_and_log, run_ids, run_panel, sel_id):
+def _(SERIES, bundles, run_and_log, run_panel, sel_id):
     # 評価ボタン: 評価 → 評価 run 保存だけ (描画はしない)。既に同じ入力の評価 run が
     # あればシミュごとスキップされる (force で回し直す)。
     if run_panel.value["eval"]:
-        run_and_log(bundles, SERIES, run_ids, sel_id, force=run_panel.value["force"])
+        run_and_log(bundles, SERIES, sel_id, force=run_panel.value["force"])
     return
 
 

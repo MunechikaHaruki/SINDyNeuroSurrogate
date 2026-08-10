@@ -21,7 +21,7 @@ from neurosurrogate.core import access
 from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.eval import SimSpec
+from neurosurrogate.eval import SERIES, EvalSeries, SimResult, SimSpec
 from neurosurrogate.metrics.artifact import (
     cell_figs,
     compare_grid_fig,
@@ -44,19 +44,11 @@ from neurosurrogate.metrics.report import (
     metric_ylim,
     parse_report,
 )
+from neurosurrogate.metrics.select import SimKey, run_results
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
-)
-from neurosurrogate.runs import (
-    SERIES,
-    EvalSeries,
-    SimKey,
-    SimResult,
-    labels,
-    run_results,
-    sweep,
 )
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
@@ -132,11 +124,7 @@ def _run_results(
     bundles: dict[str, SurrogateBundle], spec: SimSpec, series: str = "hh_dc"
 ) -> dict[SimKey, SimResult]:
     """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした結果。"""
-    return run_results(
-        {series: EvalSeries([spec])},
-        bundles,
-        {run_id: b.meta.label for run_id, b in bundles.items()},
-    )
+    return run_results({series: {"spec": spec}}, bundles)
 
 
 @pytest.fixture(scope="module")
@@ -161,8 +149,8 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
     results = _run_results({"r0": surrogate}, _spec_of(surrogate))
-    orig = results[("hh_dc", None)]
-    surr = results[("hh_dc", "r0")]
+    orig = results[("hh_dc", 0, None)]
+    surr = results[("hh_dc", 0, "r0")]
     v = access.potential(surr.dataset, _train_comp(surrogate))
     assert v.shape == access.time(orig.dataset).shape
     assert np.isfinite(v[0])
@@ -173,7 +161,7 @@ def test_sweep_metric_choices_are_all_extractable(
 ) -> None:
     """UI が出す掃引 metric 選択肢は全て取り出せる = 選んだのに生成されないキーで
     黙って nan の図が出ることが無い (未知キーは extract_metric が KeyError)。"""
-    orig, surr = sindy_results[("hh_dc", None)], sindy_results[("hh_dc", "r0")]
+    orig, surr = sindy_results[("hh_dc", 0, None)], sindy_results[("hh_dc", 0, "r0")]
     dm = DynamicMetrics(orig.dataset, surr.dataset, 0, surr.spec.dt)
     assert all(extract_metric(dm, key)[1] is not None for key in METRIC_KEYS)
     with pytest.raises(KeyError):
@@ -184,7 +172,7 @@ def test_sindy_draws_all_figs(
     sindy_results: dict[SimKey, SimResult], sindy: SurrogateBundle
 ) -> None:
     """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
-    orig, surr = sindy_results[("hh_dc", None)], sindy_results[("hh_dc", "r0")]
+    orig, surr = sindy_results[("hh_dc", 0, None)], sindy_results[("hh_dc", 0, "r0")]
     figs = cell_figs(
         orig.dataset,
         surr.dataset,
@@ -199,12 +187,12 @@ def test_catalog_and_draw_json_are_self_consistent() -> None:
     構築でき、`draw.json` の `results`/`compare` が参照する系列名は `SERIES` に
     実在する。評価条件が型になった今、ズレるのは常に draw.json 側 (唯一残った
     設定ファイル) と特定できる。単発系列も「点 1 つ」として同じ経路を通る。"""
-    for ev in SERIES.values():
-        for spec in ev.points:
+    for kw in SERIES.values():
+        for spec in EvalSeries(**kw).points:
             assert len(spec.dataset().build_current()) > 0
-    # label 展開: 単発は系列名そのもの、掃引は 点の数だけ (series#0.. series#4)
-    assert set(labels(SERIES)) >= {"traub_soma_dc", "traub19_somastim#0"}
-    assert sum(1 for lb in labels(SERIES) if lb.startswith("traub19_somastim#")) == 5
+    # 点軸: 単発は点 1 つ、掃引は宣言した点数だけ
+    assert len(EvalSeries(**SERIES["traub_soma_dc"]).points) == 1
+    assert len(EvalSeries(**SERIES["traub19_somastim"]).points) == 5
 
     draw_json = Path(__file__).parents[1] / "scripts/conf/draw.json"
     report = parse_report(json.loads(draw_json.read_text()))
@@ -214,38 +202,37 @@ def test_catalog_and_draw_json_are_self_consistent() -> None:
         assert set(comparison["evals"]) <= names
 
 
-def _sweep_specs(name: str, values: list[float]) -> dict[str, EvalSeries]:
-    """1 系列 = 掃引展開後の点列 (点ごとに `current_params` 確定済み)。"""
+def _sweep_specs(name: str, values: list[float]) -> dict[str, dict]:
+    """1 系列分のカタログ項目 (`EvalSeries` の構築引数)。"""
     return {
-        name: sweep(
-            SimSpec(
+        name: {
+            "spec": SimSpec(
                 target="hh",
                 current_type="lin&steady",
                 dt=0.05,
                 current_params={"duration": 30.0, "silence_duration": 0.0},
             ),
-            "value",
-            values,
-        )
+            "param": "value",
+            "values": values,
+        }
     }
 
 
 def _run_named(
-    bundles: dict[str, SurrogateBundle], evals: dict[str, EvalSeries], run_label: str
+    bundles: dict[str, SurrogateBundle], catalog: dict[str, dict]
 ) -> dict[SimKey, SimResult]:
-    """複数系列 (系列名ごとの点列) を一括シミュし run 表示名を固定する。"""
-    return run_results(evals, bundles, dict.fromkeys(bundles, run_label))
+    """複数系列 (カタログ項目ごとの点列) を一括シミュ。"""
+    return run_results(catalog, bundles)
 
 
 def _renamed(
-    results: dict[SimKey, SimResult], old_name: str, new_name: str
+    results: dict[SimKey, SimResult], new_name: str
 ) -> dict[SimKey, SimResult]:
     """再シミュ無しに系列名だけ付け替えた複製 (テストの計算コスト削減用)。"""
-    out = {}
-    for (label, run_id), result in results.items():
-        new_label = label.replace(old_name, new_name, 1)
-        out[(new_label, run_id)] = dc_replace(result, series=new_name)
-    return out
+    return {
+        (new_name, point, run_id): result
+        for (_name, point, run_id), result in results.items()
+    }
 
 
 def test_compare_grid_rows_are_current_then_one_per_eval(
@@ -254,21 +241,22 @@ def test_compare_grid_rows_are_current_then_one_per_eval(
     """compare 図の行 = 評価ごとの V。点数が揃わない結果を
     混ぜると列の意味が行ごとにずれる → raise。"""
     bundles = {"r0": sindy}
-    results_a = _run_named(bundles, _sweep_specs("a", [5.0, 10.0]), "r0")
-    results = {**results_a, **_renamed(results_a, "a", "b")}
-    fig = compare_grid_fig(results, ["a", "b"], "soma")
+    names = {"r0": sindy.meta.label}
+    results_a = _run_named(bundles, _sweep_specs("a", [5.0, 10.0]))
+    results = {**results_a, **_renamed(results_a, "b")}
+    fig = compare_grid_fig(results, names, ["a", "b"], "soma")
     assert len(fig.axes) == 2 * 2  # (a + b) 行 × 2 点
     # 行名は描かない (格子は列見出しと凡例で読む)。
     assert not any(ax.get_ylabel() for ax in fig.axes)
 
     # 同じ格子骨格を run 軸で開くと行 = [run] (行の組み方だけが違う)。
-    run_fig = trace_grid_fig(results, "a", "soma")
+    run_fig = trace_grid_fig(results, names, "a", "soma")
     assert len(run_fig.axes) == 1 * 2
 
-    results_b3 = _run_named(bundles, _sweep_specs("b", [5.0, 10.0, 15.0]), "r0")
+    results_b3 = _run_named(bundles, _sweep_specs("b", [5.0, 10.0, 15.0]))
     short = {**results, **results_b3}
     with pytest.raises(ValueError, match="点数"):
-        compare_grid_fig(short, ["a", "b"], "soma")
+        compare_grid_fig(short, names, ["a", "b"], "soma")
 
 
 def test_report_draws_the_results_at_hand_not_the_declaration(
@@ -278,10 +266,7 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     に宣言の無い系列名 — 別セッションで回して artifact から読んだ結果 — もそのまま
     図になり、逆に参照先が手元に無い compare は error 図でなく**黙って落ちる**
     (宣言とのズレは呼び出し側の関心) = 計算と描画が切れている。"""
-    renamed = {
-        ("読んだ系列", run_id): dc_replace(result, series="読んだ系列")
-        for (_label, run_id), result in sindy_results.items()
-    }
+    renamed = _renamed(sindy_results, "読んだ系列")
     report = {
         "results": {"読んだ系列": {"eval_comp": "soma"}},
         "compares": {},
@@ -333,7 +318,7 @@ def test_view_comps_limit_drawn_traces(
 ) -> None:
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
-    ds = sindy_results[("hh_dc", None)].dataset
+    ds = sindy_results[("hh_dc", 0, None)].dataset
     assert len(panels_simple(ds, comps=[])) < len(panels_simple(ds))
     assert [name for name, _ in train_figs(sindy, comps=[_train_comp(sindy)])] == [
         name for name, _ in train_figs(sindy)

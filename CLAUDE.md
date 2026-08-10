@@ -51,9 +51,8 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
-  eval.py                        # 1 シミュ専念: SimSpec (target/current/dt/params だけの純粋な計算入力) + EVALS (条件名→SimSpec の素材倉庫) + simulate (1 シミュ)
-  runs.py                        # 1 シミュを超えた組み合わせ: EvalSeries/sweep/SERIES (系列名→軸+点列) + SimKey/SimResult (識別は全部こちら) + labels/expand/run_results + usable/run_labels。label 規約はここだけ。永続化は知らない
-  metrics/  select.py            # 結果 (SimKey→SimResult) からの群 (系列名/label/run_id) 選択
+  eval.py                        # 何をどう回すか (marimo/mlflow 非依存): SimSpec (純粋な計算入力) + simulate → SimResult (spec+波形) + EvalSeries (spec+param+values+surrogate の 1 掃引実験。points は派生、simulate() は引数なし) + 倉庫 EVALS/SERIES。run_id も表示名も出てこない
+  metrics/  select.py            # 結果の集まり: SimKey=(系列名, 点 index, run_id) + run_results (run 軸を掛ける唯一の場所) + 群選択 + run_names (表示名解決)
             report.py            # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
             save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ)
             artifact/__init__.py # 外部公開 API (Figure/DataFrame を返す集約関数のみ: cell_figs/closure_figs/preprocessor_figs/neuron_graph_figs/train_figs/wave_report + grid.py の re-export)
@@ -80,7 +79,8 @@ results/  <保存名>/               # marimo 描画ボタンが書く図 + meta
   `meta` / `preprocessor` / `ansatz` の 3 ブロックで `SurrogateBundle.setup` の宛先と 1 対 1。
   `_test_*.yaml` はテスト専用 preset (tests は preset 名を指すだけ)。
 - 評価条件は設定ファイルを持たない → 素材 (1 条件) は `neurosurrogate/eval.py` の
-  `EVALS`、系列 (掃引) は `neurosurrogate/runs.py` の `SERIES` (`sweep` で組む)。
+  `EVALS`、系列 (掃引) は同じ `eval.py` の `SERIES` (= `EvalSeries` の構築引数
+  `{spec, param, values}` の dict。回す側が `EvalSeries(**SERIES[name], surrogate=...)` と組む)。
   実験条件は滅多に変わらず、変えたら別の実験 = コードに焼いて差分に出す方が正しい。
 - `scripts/conf/draw.json` — 描画宣言のみ (計算入力と完全分離。結果が入力仕様を
   自分で持つので描画側は評価条件を読まない)。**唯一残った設定ファイル** = 図を
