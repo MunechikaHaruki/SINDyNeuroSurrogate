@@ -11,7 +11,7 @@ surrogate:
     preprocessor_type: ae # ude は encoder/decoder を学習変数にするので ae 固定
     n_components: 3
     datasets:
-      model_name: traub19
+      target: traub19
       current_type: train
       current_params:
         duration: 180 # 本番は 1000。smoke は shape/有限性のみ見るので短縮

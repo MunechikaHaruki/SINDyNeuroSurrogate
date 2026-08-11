@@ -63,7 +63,7 @@ class SaveEntry:
 
 def _entries_meta(entries: list[SaveEntry]) -> dict:
     """entry 列 → `meta.json` のスキーマ (`保存パス → {sources, draw}` の対応表。
-    draw.json の丸ごと保存ではなく成果物 1 件ごとの由来)。副作用なしの純粋関数で
+    描画宣言の丸ごと保存ではなく成果物 1 件ごとの由来)。副作用なしの純粋関数で
     書き出し (`save_entries`) と分離し、スキーマ組立だけを単独でテストできる。"""
     return {
         e.path: {

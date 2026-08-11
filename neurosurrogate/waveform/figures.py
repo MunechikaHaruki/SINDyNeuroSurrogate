@@ -19,22 +19,22 @@ from ..core.access import POTENTIAL_VAR
 from ..plotting import PanelSpec, TraceSpec, error_fig, new_figure, place_legend
 
 if TYPE_CHECKING:
-    from ..core.network import DatasetConfig
+    from ..spec import SimSpec
 
 
-def current_preview_fig(dset: DatasetConfig) -> Figure:
+def current_preview_fig(spec: SimSpec) -> Figure:
     """電流波形プレビュー。構築失敗は error_fig。marimo 非依存。"""
     try:
-        i_ext = dset.build_current()
+        i_ext = spec.current()
     except Exception as e:  # noqa: BLE001
         return error_fig(f"build failed: {e}")
-    t = np.arange(len(i_ext)) * dset.dt
+    t = np.arange(len(i_ext)) * spec.dt
     fig = new_figure(figsize=(6, 2))
     ax = fig.subplots()
     ax.plot(t, i_ext, lw=0.8)
     ax.set_xlabel("t [ms]")
     ax.set_ylabel("I_ext [μA/cm²]")
-    ax.set_title(f"{dset.current_type} preview")
+    ax.set_title(f"{spec.current_type} preview")
     return fig
 
 

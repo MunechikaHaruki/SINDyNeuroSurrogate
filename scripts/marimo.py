@@ -9,6 +9,7 @@ def _():
     from pathlib import Path
 
     import marimo as mo
+    from catalog import REPORT, SERIES
     from mlflow_io import (
         get_runs_df,
         load_bundles,
@@ -18,15 +19,10 @@ def _():
         sweep_siblings,
     )
 
-    from neurosurrogate.eval import SERIES
     from neurosurrogate.report import load_and_render_report
 
-    CONF_DIR = Path(__file__).resolve().parent / "conf"
-    DRAW_JSON = CONF_DIR / "draw.json"
-    STYLE_DIR = CONF_DIR / "style"
     RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
     ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
-    PLT_STYLE = "presentation"  # 描画スタイル (draw.json の関心でない = ここで固定)
 
     # marimo に残す操作は「run 選択」「評価」「描画」の 3 つ。評価 (→ 評価 run 保存)
     # と描画 (→ 図保存) はボタンを分け、CLI は持たない (二重管理を避け、この 2
@@ -35,11 +31,9 @@ def _():
     runs_df = get_runs_df()
     return (
         ALL_PRESETS,
-        DRAW_JSON,
-        PLT_STYLE,
+        REPORT,
         RESULT_DIR,
         SERIES,
-        STYLE_DIR,
         load_and_render_report,
         load_bundles,
         load_report,
@@ -93,7 +87,7 @@ def _(ALL_PRESETS, SERIES, mo, preset, runs_df):
 def _(mo, usable_series):
     # 評価する系列の絞り込み = **計算入力の選択**。選択肢は選んだ run 群で実際に置換
     # できる系列だけ (回せないものを選べても意味がない)、既定は全選択なので押した
-    # だけの挙動は絞る前と同じ。描画側の絞り込み (`draw.json` の results) とは役割が
+    # だけの挙動は絞る前と同じ。描画側の絞り込み (`REPORT.results`) とは役割が
     # 違う: こちらは「何を計算するか」で、あちらは「計算済みをどう描くか」。
     series_ui = mo.ui.multiselect(
         options=usable_series, value=usable_series, label="評価する系列"
@@ -105,7 +99,7 @@ def _(mo, usable_series):
 @app.cell
 def _(mo, sel_name):
     # 実行パネル: 評価 (→ 評価 run 保存) と描画 (→ 図保存) はボタンを分ける
-    # (draw.json 調整後の再描画だけ、評価だけを別々に回せる)。どちらも CLI は持たず、
+    # (宣言を書き換えた後の再描画だけ、評価だけを別々に回せる)。どちらも CLI は持たず、
     # この 2 ボタンが唯一の実行経路 (marimo と CLI の二重管理を避ける)。保存先 (図)
     # の既定名は選択 run の runName 入り。`force` は既存の評価 run を無視して
     # 回し直す (既定はスキップ = シミュが決定的なので同じ入力は再計算しない)。
@@ -166,16 +160,14 @@ def _(load_bundles, run_ids_list):
 def _(SERIES, series_ui):
     # widget → plain 値。選んだ系列名 → カタログの部分集合 (回す側が見るのはこれだけ)。
     series_names = list(series_ui.value)
-    catalog = {name: SERIES[name] for name in series_names}
-    return catalog, series_names
+    series_catalog = {name: SERIES[name] for name in series_names}
+    return series_catalog, series_names
 
 
 @app.cell
 def _(
-    DRAW_JSON,
-    PLT_STYLE,
+    REPORT,
     RESULT_DIR,
-    STYLE_DIR,
     load_and_render_report,
     load_report,
     load_surrogate_model,
@@ -184,25 +176,20 @@ def _(
     run_panel,
     series_names,
 ):
-    # 描画ボタン: レポート run + draw.json → dest へ図/表を書き出す (再シミュ無しの
-    # 再描画 = draw.json 調整後もここだけ回せる)。**回した単位 = 描く単位**で、今の
-    # 選択 (run 群 × 系列) のレポートを引く (無ければ評価が先)。surrogate は波形 run に
-    # 焼き込まれていない
+    # 描画ボタン: レポート run + 描画宣言 (`catalog.REPORT`) → dest へ図/表を
+    # 書き出す (再シミュ無しの再描画 = 宣言を書き換えた後もここだけ回せる)。
+    # **回した単位 = 描く単位**で、今の選択 (run 群 × 系列) のレポートを引く
+    # (無ければ評価が先)。surrogate は波形 run に焼き込まれていない
     # (閉包項が要る図 diff/attractor 用に MLflow から引き直す。load_surrogate_model
     # は run_id ごとに @cache 済み)。結果読込 (mlflow 依存) だけ marimo が持ち、
     # 組立・保存は `load_and_render_report` (metrics 層) へ委譲する。
     saved = []
     if run_panel.value["draw"]:
-        style_paths = [
-            STYLE_DIR / "base.mplstyle",
-            STYLE_DIR / f"{PLT_STYLE}.mplstyle",
-        ]
         dest = RESULT_DIR / run_panel.value["dir"]
         saved = load_and_render_report(
-            DRAW_JSON,
+            REPORT,
             load_report(run_ids_list, series_names),
             dest,
-            style_paths,
             load_surrogate_model,
         )
     (
@@ -226,12 +213,12 @@ def _(SERIES, bundles):
 
 
 @app.cell
-def _(bundles, catalog, run_and_log, run_panel):
+def _(bundles, run_and_log, run_panel, series_catalog):
     # 評価ボタン: 評価 → 波形 run + レポート run 保存だけ (描画はしない)。既に同じ
     # 入力の波形 run があればシミュごとスキップされる (force で回し直す)。レポートは
     # 選択 (run 群 × 系列) ごとに 1 本で、同じ選択なら参照表が更新される。
     if run_panel.value["eval"]:
-        run_and_log(bundles, catalog, force=run_panel.value["force"])
+        run_and_log(bundles, series_catalog, force=run_panel.value["force"])
     return
 
 

@@ -64,24 +64,6 @@ class Compartment:
         """
         return self.type.inits(self.resolved_params)
 
-    def to_dict(self) -> dict:
-        d: dict = {"name": self.name, "type": self.type.name}
-        if self.params is not None:
-            d["params"] = self.params._asdict()  # type: ignore[attr-defined]
-        return d
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "Compartment":
-        from ..neurons.compartments import COMPARTMENT_TYPES
-
-        comp_type = COMPARTMENT_TYPES[d["type"]]
-        if "params" in d:
-            assert comp_type.param_cls is not None
-            params = comp_type.param_cls(**d["params"])
-        else:
-            params = None
-        return cls(name=d["name"], type=comp_type, params=params)
-
 
 @dataclass
 class Edge:
@@ -122,25 +104,6 @@ class NeuronGraph:
     def stim_node_idx(self) -> int:
         return self.name_to_idx(self.stim)
 
-    def to_dict(self) -> dict:
-        return {
-            "nodes": [c.to_dict() for c in self.nodes],
-            "edges": [
-                {"src": e.src, "dst": e.dst, "weight": e.weight} for e in self.edges
-            ],
-            "stim": self.stim,
-            "stim_area_scale": self.stim_area_scale,
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "NeuronGraph":
-        return cls(
-            nodes=[Compartment.from_dict(n) for n in d["nodes"]],
-            edges=[Edge(**e) for e in d["edges"]],
-            stim=d["stim"],
-            stim_area_scale=d.get("stim_area_scale", 1.0),
-        )
-
     @property
     def graph_laplacian(self):
         connections = self.connections
@@ -158,51 +121,15 @@ class NeuronGraph:
 
 @dataclass
 class DatasetConfig:
-    model_name: str
+    """**実体化済みのシミュレーション入力**: 解いたネットと確定した電流波形。
+    `unified_simulator` はこれだけを受け取る。
+
+    仕様 (適用先の名前・電流の種類とパラメータ) は持たない — それは `spec.SimSpec`
+    で、`SimSpec.materialize()` がここへ落とす。**名前 → 実体の解決を core に
+    持ち込まない**ための分割で、おかげでこの層は他のディレクトリを一切 import
+    しない (置換は `surrogate.replace` が net を差し替えた複製を作る)。
+    """
+
     dt: float
-    current_type: str
-    current_params: dict
     net: NeuronGraph
-
-    def to_dict(self) -> dict:
-        return {
-            "model_name": self.model_name,
-            "dt": self.dt,
-            "current_type": self.current_type,
-            "current_params": self.current_params,
-            "net": self.net.to_dict(),
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "DatasetConfig":
-        return cls(
-            model_name=d["model_name"],
-            dt=d["dt"],
-            current_type=d["current_type"],
-            current_params=d["current_params"],
-            net=NeuronGraph.from_dict(d["net"]),
-        )
-
-    def build_current(self) -> np.ndarray:
-        from ..neurons.currents import CURRENT_MAP
-
-        return CURRENT_MAP[self.current_type](**self.current_params)(self.dt)
-
-    @classmethod
-    def build_dataset(
-        cls,
-        dt: float,
-        model_name: str,
-        current_type: str,
-        current_params: dict | None = None,
-    ) -> "DatasetConfig":
-        """yamlとの境界。current_params 省略時はパラメータ無し (既定値)。"""
-        from ..neurons import MCMODELS
-
-        return DatasetConfig(
-            model_name=model_name,
-            dt=dt,
-            current_type=current_type,
-            current_params=current_params or {},
-            net=MCMODELS[model_name],
-        )
+    current: np.ndarray

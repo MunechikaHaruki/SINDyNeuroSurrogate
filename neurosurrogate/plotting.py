@@ -15,6 +15,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+import matplotlib.style
 import numpy as np
 import pandas as pd
 from matplotlib.artist import Artist
@@ -22,6 +23,43 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 logger = logging.getLogger(__name__)
+
+# 図の見た目の既定 (matplotlib の rcParams)。**発表用の 1 組だけ**を持つ:
+# 切り替える先が無いのに選択機構を置かない (別の出力向けが要るなら、その時に
+# ここを調整する)。mplstyle ファイルにしないのは、中身が固定値で読み手が
+# このリポジトリのコードだけだから — 設定ファイルにする理由が無い。
+RC_PARAMS: dict[str, object] = {
+    "savefig.bbox": "tight",
+    "savefig.pad_inches": 0.05,
+    "savefig.format": "png",
+    "figure.facecolor": "white",
+    "figure.dpi": 80,
+    "font.family": "sans-serif",
+    "font.size": 10,
+    "axes.labelsize": 12,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+    "lines.antialiased": True,
+    "lines.linewidth": 1.5,
+    "lines.markersize": 10,
+    "patch.linewidth": 0.5,
+    "axes.linewidth": 2.5,
+    "axes.grid": False,
+    "grid.linewidth": 1.5,
+    "grid.linestyle": "--",
+    "grid.alpha": 0.6,
+    "legend.loc": "upper right",
+    "legend.numpoints": 1,
+    "legend.fontsize": 9,
+    "legend.frameon": True,
+}
+
+
+def use_style() -> None:
+    """`RC_PARAMS` を適用する。**プロセス全体のグローバル状態**を触るので、呼ぶのは
+    保存の入口 (`report.render_report`) 1 箇所だけ。"""
+    matplotlib.style.use(RC_PARAMS)
+
 
 # 各ドメインの集約関数が返す (識別子, 成果物) 列の要素型。list は invariant で
 # `collect` の list[tuple[str, Figure]] を受け付けないため covariant な Sequence。

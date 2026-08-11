@@ -1,8 +1,6 @@
-"""**描画宣言 (`scripts/conf/draw.json`) を型へ落とす唯一の入口**。
-
-`ReportSpec.from_dict` を通った後は dict も文字列キーも出てこない
-(`DrawSpec`/`CompareSpec` として持ち回る) = 綴り間違いは読込時に落ち、以降は
-型で守られる。既定値と「どのキーがあるか」の単一源もここ。
+"""**描画宣言の型**。実体は `scripts/catalog.py` の `REPORT` に型のまま並ぶ
+(設定ファイルは持たない = パースも未知キー検出も要らず、綴り間違いは import 時に
+Python が落とす)。既定値と「どのキーがあるか」の単一源もここ。
 
 図の**種類**は各ドメインの集約関数そのものから取る (関数名 = `kinds` のキー。
 文字列を手で書き写さないので rename が自動で追従する)。marimo/mlflow 非依存。
@@ -10,10 +8,7 @@
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field, fields
-from pathlib import Path
-from typing import Any, Self
+from dataclasses import dataclass, field
 
 from ..surrogate.figures import (
     closure_figs,
@@ -25,7 +20,7 @@ from ..surrogate.figures import (
 from ..waveform import cell_figs, current_preview_fig
 from .grid import compare_grid_fig, metric_fig, trace_grid_fig
 
-# `draw.json` の `kinds` に書けるキー = 保存できる図/表の種類の単一源。
+# `ReportSpec.kinds` に書けるキー = 保存できる図/表の種類の単一源。
 # **報告に載る種類の一覧はドメインを横断する** → 横断できる唯一の層 (report) が持つ。
 # `cell_figs` だけは呼び出しに `wave_report` が付随する複合キーだが、キー名は
 # `cell_figs` で足りる。
@@ -45,21 +40,9 @@ KIND_FUNCS = (
 ALL_KINDS: tuple[str, ...] = tuple(f.__name__ for f in KIND_FUNCS)
 
 
-def _build(cls: type, d: dict, where: str) -> Any:
-    """dict → dataclass。未知のキーは黙って捨てず落とす (typo が「既定のまま
-    描かれた」に化けるのを防ぐ)。"""
-    known = {f.name for f in fields(cls)}
-    unknown = set(d) - known
-    if unknown:
-        raise ValueError(
-            f"{where}: 未知のキー {sorted(unknown)} (使えるのは {sorted(known)})"
-        )
-    return cls(**d)
-
-
 @dataclass(frozen=True)
 class DrawSpec:
-    """1 系列の表示設定 (`draw.json` の `results[]` 1 件)。**評価 (系列) ごとに固有の
+    """1 系列の表示設定 (`ReportSpec.results` の 1 件)。**評価 (系列) ごとに固有の
     値** — 適用先が変われば comp 名も変わるのでグローバル既定を持たない
     (`eval_comp` 未指定はエラー図になる = 黙って何か描かず気付ける)。
 
@@ -85,7 +68,7 @@ class DrawSpec:
 
 @dataclass(frozen=True)
 class CompareSpec:
-    """既に回した複数系列を 1 枚の格子へ並べる宣言 (`draw.json` の `compare[]`)。
+    """既に回した複数系列を 1 枚の格子へ並べる宣言 (`ReportSpec.compares` の 1 件)。
     シミュを増やさず結果を参照するだけなので `eval_comp` を自分で持つ。"""
 
     evals: tuple[str, ...] = ()
@@ -94,47 +77,11 @@ class CompareSpec:
 
 @dataclass(frozen=True)
 class ReportSpec:
-    """`draw.json` 全体。`results`/`compares` は名前キーの dict へ畳んである。"""
+    """描画宣言の全体。`results`/`compares` はどちらも系列名キーの dict。"""
 
     results: dict[str, DrawSpec] = field(default_factory=dict)
     compares: dict[str, CompareSpec] = field(default_factory=dict)
     kinds: dict[str, bool] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Self:
-        """生 dict → 型。`results[]`/`compare[]` は配列 → 名前キーの dict
-        (`eval`/`name` キー自体は要素から取り除く)。"""
-        return cls(
-            results={
-                str(r["eval"]): _build(
-                    DrawSpec,
-                    {
-                        k: tuple(v) if k == "view_comps" else v
-                        for k, v in r.items()
-                        if k != "eval"
-                    },
-                    f"results[{r['eval']}]",
-                )
-                for r in d.get("results", ())
-            },
-            compares={
-                str(c["name"]): _build(
-                    CompareSpec,
-                    {
-                        k: tuple(v) if k == "evals" else v
-                        for k, v in c.items()
-                        if k != "name"
-                    },
-                    f"compare[{c['name']}]",
-                )
-                for c in d.get("compare", ())
-            },
-            kinds={str(k): bool(v) for k, v in d.get("kinds", {}).items()},
-        )
-
-    @classmethod
-    def load(cls, path: Path) -> Self:
-        return cls.from_dict(json.loads(path.read_text()))
 
     def wants(self, kind: str) -> bool:
         """この種類の図/表を保存するか。未指定キーは描く既定 (`kinds` に明示した

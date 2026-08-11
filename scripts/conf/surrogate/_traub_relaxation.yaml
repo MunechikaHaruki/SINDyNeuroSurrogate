@@ -6,7 +6,7 @@ surrogate:
     preprocessor_type: pca
     n_components: 1  # 潜在方程式の次元
     datasets:
-      model_name: traub
+      target: traub
       current_type: train
   ansatz:
     library_specs:

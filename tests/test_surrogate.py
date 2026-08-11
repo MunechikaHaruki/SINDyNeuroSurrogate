@@ -12,15 +12,15 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from catalog import REPORT, SERIES
 from hydra import compose, initialize_config_dir
 from matplotlib.figure import Figure
 from omegaconf import OmegaConf
 
 from neurosurrogate.core import access
-from neurosurrogate.core.network import DatasetConfig
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.eval import SERIES, EvalSeries, SimSpec
+from neurosurrogate.eval import EvalSeries
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
@@ -36,6 +36,7 @@ from neurosurrogate.report import (
     eval_report,
 )
 from neurosurrogate.report.grid import compare_grid_fig, trace_grid_fig
+from neurosurrogate.spec import SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
     hybrid_physics,
@@ -104,14 +105,9 @@ def sindy() -> SurrogateBundle:
 
 
 def _spec_of(bundle: SurrogateBundle) -> SimSpec:
-    """学習データと同じ入力の評価仕様 (掃引軸なし = 点 1 つ)。"""
-    ds = bundle.meta.dataset
-    return SimSpec(
-        target=ds.model_name,
-        current_type=ds.current_type,
-        dt=ds.dt,
-        current_params=ds.current_params,
-    )
+    """学習データと同じ入力の評価仕様 (掃引軸なし = 点 1 つ)。学習側の指定も
+    評価条件も同じ `SimSpec` なので、詰め替えずそのまま渡せる。"""
+    return bundle.meta.dataset
 
 
 def _run_view(
@@ -170,22 +166,21 @@ def test_sindy_draws_all_figs(sindy_view: SeriesView, sindy: SurrogateBundle) ->
     assert [name for name, _ in figs] == ["diff", "simple", "attractor"]
 
 
-def test_catalog_and_draw_json_are_self_consistent() -> None:
-    """marimo の既定設定が自己整合: `SERIES` の全系列の電流が掃引点まで含めて
-    構築でき、`draw.json` の `results`/`compare` が参照する系列名は `SERIES` に
-    実在する。評価条件が型になった今、ズレるのは常に draw.json 側 (唯一残った
-    設定ファイル) と特定できる。単発系列も「点 1 つ」として同じ経路を通る。"""
+def test_catalog_is_self_consistent() -> None:
+    """カタログ (`scripts/catalog.py`) が自己整合: `SERIES` の全系列の電流が掃引点
+    まで含めて構築でき、`REPORT` が参照する系列名は `SERIES` に実在する。条件も
+    宣言も型になった今、綴り間違いは import 時に落ちるので、ここで見るのは
+    **名前の対応**だけ。単発系列も「点 1 つ」として同じ経路を通る。"""
     for series in SERIES.values():
         for spec in series.points:
-            assert len(spec.dataset().build_current()) > 0
+            assert len(spec.current()) > 0
     # 点軸: 単発は点 1 つ、掃引は宣言した点数だけ
     assert len(SERIES["traub_soma_dc"].points) == 1
     assert len(SERIES["traub19_somastim"].points) == 5
 
-    report = ReportSpec.load(Path(__file__).parents[1] / "scripts/conf/draw.json")
     names = set(SERIES)
-    assert set(report.results) <= names
-    for comparison in report.compares.values():
+    assert set(REPORT.results) <= names
+    for comparison in REPORT.compares.values():
         assert set(comparison.evals) <= names
 
 
@@ -262,17 +257,12 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
 
 
 def test_report_spec_results_are_per_label_with_no_default_fallback() -> None:
-    """`draw.json` の `results[]` は label ごとに完結する宣言 (既定値からの override
-    ではない): 指定したキーだけ効き、欠落キーは `DrawSpec` の既定値。宣言に無い
-    label は既定の `DrawSpec` そのもの (グローバル既定を持たない)。綴り間違いは
-    読込時に落ちる (既定のまま描かれて気付けない、が起きない)。"""
-    report = ReportSpec.from_dict(
-        {"results": [{"eval": "traub19_dendstim", "eval_comp": "c09"}]}
-    )
+    """`ReportSpec.results` は label ごとに完結する宣言 (既定値からの override では
+    ない): 指定したキーだけ効き、欠落キーは `DrawSpec` の既定値。宣言に無い label は
+    既定の `DrawSpec` そのもの (グローバル既定を持たない)。"""
+    report = ReportSpec(results={"traub19_dendstim": DrawSpec(eval_comp="c09")})
     assert report.draw_for("traub19_dendstim") == DrawSpec(eval_comp="c09")
     assert report.draw_for("宣言に無い label") == DrawSpec()
-    with pytest.raises(ValueError, match="未知のキー"):
-        ReportSpec.from_dict({"results": [{"eval": "e", "eval_cmop": "soma"}]})
 
 
 def test_draw_settings_are_typed_and_failed_figs_fold_into_error(
@@ -444,16 +434,16 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments(
     surrogate = fit_surrogate(preset)
     assert surrogate.surr_comp_type.gate_names[-len(extra_names) :] == extra_names
 
-    traub19 = DatasetConfig.build_dataset(
-        dt=0.01, model_name="traub19", current_type="train", current_params={}
-    )
+    traub19 = SimSpec(target="traub19", current_type="train", dt=0.01)
     # phi_area/g_Ca が異なる 19 comp すべてが置換対象。pre-B は soma のみ一致で
     # ValueError だった (Ca params が latent に焼込まれ params 一致必須だったため)。
-    assert replaceables(surrogate.meta, traub19) == set(traub19.net.names)
+    assert replaceables(surrogate.meta, traub19.net) == set(traub19.net.names)
 
     # 置換シミュ (XI/Q を各ノード params で physics 積分) が有限に走る。
     v = access.potential(
-        unified_simulator(apply_surrogate(surrogate, surrogate.meta.dataset)),
+        unified_simulator(
+            apply_surrogate(surrogate, surrogate.meta.dataset.materialize())
+        ),
         _train_comp(surrogate),
     )
     assert np.isfinite(v).all()
@@ -465,18 +455,18 @@ def test_traub19_soma_model_replaces_only_soma() -> None:
     できる (置換範囲を絞る新軸を meta へ足さず、適用先モデル側で絞る)。dendrite 18 個
     は置換対象外のまま残り、置換シミュが有限に走る。"""
     surrogate = fit_surrogate("_test_traub_hybrid")  # comp_type=traub, 単体 traub 教師
-    ds = DatasetConfig.build_dataset(
-        dt=0.01,
-        model_name="traub19_soma",
+    ds = SimSpec(
+        target="traub19_soma",
         current_type="train",
+        dt=0.01,
         current_params={"duration": 180},  # smoke: 配線確認のみ (本番は長時間)
     )
-    assert replaceables(surrogate.meta, ds) == {"soma"}
+    assert replaceables(surrogate.meta, ds.net) == {"soma"}
     # soma だけ traub 型、dendrite はダミー型 traub_ (置換対象外)
     assert {n.name for n in ds.net.nodes if n.type.name == "traub"} == {"soma"}
 
     v = access.potential(
-        unified_simulator(apply_surrogate(surrogate, ds)),
+        unified_simulator(apply_surrogate(surrogate, ds.materialize())),
         ds.net.name_to_idx("soma"),
     )
     assert np.isfinite(v).all()
@@ -486,17 +476,17 @@ def test_traub19_soma_dendstim_injects_into_dendrite() -> None:
     """dend 刺激版も soma だけ置換対象 (traub 型 = soma のみ) だが、電流注入先は
     dendrite。刺激点が soma でないこと + 置換シミュが有限に走ることを確認。"""
     surrogate = fit_surrogate("_test_traub_hybrid")
-    ds = DatasetConfig.build_dataset(
-        dt=0.01,
-        model_name="traub19_soma_dendstim",
+    ds = SimSpec(
+        target="traub19_soma_dendstim",
         current_type="train",
+        dt=0.01,
         current_params={"duration": 180},
     )
     assert ds.net.stim != "soma"  # 注入先は dendrite
-    assert replaceables(surrogate.meta, ds) == {"soma"}
+    assert replaceables(surrogate.meta, ds.net) == {"soma"}
 
     v = access.potential(
-        unified_simulator(apply_surrogate(surrogate, ds)),
+        unified_simulator(apply_surrogate(surrogate, ds.materialize())),
         ds.net.name_to_idx("soma"),
     )
     assert np.isfinite(v).all()
@@ -532,13 +522,13 @@ def test_ude_traub_transplants_across_heterogeneous_compartments() -> None:
     assert surrogate.surr_comp_type.gate_names[-len(TRAUB_EXTRA_GATE_NAMES) :] == (
         TRAUB_EXTRA_GATE_NAMES
     )
-    traub19 = DatasetConfig.build_dataset(
-        dt=0.01, model_name="traub19", current_type="train", current_params={}
-    )
-    assert replaceables(surrogate.meta, traub19) == set(traub19.net.names)
+    traub19 = SimSpec(target="traub19", current_type="train", dt=0.01)
+    assert replaceables(surrogate.meta, traub19.net) == set(traub19.net.names)
 
     v = access.potential(
-        unified_simulator(apply_surrogate(surrogate, surrogate.meta.dataset)),
+        unified_simulator(
+            apply_surrogate(surrogate, surrogate.meta.dataset.materialize())
+        ),
         _train_comp(surrogate),
     )
     assert np.isfinite(v).all()
@@ -625,7 +615,7 @@ def test_original_dynamics_injected_reproduces_potential_exactly() -> None:
         exact_dlatent,
     )
     replaced = dc_replace(
-        meta.dataset,
+        meta.dataset.materialize(),
         net=replace_nodes(
             meta.dataset.net, surr_type, lambda n: n.type == meta.comp_type
         ),
@@ -633,7 +623,7 @@ def test_original_dynamics_injected_reproduces_potential_exactly() -> None:
 
     comp = _train_comp(surrogate)
     assert np.array_equal(
-        access.potential(unified_simulator(meta.dataset), comp),
+        access.potential(unified_simulator(meta.dataset.materialize()), comp),
         access.potential(unified_simulator(replaced), comp),
     )
 

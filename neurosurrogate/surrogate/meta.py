@@ -9,10 +9,11 @@ from dataclasses import dataclass, fields
 
 import xarray as xr
 
-from ..core.network import Compartment, CompartmentType, DatasetConfig
+from ..core.network import Compartment, CompartmentType
 from ..core.opcost import OpCost
 from ..core.simulator import unified_simulator
 from ..neurons.compartments import COMPARTMENT_TYPES
+from ..spec import SimSpec
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class SurrogateMeta:
     surrogate_type: str  # sindy/hybrid
     preprocessor_type: str  # pca/ae
     n_components: int
-    dataset: DatasetConfig
+    dataset: SimSpec
     comp_type: CompartmentType  # 置換対象の種類 (hh/traub…)
     train_comp_id: int | None  # 学習を絞るノード。None = 種類一致ノード全部
     physics_type: str | None  # 学習/physics 分割の変種。None = comp_type 名
@@ -49,7 +50,7 @@ class SurrogateMeta:
         train_comp_identifier: str | None = None,
         physics_type: str | None = None,
     ) -> "SurrogateMeta":
-        dataset = DatasetConfig.build_dataset(**datasets)
+        dataset = SimSpec(**datasets)
         return cls(
             surrogate_type=surrogate_type,
             preprocessor_type=preprocessor_type,
@@ -78,7 +79,7 @@ class SurrogateMeta:
             **{
                 **d,
                 "comp_type": COMPARTMENT_TYPES[d["comp_type"]],
-                "dataset": DatasetConfig.from_dict(d["dataset"]),
+                "dataset": SimSpec.from_dict(d["dataset"]),
             }
         )
 
@@ -99,7 +100,7 @@ class SurrogateMeta:
                 f"{self.surrogate_type}/n{self.n_components}/{self.preprocessor_type}",
                 *([] if self.physics_type is None else [f"+{self.physics_type}"]),
                 "@"
-                + self.dataset.model_name
+                + self.dataset.target
                 + ("" if self.train_comp_id is None else f":{self.train_comp.name}"),
             ]
         )
@@ -132,4 +133,4 @@ class SurrogateMeta:
         return self.comp_type.opcost
 
     def simulate(self) -> xr.Dataset:
-        return unified_simulator(self.dataset)
+        return unified_simulator(self.dataset.materialize())

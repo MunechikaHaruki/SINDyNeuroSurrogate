@@ -128,7 +128,7 @@ def unified_simulator(cfg: DatasetConfig) -> xr.Dataset:
     surr_comp_type で kernel 埋込済み CompartmentType を replace.apply で挿入する"""
     net = cfg.net
     dt = cfg.dt
-    u = cfg.build_current()
+    u = cfg.current
     state = build_model_state(net)
     dataset = set_coords(
         generic_euler_solver(

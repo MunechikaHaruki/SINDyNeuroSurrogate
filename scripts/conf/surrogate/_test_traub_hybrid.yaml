@@ -9,7 +9,7 @@ surrogate:
     preprocessor_type: pca # 決定的で速い pca に固定 (AE は乱数初期化で品質がブレる)
     n_components: 5
     datasets:
-      model_name: traub
+      target: traub
       current_type: train
       current_params:
         duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮

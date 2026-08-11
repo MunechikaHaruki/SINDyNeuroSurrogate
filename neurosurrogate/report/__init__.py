@@ -1,7 +1,7 @@
 """**結果ドメイン**: 回した結果を軸に開き、宣言に従って報告 (図/表 + 由来) へ畳む。
 
 - `results.py` — `SeriesView`/`ResultSet` (点軸 × run 軸。**run 軸を掛ける唯一の場所**)
-- `spec.py` — `draw.json` → `ReportSpec`/`DrawSpec`/`CompareSpec` (宣言の型)
+- `spec.py` — `ReportSpec`/`DrawSpec`/`CompareSpec` (描画宣言の型)
 - `grid.py` — 軸に沿った図表 (波形格子・点軸メトリクス)
 - `save.py` — `SaveEntry` (成果物 1 件 = 表示名 + 中身 + 由来) と書き出し
 - `build.py` — 組立と `render_report` (marimo から呼ぶ入口)

@@ -8,7 +8,7 @@ surrogate:
     preprocessor_type: ae
     n_components: 2
     datasets:
-      model_name: hh
+      target: hh
       current_type: train
       current_params:
         duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮

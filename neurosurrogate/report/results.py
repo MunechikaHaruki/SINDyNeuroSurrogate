@@ -2,9 +2,10 @@
 開いた `SeriesView` と、その束 `ResultSet`。marimo/mlflow 非依存。
 
 **run 軸を持ち込むのはここ**: `eval.EvalSeries` が持つ surrogate は 1 つで run_id を
-知らない。カタログ (`eval.SERIES`) に run ごとの surrogate を載せた系列を組むのは
-`series_matrix` ただ 1 つで、その場で回す経路 (`ResultSet.simulate`) も永続化を
-経由する経路 (`scripts/mlflow_io.py`) も同じ組合せを通る。
+知らない。カタログ (`scripts/catalog.py` の `SERIES`) に run ごとの surrogate を
+載せた系列を組むのは `series_matrix` ただ 1 つで、その場で回す経路
+(`ResultSet.simulate`) も永続化を経由する経路 (`scripts/mlflow_io.py`) も同じ
+組合せを通る。
 
 **点は識別子を持たない**: 保存の単位が 1 系列 = 1 評価 run なので、点の並びは常に
 `EvalSeries.points` が単一源。結果を「並べ直す」処理はどこにも無い。
@@ -24,7 +25,7 @@ from ..surrogate.bundle import SurrogateBundle
 def series_matrix(
     catalog: dict[str, EvalSeries], bundles: dict[str, SurrogateBundle]
 ) -> list[tuple[str, EvalSeries, dict[str, EvalSeries]]]:
-    """カタログ (`eval.SERIES` = 系列名 → 素の `EvalSeries`) × run 軸 →
+    """カタログ (系列名 → 素の `EvalSeries`) × run 軸 →
     (系列名, 原系, run_id → 置換系) の列。**run 軸を掛ける唯一の場所**。
 
     1 本も置換できない系列は落とす (回しても比較対象が無い)。回すのも保存するのも

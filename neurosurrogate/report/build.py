@@ -8,7 +8,7 @@ marimo 非依存 (marimo は結果読込 + surrogate ロードだけ持ち、組
 流すだけ。**単発と掃引で経路を分けない** — 点が 1 つなら格子が 1 列になり点軸の
 折れ線が出ないだけ。
 
-**描く対象は結果 (`ResultSet`) 自身**で、評価条件の宣言 (`eval.SERIES`) は
+**描く対象は結果 (`ResultSet`) 自身**で、評価条件の宣言 (カタログの `SERIES`) は
 受け取らない: 結果 artifact は入力仕様を自分で持つので、設定ファイルと無関係に
 (別セッションで回した結果でも) 描ける。描画宣言は `ReportSpec` (`.spec`) が型として
 持つ = ここに文字列キーは出てこない。
@@ -23,11 +23,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-
 from ..core import access
 from ..core.network import NeuronGraph
-from ..plotting import error_fig
+from ..plotting import error_fig, use_style
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.diagnostics import preprocessed_latent
 from ..surrogate.figures import (
@@ -91,7 +89,7 @@ def model_report(
         [
             SaveEntry(
                 f"current/{view.name}",
-                current_preview_fig(view.points[0].spec.dataset()),
+                current_preview_fig(view.points[0].spec),
                 sources=view.sources,
                 draw=draw,
             )
@@ -270,8 +268,8 @@ def eval_report(
 ) -> list[SaveEntry]:
     """結果 (図 + メトリクス) → compare の格子図。
 
-    描く対象は `report.targets` が決める: `draw.json` の `results` が空なら手元の
-    結果を全部、非空ならそこに列挙した系列名だけ (計算入力の宣言 `eval.SERIES` とは
+    描く対象は `report.targets` が決める: `ReportSpec.results` が空なら手元の
+    結果を全部、非空ならそこに列挙した系列名だけ (計算入力の宣言 `SERIES` とは
     突き合わせない — 結果は別セッションの宣言で回したものでも描けるべき)。
     """
     names = run_names(bundles)
@@ -290,15 +288,13 @@ def render_report(
     results: ResultSet,
     report: ReportSpec,
     dest: Path,
-    style_paths: list[Path],
 ) -> list[Path]:
     """model/eval の図表を組み立てて dest へ保存する唯一の入口。呼び出し側
     (`scripts/marimo.py` の描画ボタン) は artifact 読込 + surrogate ロード (mlflow
     依存) だけを持ち、組立/保存はここに委譲する。成果物ごとの由来 (`sources`/`draw`)
     は各 `SaveEntry` が持ち、`meta.json` へは `save_entries` がそのまま落とす
-    (draw.json 丸ごとの snapshot は持たない)。"""
-    for p in style_paths:
-        plt.style.use(p)
+    (描画宣言の丸ごと snapshot は持たない)。"""
+    use_style()
     # 学習側 (train_raw) は全軌道を覆うレンジ、評価側 (diff) は panels_diff の
     # 発表用既定に任せる (共有すると学習パルスの最大値で評価 step が潰れる)。
     entries = model_report(
@@ -308,19 +304,15 @@ def render_report(
 
 
 def load_and_render_report(
-    draw_json: Path,
+    report: ReportSpec,
     results: ResultSet,
     dest: Path,
-    style_paths: list[Path],
     load_surrogate_model: Callable[[str], SurrogateBundle],
 ) -> list[Path]:
-    """draw.json 読込から `render_report` までを一括した唯一の入口。呼び出し側
-    (`scripts/marimo.py` の描画ボタン) は結果の読込と surrogate ロード (どちらも
-    mlflow 依存) だけを持ち、宣言のパース・組立・保存はここへ委譲する。
+    """surrogate の解決から `render_report` までを一括した唯一の入口。呼び出し側
+    (`scripts/marimo.py` の描画ボタン) は結果の読込 (mlflow 依存) だけを持てばよい。
     surrogate は結果に焼き込まれていない (run_id で対応付くだけ) ので、閉包項が
     要る図のために `load_surrogate_model` で引き直す。"""
     run_ids = dict.fromkeys(rid for view in results for rid in view.run_ids)
     bundles = {run_id: load_surrogate_model(run_id) for run_id in run_ids}
-    return render_report(
-        bundles, results, ReportSpec.load(draw_json), dest, style_paths
-    )
+    return render_report(bundles, results, report, dest)

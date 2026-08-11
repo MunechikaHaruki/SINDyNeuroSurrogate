@@ -1,6 +1,8 @@
-"""**何をどう回すか**を扱う層: 1 シミュの仕様 (`SimSpec`) と実行 (`simulate`)、
-それを電流パラメータで振った掃引実験 (`EvalSeries`)、そして回したい条件の倉庫
-(`EVALS` / `SERIES`)。marimo/mlflow 非依存の純粋ドメイン層。
+"""**どう回すか**を扱う層: 1 シミュの仕様 (`SimSpec`) と実行 (`simulate`)、それを
+電流パラメータで振った掃引実験 (`EvalSeries`)。marimo/mlflow 非依存の純粋ドメイン層。
+
+**何を回すかは持たない**: 実際に回したい条件の一覧は `scripts/catalog.py`
+(`EVALS` / `SERIES`)。ここは型と手続きだけで、この研究に固有の値は入らない。
 
 **軸は点軸 (電流パラメータ) 1 本だけ**: `EvalSeries` が持つ surrogate は 1 つで、
 run_id という識別子はこのモジュールに一切現れない。run ごとに系列を作って回し、
@@ -11,9 +13,9 @@ run 軸を掛けるのは結果を扱う層 (`report.ResultSet`)。2 つの軸�
 決まる派生なので、点ごとの識別子 (どの系列の何番目か) はどこにも要らない:
 保存側は波形を点の順に並べて置き、読む側は `attach` で系列に貼り直す。
 
-**評価したい条件は型で宣言する** (設定ファイルを持たない = スキーマという型の弱い
-写しを二重に管理しない)。描画の宣言だけは設定ファイル `scripts/conf/draw.json` に
-残る — あちらは図を調整するたびに書き換える対象で性格が違う。
+**条件は設定ファイルでなく型で宣言する** (スキーマという型の弱い写しを二重に
+管理しない)。描画の宣言 (`report.ReportSpec`) も同じで、どちらも実体は
+`scripts/catalog.py` に型のまま並ぶ。
 
 **表示名も関心でない**: 凡例や図の見出しは結果を扱う層 (`report`)、結果の保存/
 読込は MLflow の評価 experiment (`scripts/mlflow_io.py`) が持つ。
@@ -21,131 +23,21 @@ run 軸を掛けるのは結果を扱う層 (`report.ResultSet`)。2 つの軸�
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 from typing import Self
 
-import numpy as np
 import xarray as xr
 
 from .core.diverge import log_divergence
-from .core.network import DatasetConfig, NeuronGraph
 from .core.simulator import unified_simulator
-from .neurons import MCMODELS
+from .spec import SimSpec, short_hash
 from .surrogate.bundle import SurrogateBundle
 from .surrogate.meta import SurrogateMeta
 from .surrogate.replace import apply_surrogate
 from .surrogate.replace import replaceable as node_replaceable
-
-
-def _short_hash(key: str) -> str:
-    """正規化文字列 → 短縮ハッシュ。「同じものを既に回したか」を引く鍵の作り方を
-    `SimSpec` と `EvalSeries` で揃える (どちらも完全な仕様を別に持つので短くてよい)。"""
-    return hashlib.sha1(key.encode()).hexdigest()[:8]
-
-
-# --- 仕様 --------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, kw_only=True)
-class SimSpec:
-    """1 回のシミュレーションの仕様 = **純粋な計算入力**: 適用先 target × 電流
-    (掃引点は `current_params` に確定済み)。これだけで波形が決まる。
-
-    **識別は一切持たない** — 系列名は `SERIES` のキー、どの surrogate で回すかは
-    `simulate` の引数、出所は結果側 (`SimResult`)。おかげで `hash()` が「同じ波形を
-    出す入力か」と正確に一致する。
-    """
-
-    target: str
-    current_type: str
-    dt: float
-    current_params: dict = field(default_factory=dict)
-
-    def to_dict(self) -> dict:
-        """永続化 (MLflow の評価 run) が入力仕様として持ち回る形へ。"""
-        return {
-            "target": self.target,
-            "current_type": self.current_type,
-            "dt": self.dt,
-            "current_params": self.current_params,
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Self:
-        return cls(
-            target=str(d["target"]),
-            current_type=str(d["current_type"]),
-            dt=float(d["dt"]),
-            current_params=dict(d.get("current_params") or {}),
-        )
-
-    def key(self) -> str:
-        """**同じ入力とみなす単位**の正規化文字列 (dict 順序に依らず一致する)。
-        「この spec と同じか」を問う側はここを経由する。"""
-        return json.dumps(self.to_dict(), sort_keys=True, default=str)
-
-    def hash(self) -> str:
-        """`key()` の短縮ハッシュ。保存側が「同じ入力を既に回したか」を引くための
-        キー (完全な仕様は別に持つので、衝突しない長さがあれば足りる)。"""
-        return _short_hash(self.key())
-
-    @property
-    def net(self) -> NeuronGraph:
-        """適用先の MC モデル。**target 名 → ネットの解決はここだけ**が行い、結果型も
-        描画も spec 経由で引く (文字列キーを持ち回らない)。"""
-        return MCMODELS[self.target]
-
-    def dataset(self) -> DatasetConfig:
-        """入力 (原系)。置換系は `apply_surrogate` が非破壊で作る。"""
-        return DatasetConfig.build_dataset(
-            model_name=self.target,
-            dt=self.dt,
-            current_type=self.current_type,
-            current_params=self.current_params,
-        )
-
-
-# --- 条件の倉庫 (この研究で回したい素材) ----------------------------------------------
-
-# 掃引つき評価の共通電流パラメータ (刺激前の静穏 + 本体長)。掃引軸の値は入らない
-# (`EvalSeries` が点ごとに埋める)。
-_STIM = {"silence_duration": 10.0, "duration": 300.0}
-_DT = 0.01
-
-EVALS: dict[str, SimSpec] = {
-    # 単体 traub の素の応答 (置換の足場が動くかを最短で見る)。掃引なしで完結。
-    "traub_soma_dc": SimSpec(
-        target="traub",
-        current_type="lin&steady",
-        dt=_DT,
-        current_params={"silence_duration": 10.0, "duration": 40.0, "value": 3.0},
-    ),
-    # 刺激部位だけを変えた対照ペア (soma / dend)。同じ電流軸で比べる。
-    "traub19_somastim": SimSpec(
-        target="traub19_soma",
-        current_type="lin&steady",
-        dt=_DT,
-        current_params=_STIM,
-    ),
-    "traub19_dendstim": SimSpec(
-        target="traub19_soma_dendstim",
-        current_type="lin&steady",
-        dt=_DT,
-        current_params=_STIM,
-    ),
-    # 入力の速さに対する追従 (パルス周波数掃引)。
-    "traub19_pulse_freq": SimSpec(
-        target="traub19_soma",
-        current_type="periodic&pulse",
-        dt=_DT,
-        current_params={**_STIM, "amplitude": 20, "baseline": 0.0},
-    ),
-}
-
 
 # --- 実行 (1 シミュ) ---------------------------------------------------------------
 
@@ -174,11 +66,11 @@ class SimResult:
 
 def simulate(spec: SimSpec, surrogate: SurrogateBundle | None) -> SimResult:
     """1 シミュ。`surrogate=None` なら原系、あれば `apply_surrogate` してから回す。"""
-    dset = spec.dataset()
+    dset = spec.materialize()
     if surrogate is None:
         return SimResult(spec, unified_simulator(dset))
     surr_ds = unified_simulator(apply_surrogate(surrogate, dset))
-    # 系列名は spec が持たない (SERIES のキーが単一源) → 入力そのもので名乗る。
+    # 系列名は spec が持たない (カタログのキーが単一源) → 入力そのもので名乗る。
     where = f"{spec.target}/{spec.current_type} / {surrogate.meta.label}"
     log_divergence(spec.net, surr_ds, where)
     return SimResult(spec, surr_ds)
@@ -234,7 +126,7 @@ class EvalSeries:
     def hash(self) -> str:
         """**同じ掃引を既に回したか**の鍵 (surrogate は含まない = 原系の再利用が
         これ 1 本で効く)。置換系は呼び出し側がここに run_id を組む。"""
-        return _short_hash(json.dumps(self.to_dict(), sort_keys=True, default=str))
+        return short_hash(json.dumps(self.to_dict(), sort_keys=True, default=str))
 
     @property
     def points(self) -> list[SimSpec]:
@@ -272,29 +164,3 @@ class EvalSeries:
             SimResult(spec, ds, axis=self.param)
             for spec, ds in zip(self.points, datasets, strict=True)
         ]
-
-
-# --- カタログ (この研究で回したい系列) ------------------------------------------------
-
-# **系列名の単一源**。素材は `eval.EVALS` から名前で引き、ここで軸と点を与える
-# (単発も「点 1 つの系列」として同じ経路を通る)。載るのは surrogate を持たない
-# 素の `EvalSeries` = カタログは原系の掃引そのもので、回す側が run ごとに
-# `with_surrogate` して run 軸を張る。
-SERIES: dict[str, EvalSeries] = {
-    "traub_soma_dc": EvalSeries(spec=EVALS["traub_soma_dc"]),
-    "traub19_somastim": EvalSeries(
-        spec=EVALS["traub19_somastim"],
-        param="value",
-        values=np.linspace(0.0, 10.0, 5).tolist(),
-    ),
-    "traub19_dendstim": EvalSeries(
-        spec=EVALS["traub19_dendstim"],
-        param="value",
-        values=np.linspace(0.0, 10.0, 5).tolist(),
-    ),
-    "traub19_pulse_freq": EvalSeries(
-        spec=EVALS["traub19_pulse_freq"],
-        param="frequency",
-        values=np.linspace(10.0, 50.0, 5).tolist(),
-    ),
-}

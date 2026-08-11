@@ -7,7 +7,7 @@ surrogate:
     preprocessor_type: pca
     n_components: 6  # 潜在方程式の次元
     datasets:
-      model_name: traub19
+      target: traub19
       current_type: train
       # 19 comp 全部が学習軌道になる (ansatz/hybrid.py `train_source`) → 1 軌道を
       # 短くして総サンプル数を単体モデル (duration=9000) と同程度に揃える。

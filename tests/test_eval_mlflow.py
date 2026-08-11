@@ -5,23 +5,21 @@
 sqlite へ丸ごと差し替えるので、手元の `mlflow.db` / `mlruns/` は汚れない。
 """
 
-import sys
 from pathlib import Path
 from typing import cast
 
 import mlflow
+
+# `scripts/` は conftest が import path へ入れている。
+import mlflow_io  # noqa: E402
 import numpy as np
 import pytest
 from mlflow.entities import Run
 from test_surrogate import fit_surrogate
 
 from neurosurrogate.core import access
-from neurosurrogate.eval import EvalSeries, SimSpec, simulate
+from neurosurrogate.eval import EvalSeries, simulate
 from neurosurrogate.surrogate.bundle import SurrogateBundle
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-
-import mlflow_io  # noqa: E402
 
 RUN_ID = "RID"  # 学習 run の代役 (評価 run が指す先)
 
@@ -44,17 +42,9 @@ def _evals(bundle: SurrogateBundle) -> dict[str, EvalSeries]:
     """学習と同じ入力を**さらに短く**した評価仕様 (2 点の掃引)。ここで見たいのは
     保存/読込の往復であって波形の質ではないので、シミュ長は最小で足りる。掃引に
     してあるのは、点の並びが `EvalSeries.points` から復元されることを見るため。"""
-    ds = bundle.meta.dataset
     return {
         "hh_dc": EvalSeries(
-            spec=SimSpec(
-                target=ds.model_name,
-                current_type=ds.current_type,
-                dt=ds.dt,
-                current_params=dict(ds.current_params),
-            ),
-            param="duration",
-            values=[170.0, 190.0],
+            spec=bundle.meta.dataset, param="duration", values=[170.0, 190.0]
         )
     }
 
@@ -77,8 +67,8 @@ def test_eval_runs_round_trip_without_resimulating(
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.axis, view.values) == ("duration", [170.0, 190.0])
     orig, surr = view.pair(1, RUN_ID)
-    # 入力仕様が往復し、そこから dataset を復元できる
-    assert surr.spec.dataset().model_name == series.spec.target
+    # 入力仕様が往復し、そこから実行入力を復元できる
+    assert surr.spec.materialize().net is series.spec.net
     # 由来 (どの評価 run から読んだか) は結果でなく `SeriesView` 側が持つ
     # (置換系 1 本 + 原系 1 本)
     assert len(view.sources) == 2

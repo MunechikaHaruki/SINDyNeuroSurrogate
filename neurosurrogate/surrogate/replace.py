@@ -62,19 +62,17 @@ def train_comp_ids(meta: SurrogateMeta) -> list[int]:
     ]
 
 
-def replaceables(meta: SurrogateMeta, dataset: DatasetConfig) -> set[str]:
-    """dataset 内の置換対象ノード名を返す (fail first)。
+def replaceables(meta: SurrogateMeta, net: NeuronGraph) -> set[str]:
+    """net 内の置換対象ノード名を返す (fail first)。
 
     - 種類一致 だが params 非両立のノードが1つでもあれば即エラー (疑わしい)
     - 置換対象が皆無なら即エラー (モデルとデータが噛み合わず)
     """
-    targets = {n.name for n in dataset.net.nodes if replaceable(meta, n)}
+    targets = {n.name for n in net.nodes if replaceable(meta, n)}
 
     # 種類一致 だが未置換 = params 非両立 → 疑わしい (置換不可)
     mismatched = [
-        n
-        for n in dataset.net.nodes
-        if n.type == meta.comp_type and n.name not in targets
+        n for n in net.nodes if n.type == meta.comp_type and n.name not in targets
     ]
     if mismatched:
         train = meta.train_comp
@@ -86,8 +84,8 @@ def replaceables(meta: SurrogateMeta, dataset: DatasetConfig) -> set[str]:
         )
     if not targets:
         raise ValueError(
-            f"種類 {meta.comp_type.name!r} のノードが dataset "
-            f"{dataset.model_name!r} に存在しない → 置換対象ゼロ。適用不可"
+            f"種類 {meta.comp_type.name!r} のノードが {net.names} に存在しない "
+            "→ 置換対象ゼロ。適用不可"
         )
     return targets
 
@@ -111,7 +109,7 @@ def apply_surrogate(
     判定 3 関数と違い meta だけでは足りない (差替える型 = 学習成果物から組む
     `surr_comp_type` が要る) ので、ここだけ bundle を受ける。
     """
-    targets = replaceables(bundle.meta, dataset)
+    targets = replaceables(bundle.meta, dataset.net)
     new_net = replace_nodes(
         dataset.net, bundle.surr_comp_type, lambda n: n.name in targets
     )
