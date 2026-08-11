@@ -12,7 +12,7 @@ def _():
     from mlflow_io import (
         get_runs_df,
         load_bundles,
-        load_eval_results,
+        load_report,
         load_surrogate_model,
         run_and_log,
         sweep_siblings,
@@ -42,7 +42,7 @@ def _():
         STYLE_DIR,
         load_and_render_report,
         load_bundles,
-        load_eval_results,
+        load_report,
         load_surrogate_model,
         mo,
         run_and_log,
@@ -87,6 +87,19 @@ def _(ALL_PRESETS, SERIES, mo, preset, runs_df):
     )
     run_selector  # noqa: B018
     return (run_selector,)
+
+
+@app.cell
+def _(mo, usable_series):
+    # 評価する系列の絞り込み = **計算入力の選択**。選択肢は選んだ run 群で実際に置換
+    # できる系列だけ (回せないものを選べても意味がない)、既定は全選択なので押した
+    # だけの挙動は絞る前と同じ。描画側の絞り込み (`draw.json` の results) とは役割が
+    # 違う: こちらは「何を計算するか」で、あちらは「計算済みをどう描くか」。
+    series_ui = mo.ui.multiselect(
+        options=usable_series, value=usable_series, label="評価する系列"
+    )
+    series_ui  # noqa: B018
+    return (series_ui,)
 
 
 @app.cell
@@ -150,12 +163,11 @@ def _(load_bundles, run_ids_list):
 
 
 @app.cell
-def _(SERIES, bundles, run_and_log, run_panel, sel_id):
-    # 評価ボタン: 評価 → 評価 run 保存だけ (描画はしない)。既に同じ入力の評価 run が
-    # あればシミュごとスキップされる (force で回し直す)。
-    if run_panel.value["eval"]:
-        run_and_log(bundles, SERIES, sel_id, force=run_panel.value["force"])
-    return
+def _(SERIES, series_ui):
+    # widget → plain 値。選んだ系列名 → カタログの部分集合 (回す側が見るのはこれだけ)。
+    series_names = list(series_ui.value)
+    catalog = {name: SERIES[name] for name in series_names}
+    return catalog, series_names
 
 
 @app.cell
@@ -165,15 +177,17 @@ def _(
     RESULT_DIR,
     STYLE_DIR,
     load_and_render_report,
-    load_eval_results,
+    load_report,
     load_surrogate_model,
     mo,
     run_ids_list,
     run_panel,
+    series_names,
 ):
-    # 描画ボタン: 評価 run + draw.json → dest へ図/表を書き出す (再シミュ無しの
-    # 再描画 = draw.json 調整後もここだけ回せる)。選択した学習 run (とその sweep
-    # 兄弟) が出した評価結果だけを描く。surrogate は評価 run に焼き込まれていない
+    # 描画ボタン: レポート run + draw.json → dest へ図/表を書き出す (再シミュ無しの
+    # 再描画 = draw.json 調整後もここだけ回せる)。**回した単位 = 描く単位**で、今の
+    # 選択 (run 群 × 系列) のレポートを引く (無ければ評価が先)。surrogate は波形 run に
+    # 焼き込まれていない
     # (閉包項が要る図 diff/attractor 用に MLflow から引き直す。load_surrogate_model
     # は run_id ごとに @cache 済み)。結果読込 (mlflow 依存) だけ marimo が持ち、
     # 組立・保存は `load_and_render_report` (metrics 層) へ委譲する。
@@ -186,7 +200,7 @@ def _(
         dest = RESULT_DIR / run_panel.value["dir"]
         saved = load_and_render_report(
             DRAW_JSON,
-            load_eval_results(run_ids_list),
+            load_report(run_ids_list, series_names),
             dest,
             style_paths,
             load_surrogate_model,
@@ -196,6 +210,28 @@ def _(
         if saved
         else mo.md("(未実行)")
     )
+    return
+
+
+@app.cell
+def _(SERIES, bundles):
+    # 選択 run 群のどれかで**実際に置換できる**系列名 = 系列 multiselect の選択肢。
+    # 置換可否の判定は `EvalSeries.replaceable` (ドメイン側) が持つ。
+    usable_series = [
+        name
+        for name, series in SERIES.items()
+        if any(series.replaceable(b.meta) for b in bundles.values())
+    ]
+    return (usable_series,)
+
+
+@app.cell
+def _(bundles, catalog, run_and_log, run_panel):
+    # 評価ボタン: 評価 → 波形 run + レポート run 保存だけ (描画はしない)。既に同じ
+    # 入力の波形 run があればシミュごとスキップされる (force で回し直す)。レポートは
+    # 選択 (run 群 × 系列) ごとに 1 本で、同じ選択なら参照表が更新される。
+    if run_panel.value["eval"]:
+        run_and_log(bundles, catalog, force=run_panel.value["force"])
     return
 
 

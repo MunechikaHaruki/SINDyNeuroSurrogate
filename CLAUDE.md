@@ -66,8 +66,8 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)
             save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ)
             build.py             # model/eval グループの組立 + render_report (組立→保存まで一括の入口、marimo から呼ぶ)
 scripts/  main.py                # Hydra エントリ
-          mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)。学習 experiment (surrogate) と評価 experiment eval_series (**1 run = 1 EvalSeries** = 点列の波形 1 artifact。kind=original / kind=surrogate がフラットに並び、置換系は tags.original_hash で原系を名指す = 親子関係なし) の両方
-          marimo.py              # notebook 本体 (run 選択 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
+          mlflow_io.py           # MLflow I/O (import 時に tracking URI をリポジトリ直下へ固定)。3 experiment: 学習 (surrogate) / 波形 eval_series (**1 run = 1 EvalSeries** = 点列の波形 1 artifact。kind=original / kind=surrogate がフラットに並び、置換系は tags.original_hash で原系を名指す = 親子関係なし) / レポート eval_report (**1 run = 1 回の評価の単位** = 学習 run 群 × 系列。持つのは波形 run への参照表 refs.json だけで波形は複製しない。同一性 = 選択そのもの tags.report_hash、同じ選択なら参照表を更新。描画はこの単位を読む)
+          marimo.py              # notebook 本体 (run 選択 + 系列 multiselect + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
           poster_assets.py       # results/<dir> → docs/poster/result へ poster 使用分だけコピー
           conf/                  # 下記「設定ファイル」参照
 tests/    conftest.py / test_surrogate.py / test_inits.py / test_eval_mlflow.py (評価 run の保存/読込。tracking 先は tmp へ差し替え)
@@ -83,6 +83,7 @@ results/  <保存名>/               # marimo 描画ボタンが書く図 + meta
 - 評価条件は設定ファイルを持たない → 素材 (1 条件) は `neurosurrogate/eval.py` の
   `EVALS`、系列 (掃引) は同じ `eval.py` の `SERIES` (= surrogate を持たない素の
   `EvalSeries` の dict。回す側が `SERIES[name].with_surrogate(bundle)` で run 軸を張る)。
+  **どの系列を回すか**は marimo の系列 multiselect (既定 = 選択 run で置換できる全部)。
   実験条件は滅多に変わらず、変えたら別の実験 = コードに焼いて差分に出す方が正しい。
 - `scripts/conf/draw.json` — 描画宣言のみ (計算入力と完全分離。結果が入力仕様を
   自分で持つので描画側は評価条件を読まない)。**唯一残った設定ファイル** = 図を

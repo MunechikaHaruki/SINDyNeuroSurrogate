@@ -7,10 +7,12 @@ sqlite へ丸ごと差し替えるので、手元の `mlflow.db` / `mlruns/` は
 
 import sys
 from pathlib import Path
+from typing import cast
 
 import mlflow
 import numpy as np
 import pytest
+from mlflow.entities import Run
 from test_surrogate import fit_surrogate
 
 from neurosurrogate.core import access
@@ -26,9 +28,10 @@ RUN_ID = "RID"  # 学習 run の代役 (評価 run が指す先)
 
 @pytest.fixture
 def eval_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    """tracking 先を tmp へ移し、評価 experiment 名もテスト専用にする。"""
+    """tracking 先を tmp へ移し、評価/レポート experiment 名もテスト専用にする。"""
     mlflow.set_tracking_uri(f"sqlite:///{tmp_path}/mlflow.db")
     monkeypatch.setattr(mlflow_io, "EVAL_EXP", "test_eval")
+    monkeypatch.setattr(mlflow_io, "REPORT_EXP", "test_report")
     return "test_eval"
 
 
@@ -59,15 +62,17 @@ def _evals(bundle: SurrogateBundle) -> dict[str, EvalSeries]:
 def test_eval_runs_round_trip_without_resimulating(
     eval_store: str, sindy: SurrogateBundle
 ) -> None:
-    """**1 run = 1 EvalSeries**。掃引点の波形をまとめた 1 artifact が往復し、再シミュ
-    無しに点の並びごと戻る。同じ掃引の再実行はスキップされ、原系の run は学習 run を
-    跨いで共有される (親子関係は使わず `original_hash` で辿る)。"""
+    """**1 波形 run = 1 EvalSeries、1 レポート run = 1 回の評価**。掃引点の波形を
+    まとめた 1 artifact が往復し、再シミュ無しに点の並びごと戻る。同じ掃引の再実行は
+    スキップされ、原系の run は学習 run を跨いで共有される。レポートは選択
+    (学習 run 群 × 系列) で引き、波形 run への参照だけを持つ。"""
     evals = _evals(sindy)
     series = evals["hh_dc"]
-    logged = mlflow_io.run_and_log({RUN_ID: sindy}, evals, RUN_ID)
-    assert len(logged) == 1  # 置換系 1 本 (点ごとには分かれない)
+    report_id = mlflow_io.run_and_log({RUN_ID: sindy}, evals)
+    # 波形は 2 本 (原系 1 + 置換系 1)、レポートは 1 本 (点ごとには分かれない)
+    assert len(_of_kind("original")) == 1 and len(_of_kind("surrogate")) == 1
 
-    view = mlflow_io.load_eval_results([RUN_ID])["hh_dc"]
+    view = mlflow_io.load_report([RUN_ID], list(evals))["hh_dc"]
     assert view.run_ids == [RUN_ID]
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.axis, view.values) == ("duration", [170.0, 190.0])
@@ -88,17 +93,29 @@ def test_eval_runs_round_trip_without_resimulating(
         access.potential(surr.dataset, 0), access.potential(orig.dataset, 0)
     )
 
-    # シミュは決定的 → 同じ掃引の 2 度目はスキップ (series_hash 一致)
-    assert mlflow_io.run_and_log({RUN_ID: sindy}, evals, RUN_ID) == []
+    # シミュは決定的 → 同じ掃引の 2 度目はスキップ (series_hash 一致)。同じ選択の
+    # レポートも量産されず、同じ run が更新される。
+    assert mlflow_io.run_and_log({RUN_ID: sindy}, evals) == report_id
+    assert len(_of_kind("surrogate")) == 1
 
     # 別の学習 run から同じ条件 → 置換系は増えるが原系は共有される
-    # (学習 run を増やしても原系の波形が複製されない)
-    mlflow_io.run_and_log({"OTHER": sindy}, evals, "OTHER")
-    originals = mlflow.search_runs(
-        experiment_ids=[mlflow_io._eval_exp_id()],
-        filter_string="tags.kind = 'original'",
-        output_format="list",
-    )
-    assert len(originals) == 1
-    both = mlflow_io.load_eval_results([RUN_ID, "OTHER"])["hh_dc"]
+    # (学習 run を増やしても原系の波形が複製されない)。選択が違えば別のレポート。
+    assert mlflow_io.run_and_log({"OTHER": sindy}, evals) != report_id
+    assert (len(_of_kind("original")), len(_of_kind("surrogate"))) == (1, 2)
+
+    # 学習 run 2 件の選択はさらに別のレポート = 別の単位 (run 軸 2 本が 1 枚に並ぶ)
+    mlflow_io.run_and_log({RUN_ID: sindy, "OTHER": sindy}, evals)
+    both = mlflow_io.load_report([RUN_ID, "OTHER"], list(evals))["hh_dc"]
     assert (len(both.points), both.run_ids) == (2, [RUN_ID, "OTHER"])
+
+
+def _of_kind(kind: str) -> list[Run]:
+    """波形 experiment の run を kind で数える (原系が複製されないことの確認用)。"""
+    return cast(
+        list[Run],
+        mlflow.search_runs(
+            experiment_ids=[mlflow_io._eval_exp_id()],
+            filter_string=f"tags.kind = '{kind}'",
+            output_format="list",
+        ),
+    )
