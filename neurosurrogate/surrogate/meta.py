@@ -13,7 +13,7 @@ from ..core.network import Compartment, CompartmentType
 from ..core.opcost import OpCost
 from ..core.simulator import unified_simulator
 from ..neurons.compartments import COMPARTMENT_TYPES
-from ..spec import SimSpec
+from ..sim.spec import SimSpec
 
 
 @dataclass(frozen=True)

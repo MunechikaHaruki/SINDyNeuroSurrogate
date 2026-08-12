@@ -31,8 +31,8 @@ from mlflow.entities import Run
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
-from neurosurrogate.eval import EvalSeries, SimResult
 from neurosurrogate.report import ResultSet, SeriesView, series_matrix
+from neurosurrogate.sim.eval import EvalSeries, SimResult
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 

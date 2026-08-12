@@ -34,18 +34,21 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 ## Directory
 
 ```
-neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← spec ← surrogate ← eval ← report で、**core は他ディレクトリを一切 import しない**
+neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← sim ← surrogate ← report で、**core は他ディレクトリを一切 import しない**。中身の無い `__init__.py` は置かない
   __init__.py                    # jax_enable_x64 を強制 ON
   core/  network.py              # Compartment/CompartmentType/NeuronGraph + DatasetConfig (**実体化済みの実行入力** = dt/net/current の 3 つだけ。名前の解決も JSON 往復も持たない)
          simulator.py            # unified_simulator (JAX Euler + lax.scan)
          coords.py               # xarray 座標の write 側 + transform_gate
          access.py               # 同スキーマの read 規約 (生 sel はここ以外で使わない)
          opcost.py               # OpCost 代数 (演算コスト集計)
-  neurons/  __init__.py          # MCMODELS (適用先モデル一覧) + chain
-            traub19.py           # 19-comp モデル (traub.c 代数的等価)
+  neurons/  generate.py          # **作り方だけ** (chain / build_traub19)。組んだ結果のカタログは持たない
+            traub19.py           # 19-comp モデルの per-comp 定数 + ヘルパ (traub.c 代数的等価)
             compartments/        # hh.py / traub.py / common.py + COMPARTMENT_TEMPLATES
-            currents.py          # 注入電流波形 + CURRENT_MAP
-  spec.py                        # SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ)
+  sim/  catalog/                 # **名前 → 実体の対応表だけ** (SimSpec のフィールドが引く選択肢。作り方は持たない)
+          targets.py             # MCMODELS (SimSpec.target が引く適用先モデル)
+          currents.py            # 注入電流波形 + CURRENT_MAP
+        spec.py                  # SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ)。surrogate より前の層 (SurrogateMeta.dataset がこれ)
+        eval.py                  # **どう**回すか (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate → SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) + EvalSeries (spec+param+values+surrogate の 1 掃引実験 = **保存の単位でもある**。points は派生、simulate() は引数なし、attach() で保存済み波形を点列へ貼り直す)。run_id も表示名も出てこない。surrogate の後の層
   surrogate/  meta.py            # SurrogateMeta (学習構造の単一源)
               bundle.py          # SurrogateBundle.setup/load/save + SURR_CLS/PREPROCESSOR_CLS
               replace.py         # 置換可否判定 + apply_surrogate
@@ -53,7 +56,6 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
               figures/           # surrogate の自己記述 (評価結果を受け取らない = 置換シミュ前に描ける)。__init__.py=集約 (summary_df/closure_figs/preprocessor_figs/neuron_graph_figs/train_figs) / train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree
-  eval.py                        # **どう**回すか (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate → SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) + EvalSeries (spec+param+values+surrogate の 1 掃引実験 = **保存の単位でもある**。points は派生、simulate() は引数なし、attach() で保存済み波形を点列へ貼り直す)。run_id も表示名も出てこない
   plotting.py                    # 描画プリミティブ (new_figure/place_legend/error_fig/collect/PanelSpec/TraceSpec/draw_engine/ArtifactEntries) + RC_PARAMS/use_style (図の見た目の既定。適用は render_report の 1 箇所)。**唯一 機能で切った層** = ドメイン知識を入れない
   waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
             dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)

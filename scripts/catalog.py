@@ -18,9 +18,9 @@
 
 import numpy as np
 
-from neurosurrogate.eval import EvalSeries
 from neurosurrogate.report import CompareSpec, DrawSpec, ReportSpec
-from neurosurrogate.spec import SimSpec
+from neurosurrogate.sim.eval import EvalSeries
+from neurosurrogate.sim.spec import SimSpec
 
 # 掃引つき評価の共通電流パラメータ (刺激前の静穏 + 本体長)。掃引軸の値は入らない
 # (`EvalSeries` が点ごとに埋める)。

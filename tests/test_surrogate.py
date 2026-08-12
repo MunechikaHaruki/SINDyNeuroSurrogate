@@ -20,7 +20,6 @@ from omegaconf import OmegaConf
 from neurosurrogate.core import access
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.eval import EvalSeries
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
 from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
@@ -36,7 +35,8 @@ from neurosurrogate.report import (
     eval_report,
 )
 from neurosurrogate.report.grid import compare_grid_fig, trace_grid_fig
-from neurosurrogate.spec import SimSpec
+from neurosurrogate.sim.eval import EvalSeries
+from neurosurrogate.sim.spec import SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
     hybrid_physics,

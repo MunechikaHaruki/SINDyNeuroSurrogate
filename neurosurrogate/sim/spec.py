@@ -1,18 +1,3 @@
-"""**シミュレーションの仕様** (`SimSpec`) と、それを実行入力へ落とす `materialize`。
-
-適用先 target × 電流の宣言だけを持つ**唯一の仕様型**: 学習データの指定
-(`SurrogateMeta.dataset`) も評価条件 (`eval.EvalSeries.spec`) もこれ 1 つで、
-「学習用」「評価用」に同じ形の型を 2 つ持たない。
-
-`core` から独立した層に置く理由: 仕様 → 実体の解決には適用先の一覧 (`MCMODELS`) と
-電流の一覧 (`CURRENT_MAP`) が要る = `neurons` を知る必要がある。**`core` は他の
-ディレクトリを import しない**単体で完結した層なので、名前の解決はここが持つ。
-逆に `eval.py` へは置けない (あちらは `surrogate` を使うので `SurrogateMeta` から
-参照すると循環する)。
-
-依存の向き: `core` ← `neurons` ← `spec` ← `surrogate` ← `eval` ← `report`
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -22,9 +7,9 @@ from typing import Self
 
 import numpy as np
 
-from .core.network import DatasetConfig, NeuronGraph
-from .neurons import MCMODELS
-from .neurons.currents import CURRENT_MAP
+from ..core.network import DatasetConfig, NeuronGraph
+from .catalog.currents import CURRENT_MAP
+from .catalog.targets import MCMODELS
 
 
 @dataclass(frozen=True, kw_only=True)

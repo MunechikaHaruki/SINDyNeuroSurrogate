@@ -19,7 +19,7 @@ from ..core.access import POTENTIAL_VAR
 from ..plotting import PanelSpec, TraceSpec, error_fig, new_figure, place_legend
 
 if TYPE_CHECKING:
-    from ..spec import SimSpec
+    from ..sim.spec import SimSpec
 
 
 def current_preview_fig(spec: SimSpec) -> Figure:

@@ -18,8 +18,8 @@ from matplotlib.figure import Figure
 
 from ..core import access
 from ..core.diverge import diverged
-from ..neurons import currents
 from ..plotting import new_figure, place_legend
+from ..sim.catalog import currents
 from ..waveform import dm_of, extract_metric
 
 if TYPE_CHECKING:

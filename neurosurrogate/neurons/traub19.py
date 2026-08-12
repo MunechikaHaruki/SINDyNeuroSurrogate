@@ -1,4 +1,6 @@
-"""Traub 1991 CA3 pyramidal cell (19 compartments)。
+"""Traub 1991 CA3 pyramidal cell (19 compartments) の per-compartment 定数。
+
+組み立ては `generate.build_traub19`、変種のカタログは `sim/catalog/targets.py`。
 
 C reference: tmp/dataset_utils/traub/traub.c と代数的等価。
 
@@ -10,8 +12,7 @@ C reference: tmp/dataset_utils/traub/traub.c と代数的等価。
 
 import math
 
-from ..core.network import Compartment, Edge, NeuronGraph
-from .compartments.traub import TRAUB_DUMMY_TYPE, TRAUB_TYPE, TraubParams
+from .compartments.traub import TraubParams
 
 # --- traub.c の per-compartment 定数 (19要素) ---
 
@@ -33,12 +34,12 @@ SOMA_IDX = 8
 _SOMA_NAME = "soma"  # 細胞体は全モデル共通で "soma" と命名 (SOMA_IDX の comp)
 
 
-def _name_at(i: int) -> str:
+def name_at(i: int) -> str:
     """細胞体 (SOMA_IDX) は "soma"、他は c00..c18。"""
     return _SOMA_NAME if i == SOMA_IDX else f"c{i:02d}"
 
 
-def _params_at(i: int) -> TraubParams:
+def params_at(i: int) -> TraubParams:
     return TraubParams(
         g_leak=_G_LEAK,
         g_Na=_G_NA[i],
@@ -52,7 +53,7 @@ def _params_at(i: int) -> TraubParams:
     )
 
 
-def _g_axial(i: int) -> float:
+def g_axial(i: int) -> float:
     """comp i と i+1 の間の軸方向 conductance [μS] (対称量)。"""
     r_i = _RI * _LEN[i] / (math.pi * _RAD[i] ** 2)
     r_ip1 = _RI * _LEN[i + 1] / (math.pi * _RAD[i + 1] ** 2)
@@ -61,47 +62,8 @@ def _g_axial(i: int) -> float:
 
 # dend 刺激版の注入先。soma (8) 隣の active な apical proximal dendrite で、
 # soma へ確実に電流が伝播する (g_Na=15)。
-_DEND_STIM_IDX = 9
+DEND_STIM_IDX = 9
 
 
-def _build_traub19(
-    soma_only: bool = False,
-    stim_idx: int = SOMA_IDX,
-) -> NeuronGraph:
-    """19-comp Traub モデルを組む内部ヘルパ (公開するのは下の TRAUB19_MODELS)。
-
-    soma_only=False (既定) は全 comp 同一 traub 型。True にすると soma だけ traub 型に
-    残り dendrite はダミー型 (別型 = 置換対象外) になる → comp_type=traub の学習が soma
-    1 ノードだけへ適用される。stim_idx で注入ノードを変える (area scale も注入ノードの
-    ものに合わせる)。変種の意味は TRAUB19_MODELS 側。
-    """
-    nodes = [
-        Compartment(
-            name=_name_at(i),
-            type=TRAUB_DUMMY_TYPE if soma_only and i != SOMA_IDX else TRAUB_TYPE,
-            params=_params_at(i),
-        )
-        for i in range(NC)
-    ]
-    edges = [Edge(_name_at(i), _name_at(i + 1), _g_axial(i)) for i in range(NC - 1)]
-    # 外部電流を密度 [μA/cm^2] → 絶対 [μA] に変換 (kernel 内で /area して密度に戻す)
-    return NeuronGraph(
-        nodes=nodes,
-        edges=edges,
-        stim=_name_at(stim_idx),
-        stim_area_scale=_AREA[stim_idx],
-    )
-
-
-# 19-comp Traub の 3 変種を宣言的に定義 (__init__ は MCMODELS へ merge するだけ)。
-# 変種差 = (dendrite を置換対象にするか, 電流注入先) の 2 軸だが、意図は名前で示す。
-TRAUB19_MODELS: dict[str, NeuronGraph] = {
-    # 全 comp 同一 traub 型 → 全ノード置換対象 (元の traub.c と同じ soma 注入)。
-    "traub19": _build_traub19(),
-    # soma だけ traub 型に残し dendrite をダミー型 traub_ に。comp_type=traub の学習を
-    # そのまま適用すると soma 1 ノードだけ置換される (適用先で範囲を絞る→preset 不変)。
-    "traub19_soma": _build_traub19(soma_only=True),
-    # 同上 (soma だけ置換対象) だが電流注入を dendrite に。soma 非注入で dend → soma
-    # 伝播を surrogate soma が再現できるかを見る。
-    "traub19_soma_dendstim": _build_traub19(soma_only=True, stim_idx=_DEND_STIM_IDX),
-}
+def area_at(i: int) -> float:
+    return _AREA[i]

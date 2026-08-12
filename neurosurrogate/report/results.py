@@ -18,7 +18,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from ..core.network import NeuronGraph
-from ..eval import EvalSeries, SimResult
+from ..sim.eval import EvalSeries, SimResult
 from ..surrogate.bundle import SurrogateBundle
 
 

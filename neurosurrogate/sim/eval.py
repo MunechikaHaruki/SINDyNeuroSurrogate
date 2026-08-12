@@ -1,26 +1,3 @@
-"""**どう回すか**を扱う層: 1 シミュの仕様 (`SimSpec`) と実行 (`simulate`)、それを
-電流パラメータで振った掃引実験 (`EvalSeries`)。marimo/mlflow 非依存の純粋ドメイン層。
-
-**何を回すかは持たない**: 実際に回したい条件の一覧は `scripts/catalog.py`
-(`EVALS` / `SERIES`)。ここは型と手続きだけで、この研究に固有の値は入らない。
-
-**軸は点軸 (電流パラメータ) 1 本だけ**: `EvalSeries` が持つ surrogate は 1 つで、
-run_id という識別子はこのモジュールに一切現れない。run ごとに系列を作って回し、
-run 軸を掛けるのは結果を扱う層 (`report.ResultSet`)。2 つの軸を 1 箇所で同時に
-扱わないことが、この分割の目的。
-
-**`EvalSeries` は保存の単位でもある** (1 系列 = 1 評価 run)。点は `points` から
-決まる派生なので、点ごとの識別子 (どの系列の何番目か) はどこにも要らない:
-保存側は波形を点の順に並べて置き、読む側は `attach` で系列に貼り直す。
-
-**条件は設定ファイルでなく型で宣言する** (スキーマという型の弱い写しを二重に
-管理しない)。描画の宣言 (`report.ReportSpec`) も同じで、どちらも実体は
-`scripts/catalog.py` に型のまま並ぶ。
-
-**表示名も関心でない**: 凡例や図の見出しは結果を扱う層 (`report`)、結果の保存/
-読込は MLflow の評価 experiment (`scripts/mlflow_io.py`) が持つ。
-"""
-
 from __future__ import annotations
 
 import json
@@ -31,13 +8,13 @@ from typing import Self
 
 import xarray as xr
 
-from .core.diverge import log_divergence
-from .core.simulator import unified_simulator
+from ..core.diverge import log_divergence
+from ..core.simulator import unified_simulator
+from ..surrogate.bundle import SurrogateBundle
+from ..surrogate.meta import SurrogateMeta
+from ..surrogate.replace import apply_surrogate
+from ..surrogate.replace import replaceable as node_replaceable
 from .spec import SimSpec, short_hash
-from .surrogate.bundle import SurrogateBundle
-from .surrogate.meta import SurrogateMeta
-from .surrogate.replace import apply_surrogate
-from .surrogate.replace import replaceable as node_replaceable
 
 # --- 実行 (1 シミュ) ---------------------------------------------------------------
 

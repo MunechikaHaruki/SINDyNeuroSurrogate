@@ -1,49 +1,10 @@
-from collections import Counter
+"""`SimSpec.target` が引く適用先モデルのカタログ。組み立ては `neurons/generate.py`。"""
 
-from ..core.network import Compartment, Edge, NeuronGraph
-from .compartments import COMPARTMENT_TYPES
-from .compartments.hh import HH_TYPE, PASSIVE_TYPE, HHParams
-from .compartments.traub import TRAUB_TYPE, TraubParams
-from .traub19 import TRAUB19_MODELS
-
-
-def chain(
-    node_types: list[str],
-    weights: list[float],
-    stim: int = 0,
-) -> NeuronGraph:
-    """type 名リストから直鎖 NeuronGraph 構築。
-
-    ノード名は型の頭文字 + 0始まり連番。ただし最初の非 passive (=細胞体) は "soma"
-    と命名し全モデル共通の soma 規約に揃える (train_comp_identifier 既定と一致)。
-    例: ["passive","hh","passive"] → ["p0","soma","p1"]
-    """
-    expected = len(node_types) - 1
-    assert len(weights) == expected, (
-        f"weights の長さは len(node_types) - 1 = {expected} 必要"
-    )
-    soma_idx = next(
-        (i for i, t in enumerate(node_types) if t != "passive"),
-        None,
-    )
-    assert soma_idx is not None, "chain に非 passive (soma) ノードが必要"
-    counters: Counter = Counter()
-    nodes = []
-    for i, t in enumerate(node_types):
-        if i == soma_idx:
-            name = "soma"
-        else:
-            name = f"{t[0]}{counters[t[0]]}"
-            counters[t[0]] += 1
-        nodes.append(Compartment(name=name, type=COMPARTMENT_TYPES[t]))
-    return NeuronGraph(
-        nodes=nodes,
-        edges=[
-            Edge(nodes[i].name, nodes[i + 1].name, w) for i, w in enumerate(weights)
-        ],
-        stim=nodes[stim].name,
-    )
-
+from ...core.network import Compartment, Edge, NeuronGraph
+from ...neurons.compartments.hh import HH_TYPE, PASSIVE_TYPE, HHParams
+from ...neurons.compartments.traub import TRAUB_TYPE, TraubParams
+from ...neurons.generate import build_traub19, chain
+from ...neurons.traub19 import DEND_STIM_IDX
 
 # per-compartment パラメータ例
 # soma: デフォルト (高 G_NA)、dendrite: G_NA/G_K 低減で発火閾値↑
@@ -87,9 +48,14 @@ MCMODELS: dict[str, NeuronGraph] = {
         edges=[Edge("soma", "d1", 1.0), Edge("d1", "d2", 0.7)],
         stim="soma",
     ),
-    # 19-comp Traub の 3 変種 (traub19 / traub19_soma / traub19_soma_dendstim)。
-    # 定義は traub19.py 側 (変種の意図・per-comp 定数と co-located)。
-    **TRAUB19_MODELS,
+    # 全 comp 同一 traub 型 → 全ノード置換対象 (元の traub.c と同じ soma 注入)。
+    "traub19": build_traub19(),
+    # soma だけ traub 型に残し dendrite をダミー型 traub_ に。comp_type=traub の学習を
+    # そのまま適用すると soma 1 ノードだけ置換される (適用先で範囲を絞る→preset 不変)。
+    "traub19_soma": build_traub19(soma_only=True),
+    # 同上 (soma だけ置換対象) だが電流注入を dendrite に。soma 非注入で dend → soma
+    # 伝播を surrogate soma が再現できるかを見る。
+    "traub19_soma_dendstim": build_traub19(soma_only=True, stim_idx=DEND_STIM_IDX),
     "hh7": NeuronGraph(
         nodes=[
             Compartment(name="p1", type=PASSIVE_TYPE),

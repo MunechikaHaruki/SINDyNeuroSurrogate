@@ -18,7 +18,7 @@ from mlflow.entities import Run
 from test_surrogate import fit_surrogate
 
 from neurosurrogate.core import access
-from neurosurrogate.eval import EvalSeries, simulate
+from neurosurrogate.sim.eval import EvalSeries, simulate
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 RUN_ID = "RID"  # 学習 run の代役 (評価 run が指す先)
