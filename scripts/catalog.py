@@ -8,8 +8,8 @@
   の系列」として同じ経路を通る)。載るのは surrogate を持たない素の系列 =
   カタログは原系の掃引そのもので、回す側が run ごとに `with_surrogate` して
   run 軸を張る
-- `REPORT` — 描画宣言 (`ReportSpec`)。**系列名で `SERIES` を参照する**ので、
-  同じファイルに置いて名前の対応が目で追えるようにしてある
+- `REPORT` — 描画宣言 (系列名 → `Report`)。**1 系列 = 1 レポート**なので `SERIES` と
+  同じキー空間。同じファイルに置いて名前の対応が目で追えるようにしてある
 
 設定ファイルは持たない。実験条件も描画宣言も型で書けば綴り間違いは import 時に
 落ち、スキーマという型の弱い写しを二重に管理せずに済む。条件を変えたら別の実験 =
@@ -18,7 +18,7 @@
 
 import numpy as np
 
-from neurosurrogate.report import CompareSpec, DrawSpec, ReportSpec
+from neurosurrogate.report.spec import Report
 from neurosurrogate.sim.eval import EvalSeries
 from neurosurrogate.sim.spec import SimSpec
 
@@ -77,34 +77,17 @@ SERIES: dict[str, EvalSeries] = {
     ),
 }
 
-# 描画宣言。**図を調整するたびに書き換える対象**だが、設定ファイルにはしない:
-# 読み手はこのリポジトリのコードだけで、型で書けば既定値・使えるキー・系列名が
-# すべて 1 箇所で解決する。
+# 描画宣言。**1 系列 = 1 レポート** (その系列の電流たちで N 本の surrogate を比べる)
+# なので `SERIES` と同じキー空間を張る。**図を調整するたびに書き換える対象**だが
+# 設定ファイルにはしない: 型で書けば既定値・使えるキー・系列名が 1 箇所で解決する。
 #
-# `results` — 空なら手元の結果を全部描く既定、非空なら列挙した系列名だけへ絞り込む
-#   (1 件が独立した宣言。グローバル既定からの override ではない)
-# `compares` — 既に回した結果を系列名で参照して 1 枚の格子に並べる (`eval_comp` は
-#   compare 自身が持つ)
-# `kinds` — 保存する図/表の種類の絞り込み (省略時は全種類。キーは
-#   `report.spec.ALL_KINDS`)
-REPORT = ReportSpec(
-    results={
-        "traub_soma_dc": DrawSpec(
-            eval_comp="soma", view_comps=("soma",), metric="spike_count"
-        ),
-        "traub19_somastim": DrawSpec(
-            eval_comp="soma", view_comps=("soma",), metric="spike_count"
-        ),
-        "traub19_dendstim": DrawSpec(
-            eval_comp="soma", view_comps=("soma",), metric="spike_count"
-        ),
-        "traub19_pulse_freq": DrawSpec(
-            eval_comp="soma", view_comps=("soma",), metric="spike_count"
-        ),
-    },
-    compares={
-        "stim_site": CompareSpec(
-            evals=("traub19_somastim", "traub19_dendstim"), eval_comp="soma"
-        ),
-    },
-)
+# **何の図を出すかは書かない** — モデル側は run 自身が描けるもの、評価側は結果の形
+# (点数) で決まる。ここに書くのは「どの comp を比較の主役に据えるか」だけ。
+# 描きながら回すつまみ (詳細図の点・スパイク番号・y レンジ) は `report.Tuning` で、
+# marimo の widget が持つ (カタログには残らない)。
+REPORT: dict[str, Report] = {
+    "traub_soma_dc": Report(eval_comp="soma", view_comps=("soma",)),
+    "traub19_somastim": Report(eval_comp="soma", view_comps=("soma",)),
+    "traub19_dendstim": Report(eval_comp="soma", view_comps=("soma",)),
+    "traub19_pulse_freq": Report(eval_comp="soma", view_comps=("soma",)),
+}

@@ -34,8 +34,7 @@ class SaveEntry:
     表示と保存で名前が食い違わない。書き出し方も中身の型で決まるのでここが持つ。
     `sources`/`draw` は `meta.json` の対応する value にそのまま落ちる = 「どの
     リソースからどう描いたか」を成果物 1 件ごとに追跡できる。`draw` はどの表示設定
-    (`report.spec` の `DrawSpec`/`CompareSpec`) でも中身を見ず `is_dataclass` で
-    しか判定しない
+    (`report.spec` の `Report` など) でも中身を見ず `is_dataclass` でしか判定しない
     (dict 化は `save_entries` が meta.json へ書き出す境界でだけ行う) → 具体型への
     依存を持たない。
     """

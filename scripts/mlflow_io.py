@@ -31,7 +31,7 @@ from mlflow.entities import Run
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
-from neurosurrogate.report import ResultSet, SeriesView, series_matrix
+from neurosurrogate.report.results import SeriesView, series_matrix
 from neurosurrogate.sim.eval import EvalSeries, SimResult
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
@@ -292,15 +292,16 @@ def _run_series(name: str, series: EvalSeries, run_id: str | None, force: bool) 
 
 # --- レポート experiment (1 run = 1 回の評価の単位) ------------------------------
 
-# 「どの学習 run 群を どの系列で回したか」を 1 run として残す experiment。中身は
-# `EVAL_EXP` の run_id への参照表 (`REFS_FILE`) だけで、波形の実体は持たない
-# (原系は複数レポートで共有される資産なので複製しない)。
+# **1 run = 1 レポート = 1 系列 × N モデル**。「どの学習 run 群を どの系列で回したか」
+# を 1 run として残す experiment で、中身は `EVAL_EXP` の run_id への参照表
+# (`REFS_FILE`) だけ。波形の実体は持たない (原系は複数レポートで共有される資産なので
+# 複製しない)。
 #
-# 同一性は選択そのもの = (学習 run 群, 系列名の集合) のハッシュ。同じ選択で回し直せば
+# 同一性は選択そのもの = (学習 run 群, 系列名 1 つ) のハッシュ。同じ選択で回し直せば
 # 同じ run の参照表が更新される (`force` で波形 run が新しくなっても、指す先が
 # 差し替わるだけでレポートは増えない)。
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
-REFS_FILE = "refs.json"  # {系列名: {original: run_id, surrs: {学習 run_id: run_id}}}
+REFS_FILE = "refs.json"  # {original: run_id, surrs: {学習 run_id: run_id}}
 
 
 def _report_exp_id() -> str:
@@ -308,9 +309,9 @@ def _report_exp_id() -> str:
     return exp.experiment_id if exp else mlflow.create_experiment(REPORT_EXP)
 
 
-def _report_hash(source_run_ids: list[str], names: list[str]) -> str:
-    """**選択そのもの**が鍵 (学習 run 群 × 系列名の集合)。与えた順に依らない。"""
-    key = json.dumps({"runs": sorted(source_run_ids), "series": sorted(names)})
+def _report_hash(source_run_ids: list[str], name: str) -> str:
+    """**選択そのもの**が鍵 (学習 run 群 × 系列 1 つ)。run の与えた順に依らない。"""
+    key = json.dumps({"runs": sorted(source_run_ids), "series": name})
     return hashlib.sha1(key.encode()).hexdigest()[:8]
 
 
@@ -326,33 +327,33 @@ def _find_report(report_hash: str) -> Run | None:
 
 
 def _log_report(
-    source_run_ids: list[str], refs: dict[str, dict], report_hash: str
+    source_run_ids: list[str], name: str, refs: dict, report_hash: str
 ) -> str:
-    """参照表を 1 レポート run へ。同じ選択の run が既にあれば**参照表だけ差し替える**
-    (同じ選択でレポートが量産されない)。`start_run` を使わず client 直で書くのは、
-    既存 run への追記が「今の active experiment」に左右されないようにするため
+    """1 系列の参照表を 1 レポート run へ。同じ選択の run が既にあれば**参照表だけ
+    差し替える** (同じ選択でレポートが量産されない)。`start_run` を使わず client 直で
+    書くのは、既存 run への追記が「今の active experiment」に左右されないようにするため
     (学習側の既定 experiment を張り替えないのは `_eval_exp_id` と同じ理由)。"""
     client = mlflow.MlflowClient()
     found = _find_report(report_hash)
     run_id = (
         found.info.run_id
         if found
-        else _new_report_run(client, source_run_ids, refs, report_hash)
+        else _new_report_run(client, source_run_ids, name, report_hash)
     )
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / REFS_FILE
-        # **並び順を保つ** (sort しない): 系列の順は宣言順、run の順は選択順で、
-        # どちらも凡例/行見出しの並びとして描画層まで効く。
+        # **run の並び順を保つ** (sort しない): 選択順が凡例/行見出しの並びとして
+        # 描画層まで効く。
         path.write_text(json.dumps(refs, indent=2))
         client.log_artifact(run_id, str(path))
-    logger.info("レポート run 保存: %s (%s)", report_hash, run_id)
+    logger.info("レポート run 保存: %s %s (%s)", name, report_hash, run_id)
     return run_id
 
 
 def _new_report_run(
     client: mlflow.MlflowClient,
     source_run_ids: list[str],
-    refs: dict[str, dict],
+    name: str,
     report_hash: str,
 ) -> str:
     """空のレポート run を 1 本立てる (params/tags まで。参照表は呼び出し側が書く)。
@@ -361,12 +362,12 @@ def _new_report_run(
         _report_exp_id(),
         tags={
             "report_hash": report_hash,
-            "mlflow.runName": f"report [{report_hash}]",
+            "mlflow.runName": f"{name} [{report_hash}]",
         },
     )
     rid = run.info.run_id
     client.log_param(rid, "source_run_ids", json.dumps(sorted(source_run_ids)))
-    client.log_param(rid, "series_names", json.dumps(sorted(refs)))
+    client.log_param(rid, "series_name", name)
     client.set_terminated(rid)
     return rid
 
@@ -375,25 +376,27 @@ def run_and_log(
     bundles: dict[str, SurrogateBundle],
     catalog: dict[str, EvalSeries],
     force: bool = False,
-) -> str:
+) -> dict[str, str]:
     """評価実行 + 波形 run 保存 + レポート run 保存 (marimo の評価ボタンが呼ぶ唯一の
     関数)。系列ごとに原系を 1 本と置換系を学習 run ごとに 1 本ずつ確保し (既にあれば
-    再利用 = 回さない)、その run_id を参照表に畳んで 1 レポートへ。返すのはレポート
-    run の id。
+    再利用 = 回さない)、その run_id を参照表に畳んで**系列ごとに 1 レポート**へ
+    (1 レポート = 1 系列 × N モデル)。返すのは系列名 → レポート run の id。
 
     run 軸を掛ける組合せは `report.series_matrix` が決める (その場で回す側の
-    `ResultSet.simulate` と同じ単一源)。"""
-    refs = {
-        name: {
+    `report.simulate_views` と同じ単一源)。"""
+    out = {}
+    for name, original, surrs in series_matrix(catalog, bundles):
+        refs = {
             "original": _run_series(name, original, None, force),
             "surrs": {
                 run_id: _run_series(name, series, run_id, force)
                 for run_id, series in surrs.items()
             },
         }
-        for name, original, surrs in series_matrix(catalog, bundles)
-    }
-    return _log_report(list(bundles), refs, _report_hash(list(bundles), list(catalog)))
+        out[name] = _log_report(
+            list(bundles), name, refs, _report_hash(list(bundles), name)
+        )
+    return out
 
 
 def _datasets_of(run: Run) -> list[xr.Dataset]:
@@ -413,33 +416,30 @@ def _results_of(eval_run_id: str) -> list[SimResult]:
     return series.attach(_datasets_of(run))
 
 
-def load_report(source_run_ids: list[str], names: list[str]) -> ResultSet:
-    """レポート run (選択そのもので引く) → 描画層の `ResultSet`。
+def load_report(source_run_ids: list[str], name: str) -> SeriesView:
+    """レポート run (選択そのもので引く) → 描画層の `SeriesView` 1 個。
+    **1 レポート = 1 系列**なので、引数の系列も返す値も 1 つ。
 
     参照表が「どの波形をまとめて 1 回の評価とみなすか」の単一源なので、ここは
     run_id を辿って波形を読むだけ (タグ検索も原系の逆引きも要らない)。`sources` は
     成果物の由来 (`meta.json`) 用で、結果そのもの (`SimResult`) には持たせない。"""
-    report_hash = _report_hash(source_run_ids, names)
+    report_hash = _report_hash(source_run_ids, name)
     run = _find_report(report_hash)
     if run is None:
         raise ValueError(
-            f"この選択のレポート run ({report_hash}) が無い。先に評価を回すこと。"
+            f"{name}: この選択のレポート run ({report_hash}) が無い。"
+            "先に評価を回すこと。"
         )
     with tempfile.TemporaryDirectory() as tmp:
         local = mlflow.artifacts.download_artifacts(
             f"runs:/{run.info.run_id}/{REFS_FILE}", dst_path=tmp
         )
-        refs: dict[str, dict] = json.loads(Path(local).read_text())
-    return ResultSet(
-        {
-            name: SeriesView(
-                name,
-                _results_of(ref["original"]),
-                {rid: _results_of(eid) for rid, eid in ref["surrs"].items()},
-                (ref["original"], *ref["surrs"].values()),
-            )
-            for name, ref in refs.items()
-        }
+        refs: dict = json.loads(Path(local).read_text())
+    return SeriesView(
+        name,
+        _results_of(refs["original"]),
+        {rid: _results_of(eid) for rid, eid in refs["surrs"].items()},
+        (refs["original"], *refs["surrs"].values()),
     )
 
 

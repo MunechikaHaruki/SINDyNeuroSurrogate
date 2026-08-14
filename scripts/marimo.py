@@ -19,7 +19,8 @@ def _():
         sweep_siblings,
     )
 
-    from neurosurrogate.report import load_and_render_report
+    from neurosurrogate.report.build import load_and_render_report
+    from neurosurrogate.report.spec import Tuning
 
     RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
     ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
@@ -34,6 +35,7 @@ def _():
         REPORT,
         RESULT_DIR,
         SERIES,
+        Tuning,
         load_and_render_report,
         load_bundles,
         load_report,
@@ -84,19 +86,6 @@ def _(ALL_PRESETS, SERIES, mo, preset, runs_df):
 
 
 @app.cell
-def _(mo, usable_series):
-    # 評価する系列の絞り込み = **計算入力の選択**。選択肢は選んだ run 群で実際に置換
-    # できる系列だけ (回せないものを選べても意味がない)、既定は全選択なので押した
-    # だけの挙動は絞る前と同じ。描画側の絞り込み (`REPORT.results`) とは役割が
-    # 違う: こちらは「何を計算するか」で、あちらは「計算済みをどう描くか」。
-    series_ui = mo.ui.multiselect(
-        options=usable_series, value=usable_series, label="評価する系列"
-    )
-    series_ui  # noqa: B018
-    return (series_ui,)
-
-
-@app.cell
 def _(mo, sel_name):
     # 実行パネル: 評価 (→ 評価 run 保存) と描画 (→ 図保存) はボタンを分ける
     # (宣言を書き換えた後の再描画だけ、評価だけを別々に回せる)。どちらも CLI は持たず、
@@ -125,7 +114,53 @@ def _(mo, sel_name):
     return (run_panel,)
 
 
+@app.cell
+def _(mo):
+    # **描きながら回すつまみ** (`report.Tuning`)。カタログ (`REPORT`) が持つのは研究
+    # 条件だけで、こちらは図を見て動かす一時的な値 → widget が唯一の置き場所。
+    tuning_ui = mo.ui.dictionary(
+        {
+            "detail_point": mo.ui.number(0, 99, 1, value=0, label="詳細図の点 index"),
+            "spike_orig": mo.ui.number(0, 99, 1, value=0, label="原系スパイク番号"),
+            "spike_surr": mo.ui.number(0, 99, 1, value=0, label="置換系スパイク番号"),
+            "yauto": mo.ui.checkbox(value=True, label="折れ線 y 自動"),
+            "ymin": mo.ui.number(-1e4, 1e4, 1.0, value=0.0, label="y 下限"),
+            "ymax": mo.ui.number(-1e4, 1e4, 1.0, value=1.0, label="y 上限"),
+        }
+    )
+    mo.vstack([mo.md("### つまみ"), *tuning_ui.values()])
+    return (tuning_ui,)
+
+
+@app.cell
+def _(Tuning, tuning_ui):
+    # y レンジは「auto か否か」の 3 widget を 1 値へ畳む (ドメイン側が持つのは
+    # `ylim: tuple | None` 1 つだけ = UI の都合をドメインの型に持ち込まない)。
+    values = tuning_ui.value
+    tuning = Tuning(
+        detail_point=int(values["detail_point"]),
+        spike_orig=int(values["spike_orig"]),
+        spike_surr=int(values["spike_surr"]),
+        metric_ylim=None if values["yauto"] else (values["ymin"], values["ymax"]),
+    )
+    return (tuning,)
+
+
 @app.cell(column=1)
+def _(mo, usable_series):
+    # 評価する系列の絞り込み = **計算入力の選択**。選択肢は選んだ run 群で実際に置換
+    # できる系列だけ (回せないものを選べても意味がない)、既定は全選択なので押した
+    # だけの挙動は絞る前と同じ。**ここが描く系列も決める** (1 系列 = 1 レポート
+    # なので、選んだ系列の数だけレポートが出る)。`REPORT` が持つのは系列ごとの
+    # 「どう描くか」だけで、「どれを描くか」は持たない。
+    series_ui = mo.ui.multiselect(
+        options=usable_series, value=usable_series, label="評価する系列"
+    )
+    series_ui  # noqa: B018
+    return (series_ui,)
+
+
+@app.cell
 def _(preset_ui):
     # **widget → plain 値の境界**。以降どの関数にも widget は渡さない。
     preset = preset_ui.value
@@ -175,23 +210,29 @@ def _(
     run_ids_list,
     run_panel,
     series_names,
+    tuning,
 ):
     # 描画ボタン: レポート run + 描画宣言 (`catalog.REPORT`) → dest へ図/表を
     # 書き出す (再シミュ無しの再描画 = 宣言を書き換えた後もここだけ回せる)。
-    # **回した単位 = 描く単位**で、今の選択 (run 群 × 系列) のレポートを引く
-    # (無ければ評価が先)。surrogate は波形 run に焼き込まれていない
+    # **1 レポート = 1 系列 × N モデル**なので系列でループし、系列名のディレクトリが
+    # そのまま 1 レポートの root になる (どの系列の電流で比べたかがパスに出る)。
+    # **回した単位 = 描く単位** (`load_report` も系列 1 つを引く単位。今の選択
+    # (run 群 × その系列) のレポートが無ければ評価が先)。
+    # surrogate は波形 run に焼き込まれていない
     # (閉包項が要る図 diff/attractor 用に MLflow から引き直す。load_surrogate_model
     # は run_id ごとに @cache 済み)。結果読込 (mlflow 依存) だけ marimo が持ち、
-    # 組立・保存は `load_and_render_report` (metrics 層) へ委譲する。
+    # 組立・保存は `load_and_render_report` (結果ドメイン) へ委譲する。
     saved = []
     if run_panel.value["draw"]:
         dest = RESULT_DIR / run_panel.value["dir"]
-        saved = load_and_render_report(
-            REPORT,
-            load_report(run_ids_list, series_names),
-            dest,
-            load_surrogate_model,
-        )
+        for name in series_names:
+            saved += load_and_render_report(
+                load_report(run_ids_list, name),
+                REPORT[name],
+                dest / name,
+                load_surrogate_model,
+                tuning,
+            )
     (
         mo.vstack([mo.md(f"✅ `{p.relative_to(RESULT_DIR)}`") for p in saved])
         if saved

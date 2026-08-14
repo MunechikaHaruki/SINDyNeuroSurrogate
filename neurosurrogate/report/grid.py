@@ -1,10 +1,9 @@
 """**`SeriesView` を軸で見る成果物**: 点軸 (掃引) に沿ったメトリクスの表と折れ線、
-点を列に取る波形格子 2 種 (行=run / 行=系列)。
+点を列・run を行に取る波形格子。
 
 ここだけが「点軸 × run 軸に開いた並び」を図/表の形に落とす = 波形ドメイン
 (`neurosurrogate.waveform`) は 1 ペア (原系, 置換系) しか知らず、軸の話は持たない。
-格子の骨格は `_grid_fig` 1 本で、2 種の違いは**行の組み方だけ** (`_Row` 列を作る
-side)。並び自体は `SeriesView` が既に持つ = 図の側で組み直さない。marimo 非依存。
+並び自体は `SeriesView` が既に持つ = 図の側で組み直さない。marimo 非依存。
 """
 
 from __future__ import annotations
@@ -204,24 +203,3 @@ def trace_grid_fig(view: SeriesView, names: dict[str, str], comp_name: str) -> F
     comp_id = view.net.name_to_idx(comp_name)
     rows = [_run_row(view, rid, names[rid], comp_id) for rid in view.run_ids]
     return _grid_fig(_header(view), rows, view.axis)
-
-
-def compare_grid_fig(
-    views: list[SeriesView], names: dict[str, str], comp_name: str
-) -> Figure:
-    """複数の系列を並べた波形格子 (行=系列、セルは先頭 run 1 本だけ)。
-
-    同じ掃引を適用先 (刺激位置) 違いで並べる図なので、電流行は先頭系列のものを
-    1 回だけ描く (点数が揃わなければ `_grid_fig` が raise)。run 軸は先頭 run
-    のみ — 子まで重ねると比較の主眼 (刺激位置差) が run 差に埋もれる。
-    """
-    rows = [
-        _run_row(
-            view,
-            view.run_ids[0],
-            names[view.run_ids[0]],
-            view.net.name_to_idx(comp_name),
-        )
-        for view in views
-    ]
-    return _grid_fig(_header(views[0]), rows, views[0].axis)

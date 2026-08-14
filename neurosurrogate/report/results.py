@@ -1,10 +1,13 @@
-"""**結果の集まり**を扱う層: 点軸 (電流パラメータ) × run 軸 (どの surrogate) に
-開いた `SeriesView` と、その束 `ResultSet`。marimo/mlflow 非依存。
+"""**結果**を扱う層: 1 系列を点軸 (電流パラメータ) × run 軸 (どの surrogate) に
+開いた `SeriesView`。marimo/mlflow 非依存。
+
+**1 レポート = 1 系列 × N モデル**なので、この層の値も `SeriesView` 1 個が単位
+(複数系列は素の dict で持つだけ = 束ねる型を作らない)。
 
 **run 軸を持ち込むのはここ**: `eval.EvalSeries` が持つ surrogate は 1 つで run_id を
 知らない。カタログ (`scripts/catalog.py` の `SERIES`) に run ごとの surrogate を
 載せた系列を組むのは `series_matrix` ただ 1 つで、その場で回す経路
-(`ResultSet.simulate`) も永続化を経由する経路 (`scripts/mlflow_io.py`) も同じ
+(`simulate_views`) も永続化を経由する経路 (`scripts/mlflow_io.py`) も同じ
 組合せを通る。
 
 **点は識別子を持たない**: 保存の単位が 1 系列 = 1 評価 run なので、点の並びは常に
@@ -14,8 +17,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..core.network import NeuronGraph
 from ..sim.eval import EvalSeries, SimResult
@@ -113,42 +115,25 @@ class SeriesView:
         return min(index, len(self.points) - 1)
 
 
-@dataclass(frozen=True)
-class ResultSet:
-    """系列名 → `SeriesView` の束 (宣言/読込の順を保つ)。描画側の入口。"""
+def simulate_views(
+    catalog: dict[str, EvalSeries], bundles: dict[str, SurrogateBundle]
+) -> dict[str, SeriesView]:
+    """カタログ × run 軸を**その場で回して**系列名 → `SeriesView` を集める
+    (保存を経由しない経路)。永続化した結果を読む経路は `scripts/mlflow_io.py`。
 
-    series: dict[str, SeriesView] = field(default_factory=dict)
+    束ねる型は持たない: 描画の単位が 1 系列 (= 1 `SeriesView`) なので、複数系列は
+    ただの dict で足りる。
 
-    def __iter__(self) -> Iterator[SeriesView]:
-        return iter(self.series.values())
-
-    def __contains__(self, name: object) -> bool:
-        return name in self.series
-
-    def __getitem__(self, name: str) -> SeriesView:
-        return self.series[name]
-
-    @property
-    def names(self) -> list[str]:
-        return list(self.series)
-
-    @classmethod
-    def simulate(
-        cls, catalog: dict[str, EvalSeries], bundles: dict[str, SurrogateBundle]
-    ) -> ResultSet:
-        """カタログ × run 軸を**その場で回して**集める (保存を経由しない経路)。
-        永続化した結果を読む経路は `scripts/mlflow_io.py`。
-
-        原系は掃引の内容 (`EvalSeries.hash`) で共有する = 同じ掃引を宣言した系列が
-        2 つあっても原系のシミュは 1 度だけ (保存側の再利用と同じ鍵で効く)。"""
-        originals: dict[str, list[SimResult]] = {}
-        out: dict[str, SeriesView] = {}
-        for name, original, surrs in series_matrix(catalog, bundles):
-            if original.hash() not in originals:
-                originals[original.hash()] = original.simulate()
-            out[name] = SeriesView(
-                name,
-                originals[original.hash()],
-                {rid: s.simulate() for rid, s in surrs.items()},
-            )
-        return cls(out)
+    原系は掃引の内容 (`EvalSeries.hash`) で共有する = 同じ掃引を宣言した系列が
+    2 つあっても原系のシミュは 1 度だけ (保存側の再利用と同じ鍵で効く)。"""
+    originals: dict[str, list[SimResult]] = {}
+    out: dict[str, SeriesView] = {}
+    for name, original, surrs in series_matrix(catalog, bundles):
+        if original.hash() not in originals:
+            originals[original.hash()] = original.simulate()
+        out[name] = SeriesView(
+            name,
+            originals[original.hash()],
+            {rid: s.simulate() for rid, s in surrs.items()},
+        )
+    return out

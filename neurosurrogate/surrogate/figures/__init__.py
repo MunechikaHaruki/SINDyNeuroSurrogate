@@ -59,20 +59,17 @@ def preprocessor_figs(prep: Preprocessor) -> ArtifactEntries:
     return []
 
 
-def neuron_graph_figs(
-    nets: dict[str, NeuronGraph], meta: SurrogateMeta
-) -> ArtifactEntries:
-    """適用先ごとのニューロングラフ (識別子 `<target>/neurograph`)。強調するノードは
-    meta との置換可否から引く = 呼び出し側は「どの適用先を描くか」だけ渡す
-    (描画なので置換不可 = 強調ゼロでも例外にしない。検証は `replaceables` の関心)。"""
+def neuron_graph_figs(net: NeuronGraph, meta: SurrogateMeta) -> ArtifactEntries:
+    """適用先のニューロングラフ (識別子 `neurograph`)。強調するノードは meta との
+    置換可否から引く = 呼び出し側は適用先ネットだけ渡す (描画なので置換不可 =
+    強調ゼロでも例外にしない。検証は `replaceables` の関心)。"""
     return collect(
         {
-            f"{target}/neurograph": partial(
+            "neurograph": partial(
                 neuron_graph_fig,
                 net,
                 {n.name for n in net.nodes if replaceable(meta, n)},
             )
-            for target, net in nets.items()
         }
     )
 
@@ -96,3 +93,24 @@ def train_figs(
             "train_manifold": lambda: train_manifold_fig(bundle, comps),
         }
     )
+
+
+def surrogate_figs(
+    bundle: SurrogateBundle,
+    net: NeuronGraph | None = None,
+    comps: Sequence[int] | None = None,
+    i_ext_ylim: tuple[float, float] | None = None,
+) -> ArtifactEntries:
+    """**run 1 本が自分について描けるもの全部**。run_id を渡せば図が出てくる、の実体。
+
+    何を描くかは宣言で選ばず bundle の中身が決める (SINDy なら ξ heatmap、PCA なら
+    scree、固有図を持たない表現は何も出さない) → 種類の一覧を持つ層がどこにも要らない。
+    `net` は適用先ネット (省略時はニューロングラフを描かない = 評価と切り離して
+    run だけ眺める経路)。
+    """
+    return [
+        *closure_figs(bundle.closure),
+        *preprocessor_figs(bundle.preprocessor),
+        *(neuron_graph_figs(net, bundle.meta) if net is not None else []),
+        *train_figs(bundle, comps, i_ext_ylim),
+    ]

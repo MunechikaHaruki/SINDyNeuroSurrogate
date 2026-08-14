@@ -26,15 +26,10 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
 from neurosurrogate.plotting import collect, new_figure
-from neurosurrogate.report import (
-    CompareSpec,
-    DrawSpec,
-    ReportSpec,
-    ResultSet,
-    SeriesView,
-    eval_report,
-)
-from neurosurrogate.report.grid import compare_grid_fig, trace_grid_fig
+from neurosurrogate.report.build import eval_entries, model_entries
+from neurosurrogate.report.grid import trace_grid_fig
+from neurosurrogate.report.results import SeriesView, simulate_views
+from neurosurrogate.report.spec import Report, Tuning
 from neurosurrogate.sim.eval import EvalSeries
 from neurosurrogate.sim.spec import SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
@@ -114,7 +109,7 @@ def _run_view(
     bundles: dict[str, SurrogateBundle], spec: SimSpec, series: str = "hh_dc"
 ) -> SeriesView:
     """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした 1 系列。"""
-    return ResultSet.simulate({series: EvalSeries(spec=spec)}, bundles)[series]
+    return simulate_views({series: EvalSeries(spec=spec)}, bundles)[series]
 
 
 @pytest.fixture(scope="module")
@@ -168,9 +163,10 @@ def test_sindy_draws_all_figs(sindy_view: SeriesView, sindy: SurrogateBundle) ->
 
 def test_catalog_is_self_consistent() -> None:
     """カタログ (`scripts/catalog.py`) が自己整合: `SERIES` の全系列の電流が掃引点
-    まで含めて構築でき、`REPORT` が参照する系列名は `SERIES` に実在する。条件も
-    宣言も型になった今、綴り間違いは import 時に落ちるので、ここで見るのは
-    **名前の対応**だけ。単発系列も「点 1 つ」として同じ経路を通る。"""
+    まで含めて構築でき、`REPORT` は `SERIES` と**同じキー空間**を張る (1 系列 =
+    1 レポート → 描き方の無い系列も、回さない系列の描き方も存在しない)。条件も宣言も
+    型になった今、綴り間違いは import 時に落ちるので、ここで見るのは**名前の対応**
+    だけ。単発系列も「点 1 つ」として同じ経路を通る。"""
     for series in SERIES.values():
         for spec in series.points:
             assert len(spec.current()) > 0
@@ -178,10 +174,7 @@ def test_catalog_is_self_consistent() -> None:
     assert len(SERIES["traub_soma_dc"].points) == 1
     assert len(SERIES["traub19_somastim"].points) == 5
 
-    names = set(SERIES)
-    assert set(REPORT.results) <= names
-    for comparison in REPORT.compares.values():
-        assert set(comparison.evals) <= names
+    assert set(REPORT) == set(SERIES)
 
 
 def _sweep_specs(name: str, values: list[float]) -> dict[str, EvalSeries]:
@@ -204,31 +197,19 @@ def _sweep_view(
     bundles: dict[str, SurrogateBundle], name: str, values: list[float]
 ) -> SeriesView:
     """1 系列分の掃引をシミュした結果。"""
-    return ResultSet.simulate(_sweep_specs(name, values), bundles)[name]
+    return simulate_views(_sweep_specs(name, values), bundles)[name]
 
 
-def test_compare_grid_rows_are_current_then_one_per_eval(
-    sindy: SurrogateBundle,
-) -> None:
-    """compare 図の行 = 評価ごとの V。点数が揃わない結果を
-    混ぜると列の意味が行ごとにずれる → raise。"""
-    bundles = {"r0": sindy}
-    names = {"r0": sindy.meta.label}
-    view_a = _sweep_view(bundles, "a", [5.0, 10.0])
-    # 再シミュ無しに系列名だけ付け替えた複製 (テストの計算コスト削減)。
-    view_b = dc_replace(view_a, name="b")
-    fig = compare_grid_fig([view_a, view_b], names, "soma")
-    assert len(fig.axes) == 2 * 2  # (a + b) 行 × 2 点
+def test_trace_grid_rows_are_one_per_model(sindy: SurrogateBundle) -> None:
+    """波形格子の行 = 比べるモデル (run 軸)、列 = 点。1 レポートが並べるのは
+    **1 系列の電流たち × N モデル**なので、行が増える軸は run だけ。"""
+    bundles = {"r0": sindy, "r1": sindy}
+    names = {"r0": "a", "r1": "b"}
+    view = _sweep_view(bundles, "a", [5.0, 10.0])
+    fig = trace_grid_fig(view, names, "soma")
+    assert len(fig.axes) == 2 * 2  # 2 モデル行 × 2 点列
     # 行名は描かない (格子は列見出しと凡例で読む)。
     assert not any(ax.get_ylabel() for ax in fig.axes)
-
-    # 同じ格子骨格を run 軸で開くと行 = [run] (行の組み方だけが違う)。
-    assert len(trace_grid_fig(view_a, names, "soma").axes) == 1 * 2
-
-    with pytest.raises(ValueError, match="点数"):
-        compare_grid_fig(
-            [view_a, _sweep_view(bundles, "b", [5.0, 10.0, 15.0])], names, "soma"
-        )
 
 
 def test_series_view_columns_must_line_up_across_runs(sindy_view: SeriesView) -> None:
@@ -243,37 +224,42 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
 ) -> None:
     """描画は**手元の結果だけ**を見る (計算入力の設定と突き合わせない): 設定ファイル
     に宣言の無い系列名 — 別セッションで回して artifact から読んだ結果 — もそのまま
-    図になり、逆に参照先が手元に無い compare は error 図でなく**黙って落ちる**
-    (宣言とのズレは呼び出し側の関心) = 計算と描画が切れている。"""
+    図になる = 計算と描画が切れている。系列名は `dest` 側の関心なので成果物の名前に
+    出ない (1 レポート = 1 系列 → 名前に系列名を混ぜる必要がない)。"""
     renamed = dc_replace(sindy_view, name="読んだ系列")
-    report = ReportSpec(results={"読んだ系列": DrawSpec(eval_comp="soma")})
-    entries = eval_report(ResultSet({"読んだ系列": renamed}), {"r0": sindy}, report)
-    assert any(e.name.startswith("読んだ系列/") for e in entries)
-
-    dangling = ReportSpec(
-        compares={"c": CompareSpec(evals=("未実行",), eval_comp="soma")}
+    entries = eval_entries(renamed, {"r0": sindy}, Report(eval_comp="soma"))
+    assert {"current", "traces"} <= {e.name for e in entries}
+    assert not any(e.name.startswith("読んだ系列") for e in entries)
+    # つまみ (`Tuning`) はカタログでなく描画時の引数。詳細図は点 index を名前に
+    # 持つので、つまみを動かしても前の点を上書きしない。
+    assert any("/p0/" in e.name for e in entries)
+    moved = eval_entries(
+        renamed, {"r0": sindy}, Report(eval_comp="soma"), Tuning(detail_point=99)
     )
-    assert eval_report(ResultSet(), {"r0": sindy}, dangling) == []
+    # 手元の点数へ丸める (設定が実際の点数を超えていても描く)
+    last = len(renamed.points) - 1
+    assert any(f"/p{last}/" in e.name for e in moved)
 
 
-def test_report_spec_results_are_per_label_with_no_default_fallback() -> None:
-    """`ReportSpec.results` は label ごとに完結する宣言 (既定値からの override では
-    ない): 指定したキーだけ効き、欠落キーは `DrawSpec` の既定値。宣言に無い label は
-    既定の `DrawSpec` そのもの (グローバル既定を持たない)。"""
-    report = ReportSpec(results={"traub19_dendstim": DrawSpec(eval_comp="c09")})
-    assert report.draw_for("traub19_dendstim") == DrawSpec(eval_comp="c09")
-    assert report.draw_for("宣言に無い label") == DrawSpec()
+def test_model_figs_come_from_the_run_itself_not_a_declaration(
+    sindy: SurrogateBundle,
+) -> None:
+    """モデル側の図は**その run が自分について描けるもの**で決まる (何を描くかの
+    宣言を受け取らない)。比べる N 本すべてを描く = 「代表 1 本だけ」の恣意が無い。"""
+    entries = model_entries({"r0": sindy, "r1": sindy})
+    names = [e.name for e in entries]
+    assert "summary" in names  # run 横断の学習側サマリ表は 1 枚
+    # SINDy = ξ heatmap を持つ表現なので model 図が出る。それが run ごとに揃う。
+    per_run = {name.split("/")[0] for name in names if "/" in name}
+    assert len(per_run) == 2
+    assert all(f"{run}/model" in names for run in per_run)
 
 
-def test_draw_settings_are_typed_and_failed_figs_fold_into_error(
+def test_failed_figs_fold_into_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """表示設定は widget/保存 dict をそのまま読む (欠落キーは `DEFAULT_DRAW` の
-    既定値)。描画 job の失敗は列を保ったまま error 図へ畳む = 1 図の失敗で他の図まで
+    """描画 job の失敗は列を保ったまま error 図へ畳む = 1 図の失敗で他の図まで
     落とさない。"""
-    assert DrawSpec().metric_ylim is None  # 既定は y auto
-    drawn = DrawSpec(eval_comp="soma", metric_yauto=False, metric_ymax=40)
-    assert (drawn.eval_comp, drawn.metric_ylim) == ("soma", (0.0, 40.0))
 
     def boom() -> Figure:
         raise KeyError("missing var")

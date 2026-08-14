@@ -54,15 +54,17 @@ def test_eval_runs_round_trip_without_resimulating(
 ) -> None:
     """**1 波形 run = 1 EvalSeries、1 レポート run = 1 回の評価**。掃引点の波形を
     まとめた 1 artifact が往復し、再シミュ無しに点の並びごと戻る。同じ掃引の再実行は
-    スキップされ、原系の run は学習 run を跨いで共有される。レポートは選択
-    (学習 run 群 × 系列) で引き、波形 run への参照だけを持つ。"""
+    スキップされ、原系の run は学習 run を跨いで共有される。レポートは
+    **1 系列 × N モデル**が単位で、選択 (学習 run 群 × 系列 1 つ) で引き、波形 run
+    への参照だけを持つ。"""
     evals = _evals(sindy)
     series = evals["hh_dc"]
-    report_id = mlflow_io.run_and_log({RUN_ID: sindy}, evals)
-    # 波形は 2 本 (原系 1 + 置換系 1)、レポートは 1 本 (点ごとには分かれない)
+    report_ids = mlflow_io.run_and_log({RUN_ID: sindy}, evals)
+    # 波形は 2 本 (原系 1 + 置換系 1)、レポートは系列ごとに 1 本 (点では分かれない)
     assert len(_of_kind("original")) == 1 and len(_of_kind("surrogate")) == 1
+    assert list(report_ids) == ["hh_dc"]
 
-    view = mlflow_io.load_report([RUN_ID], list(evals))["hh_dc"]
+    view = mlflow_io.load_report([RUN_ID], "hh_dc")
     assert view.run_ids == [RUN_ID]
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.axis, view.values) == ("duration", [170.0, 190.0])
@@ -85,17 +87,17 @@ def test_eval_runs_round_trip_without_resimulating(
 
     # シミュは決定的 → 同じ掃引の 2 度目はスキップ (series_hash 一致)。同じ選択の
     # レポートも量産されず、同じ run が更新される。
-    assert mlflow_io.run_and_log({RUN_ID: sindy}, evals) == report_id
+    assert mlflow_io.run_and_log({RUN_ID: sindy}, evals) == report_ids
     assert len(_of_kind("surrogate")) == 1
 
     # 別の学習 run から同じ条件 → 置換系は増えるが原系は共有される
     # (学習 run を増やしても原系の波形が複製されない)。選択が違えば別のレポート。
-    assert mlflow_io.run_and_log({"OTHER": sindy}, evals) != report_id
+    assert mlflow_io.run_and_log({"OTHER": sindy}, evals) != report_ids
     assert (len(_of_kind("original")), len(_of_kind("surrogate"))) == (1, 2)
 
     # 学習 run 2 件の選択はさらに別のレポート = 別の単位 (run 軸 2 本が 1 枚に並ぶ)
     mlflow_io.run_and_log({RUN_ID: sindy, "OTHER": sindy}, evals)
-    both = mlflow_io.load_report([RUN_ID, "OTHER"], list(evals))["hh_dc"]
+    both = mlflow_io.load_report([RUN_ID, "OTHER"], "hh_dc")
     assert (len(both.points), both.run_ids) == (2, [RUN_ID, "OTHER"])
 
 

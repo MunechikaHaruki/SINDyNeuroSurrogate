@@ -77,7 +77,7 @@ quote-style = "double"
 [tool.setuptools.packages.find]
 where = ["."]           # カレントディレクトリから探す
 include = ["neurosurrogate*"]
-namespaces = false      # 暗黙的な名前空間パッケージの探索を無効化
+namespaces = true       # 中身の無い __init__.py を置かないため名前空間 package を許可
 
 [build-system]
 requires = ["setuptools"]
