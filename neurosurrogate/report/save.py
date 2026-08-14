@@ -21,9 +21,15 @@ _UNSAFE = re.compile(r"[\s/\\:]+")
 
 def slug(name: str) -> str:
     """図 id の 1 区切りに使う名前をパス安全へ。run 軸キー (`meta.label`) は凡例で
-    折り返すための改行や `/` を含むので、そのまま名前に混ぜると保存時に階層が
-    割れる (表示名 = 保存名の規約を保ったまま名前側だけ潰す)。"""
-    return _UNSAFE.sub("-", name.strip())
+    折り返すための改行や `/` を含み、保存段の名前 (MLflow の run 名) は人が付け替え
+    られるので、そのまま名前に混ぜると保存時に階層が割れる (表示名 = 保存名の規約を
+    保ったまま名前側だけ潰す)。
+
+    空になる名前と `.` / `..` も潰す — **1 段は必ず 1 段**でなければ、段が消えたり
+    上の階層へ抜けたりして「run 1 つ = ディレクトリ 1 つ」の対応が崩れる。
+    """
+    out = _UNSAFE.sub("-", name.strip())
+    return "-" if out in ("", ".", "..") else out
 
 
 @dataclass(frozen=True)
@@ -75,13 +81,42 @@ def _entries_meta(entries: list[SaveEntry]) -> dict:
     }
 
 
+def _read_meta(dest: Path) -> dict:
+    """既存の `meta.json` (無ければ空)。手で壊れた JSON を置いた場合も描画は通す
+    (由来の記録は成果物の付帯情報で、書き出しを止める理由にしない)。"""
+    path = dest / "meta.json"
+    if not path.exists():
+        return {}
+    try:
+        return dict(json.loads(path.read_text()))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {}
+
+
 def save_entries(entries: list[SaveEntry], dest: Path) -> list[Path]:
     """entry を全部 `dest` 直下へ書き出し、`_entries_meta` が組んだスキーマを
     `meta.json` として同階層に置く。返り値は書いたパス列 (呼び出し側は表示に
-    流すだけ)。"""
+    流すだけ)。
+
+    既存の `meta.json` には**上書きでなく合流**する。キーが保存パスなので合流の
+    意味が一意に決まり、同じ `dest` に別の系列を描き足しても前の由来が消えない
+    (系列ごとにディレクトリを割らない代わりの担保)。
+    """
     dest.mkdir(parents=True, exist_ok=True)
-    meta = _entries_meta(entries)
-    (dest / "meta.json").write_text(
-        json.dumps(meta, indent=2, ensure_ascii=False, default=str)
-    )
-    return [e.write(dest) for e in entries]
+    # 書き出しが先で、途中で落ちても `finally` で**書けた分だけ**の由来を残す
+    # (meta.json が無いファイルを主張しない / 書けたのに由来が消えない の両立)。
+    done: list[SaveEntry] = []
+    try:
+        for e in entries:
+            e.write(dest)
+            done.append(e)
+    finally:
+        (dest / "meta.json").write_text(
+            json.dumps(
+                _read_meta(dest) | _entries_meta(done),
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
+        )
+    return [dest / e.path for e in done]

@@ -5,12 +5,14 @@ Hydra プリセットを実設定源として読み、UI/実験ログを介さ�
 短縮電流だけ固定したテスト専用プリセット) に置き、テスト側は override しない。
 """
 
+import json
 from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
+import pandas as pd
 import pytest
 from catalog import SERIES
 from hydra import compose, initialize_config_dir
@@ -29,6 +31,7 @@ from neurosurrogate.plotting import collect, new_figure
 from neurosurrogate.report.build import Tuning, eval_entries, model_entries
 from neurosurrogate.report.grid import trace_grid_fig
 from neurosurrogate.report.results import SeriesView, simulate_views
+from neurosurrogate.report.save import SaveEntry, save_entries
 from neurosurrogate.sim.eval import EvalSeries
 from neurosurrogate.sim.spec import SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
@@ -222,17 +225,19 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
 ) -> None:
     """描画は**手元の結果だけ**を見る (計算入力の設定と突き合わせない): 設定ファイル
     に宣言の無い系列名 — 別セッションで回して artifact から読んだ結果 — もそのまま
-    図になる = 計算と描画が切れている。系列名は `dest` 側の関心なので成果物の名前に
-    出ない (1 レポート = 1 系列 → 名前に系列名を混ぜる必要がない)。"""
+    図になる = 計算と描画が切れている。保存段はレポート run 1 つで、格子も折れ線も
+    run 横断なので run 単位に割れない。"""
     renamed = dc_replace(sindy_view, name="読んだ系列")
-    entries = eval_entries(renamed, {"r0": sindy}, Tuning(eval_comp="soma"))
-    assert {"current", "traces"} <= {e.name for e in entries}
-    assert not any(e.name.startswith("読んだ系列") for e in entries)
+    entries = eval_entries(renamed, {"r0": sindy}, Tuning(eval_comp="soma"), "rep [ab]")
+    # run 名の空白/記号はパス安全へ潰す (MLflow UI の run 名をそのまま段にする)
+    assert {"report/rep-[ab]/current", "report/rep-[ab]/traces"} <= {
+        e.name for e in entries
+    }
     # つまみ (`Tuning`) はカタログでなく描画時の引数。詳細図は点 index を名前に
     # 持つので、つまみを動かしても前の点を上書きしない。
     assert any("/p0/" in e.name for e in entries)
     moved = eval_entries(
-        renamed, {"r0": sindy}, Tuning(eval_comp="soma", detail_point=99)
+        renamed, {"r0": sindy}, Tuning(eval_comp="soma", detail_point=99), "rep [ab]"
     )
     # 手元の点数へ丸める (設定が実際の点数を超えていても描く)
     last = len(renamed.points) - 1
@@ -243,14 +248,37 @@ def test_model_figs_come_from_the_run_itself_not_a_declaration(
     sindy: SurrogateBundle,
 ) -> None:
     """モデル側の図は**その run が自分について描けるもの**で決まる (何を描くかの
-    宣言を受け取らない)。比べる N 本すべてを描く = 「代表 1 本だけ」の恣意が無い。"""
-    entries = model_entries({"r0": sindy, "r1": sindy})
+    宣言を受け取らない)。比べる N 本すべてを描く = 「代表 1 本だけ」の恣意が無い。
+    置き場所はレポートの外 (`models/<学習 run>/`) — 描く対象が学習 run そのものなので、
+    レポートを増やしても同じ図が複製されない。段の名前は表示ラベルでなく**渡された
+    run 名** (MLflow の run と 1 対 1)。"""
+    entries = model_entries({"r0": sindy, "r1": sindy}, {"r0": "run A", "r1": "runB"})
     names = [e.name for e in entries]
-    assert "summary" in names  # run 横断の学習側サマリ表は 1 枚
+    # run 横断のサマリ表は models/ に無い (選択した N 本の産物 = レポート側)
+    assert not any("summary" in n for n in names)
     # SINDy = ξ heatmap を持つ表現なので model 図が出る。それが run ごとに揃う。
-    per_run = {name.split("/")[0] for name in names if "/" in name}
-    assert len(per_run) == 2
-    assert all(f"{run}/model" in names for run in per_run)
+    assert {"models/run-A/model", "models/runB/model"} <= set(names)
+
+
+def test_second_report_saved_into_the_same_dest_keeps_the_first(
+    tmp_path: Path,
+) -> None:
+    """`results/` 直下が全レポート共通の dest (レポートごとに dest を割らない):
+    名前が `report/<レポート run>/...` で割れているのでファイルは潰し合わず、
+    `meta.json` も合流して前のレポートの由来が残る。`models/` は同じパスへ上書き。"""
+    save_entries([SaveEntry("report/r1/traces", new_figure())], tmp_path)
+    save_entries(
+        [
+            SaveEntry("report/r2/traces", new_figure()),
+            SaveEntry("models/m", pd.DataFrame({"a": [1]})),
+        ],
+        tmp_path,
+    )
+
+    assert (tmp_path / "report/r1/traces.png").exists()
+    assert (tmp_path / "report/r2/traces.png").exists()
+    meta = json.loads((tmp_path / "meta.json").read_text())
+    assert set(meta) == {"report/r1/traces.png", "report/r2/traces.png", "models/m.csv"}
 
 
 def test_failed_figs_fold_into_error(

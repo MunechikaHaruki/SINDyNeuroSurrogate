@@ -9,7 +9,7 @@ from hydra import compose
 from hydra.core.hydra_config import HydraConfig
 from hydra.types import RunMode
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
-from mlflow_io import log_surrogate_model
+from mlflow_io.surrogate import log_surrogate_model
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.surrogate.bundle import SurrogateBundle

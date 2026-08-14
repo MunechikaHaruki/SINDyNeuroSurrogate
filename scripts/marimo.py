@@ -10,14 +10,12 @@ def _():
 
     import marimo as mo
     from catalog import SERIES
-    from mlflow_io import (
+    from mlflow_io.report import (
         find_report_run,
-        get_runs_df,
-        load_bundles,
         report_entries_of,
         run_and_log,
-        sweep_siblings,
     )
+    from mlflow_io.surrogate import get_runs_df, load_bundles, sweep_siblings
 
     from neurosurrogate.report.build import Tuning
     from neurosurrogate.report.save import save_entries
@@ -102,7 +100,7 @@ def _(mo, usable_series):
 
 
 @app.cell
-def _(mo, sel_name):
+def _(mo):
     # 実行パネル: 評価 (→ 評価 run 保存) と描画 (→ 図保存) はボタンを分ける
     # (宣言を書き換えた後の再描画だけ、評価だけを別々に回せる)。どちらも CLI は持たず、
     # この 2 ボタンが唯一の実行経路 (marimo と CLI の二重管理を避ける)。**widget は
@@ -116,15 +114,10 @@ def _(mo, sel_name):
             "eval": mo.ui.run_button(label="評価 (→ 評価 run 保存)"),
         }
     )
-    # 保存先 (図) の既定名は選択 run の runName 入り。
-    draw_panel = mo.ui.dictionary(
-        {
-            "dir": mo.ui.text(
-                value=f"{sel_name}_result" if sel_name else "_result", label="保存先"
-            ),
-            "draw": mo.ui.run_button(label="描画 (→ 図保存)"),
-        }
-    )
+    # 保存先は選ばせない — 成果物の名前が `models/<学習 run>/` と
+    # `report/<レポート run>/` に割れており、MLflow の run がそのまま階層になる
+    # (保存名を手で付けると同じ run が別の場所に散る)。
+    draw_panel = mo.ui.dictionary({"draw": mo.ui.run_button(label="描画 (→ 図保存)")})
     mo.vstack([mo.md("### 実行パネル"), *eval_panel.values(), *draw_panel.values()])
     return draw_panel, eval_panel
 
@@ -191,21 +184,17 @@ def _(
     report_entries_of,
     report_run_id,
     save_entries,
-    series_name,
     tuning,
 ):
     # 描画ボタン: **入力はレポート run_id 1 つとつまみ (`tuning`) だけ** (再シミュ
     # 無しの再描画 = 描き方を変えてもここだけ回せる)。読込 (mlflow) と組立はすべて
-    # `report_entries_of` の中で、ここに残るのは**どこへ書くかの決定だけ**
-    # (成果物の列 → `save_entries`)。1 レポート = 1 系列 × N モデルなので、系列名の
-    # ディレクトリがそのまま root になる (どの系列の電流で比べたかがパスに出る)。
+    # `report_entries_of` の中で、ここに残るのは成果物の列を流すことだけ。**dest は
+    # `results/` そのもの** — 階層 (`models/<学習 run>/`, `report/<レポート run>/`)
+    # は成果物の名前側が持ち、MLflow の run と 1 対 1 で対応する。
     # レポート run が無い = この選択をまだ評価していない → 評価が先。
     saved = []
     if draw_panel.value["draw"] and report_run_id:
-        saved = save_entries(
-            report_entries_of(report_run_id, tuning),
-            RESULT_DIR / draw_panel.value["dir"] / series_name,
-        )
+        saved = save_entries(report_entries_of(report_run_id, tuning), RESULT_DIR)
     (
         mo.vstack([mo.md(f"✅ `{p.relative_to(RESULT_DIR)}`") for p in saved])
         if saved
@@ -233,11 +222,10 @@ def _(preset_ui):
 
 @app.cell
 def _(run_selector):
-    # id は run 軸 (兄弟 run) を導く単一源、name は保存先の既定名。
-    value = run_selector.value
-    sel_id = value["run_id"].iloc[0] if len(value) else None
-    sel_name = value["tags.mlflow.runName"].iloc[0] if len(value) else None
-    return sel_id, sel_name
+    # run 軸 (兄弟 run) を導く単一源。表示名は要らない (保存段の名前は MLflow の
+    # run 名を描画側が引き直す)。
+    sel_id = run_selector.value["run_id"].iloc[0] if len(run_selector.value) else None
+    return (sel_id,)
 
 
 @app.cell
@@ -290,7 +278,7 @@ def _(SERIES, bundles, eval_panel, find_report_run, run_and_log, series_name):
                 force=eval_panel.value["force"],
             )
             if eval_panel.value["eval"]
-            else find_report_run(list(bundles), series_name)
+            else find_report_run(list(bundles), SERIES[series_name])
         )
         if series_name
         else None

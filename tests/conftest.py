@@ -1,7 +1,7 @@
 """描画テストを headless 化。view を import する前に効かせる必要がある。
 
 併せて `scripts/` を import path へ入れる: 回したい条件のカタログ
-(`catalog.py`) と MLflow I/O (`mlflow_io.py`) はドメイン層でなくここに住む。
+(`catalog.py`) と MLflow I/O (`mlflow_io/`) はドメイン層でなくここに住む。
 """
 
 import sys
