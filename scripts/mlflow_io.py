@@ -31,7 +31,9 @@ from mlflow.entities import Run
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
+from neurosurrogate.report.build import Tuning, report_entries
 from neurosurrogate.report.results import SeriesView, series_matrix
+from neurosurrogate.report.save import SaveEntry
 from neurosurrogate.sim.eval import EvalSeries, SimResult
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
@@ -305,8 +307,16 @@ REFS_FILE = "refs.json"  # {original: run_id, surrs: {学習 run_id: run_id}}
 
 
 def _report_exp_id() -> str:
+    """書く側だけが呼ぶ (無ければ作る)。読む側は `_report_exp_id_if_any`。"""
     exp = mlflow.get_experiment_by_name(REPORT_EXP)
     return exp.experiment_id if exp else mlflow.create_experiment(REPORT_EXP)
+
+
+def _report_exp_id_if_any() -> str | None:
+    """探すだけの経路は experiment を作らない (選択を変えるたびに空の experiment が
+    生えるのを防ぐ = 探索は読み取り専用)。"""
+    exp = mlflow.get_experiment_by_name(REPORT_EXP)
+    return exp.experiment_id if exp else None
 
 
 def _report_hash(source_run_ids: list[str], name: str) -> str:
@@ -316,8 +326,11 @@ def _report_hash(source_run_ids: list[str], name: str) -> str:
 
 
 def _find_report(report_hash: str) -> Run | None:
+    exp_id = _report_exp_id_if_any()
+    if exp_id is None:
+        return None
     found = mlflow.search_runs(
-        experiment_ids=[_report_exp_id()],
+        experiment_ids=[exp_id],
         filter_string=f"tags.report_hash = '{report_hash}'",
         order_by=["attributes.start_time DESC"],
         max_results=1,
@@ -372,31 +385,40 @@ def _new_report_run(
     return rid
 
 
+def find_report_run(source_run_ids: list[str], name: str) -> str | None:
+    """選択 (学習 run 群 × 系列 1 つ) → 既存レポート run の id (無ければ None)。
+    **選択からレポート run_id へ渡す唯一の橋**で、以降 (描画) はこの id 1 つだけを
+    見る = 描く側は「どう回したか」を再構成しない。"""
+    found = _find_report(_report_hash(source_run_ids, name))
+    return found.info.run_id if found else None
+
+
 def run_and_log(
     bundles: dict[str, SurrogateBundle],
-    catalog: dict[str, EvalSeries],
+    name: str,
+    series: EvalSeries,
     force: bool = False,
-) -> dict[str, str]:
-    """評価実行 + 波形 run 保存 + レポート run 保存 (marimo の評価ボタンが呼ぶ唯一の
-    関数)。系列ごとに原系を 1 本と置換系を学習 run ごとに 1 本ずつ確保し (既にあれば
-    再利用 = 回さない)、その run_id を参照表に畳んで**系列ごとに 1 レポート**へ
-    (1 レポート = 1 系列 × N モデル)。返すのは系列名 → レポート run の id。
+) -> str:
+    """**1 系列**の評価実行 + 波形 run 保存 + レポート run 保存 (marimo の評価ボタンが
+    呼ぶ唯一の関数)。原系を 1 本と置換系を学習 run ごとに 1 本ずつ確保し (既にあれば
+    再利用 = 回さない)、その run_id を参照表に畳んで 1 レポート run へ
+    (1 レポート = 1 系列 × N モデル)。返すのはそのレポート run の id
+    = **そのまま描画の入力**。
 
     run 軸を掛ける組合せは `report.series_matrix` が決める (その場で回す側の
-    `report.simulate_views` と同じ単一源)。"""
-    out = {}
-    for name, original, surrs in series_matrix(catalog, bundles):
-        refs = {
-            "original": _run_series(name, original, None, force),
-            "surrs": {
-                run_id: _run_series(name, series, run_id, force)
-                for run_id, series in surrs.items()
-            },
-        }
-        out[name] = _log_report(
-            list(bundles), name, refs, _report_hash(list(bundles), name)
-        )
-    return out
+    `report.simulate_views` と同じ単一源)。1 本も置換できない系列は回す意味が無い
+    ので落ちる (marimo の選択肢は置換できる系列だけなので通常起きない)。"""
+    matrix = series_matrix({name: series}, bundles)
+    if not matrix:
+        raise ValueError(f"{name}: 選択 run のどれでも置換できない (比較対象が無い)")
+    _, original, surrs = matrix[0]
+    refs = {
+        "original": _run_series(name, original, None, force),
+        "surrs": {
+            run_id: _run_series(name, s, run_id, force) for run_id, s in surrs.items()
+        },
+    }
+    return _log_report(list(bundles), name, refs, _report_hash(list(bundles), name))
 
 
 def _datasets_of(run: Run) -> list[xr.Dataset]:
@@ -416,23 +438,19 @@ def _results_of(eval_run_id: str) -> list[SimResult]:
     return series.attach(_datasets_of(run))
 
 
-def load_report(source_run_ids: list[str], name: str) -> SeriesView:
-    """レポート run (選択そのもので引く) → 描画層の `SeriesView` 1 個。
-    **1 レポート = 1 系列**なので、引数の系列も返す値も 1 つ。
+def load_report(report_run_id: str) -> SeriesView:
+    """**レポート run_id 1 つ** → 描画層の `SeriesView` 1 個 (1 レポート = 1 系列)。
 
-    参照表が「どの波形をまとめて 1 回の評価とみなすか」の単一源なので、ここは
-    run_id を辿って波形を読むだけ (タグ検索も原系の逆引きも要らない)。`sources` は
-    成果物の由来 (`meta.json`) 用で、結果そのもの (`SimResult`) には持たせない。"""
-    report_hash = _report_hash(source_run_ids, name)
-    run = _find_report(report_hash)
-    if run is None:
-        raise ValueError(
-            f"{name}: この選択のレポート run ({report_hash}) が無い。"
-            "先に評価を回すこと。"
-        )
+    描画の入力はこの id と描き方 (`Tuning`) だけ = 学習 run 群も系列名も渡さない
+    (どちらもレポート run 自身が持つ: 系列名は param、波形は参照表)。参照表が
+    「どの波形をまとめて 1 回の評価とみなすか」の単一源なので、ここは run_id を辿って
+    波形を読むだけ (タグ検索も原系の逆引きも要らない)。`sources` は成果物の由来
+    (`meta.json`) 用で、結果そのもの (`SimResult`) には持たせない。"""
+    run = mlflow.get_run(report_run_id)
+    name = run.data.params["series_name"]
     with tempfile.TemporaryDirectory() as tmp:
         local = mlflow.artifacts.download_artifacts(
-            f"runs:/{run.info.run_id}/{REFS_FILE}", dst_path=tmp
+            f"runs:/{report_run_id}/{REFS_FILE}", dst_path=tmp
         )
         refs: dict = json.loads(Path(local).read_text())
     return SeriesView(
@@ -440,6 +458,20 @@ def load_report(source_run_ids: list[str], name: str) -> SeriesView:
         _results_of(refs["original"]),
         {rid: _results_of(eid) for rid, eid in refs["surrs"].items()},
         (refs["original"], *refs["surrs"].values()),
+    )
+
+
+def report_entries_of(report_run_id: str, tuning: Tuning) -> list[SaveEntry]:
+    """**レポート run_id 1 つ + 描き方 → 成果物の列** = 描画の唯一の入口。
+    MLflow から引くもの (波形の参照表と、閉包項が要る図のための surrogate 本体) は
+    すべてここで解決し、組立は `report.report_entries` (結果ドメイン) へ委譲する
+    = 呼び出し側 (marimo の描画ボタン) は保存先を決めて `save_entries` に流すだけ。
+
+    surrogate は波形 run に焼き込まれていない (run_id で対応付くだけ) ので引き直す
+    (`load_surrogate_model` は run_id ごとに @cache 済み)。"""
+    view = load_report(report_run_id)
+    return report_entries(
+        view, {rid: load_surrogate_model(rid) for rid in view.run_ids}, tuning
     )
 
 

@@ -12,7 +12,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from catalog import REPORT, SERIES
+from catalog import SERIES
 from hydra import compose, initialize_config_dir
 from matplotlib.figure import Figure
 from omegaconf import OmegaConf
@@ -26,10 +26,9 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
 from neurosurrogate.plotting import collect, new_figure
-from neurosurrogate.report.build import eval_entries, model_entries
+from neurosurrogate.report.build import Tuning, eval_entries, model_entries
 from neurosurrogate.report.grid import trace_grid_fig
 from neurosurrogate.report.results import SeriesView, simulate_views
-from neurosurrogate.report.spec import Report, Tuning
 from neurosurrogate.sim.eval import EvalSeries
 from neurosurrogate.sim.spec import SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
@@ -163,18 +162,17 @@ def test_sindy_draws_all_figs(sindy_view: SeriesView, sindy: SurrogateBundle) ->
 
 def test_catalog_is_self_consistent() -> None:
     """カタログ (`scripts/catalog.py`) が自己整合: `SERIES` の全系列の電流が掃引点
-    まで含めて構築でき、`REPORT` は `SERIES` と**同じキー空間**を張る (1 系列 =
-    1 レポート → 描き方の無い系列も、回さない系列の描き方も存在しない)。条件も宣言も
-    型になった今、綴り間違いは import 時に落ちるので、ここで見るのは**名前の対応**
-    だけ。単発系列も「点 1 つ」として同じ経路を通る。"""
+    まで含めて構築でき、どの系列も comp 名を持つ (marimo の comp つまみは**選んだ
+    1 系列**の適用先から選択肢を作るので、ここが空だとその系列を選ぶと何も選べない)。
+    条件が型になった今、綴り間違いは import 時に落ちるので、ここで見るのは名前の
+    対応だけ。単発系列も「点 1 つ」として同じ経路を通る。"""
     for series in SERIES.values():
+        assert series.spec.net.names
         for spec in series.points:
             assert len(spec.current()) > 0
     # 点軸: 単発は点 1 つ、掃引は宣言した点数だけ
     assert len(SERIES["traub_soma_dc"].points) == 1
     assert len(SERIES["traub19_somastim"].points) == 5
-
-    assert set(REPORT) == set(SERIES)
 
 
 def _sweep_specs(name: str, values: list[float]) -> dict[str, EvalSeries]:
@@ -227,14 +225,14 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     図になる = 計算と描画が切れている。系列名は `dest` 側の関心なので成果物の名前に
     出ない (1 レポート = 1 系列 → 名前に系列名を混ぜる必要がない)。"""
     renamed = dc_replace(sindy_view, name="読んだ系列")
-    entries = eval_entries(renamed, {"r0": sindy}, Report(eval_comp="soma"))
+    entries = eval_entries(renamed, {"r0": sindy}, Tuning(eval_comp="soma"))
     assert {"current", "traces"} <= {e.name for e in entries}
     assert not any(e.name.startswith("読んだ系列") for e in entries)
     # つまみ (`Tuning`) はカタログでなく描画時の引数。詳細図は点 index を名前に
     # 持つので、つまみを動かしても前の点を上書きしない。
     assert any("/p0/" in e.name for e in entries)
     moved = eval_entries(
-        renamed, {"r0": sindy}, Report(eval_comp="soma"), Tuning(detail_point=99)
+        renamed, {"r0": sindy}, Tuning(eval_comp="soma", detail_point=99)
     )
     # 手元の点数へ丸める (設定が実際の点数を超えていても描く)
     last = len(renamed.points) - 1

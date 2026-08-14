@@ -18,6 +18,7 @@ from mlflow.entities import Run
 from test_surrogate import fit_surrogate
 
 from neurosurrogate.core import access
+from neurosurrogate.report.build import Tuning
 from neurosurrogate.sim.eval import EvalSeries, simulate
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
@@ -38,15 +39,11 @@ def sindy() -> SurrogateBundle:
     return fit_surrogate("_test_hh_sindy")
 
 
-def _evals(bundle: SurrogateBundle) -> dict[str, EvalSeries]:
+def _evals(bundle: SurrogateBundle) -> EvalSeries:
     """学習と同じ入力を**さらに短く**した評価仕様 (2 点の掃引)。ここで見たいのは
     保存/読込の往復であって波形の質ではないので、シミュ長は最小で足りる。掃引に
     してあるのは、点の並びが `EvalSeries.points` から復元されることを見るため。"""
-    return {
-        "hh_dc": EvalSeries(
-            spec=bundle.meta.dataset, param="duration", values=[170.0, 190.0]
-        )
-    }
+    return EvalSeries(spec=bundle.meta.dataset, param="duration", values=[170.0, 190.0])
 
 
 def test_eval_runs_round_trip_without_resimulating(
@@ -57,14 +54,15 @@ def test_eval_runs_round_trip_without_resimulating(
     スキップされ、原系の run は学習 run を跨いで共有される。レポートは
     **1 系列 × N モデル**が単位で、選択 (学習 run 群 × 系列 1 つ) で引き、波形 run
     への参照だけを持つ。"""
-    evals = _evals(sindy)
-    series = evals["hh_dc"]
-    report_ids = mlflow_io.run_and_log({RUN_ID: sindy}, evals)
-    # 波形は 2 本 (原系 1 + 置換系 1)、レポートは系列ごとに 1 本 (点では分かれない)
+    series = _evals(sindy)
+    report_id = mlflow_io.run_and_log({RUN_ID: sindy}, "hh_dc", series)
+    # 波形は 2 本 (原系 1 + 置換系 1)、レポートは 1 本 (点では分かれない)
     assert len(_of_kind("original")) == 1 and len(_of_kind("surrogate")) == 1
-    assert list(report_ids) == ["hh_dc"]
+    # 選択 → レポート run_id の橋は 1 本で、描画はこの id だけを見る
+    assert mlflow_io.find_report_run([RUN_ID], "hh_dc") == report_id
 
-    view = mlflow_io.load_report([RUN_ID], "hh_dc")
+    view = mlflow_io.load_report(report_id)
+    assert view.name == "hh_dc"
     assert view.run_ids == [RUN_ID]
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.axis, view.values) == ("duration", [170.0, 190.0])
@@ -87,18 +85,54 @@ def test_eval_runs_round_trip_without_resimulating(
 
     # シミュは決定的 → 同じ掃引の 2 度目はスキップ (series_hash 一致)。同じ選択の
     # レポートも量産されず、同じ run が更新される。
-    assert mlflow_io.run_and_log({RUN_ID: sindy}, evals) == report_ids
+    assert mlflow_io.run_and_log({RUN_ID: sindy}, "hh_dc", series) == report_id
     assert len(_of_kind("surrogate")) == 1
 
     # 別の学習 run から同じ条件 → 置換系は増えるが原系は共有される
     # (学習 run を増やしても原系の波形が複製されない)。選択が違えば別のレポート。
-    assert mlflow_io.run_and_log({"OTHER": sindy}, evals) != report_ids
+    assert mlflow_io.run_and_log({"OTHER": sindy}, "hh_dc", series) != report_id
     assert (len(_of_kind("original")), len(_of_kind("surrogate"))) == (1, 2)
 
     # 学習 run 2 件の選択はさらに別のレポート = 別の単位 (run 軸 2 本が 1 枚に並ぶ)
-    mlflow_io.run_and_log({RUN_ID: sindy, "OTHER": sindy}, evals)
-    both = mlflow_io.load_report([RUN_ID, "OTHER"], "hh_dc")
+    both = mlflow_io.load_report(
+        mlflow_io.run_and_log({RUN_ID: sindy, "OTHER": sindy}, "hh_dc", series)
+    )
     assert (len(both.points), both.run_ids) == (2, [RUN_ID, "OTHER"])
+
+
+def test_unevaluated_selection_finds_nothing_without_creating_experiment(
+    eval_store: str,
+) -> None:
+    """まだ評価していない選択は `None` が返るだけ (描画側は「先に評価」を出す)。
+    探すだけの経路は experiment を作らない = 選択を変えるたびに空の experiment が
+    生えない。"""
+    assert mlflow_io.find_report_run([RUN_ID], "hh_dc") is None
+    assert mlflow.get_experiment_by_name(mlflow_io.REPORT_EXP) is None
+
+
+def test_run_and_log_rejects_series_no_run_can_replace(
+    eval_store: str, sindy: SurrogateBundle
+) -> None:
+    """1 本も置換できない選択は回す意味が無い → 空のレポートを作らず落ちる。"""
+    with pytest.raises(ValueError, match="置換できない"):
+        mlflow_io.run_and_log({}, "hh_dc", _evals(sindy))
+
+
+def test_report_entries_of_draws_from_report_run_id_and_tuning(
+    eval_store: str, sindy: SurrogateBundle, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """描画の入力は**レポート run_id 1 つ + `Tuning`** だけ。surrogate は波形に
+    焼き込まれていないので run_id から引き直す (ここでは学習 run が代役なので差し替え)。
+    `eval_comp` が適用先に無ければ黙って描かずエラー図 1 枚になる。"""
+    monkeypatch.setattr(mlflow_io, "load_surrogate_model", lambda _: sindy)
+    report_id = mlflow_io.run_and_log({RUN_ID: sindy}, "hh_dc", _evals(sindy))
+    comp = mlflow_io.load_report(report_id).net.names[0]
+
+    entries = mlflow_io.report_entries_of(report_id, Tuning(eval_comp=comp))
+    assert len(entries) > 1 and all(e.obj is not None for e in entries)
+
+    err = mlflow_io.report_entries_of(report_id, Tuning(eval_comp="nope"))
+    assert [e.name for e in err] == ["error"]
 
 
 def _of_kind(kind: str) -> list[Run]:

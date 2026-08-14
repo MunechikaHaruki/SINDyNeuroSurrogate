@@ -1,24 +1,25 @@
-"""**この研究で回したい条件と、その描き方**を並べた 1 枚のカタログ。
+"""**この研究で回したい条件**を並べた 1 枚のカタログ。
 
 ドメイン層 (`neurosurrogate/`) は「どう回すか」の型と手続きだけを持ち、
-**何を回すか**はここに集まる。中身は 3 つ:
+**何を回すか**はここに集まる。中身は 2 つ:
 
 - `EVALS` — 素材 (1 条件 = `SimSpec`)
 - `SERIES` — 掃引 (`EvalSeries`。素材を電流パラメータで振ったもの。単発も「点 1 つ
   の系列」として同じ経路を通る)。載るのは surrogate を持たない素の系列 =
   カタログは原系の掃引そのもので、回す側が run ごとに `with_surrogate` して
   run 軸を張る
-- `REPORT` — 描画宣言 (系列名 → `Report`)。**1 系列 = 1 レポート**なので `SERIES` と
-  同じキー空間。同じファイルに置いて名前の対応が目で追えるようにしてある
+**描き方 (`report.build.Tuning`) はここに持たない**: 比較対象 comp も指標も図を見て
+決め直すもので、カタログに置くと「回す条件」と同じ寿命に見えてしまう。置き場所は
+marimo の widget 1 箇所 (`SimSpec.net` が解いた comp 名から選択肢が出るので、
+適用先と噛み合わない comp を書けない)。
 
-設定ファイルは持たない。実験条件も描画宣言も型で書けば綴り間違いは import 時に
-落ち、スキーマという型の弱い写しを二重に管理せずに済む。条件を変えたら別の実験 =
+設定ファイルは持たない。実験条件を型で書けば綴り間違いは import 時に落ち、
+スキーマという型の弱い写しを二重に管理せずに済む。条件を変えたら別の実験 =
 コードの差分に出るのが正しい。
 """
 
 import numpy as np
 
-from neurosurrogate.report.spec import Report
 from neurosurrogate.sim.eval import EvalSeries
 from neurosurrogate.sim.spec import SimSpec
 
@@ -75,19 +76,4 @@ SERIES: dict[str, EvalSeries] = {
         param="frequency",
         values=np.linspace(10.0, 50.0, 5).tolist(),
     ),
-}
-
-# 描画宣言。**1 系列 = 1 レポート** (その系列の電流たちで N 本の surrogate を比べる)
-# なので `SERIES` と同じキー空間を張る。**図を調整するたびに書き換える対象**だが
-# 設定ファイルにはしない: 型で書けば既定値・使えるキー・系列名が 1 箇所で解決する。
-#
-# **何の図を出すかは書かない** — モデル側は run 自身が描けるもの、評価側は結果の形
-# (点数) で決まる。ここに書くのは「どの comp を比較の主役に据えるか」だけ。
-# 描きながら回すつまみ (詳細図の点・スパイク番号・y レンジ) は `report.Tuning` で、
-# marimo の widget が持つ (カタログには残らない)。
-REPORT: dict[str, Report] = {
-    "traub_soma_dc": Report(eval_comp="soma", view_comps=("soma",)),
-    "traub19_somastim": Report(eval_comp="soma", view_comps=("soma",)),
-    "traub19_dendstim": Report(eval_comp="soma", view_comps=("soma",)),
-    "traub19_pulse_freq": Report(eval_comp="soma", view_comps=("soma",)),
 }

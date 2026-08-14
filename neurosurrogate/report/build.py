@@ -21,8 +21,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from pathlib import Path
+from dataclasses import dataclass
 
 from ..core import access
 from ..core.network import NeuronGraph
@@ -33,8 +32,31 @@ from ..surrogate.figures import summary_df, surrogate_figs
 from ..waveform import cell_figs, current_preview_fig, dm_of, wave_report
 from .grid import metric_fig, trace_grid_fig
 from .results import SeriesView, run_names
-from .save import SaveEntry, save_entries, slug
-from .spec import NO_TUNING, Report, Tuning
+from .save import SaveEntry, slug
+
+
+@dataclass(frozen=True)
+class Tuning:
+    """**1 レポートの描画条件**。既定値と「どのキーがあるか」の単一源はここで、値を
+    与える場所は `scripts/marimo.py` の widget 1 箇所だけ (カタログは「何を回すか」
+    しか持たない = 描き方は図を見て決め直すものなので寿命が違う)。
+
+    先頭の `eval_comp` だけ既定値が無い — 適用先が変われば comp 名も変わるので、
+    系列を選んだ後に決まる。残りは既定のままでもレポートが出る。
+
+    **何を描くかは宣言しない**: モデル側の図はその run が自分について描けるもの
+    (`surrogate.figures.surrogate_figs` が bundle の型から解く)、評価側の図は結果の形
+    (点が 2 つ以上なら折れ線が出る) で決まる。図の種類名がこの型に出てこないのが
+    不変条件。
+    """
+
+    eval_comp: str  # 比較対象 comp (1 件)
+    view_comps: tuple[str, ...] = ()  # 全 comp を並べる図の表示制限 (空=全部)
+    metric: str = "spike_count"  # 点軸の折れ線に使う指標
+    detail_point: int = 0  # 詳細図 (diff/attractor/指標) を描く点の index
+    spike_orig: int = 0  # 特徴量比較に使う原系の何本目のスパイクか
+    spike_surr: int = 0  # 同じく置換系
+    metric_ylim: tuple[float, float] | None = None  # 折れ線の y レンジ (None=auto)
 
 
 def _comp_ids(comps: tuple[str, ...], net: NeuronGraph) -> list[int] | None:
@@ -96,7 +118,6 @@ def _detail_entries(
     view: SeriesView,
     bundles: dict[str, SurrogateBundle],
     names: dict[str, str],
-    report: Report,
     tuning: Tuning,
 ) -> list[SaveEntry]:
     """選択した 1 点 × 各モデルの詳細図 + メトリクス表 (`<model>/p<点>/...`)。
@@ -107,7 +128,7 @@ def _detail_entries(
     """
     index = view.clamp(tuning.detail_point)
     net = view.net
-    comp_id = net.name_to_idx(report.eval_comp)
+    comp_id = net.name_to_idx(tuning.eval_comp)
     entries: list[SaveEntry] = []
     for run_id in view.run_ids:
         orig, surr = view.pair(index, run_id)
@@ -120,7 +141,7 @@ def _detail_entries(
             lambda rid=run_id, o=orig: preprocessed_latent(  # type: ignore[misc]
                 bundles[rid], net, o.dataset, comp_id
             ),
-            _comp_ids(report.view_comps, net),
+            _comp_ids(tuning.view_comps, net),
         )
         metrics = wave_report(
             dm_of(orig, surr, comp_id), tuning.spike_orig, tuning.spike_surr
@@ -129,7 +150,7 @@ def _detail_entries(
         run = slug(names[run_id])
         entries += [
             SaveEntry(
-                f"{run}/p{index}/{fname}", artifact, sources=view.sources, draw=report
+                f"{run}/p{index}/{fname}", artifact, sources=view.sources, draw=tuning
             )
             for fname, artifact in (*figs, *metrics)
         ]
@@ -139,8 +160,7 @@ def _detail_entries(
 def eval_entries(
     view: SeriesView,
     bundles: dict[str, SurrogateBundle],
-    report: Report,
-    tuning: Tuning = NO_TUNING,
+    tuning: Tuning,
 ) -> list[SaveEntry]:
     """系列の結果: 入力電流プレビュー → 波形格子 (点 × モデル) → 選択点の詳細図 →
     点軸メトリクス折れ線。折れ線は**点が 2 つ以上のときだけ** (単発で 1 点の折れ線を
@@ -151,13 +171,13 @@ def eval_entries(
             "current",
             current_preview_fig(view.points[0].spec),
             sources=view.sources,
-            draw=report,
+            draw=tuning,
         ),
         SaveEntry(
             "traces",
-            trace_grid_fig(view, names, report.eval_comp),
+            trace_grid_fig(view, names, tuning.eval_comp),
             sources=view.sources,
-            draw=report,
+            draw=tuning,
         ),
     ]
     if len(view.points) > 1:
@@ -165,60 +185,41 @@ def eval_entries(
             SaveEntry(
                 "metric",
                 metric_fig(
-                    view, names, report.eval_comp, report.metric, tuning.metric_ylim
+                    view, names, tuning.eval_comp, tuning.metric, tuning.metric_ylim
                 ),
                 sources=view.sources,
-                draw=report,
+                draw=tuning,
             )
         )
-    return entries + _detail_entries(view, bundles, names, report, tuning)
+    return entries + _detail_entries(view, bundles, names, tuning)
 
 
 # --- 入口 ----------------------------------------------------------------------
 
 
-def render_report(
+def report_entries(
     view: SeriesView,
     bundles: dict[str, SurrogateBundle],
-    report: Report,
-    dest: Path,
-    tuning: Tuning = NO_TUNING,
-) -> list[Path]:
-    """1 レポート (1 系列 × N モデル) を組み立てて `dest` へ保存する唯一の入口。
-    呼び出し側 (`scripts/marimo.py` の描画ボタン) は artifact 読込 + surrogate
-    ロード (mlflow 依存) だけを持ち、組立/保存はここに委譲する。成果物ごとの由来
-    (`sources`/`draw`) は各 `SaveEntry` が持ち、`meta.json` へは `save_entries` が
-    そのまま落とす。
+    tuning: Tuning,
+) -> list[SaveEntry]:
+    """1 レポート (1 系列 × N モデル) を組み立てる唯一の入口。**返すのは成果物の列で
+    保存はしない** — どこへ書くかは呼び出し側の関心で、この層は「何がどの名前で
+    並ぶか」だけを決める (`save_entries` に渡せばそのまま落ちる)。成果物ごとの由来
+    (`sources`/`draw`) は各 `SaveEntry` が持つ。
 
     `eval_comp` が適用先に無い = **手元の結果に対する表示設定の誤り**なので、黙って
     何かを描かずエラー図 1 枚を返して気付けるようにする。
     """
     use_style()
-    if report.eval_comp not in view.net.names:
+    if tuning.eval_comp not in view.net.names:
         # matplotlib テキストとして描かれる (CJK グリフ非対応) → 英語で書く。
-        msg = f"{view.name}: eval_comp {report.eval_comp!r} not in {view.target!r}"
-        return save_entries([SaveEntry("error", error_fig(msg))], dest)
+        msg = f"{view.name}: eval_comp {tuning.eval_comp!r} not in {view.target!r}"
+        return [SaveEntry("error", error_fig(msg))]
     # 学習側 (train_raw) は全軌道を覆うレンジ、評価側 (diff) は panels_diff の
     # 発表用既定に任せる (共有すると学習パルスの最大値で評価 step が潰れる)。
-    entries = model_entries(
+    return model_entries(
         bundles,
         view.net,
-        _comp_ids(report.view_comps, view.net),
+        _comp_ids(tuning.view_comps, view.net),
         _i_ext_ylim(bundles, view),
-    ) + eval_entries(view, bundles, report, tuning)
-    return save_entries(entries, dest)
-
-
-def load_and_render_report(
-    view: SeriesView,
-    report: Report,
-    dest: Path,
-    load_surrogate_model: Callable[[str], SurrogateBundle],
-    tuning: Tuning = NO_TUNING,
-) -> list[Path]:
-    """surrogate の解決から `render_report` までを一括した唯一の入口。呼び出し側
-    (`scripts/marimo.py` の描画ボタン) は結果の読込 (mlflow 依存) だけを持てばよい。
-    surrogate は結果に焼き込まれていない (run_id で対応付くだけ) ので、閉包項が
-    要る図のために `load_surrogate_model` で引き直す。"""
-    bundles = {run_id: load_surrogate_model(run_id) for run_id in view.run_ids}
-    return render_report(view, bundles, report, dest, tuning)
+    ) + eval_entries(view, bundles, tuning)
