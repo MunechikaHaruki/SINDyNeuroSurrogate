@@ -14,6 +14,13 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import pytest
+from artifacts import (
+    SaveEntry,
+    model_entries,
+    report_entries,
+    save_entries,
+    series_entries,
+)
 from catalog import SERIES
 from hydra import compose, initialize_config_dir
 from matplotlib.figure import Figure
@@ -28,10 +35,14 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
 from neurosurrogate.plotting import collect, new_figure
-from neurosurrogate.report.build import Tuning, eval_entries, model_entries
+from neurosurrogate.report.figures import (
+    MODEL,
+    Tuning,
+    model_figs,
+    series_figs,
+)
 from neurosurrogate.report.grid import trace_grid_fig
 from neurosurrogate.report.results import SeriesView, simulate_views
-from neurosurrogate.report.save import SaveEntry, save_entries
 from neurosurrogate.sim.eval import EvalSeries
 from neurosurrogate.sim.spec import SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
@@ -214,10 +225,22 @@ def test_trace_grid_rows_are_one_per_model(sindy: SurrogateBundle) -> None:
 
 
 def test_series_view_columns_must_line_up_across_runs(sindy_view: SeriesView) -> None:
-    """`SeriesView` は点軸の列が run 間で揃っていることを構築時に保証する
-    (揃わない列を図の側で検出させない)。"""
+    """`SeriesView` は構築時に 2 つを保証する: 点軸の列が run 間で揃うこと (揃わない
+    列を図の側で検出させない) と、評価 run の id が run 軸と揃うか丸ごと無いか
+    (半端に欠けた id は保存段が別の run の名前へ落ちる)。"""
     with pytest.raises(ValueError, match="点数"):
         SeriesView("s", sindy_view.points, {"r0": []})
+    with pytest.raises(ValueError, match="評価 run の id"):
+        SeriesView("s", sindy_view.points, sindy_view.surrs, "e0", {"other": "e1"})
+    # 片側だけ / 空文字の id も「半端」(`sources` が黙って短くなる)
+    with pytest.raises(ValueError, match="半端"):
+        SeriesView("s", sindy_view.points, sindy_view.surrs, "e0")
+    with pytest.raises(ValueError, match="半端"):
+        SeriesView("s", sindy_view.points, sindy_view.surrs, "", {"r0": "e1"})
+    with pytest.raises(ValueError, match="半端"):
+        SeriesView("s", sindy_view.points, sindy_view.surrs, "e0", {"r0": ""})
+    # 丸ごと無い = その場で回した結果 (由来を持たないだけ)
+    assert SeriesView("s", sindy_view.points, sindy_view.surrs).sources == ()
 
 
 def test_report_draws_the_results_at_hand_not_the_declaration(
@@ -225,39 +248,59 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
 ) -> None:
     """描画は**手元の結果だけ**を見る (計算入力の設定と突き合わせない): 設定ファイル
     に宣言の無い系列名 — 別セッションで回して artifact から読んだ結果 — もそのまま
-    図になる = 計算と描画が切れている。保存段はレポート run 1 つで、格子も折れ線も
-    run 横断なので run 単位に割れない。"""
+    図になる = 計算と描画が切れている。格子は run 横断なのでレポート run が保存段、
+    入力電流と詳細図は波形 1 本で決まるので評価 run が保存段 (`series/`)。"""
     renamed = dc_replace(sindy_view, name="読んだ系列")
-    entries = eval_entries(renamed, {"r0": sindy}, Tuning(eval_comp="soma"), "rep [ab]")
-    # run 名の空白/記号はパス安全へ潰す (MLflow UI の run 名をそのまま段にする)
-    assert {"report/rep-[ab]/current", "report/rep-[ab]/traces"} <= {
-        e.name for e in entries
+    view = dc_replace(renamed, original_id="e0", surr_ids={"r0": "e1"})
+    tuning = Tuning(eval_comp="soma")
+    bundles = {"r0": sindy}
+    names = {
+        "r0": "run A",
+        "e0": "orig [x]",
+        "e1": "surr [y]",
+        "rep0": "rep [ab]",
     }
+    entries = [
+        *model_entries(bundles, tuning, names),
+        *series_entries(view, bundles, tuning, names),
+        *report_entries(view, bundles, tuning, names, "rep0"),
+    ]
+    # 保存段は図が属する run で割れ、名前は MLflow の run 名 (空白/記号はパス安全へ
+    # 潰す) + run id 先頭 = **名前が衝突しても別 run は別ディレクトリ**。段を組むのは
+    # `scripts/artifacts` だけで、描画層は run の同一性しか名乗らない。
+    assert {
+        "models/run-A-r0/model",  # 学習 run 1 本について描けるもの
+        "series/orig-[x]-e0/current",  # 原系の波形 1 本で決まるもの
+        "report/rep-[ab]-rep0/traces",  # run 横断 = この選択でしか出ないもの
+    } <= {e.name for e in entries}
     # つまみ (`Tuning`) はカタログでなく描画時の引数。詳細図は点 index を名前に
     # 持つので、つまみを動かしても前の点を上書きしない。
-    assert any("/p0/" in e.name for e in entries)
-    moved = eval_entries(
-        renamed, {"r0": sindy}, Tuning(eval_comp="soma", detail_point=99), "rep [ab]"
-    )
+    assert any(e.name.startswith("series/surr-[y]-e1/p0/") for e in entries)
+    # 由来は成果物ごと (モデル図は学習 run、結果側の図は読んだ評価 run)
+    by_name = {e.name: e for e in entries}
+    assert by_name["models/run-A-r0/model"].sources == ("r0",)
+    assert by_name["series/orig-[x]-e0/current"].sources == ("e0",)
+    moved = series_figs(view, {"r0": sindy}, Tuning(eval_comp="soma", detail_point=99))
     # 手元の点数へ丸める (設定が実際の点数を超えていても描く)
     last = len(renamed.points) - 1
-    assert any(f"/p{last}/" in e.name for e in moved)
+    assert any(f.name.startswith(f"p{last}/") for f in moved)
 
 
 def test_model_figs_come_from_the_run_itself_not_a_declaration(
-    sindy: SurrogateBundle,
+    sindy_view: SeriesView, sindy: SurrogateBundle
 ) -> None:
     """モデル側の図は**その run が自分について描けるもの**で決まる (何を描くかの
     宣言を受け取らない)。比べる N 本すべてを描く = 「代表 1 本だけ」の恣意が無い。
-    置き場所はレポートの外 (`models/<学習 run>/`) — 描く対象が学習 run そのものなので、
-    レポートを増やしても同じ図が複製されない。段の名前は表示ラベルでなく**渡された
-    run 名** (MLflow の run と 1 対 1)。"""
-    entries = model_entries({"r0": sindy, "r1": sindy}, {"r0": "run A", "r1": "runB"})
-    names = [e.name for e in entries]
-    # run 横断のサマリ表は models/ に無い (選択した N 本の産物 = レポート側)
-    assert not any("summary" in n for n in names)
+    描く対象は学習 run そのもの (`kind=MODEL`) なので、レポートを増やしても同じ図が
+    複製されない。"""
+    figs = model_figs({"r0": sindy, "r1": sindy}, Tuning(eval_comp="soma"))
+    # run 横断のサマリ表はモデル側に無い (選択した N 本の産物 = レポート側)
+    assert not any("summary" in f.name for f in figs)
     # SINDy = ξ heatmap を持つ表現なので model 図が出る。それが run ごとに揃う。
-    assert {"models/run-A/model", "models/runB/model"} <= set(names)
+    assert {(f.kind, f.run_id, f.name) for f in figs} >= {
+        (MODEL, "r0", "model"),
+        (MODEL, "r1", "model"),
+    }
 
 
 def test_second_report_saved_into_the_same_dest_keeps_the_first(

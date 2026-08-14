@@ -90,7 +90,8 @@ def run_name(run_id: str) -> str:
     UI 側の run をそのまま引ける。引けない run (消された等) は id を段名にして描画は
     通す (名前が取れないことは図を出さない理由にならない)。
 
-    学習 run にもレポート run にも効く (run 名は experiment を問わない属性)。"""
+    学習 run にも評価 run にもレポート run にも効く (run 名は experiment を問わない
+    属性)。"""
     try:
         return mlflow.get_run(run_id).info.run_name or run_id
     except Exception as e:

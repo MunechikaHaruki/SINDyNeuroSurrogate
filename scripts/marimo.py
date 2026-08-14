@@ -9,16 +9,16 @@ def _():
     from pathlib import Path
 
     import marimo as mo
+    from artifacts import model_entries, report_entries, save_entries, series_entries
     from catalog import SERIES
     from mlflow_io.report import (
         find_report_run,
-        report_entries_of,
+        load_report,
         run_and_log,
     )
-    from mlflow_io.surrogate import get_runs_df, load_bundles, sweep_siblings
+    from mlflow_io.surrogate import get_runs_df, load_bundles, run_name, sweep_siblings
 
-    from neurosurrogate.report.build import Tuning
-    from neurosurrogate.report.save import save_entries
+    from neurosurrogate.report.figures import Tuning
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
     RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
@@ -37,11 +37,15 @@ def _():
         Tuning,
         find_report_run,
         load_bundles,
+        load_report,
         mo,
-        report_entries_of,
+        model_entries,
+        report_entries,
         run_and_log,
+        run_name,
         runs_df,
         save_entries,
+        series_entries,
         sweep_siblings,
     )
 
@@ -61,8 +65,9 @@ def _(ALL_PRESETS, mo, runs_df):
 
 @app.cell
 def _(ALL_PRESETS, SERIES, mo, preset, runs_df):
-    # marimo に残す唯一の「入力」= run を 1 件選ぶだけ。適用先 / sweep 対象 (兄弟 run)
-    # は選択後に自動決定。preset で絞り、宣言された適用先 (SERIES の点の target) の
+    # marimo に残す唯一の「入力」= 比べたい run を選ぶだけ (**N 件**。1 レポート =
+    # 1 系列 × N モデルなので run 軸の本数は選択そのもの)。各 run の sweep 兄弟は
+    # 選択後に自動で加わる。preset で絞り、宣言された適用先 (SERIES の点の target) の
     # どれかへ**実際に置換できる** 代表 run (hydra sweep 親/単発 = parent_id 欠損)
     # だけ出す (子は隠す)。1 系列ごとの置換可否は `EvalSeries.replaceable` (ドメイン
     # 側) が持ち、「1 本でも置換できれば出す」という**選択の方針**だけがここ。
@@ -76,8 +81,8 @@ def _(ALL_PRESETS, SERIES, mo, preset, runs_df):
     runs = reps[["tags.mlflow.runName", "comp_type", "run_id"]]
     run_selector = mo.ui.table(
         runs,
-        label="Run (1件)",
-        selection="single",
+        label="Run (複数可)",
+        selection="multi",
         initial_selection=[0] if len(runs) else [],
     )
     run_selector  # noqa: B018
@@ -114,7 +119,7 @@ def _(mo):
             "eval": mo.ui.run_button(label="評価 (→ 評価 run 保存)"),
         }
     )
-    # 保存先は選ばせない — 成果物の名前が `models/<学習 run>/` と
+    # 保存先は選ばせない — 成果物の名前が `models/<学習 run>/`・`series/<評価 run>/`・
     # `report/<レポート run>/` に割れており、MLflow の run がそのまま階層になる
     # (保存名を手で付けると同じ run が別の場所に散る)。
     draw_panel = mo.ui.dictionary({"draw": mo.ui.run_button(label="描画 (→ 図保存)")})
@@ -181,20 +186,34 @@ def _(
     RESULT_DIR,
     draw_panel,
     mo,
-    report_entries_of,
+    model_entries,
+    report_bundles,
+    report_entries,
+    report_names,
     report_run_id,
+    report_view,
     save_entries,
+    series_entries,
     tuning,
 ):
-    # 描画ボタン: **入力はレポート run_id 1 つとつまみ (`tuning`) だけ** (再シミュ
-    # 無しの再描画 = 描き方を変えてもここだけ回せる)。読込 (mlflow) と組立はすべて
-    # `report_entries_of` の中で、ここに残るのは成果物の列を流すことだけ。**dest は
-    # `results/` そのもの** — 階層 (`models/<学習 run>/`, `report/<レポート run>/`)
-    # は成果物の名前側が持ち、MLflow の run と 1 対 1 で対応する。
+    # marimo で解決した run 群を、独立した3つの成果物生成へ流す。
     # レポート run が無い = この選択をまだ評価していない → 評価が先。
     saved = []
-    if draw_panel.value["draw"] and report_run_id:
-        saved = save_entries(report_entries_of(report_run_id, tuning), RESULT_DIR)
+    if draw_panel.value["draw"] and report_run_id and report_view:
+        saved = save_entries(
+            [
+                *model_entries(report_bundles, tuning, report_names),
+                *series_entries(report_view, report_bundles, tuning, report_names),
+                *report_entries(
+                    report_view,
+                    report_bundles,
+                    tuning,
+                    report_names,
+                    report_run_id,
+                ),
+            ],
+            RESULT_DIR,
+        )
     (
         mo.vstack([mo.md(f"✅ `{p.relative_to(RESULT_DIR)}`") for p in saved])
         if saved
@@ -203,6 +222,22 @@ def _(
         else mo.md("この選択のレポート run が無い → 先に評価")
     )
     return
+
+
+@app.cell
+def _(load_bundles, load_report, report_run_id, run_name):
+    # 選択から得た report run_id の参照を UI 層で明示的に解決する。
+    report_view = load_report(report_run_id) if report_run_id else None
+    report_bundles = load_bundles(report_view.run_ids) if report_view else {}
+    report_names = (
+        {
+            rid: run_name(rid)
+            for rid in (*report_view.run_ids, *report_view.sources, report_run_id)
+        }
+        if report_view and report_run_id
+        else {}
+    )
+    return report_bundles, report_names, report_view
 
 
 @app.cell(column=1)
@@ -222,17 +257,21 @@ def _(preset_ui):
 
 @app.cell
 def _(run_selector):
-    # run 軸 (兄弟 run) を導く単一源。表示名は要らない (保存段の名前は MLflow の
-    # run 名を描画側が引き直す)。
-    sel_id = run_selector.value["run_id"].iloc[0] if len(run_selector.value) else None
-    return (sel_id,)
+    # run 軸を導く単一源 = 選んだ代表 run (与えた順)。表示名は要らない (保存段の
+    # 名前は MLflow の run 名を描画側が引き直す)。
+    sel_ids = list(run_selector.value["run_id"])
+    return (sel_ids,)
 
 
 @app.cell
-def _(sel_id, sweep_siblings):
-    # 選択 run (代表) の hydra sweep 兄弟 = 自身 + 子 run_id。単発 preset は 1 件。
-    # **run 軸は評価の一級の軸**なので、単発の評価でも同じ集合を重ねて比べる。
-    run_ids_list = sweep_siblings(sel_id) if sel_id else []
+def _(sel_ids, sweep_siblings):
+    # 選んだ代表 run それぞれの hydra sweep 兄弟 = 自身 + 子 run_id を与えた順に連結
+    # (単発 preset は 1 件)。**run 軸は評価の一級の軸**なので、単発の評価でも同じ
+    # 集合を重ねて比べる。同じ run が 2 度出ない (preset 違いの選択が重なっても
+    # run 軸は 1 本) ように与えた順で潰す。
+    run_ids_list = list(
+        dict.fromkeys(rid for sel in sel_ids for rid in sweep_siblings(sel))
+    )
     return (run_ids_list,)
 
 

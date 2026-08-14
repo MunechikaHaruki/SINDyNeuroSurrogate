@@ -15,9 +15,8 @@
 run の参照が差し替わる (`force` で波形 run が新しくなってもレポートは増えない) →
 参照は param でなく**書き換えられる tag** に置く。
 
-**marimo の 2 ボタンの行き先はどちらもここ**: 評価 (`run_and_log`) と
-描画 (`report_entries_of`)。描画は結果ドメイン (`neurosurrogate.report`) へ委譲し、
-この module は「MLflow から何を引くか」だけを持つ。
+marimo の評価ボタンは `run_and_log`、描画前の参照解決は `load_report` を使う。
+成果物生成と保存はこのMLflow adapterへ持ち込まない。
 """
 
 import hashlib
@@ -27,15 +26,12 @@ import os
 import mlflow
 from mlflow.entities import Run
 
-from neurosurrogate.report.build import Tuning, report_entries
 from neurosurrogate.report.results import SeriesView, series_matrix
-from neurosurrogate.report.save import SaveEntry
 from neurosurrogate.sim.eval import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
 from .series import name_of, results_of, run_series, source_run_of
-from .surrogate import load_surrogate_model, run_name
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
 ORIGINAL_TAG = "original_series_id"
@@ -161,28 +157,6 @@ def load_report(report_run_id: str) -> SeriesView:
         name_of(original),
         results_of(original),
         {source_run_of(eid): results_of(eid) for eid in surrs},
-        (original, *surrs),
-    )
-
-
-def report_entries_of(report_run_id: str, tuning: Tuning) -> list[SaveEntry]:
-    """**レポート run_id 1 つ + 描き方 → 成果物の列** = 描画の唯一の入口。
-    MLflow から引くもの (波形 run の id と、閉包項が要る図のための surrogate 本体) は
-    すべてここで解決し、組立は `report.report_entries` (結果ドメイン) へ委譲する
-    = 呼び出し側 (marimo の描画ボタン) は成果物の列を `save_entries` に流すだけ。
-
-    surrogate は波形 run に焼き込まれていない (run_id で対応付くだけ) ので引き直す
-    (`load_surrogate_model` は run_id ごとに @cache 済み)。
-
-    **保存段の名前 (MLflow の run 名) を与えるのもここ**: 成果物は
-    `models/<学習 run>/` と `report/<レポート run>/` に割れ、どちらの段も MLflow の
-    run そのものなので、名前を解けるのは mlflow を知るこの層だけ (結果ドメインは
-    run_id という同一性しか持たない)。"""
-    view = load_report(report_run_id)
-    return report_entries(
-        view,
-        {rid: load_surrogate_model(rid) for rid in view.run_ids},
-        tuning,
-        {rid: run_name(rid) for rid in view.run_ids},
-        run_name(report_run_id),
+        original,
+        {source_run_of(eid): eid for eid in surrs},
     )

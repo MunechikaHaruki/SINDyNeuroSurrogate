@@ -15,12 +15,12 @@ import mlflow_io.report as report_io  # noqa: E402
 import mlflow_io.series as series_io  # noqa: E402
 import numpy as np
 import pytest
+from artifacts import model_entries, report_entries, series_entries, slug
 from mlflow.entities import Run
 from test_surrogate import fit_surrogate
 
 from neurosurrogate.core import access
-from neurosurrogate.report.build import Tuning
-from neurosurrogate.report.save import slug
+from neurosurrogate.report.figures import Tuning
 from neurosurrogate.sim.eval import EvalSeries, simulate
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
@@ -72,8 +72,11 @@ def test_eval_runs_round_trip_without_resimulating(
     # 入力仕様が往復し、そこから実行入力を復元できる
     assert surr.spec.materialize().net is series.spec.net
     # 由来 (どの評価 run から読んだか) は結果でなく `SeriesView` 側が持つ
-    # (置換系 1 本 + 原系 1 本)
-    assert len(view.sources) == 2
+    # (原系 1 本 + 置換系 1 本)。置換系は**学習 run → 評価 run** の対応で持つので、
+    # 保存段も凡例も id 1 つから解ける。
+    assert view.original_id in _ids(_of_kind("original"))
+    assert view.surr_ids[RUN_ID] in _ids(_of_kind("surrogate"))
+    assert view.sources == (view.original_id, view.surr_ids[RUN_ID])
     # 波形は float32 で往復し、原系/置換系はそれぞれの run に入っている
     # (原系は surrogate 非依存なので回し直しても一致する)
     np.testing.assert_allclose(
@@ -120,32 +123,52 @@ def test_run_and_log_rejects_series_no_run_can_replace(
         report_io.run_and_log({}, "hh_dc", _evals(sindy))
 
 
-def test_report_entries_of_draws_from_report_run_id_and_tuning(
-    eval_store: str, sindy: SurrogateBundle, monkeypatch: pytest.MonkeyPatch
+def test_resolved_run_ids_draw_independent_entry_groups(
+    eval_store: str, sindy: SurrogateBundle
 ) -> None:
     """描画の入力は**レポート run_id 1 つ + `Tuning`** だけ。surrogate は波形に
     焼き込まれていないので run_id から引き直す (ここでは学習 run が代役なので差し替え)。
     `eval_comp` が適用先に無ければ黙って描かずエラー図 1 枚になる (誤りは選んだ
     レポートに紐づくのでレポート配下 = 別レポートのエラー図と潰し合わない)。"""
-    monkeypatch.setattr(report_io, "load_surrogate_model", lambda _: sindy)
     report_id = report_io.run_and_log({RUN_ID: sindy}, "hh_dc", _evals(sindy))
     comp = report_io.load_report(report_id).net.names[0]
 
-    entries = report_io.report_entries_of(report_id, Tuning(eval_comp=comp))
+    view = report_io.load_report(report_id)
+    bundles = {RUN_ID: sindy}
+    names = {
+        rid: report_io.mlflow.get_run(rid).info.run_name or rid
+        for rid in (*view.sources, report_id)
+    } | {RUN_ID: RUN_ID}
+    tuning = Tuning(eval_comp=comp)
+    entries = [
+        *model_entries(bundles, tuning, names),
+        *series_entries(view, bundles, tuning, names),
+        *report_entries(view, bundles, tuning, names, report_id),
+    ]
     assert len(entries) > 1 and all(e.obj is not None for e in entries)
-    # 保存名は MLflow の experiment がそのまま 2 段: models/<学習 run>/ は描く対象が
-    # 学習 run そのもの (レポートを増やしても複製されない)、report/<レポート run>/ は
-    # この 1 レポートの産物。段の名前は MLflow の run 名。
-    assert {e.name.split("/")[0] for e in entries} == {"models", "report"}
-    # 学習 run は代役 (実在しない id) なので名前が引けず id が段名に落ちる
+    # 保存名は MLflow の 3 experiment がそのまま 3 段: models/<学習 run>/ は描く対象が
+    # 学習 run そのもの (レポートを増やしても複製されない)、series/<評価 run>/ は
+    # 波形 1 本で決まるもの (入力電流と詳細図)、report/<レポート run>/ は run 横断の
+    # 産物。段の名前は MLflow の run 名。
+    assert {e.name.split("/")[0] for e in entries} == {"models", "series", "report"}
+    # 段の名前 = run 名 + run id 先頭。**名前だけでは一意でない** (人が付け替えられ、
+    # 掃引違いの評価 run は同名になる) ので、id を混ぜて別 run が潰し合わないように
+    # する。学習 run は代役 (実在しない id) なので名前が引けず id 自身が名前に落ちる。
     assert {e.name.split("/")[1] for e in entries if e.name.count("/") > 1} == {
-        RUN_ID,
-        slug(mlflow.get_run(report_id).info.run_name),
+        f"{RUN_ID}-{RUN_ID[:8]}",
+        *(
+            f"{slug(mlflow.get_run(rid).info.run_name)}-{rid[:8]}"
+            for rid in (report_id, *view.sources)
+        ),
     }
 
-    err = report_io.report_entries_of(report_id, Tuning(eval_comp="nope"))
-    report_dir = slug(mlflow.get_run(report_id).info.run_name)
+    err = report_entries(view, bundles, Tuning(eval_comp="nope"), names, report_id)
+    report_dir = f"{slug(mlflow.get_run(report_id).info.run_name)}-{report_id[:8]}"
     assert [e.name for e in err] == [f"report/{report_dir}/error"]
+
+
+def _ids(runs: list[Run]) -> set[str]:
+    return {r.info.run_id for r in runs}
 
 
 def _of_kind(kind: str) -> list[Run]:

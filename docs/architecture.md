@@ -36,21 +36,21 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
   report/                        # 結果ドメイン: 軸に開いて報告へ畳む。**1 レポート = 1 系列 × N モデル** (1 系列の電流たちで N 本の surrogate を比べる = dest がレポートの root)。**ドメインを横断する唯一の層**
             results.py           # series_matrix (run 軸を掛ける唯一の場所) + SeriesView (1 系列を点軸×run 軸に開いた並び = 1 レポートの単位。束ねる型は持たない) + simulate_views (その場で回す。原系は EvalSeries.hash 単位で共有) + run_names
             grid.py              # 軸に沿った図表: 点軸メトリクスの表と折れ線 + 波形格子 (行=run、列=点)
-            save.py              # SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ。既存 meta.json には合流 = 同じ dest に別系列を描き足しても前の由来が消えない)
-            build.py             # Tuning (1 レポートの描画条件 1 型: eval_comp/view_comps/metric/detail_point/spike_*/metric_ylim。**図の種類名は持たない**。既定値とキーの単一源はここ、値を与えるのは marimo の widget 1 箇所) + model_entries (run 自身が描けるもの) / eval_entries (結果の形が決めるもの) の組立 + report_entries (1 レポート分の SaveEntry 列を返す唯一の入口。**保存はしない** = どこへ書くかは呼び出し側。保存段の名前 models_dirs/report_dir は引数で受ける = run の同一性を解けるのは mlflow を知る側だけ)
+            figures.py           # Tuning + model_figs / series_figs / report_figs。成果物を学習run固有・評価run固有・run横断の3群へ独立分割し、必要な群だけ描ける。返すのは図だけで保存先も保存名も決めない
 scripts/  main.py                # Hydra エントリ
-          catalog.py             # **何を回して何を描くか**の 1 枚カタログ: EVALS (素材 1 条件) / SERIES (掃引。surrogate を持たない素の EvalSeries。回す側が with_surrogate して run 軸を張る)。**描き方は持たない** (report.build.Tuning は marimo の widget が全キーを持つ)
+          artifacts.py           # **保存段の名前と書き出しの唯一の置き場所**: report_entries (ReportFig の kind/run_id → models/<学習 run>/ series/<評価 run>/ report/<レポート run>/ の段。run_id → run 名の対応表 1 枚とレポート run_id を引数で受ける = 名前を解けるのは mlflow を知る側だけ。未知の kind は段を推測せず落とす) + SaveEntry/slug/save_entries (成果物ごとの由来 sources/draw を meta.json へ。既存 meta.json には合流 = 同じ dest に別系列を描き足しても前の由来が消えない)
+          catalog.py             # **何を回して何を描くか**の 1 枚カタログ: EVALS (素材 1 条件) / SERIES (掃引。surrogate を持たない素の EvalSeries。回す側が with_surrogate して run 軸を張る)。**描き方は持たない** (report.figures.Tuning は marimo の widget が全キーを持つ)
           mlflow_io/             # MLflow I/O = **MLflow を知る唯一の場所**。experiment ごとに 1 module で、どれも「experiment id を解く / 同一性の鍵を組む / 既存を探す / 書く」の同じ 4 点セット。**再 export しない** (呼ぶ側は from mlflow_io.report import ... と名乗る)
             __init__.py          # tracking URI をリポジトリ直下へ固定 (import 時に実行 = どの module を通っても最初に張られる) + TARGET_EXP
             surrogate.py         # 学習 experiment: surrogate pickle/meta の読み書き (run_id ごとに @cache) + get_runs_df (run 一覧。読込不可 run はここで落とす) + sweep_siblings + run_name (保存段の名前 = MLflow の run 名。experiment を問わない)
             series.py            # 波形 experiment eval_series (**1 run = 1 EvalSeries** = 点列の波形 1 artifact。kind=original / kind=surrogate がフラットに並び、置換系は tags.original_hash で原系を名指す = 親子関係なし)。run_series は探索と実行が対 (決定的だから同じ入力は回さない) なので分けない
-            report.py            # レポート experiment eval_report (**1 run = 1 レポート = 1 系列 × N モデル**。持つのは**波形 run の id 2 フィールドだけ** tags.original_series_id / tags.surrogate_series_ids で、波形は複製しない。**カタログを参照する値は持たない** = 系列名も学習 run との対応も波形 run 側から解く (series.name_of / series.source_run_of) → カタログを書き換えても過去のレポートは読める。同一性 = 選択そのもの tags.report_hash (学習 run 群 × 掃引の内容ハッシュ = 名前でなく内容)、同じ選択なら参照先を更新するので param でなく tag)。**marimo の 2 ボタンの行き先**: 評価 = 1 系列 1 回 (run_and_log は系列 1 つを受けてレポート run_id を返す)、描画の入力はその run_id 1 つ + Tuning (report_entries_of -> list[SaveEntry] = 波形の参照表も surrogate 本体も保存段の名前もここで解決し、組立は report.report_entries へ委譲。marimo は results/ に流すだけ)。選択 → 既存レポート run_id の橋は find_report_run 1 本
+            report.py            # レポート experiment eval_report (**1 run = 1 レポート = 1 系列 × N モデル**)。run_and_log / find_report_run / load_report のみを担うMLflow adapter。marimoがload_reportで参照runを解決し、artifactsのmodel_entries / series_entries / report_entriesへ明示的に渡す
           marimo.py              # notebook 本体 (run 選択 + 系列 dropdown 1 件 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
           poster_assets.py       # results/<dir> → docs/poster/result へ poster 使用分だけコピー
           conf/                  # 学習設定 (Hydra) のみ。下記「設定ファイル」参照
 tests/    conftest.py (headless 化 + scripts/ を import path へ) / test_surrogate.py / test_inits.py / test_eval_mlflow.py (評価 run の保存/読込。tracking 先は tmp へ差し替え)
 docs/     poster/ slide/         # typst
-results/                         # marimo 描画ボタンの書き先 (**保存名は選ばせない** = ここが全レポート共通の dest)。**MLflow の experiment がそのまま 2 段**: models/<学習 run 名>/ = その run 自身について描けるもの (レポートを増やしても複製されない)、report/<レポート run 名>/ = その 1 レポート (= 1 系列 × N モデル) の産物 (summary.csv/current/traces/metric と <model>/p<点>/ の詳細図。格子も折れ線も run 横断なので run 単位に割れない)。段の名前は MLflow の run 名を slug 化したもの = ディレクトリから UI の run を引ける。meta.json は dest 直下 1 枚で、描き足すたびに合流。評価結果そのものは MLflow の評価 experiment
+results/                         # marimo 描画ボタンの書き先 (**保存名は選ばせない** = ここが全レポート共通の dest)。**MLflow の 3 experiment がそのまま 3 段**: models/<学習 run 名>/ = その run 自身について描けるもの (レポートを増やしても複製されない)、series/<評価 run 名>/ = 波形 1 本だけで決まるもの (原系 run の current、置換系 run の p<点>/ 詳細図 = 別のレポートで見ても同じ場所)、report/<レポート run 名>/ = その 1 レポート (= 1 系列 × N モデル) でしか出ない run 横断の産物 (summary.csv/traces/metric)。段の名前は `<MLflow の run 名を slug 化>-<run id 先頭 8 桁>` = ディレクトリから UI の run を一意に引ける (run 名は人が付け替えられて一意でなく、slug も単射でないので id を混ぜる。評価 run を持たない = その場で回した結果だけ id 無しの手元の名前へ落ちる)。meta.json は dest 直下 1 枚で、描き足すたびに合流。評価結果そのものは MLflow の評価 experiment
 ```
 
 ## 設定ファイル
@@ -65,7 +65,7 @@ results/                         # marimo 描画ボタンの書き先 (**保存�
   dropdown で **1 件**(選択肢 = 選択 run で置換できる系列)。1 レポート = 1 系列 なので、
   系列を選ぶことが「どのレポートを作る / 描くか」の選択そのもの。実験条件は滅多に変わらず、
   変えたら別の実験 = コードに焼いて差分に出す方が正しい。
-- **描き方 (`report.build.Tuning`) はカタログに持たない** → 全キー (比較対象 comp・
+- **描き方 (`report.figures.Tuning`) はカタログに持たない** → 全キー (比較対象 comp・
   全 comp 図の表示制限・点軸の指標・詳細図の点 index・スパイク番号・折れ線の y レンジ)
   を marimo の widget が持つ。どれも図を見て決め直すもので、カタログに置くと「何を
   回すか」と同じ寿命に見えてしまう。comp の選択肢は選んだ 1 系列の適用先の comp 名

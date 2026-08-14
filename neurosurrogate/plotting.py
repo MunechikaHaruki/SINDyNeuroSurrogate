@@ -57,7 +57,7 @@ RC_PARAMS: dict[str, object] = {
 
 def use_style() -> None:
     """`RC_PARAMS` を適用する。**プロセス全体のグローバル状態**を触るので、呼ぶのは
-    組立の入口 (`report.report_entries`) 1 箇所だけ。"""
+    描画の入口 (`report.figures.report_figs`) 1 箇所だけ。"""
     matplotlib.style.use(RC_PARAMS)
 
 

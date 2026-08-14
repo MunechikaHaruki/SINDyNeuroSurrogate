@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..core.network import NeuronGraph
 from ..sim.eval import EvalSeries, SimResult
@@ -75,12 +75,38 @@ class SeriesView:
     name: str
     points: list[SimResult]  # 原系 (掃引点の値順。単発なら 1 件)
     surrs: dict[str, list[SimResult]]  # run_id → `points` と同じ並びの置換系
-    sources: tuple[str, ...] = ()  # 読んだ評価 run の id (回した直後は空)
+    original_id: str = ""  # 原系を読んだ評価 run の id (回した直後は空)
+    surr_ids: dict[str, str] = field(default_factory=dict)  # 学習 run → 評価 run
 
     def __post_init__(self) -> None:
         bad = [rid for rid, col in self.surrs.items() if len(col) != len(self.points)]
         if bad:
             raise ValueError(f"{self.name}: 点数が原系と揃わない run {bad}")
+        # 評価 run の id は **run 軸と揃うか、丸ごと無いか**の二択 (読んだ結果か、
+        # その場で回した結果か)。半端に欠けた id は保存段が別の run の名前へ落ちる
+        # ことを意味するので、図を描く前に構築時点で弾く。
+        if self.surr_ids and set(self.surr_ids) != set(self.surrs):
+            raise ValueError(
+                f"{self.name}: 評価 run の id が run 軸と揃わない "
+                f"{sorted(set(self.surr_ids) ^ set(self.surrs))}"
+            )
+        # 原系と置換系も同じ二択 (片方だけの id は `sources` が黙って短くなる =
+        # 由来の欠けた成果物になる)。空文字の id も「無い」と同じなので弾く。
+        if bool(self.original_id) != bool(self.surr_ids) or not all(
+            self.surr_ids.values()
+        ):
+            raise ValueError(f"{self.name}: 評価 run の id が半端に欠けている")
+
+    @property
+    def sources(self) -> tuple[str, ...]:
+        """読んだ評価 run の id (原系が先、置換系は run 軸の順)。回した直後は空。
+        成果物の由来 (`meta.json`) にそのまま落ちる。"""
+        return tuple(i for i in (self.original_id, *self.surr_ids.values()) if i)
+
+    def series_id(self, run_id: str) -> str:
+        """学習 run → その置換系を持つ評価 run の id (回した直後は空)。保存段が
+        評価 run 1 本になる成果物 (詳細図) の宛先を解くのに使う。"""
+        return self.surr_ids.get(run_id, "")
 
     @property
     def run_ids(self) -> list[str]:
