@@ -17,7 +17,7 @@ from functools import partial
 import pandas as pd
 
 from ...core.network import NeuronGraph
-from ...plotting import ArtifactEntries, collect
+from ...plotting import Artifact, collect
 from ..bundle import SurrogateBundle
 from ..closure.base import Closure
 from ..closure.sindy import SINDyBundle
@@ -36,22 +36,22 @@ from .train import (
 )
 
 
-def summary_df(bundles: dict[str, SurrogateBundle]) -> ArtifactEntries:
+def summary_df(bundles: dict[str, SurrogateBundle]) -> list[Artifact]:
     """run 軸の学習側指標サマリ (評価結果に依らないので結果無しでも出せる)。"""
     df = pd.DataFrame(
         [{"label": label, **surrogate_metrics(s)} for label, s in bundles.items()]
     ).set_index("label")
-    return [("summary", df)]
+    return [Artifact("summary", df)]
 
 
-def closure_figs(closure: Closure) -> ArtifactEntries:
+def closure_figs(closure: Closure) -> list[Artifact]:
     """閉包項の中身図 (識別子付き)。"""
     if isinstance(closure, SINDyBundle):
         return collect({"model": lambda: sindy_coef_fig(closure)})
     return []
 
 
-def preprocessor_figs(prep: Preprocessor) -> ArtifactEntries:
+def preprocessor_figs(prep: Preprocessor) -> list[Artifact]:
     """preprocessor の診断図 (識別子付き)。再構成誤差の時系列は `train_recon_fig`
     が別に受け持つ。"""
     if isinstance(prep, PCAPreprocessor):
@@ -59,7 +59,7 @@ def preprocessor_figs(prep: Preprocessor) -> ArtifactEntries:
     return []
 
 
-def neuron_graph_figs(net: NeuronGraph, meta: SurrogateMeta) -> ArtifactEntries:
+def neuron_graph_figs(net: NeuronGraph, meta: SurrogateMeta) -> list[Artifact]:
     """適用先のニューロングラフ (識別子 `neurograph`)。強調するノードは meta との
     置換可否から引く = 呼び出し側は適用先ネットだけ渡す (描画なので置換不可 =
     強調ゼロでも例外にしない。検証は `replaceables` の関心)。"""
@@ -78,7 +78,7 @@ def train_figs(
     bundle: SurrogateBundle,
     comps: Sequence[int] | None = None,
     i_ext_ylim: tuple[float, float] | None = None,
-) -> ArtifactEntries:
+) -> list[Artifact]:
     """学習データ図を識別子付きで一括生成。comps=描く comp の制限 (None=学習 comp
     全部)。i_ext_ylim=diff.png と軸を揃えたいとき渡す (発表用)。
 
@@ -100,7 +100,7 @@ def surrogate_figs(
     net: NeuronGraph | None = None,
     comps: Sequence[int] | None = None,
     i_ext_ylim: tuple[float, float] | None = None,
-) -> ArtifactEntries:
+) -> list[Artifact]:
     """**run 1 本が自分について描けるもの全部**。run_id を渡せば図が出てくる、の実体。
 
     何を描くかは宣言で選ばず bundle の中身が決める (SINDy なら ξ heatmap、PCA なら

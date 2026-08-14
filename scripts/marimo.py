@@ -9,16 +9,23 @@ def _():
     from pathlib import Path
 
     import marimo as mo
-    from artifacts import model_entries, report_entries, save_entries, series_entries
     from catalog import SERIES
     from mlflow_io.report import (
         find_report_run,
         load_report,
+        report_entries,
         run_and_log,
     )
-    from mlflow_io.surrogate import get_runs_df, load_bundles, run_name, sweep_siblings
+    from mlflow_io.save import save_entries
+    from mlflow_io.series import series_entries
+    from mlflow_io.surrogate import (
+        get_runs_df,
+        load_bundles,
+        model_entries,
+        sweep_siblings,
+    )
+    from tuning import Tuning
 
-    from neurosurrogate.report.figures import Tuning
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
     RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
@@ -42,7 +49,6 @@ def _():
         model_entries,
         report_entries,
         run_and_log,
-        run_name,
         runs_df,
         save_entries,
         series_entries,
@@ -129,7 +135,7 @@ def _(mo):
 
 @app.cell
 def _(METRIC_KEYS, comp_options, mo):
-    # **描き方は全部ここ** (`report.Tuning` の全キー)。カタログは「何を回すか」だけを
+    # **描き方は全部ここ** (`tuning.Tuning` の全キー)。カタログは「何を回すか」だけを
     # 持ち、比較対象 comp も指標も図を見て決め直すもの → widget が唯一の置き場所。
     # metric の選択肢は `METRIC_KEYS` (取り出せるキーの単一源) から引くので、選んだ
     # のに生成されないキーで黙って nan の図が出ることが無い。
@@ -189,28 +195,22 @@ def _(
     model_entries,
     report_bundles,
     report_entries,
-    report_names,
     report_run_id,
     report_view,
     save_entries,
     series_entries,
     tuning,
 ):
-    # marimo で解決した run 群を、独立した3つの成果物生成へ流す。
+    # marimo で解決した run 群を、experiment ごとの成果物生成へ流す (段の名前も由来も
+    # 各 experiment の module が解く = ここは選択を渡すだけ)。
     # レポート run が無い = この選択をまだ評価していない → 評価が先。
     saved = []
     if draw_panel.value["draw"] and report_run_id and report_view:
         saved = save_entries(
             [
-                *model_entries(report_bundles, tuning, report_names),
-                *series_entries(report_view, report_bundles, tuning, report_names),
-                *report_entries(
-                    report_view,
-                    report_bundles,
-                    tuning,
-                    report_names,
-                    report_run_id,
-                ),
+                *model_entries(report_bundles, tuning),
+                *series_entries(report_view, report_bundles, tuning),
+                *report_entries(report_view, report_bundles, tuning, report_run_id),
             ],
             RESULT_DIR,
         )
@@ -225,19 +225,12 @@ def _(
 
 
 @app.cell
-def _(load_bundles, load_report, report_run_id, run_name):
-    # 選択から得た report run_id の参照を UI 層で明示的に解決する。
+def _(load_bundles, load_report, report_run_id):
+    # 選択から得た report run_id の参照を UI 層で明示的に解決する (run 名は保存段を
+    # 組む側が引くので、ここでは対応表を持たない)。
     report_view = load_report(report_run_id) if report_run_id else None
     report_bundles = load_bundles(report_view.run_ids) if report_view else {}
-    report_names = (
-        {
-            rid: run_name(rid)
-            for rid in (*report_view.run_ids, *report_view.sources, report_run_id)
-        }
-        if report_view and report_run_id
-        else {}
-    )
-    return report_bundles, report_names, report_view
+    return report_bundles, report_view
 
 
 @app.cell(column=1)

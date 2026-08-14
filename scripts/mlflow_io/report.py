@@ -15,8 +15,8 @@
 run の参照が差し替わる (`force` で波形 run が新しくなってもレポートは増えない) →
 参照は param でなく**書き換えられる tag** に置く。
 
-marimo の評価ボタンは `run_and_log`、描画前の参照解決は `load_report` を使う。
-成果物生成と保存はこのMLflow adapterへ持ち込まない。
+marimo の評価ボタンは `run_and_log`、描画前の参照解決は `load_report`、run 横断の
+成果物は `report_entries` を使う。書き出しそのものは `save.save_entries`。
 """
 
 import hashlib
@@ -25,12 +25,15 @@ import os
 
 import mlflow
 from mlflow.entities import Run
+from tuning import Tuning
 
-from neurosurrogate.report.results import SeriesView, series_matrix
+from neurosurrogate.report import SeriesView, series_matrix
+from neurosurrogate.report.report import summary_figs, wave_report_figs
 from neurosurrogate.sim.eval import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
+from .save import SaveEntry, stage
 from .series import name_of, results_of, run_series, source_run_of
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
@@ -160,3 +163,28 @@ def load_report(report_run_id: str) -> SeriesView:
         original,
         {source_run_of(eid): eid for eid in surrs},
     )
+
+
+def report_entries(
+    view: SeriesView,
+    bundles: dict[str, SurrogateBundle],
+    tuning: Tuning,
+    report_run_id: str,
+) -> list[SaveEntry]:
+    """1 レポート → **レポート run に属する成果物** (`report/<レポート run>/`) =
+    run 横断でこの選択でしか出ない図。
+
+    由来は成果物ごとに違う: サマリ表は比べた**学習 run 群**、波形格子と折れ線は
+    読んだ**波形 run 群** (`view.sources`)。図の名前で振り分けないよう、描画層が
+    その 2 つを別の関数として返す。
+    """
+    dest = stage("report", report_run_id, view.name)
+    return [
+        SaveEntry(dest, artifact, tuple(bundles), tuning)
+        for artifact in summary_figs(bundles)
+    ] + [
+        SaveEntry(dest, artifact, view.sources, tuning)
+        for artifact in wave_report_figs(
+            view, bundles, tuning.eval_comp, tuning.metric, tuning.metric_ylim
+        )
+    ]

@@ -26,10 +26,15 @@ import mlflow
 import mlflow.artifacts
 import xarray as xr
 from mlflow.entities import Run
+from tuning import Tuning
 
+from neurosurrogate.report import SeriesView, run_names
+from neurosurrogate.report.series import detail_figs, original_figs
 from neurosurrogate.sim.eval import EvalSeries, SimResult
+from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
+from .save import SaveEntry, stage
 
 EVAL_EXP = os.environ.get("MLFLOW_EVAL_EXPERIMENT", "eval_series")
 WAVES_FILE = "waves.joblib"  # 点の順に並べた波形列 (1 run = 1 系列 = 1 ファイル)
@@ -165,3 +170,46 @@ def results_of(eval_run_id: str) -> list[SimResult]:
         json.loads(mlflow.get_run(eval_run_id).data.params["series"])
     )
     return series.attach(_datasets_of(eval_run_id))
+
+
+def series_entries(
+    view: SeriesView, bundles: dict[str, SurrogateBundle], tuning: Tuning
+) -> list[SaveEntry]:
+    """1 レポートの波形群 → **波形 run に属する成果物** (`series/<評価 run>/`)。
+
+    原系の図は原系の run へ、詳細図は置換系の run へ落ちる = レポートを増やしても
+    複製されない (run 横断の成果物は `report.report_entries`)。その場で回した結果は
+    評価 run を持たないので、段は手元の名前 (系列名 / 表示ラベル) へ落とす。
+    """
+    labels = run_names(bundles)
+    entries = [
+        SaveEntry(
+            stage("series", view.original_id, view.name),
+            artifact,
+            tuple(i for i in (view.original_id,) if i),
+            tuning,
+        )
+        for artifact in original_figs(view)
+    ]
+    for run_id in view.run_ids:
+        dest = stage("series", view.series_id(run_id), labels[run_id])
+        entries += [
+            SaveEntry(
+                dest,
+                artifact,
+                # 由来は原系と置換系の 2 本 (差分図はその対から出る)
+                tuple(i for i in (view.original_id, view.series_id(run_id)) if i),
+                tuning,
+            )
+            for artifact in detail_figs(
+                view,
+                run_id,
+                bundles[run_id],
+                tuning.eval_comp,
+                tuning.view_comps,
+                tuning.detail_point,
+                tuning.spike_orig,
+                tuning.spike_surr,
+            )
+        ]
+    return entries

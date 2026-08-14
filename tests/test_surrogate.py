@@ -5,22 +5,13 @@ Hydra プリセットを実設定源として読み、UI/実験ログを介さ�
 短縮電流だけ固定したテスト専用プリセット) に置き、テスト側は override しない。
 """
 
-import json
 from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
-import pandas as pd
 import pytest
-from artifacts import (
-    SaveEntry,
-    model_entries,
-    report_entries,
-    save_entries,
-    series_entries,
-)
 from catalog import SERIES
 from hydra import compose, initialize_config_dir
 from matplotlib.figure import Figure
@@ -35,14 +26,10 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
 from neurosurrogate.plotting import collect, new_figure
-from neurosurrogate.report.figures import (
-    MODEL,
-    Tuning,
-    model_figs,
-    series_figs,
-)
-from neurosurrogate.report.grid import trace_grid_fig
-from neurosurrogate.report.results import SeriesView, simulate_views
+from neurosurrogate.report import SeriesView, simulate_views
+from neurosurrogate.report.model import model_figs
+from neurosurrogate.report.report import summary_figs, trace_grid_fig, wave_report_figs
+from neurosurrogate.report.series import detail_figs, original_figs
 from neurosurrogate.sim.eval import EvalSeries
 from neurosurrogate.sim.spec import SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
@@ -171,7 +158,7 @@ def test_sindy_draws_all_figs(sindy_view: SeriesView, sindy: SurrogateBundle) ->
         0,
         lambda: preprocessed_latent(sindy, orig.spec.net, orig.dataset, 0),
     )
-    assert [name for name, _ in figs] == ["diff", "simple", "attractor"]
+    assert [a.name for a in figs] == ["diff", "simple", "attractor"]
 
 
 def test_catalog_is_self_consistent() -> None:
@@ -248,80 +235,32 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
 ) -> None:
     """描画は**手元の結果だけ**を見る (計算入力の設定と突き合わせない): 設定ファイル
     に宣言の無い系列名 — 別セッションで回して artifact から読んだ結果 — もそのまま
-    図になる = 計算と描画が切れている。格子は run 横断なのでレポート run が保存段、
-    入力電流と詳細図は波形 1 本で決まるので評価 run が保存段 (`series/`)。"""
-    renamed = dc_replace(sindy_view, name="読んだ系列")
-    view = dc_replace(renamed, original_id="e0", surr_ids={"r0": "e1"})
-    tuning = Tuning(eval_comp="soma")
-    bundles = {"r0": sindy}
-    names = {
-        "r0": "run A",
-        "e0": "orig [x]",
-        "e1": "surr [y]",
-        "rep0": "rep [ab]",
-    }
-    entries = [
-        *model_entries(bundles, tuning, names),
-        *series_entries(view, bundles, tuning, names),
-        *report_entries(view, bundles, tuning, names, "rep0"),
-    ]
-    # 保存段は図が属する run で割れ、名前は MLflow の run 名 (空白/記号はパス安全へ
-    # 潰す) + run id 先頭 = **名前が衝突しても別 run は別ディレクトリ**。段を組むのは
-    # `scripts/artifacts` だけで、描画層は run の同一性しか名乗らない。
-    assert {
-        "models/run-A-r0/model",  # 学習 run 1 本について描けるもの
-        "series/orig-[x]-e0/current",  # 原系の波形 1 本で決まるもの
-        "report/rep-[ab]-rep0/traces",  # run 横断 = この選択でしか出ないもの
-    } <= {e.name for e in entries}
-    # つまみ (`Tuning`) はカタログでなく描画時の引数。詳細図は点 index を名前に
-    # 持つので、つまみを動かしても前の点を上書きしない。
-    assert any(e.name.startswith("series/surr-[y]-e1/p0/") for e in entries)
-    # 由来は成果物ごと (モデル図は学習 run、結果側の図は読んだ評価 run)
-    by_name = {e.name: e for e in entries}
-    assert by_name["models/run-A-r0/model"].sources == ("r0",)
-    assert by_name["series/orig-[x]-e0/current"].sources == ("e0",)
-    moved = series_figs(view, {"r0": sindy}, Tuning(eval_comp="soma", detail_point=99))
-    # 手元の点数へ丸める (設定が実際の点数を超えていても描く)
-    last = len(renamed.points) - 1
-    assert any(f.name.startswith(f"p{last}/") for f in moved)
+    図になる = 計算と描画が切れている。図は名前と中身しか名乗らず、どの run に属するか
+    (= 保存段) は**どの関数を呼んだか**で決まる (段を組むのは `scripts/mlflow_io`)。"""
+    view = dc_replace(sindy_view, name="読んだ系列")
+    assert [f.name for f in original_figs(view)] == ["current"]
+    waves = wave_report_figs(view, {"r0": sindy}, "soma", "spike_count", None)
+    assert "traces" in {f.name for f in waves}
+    # 詳細図は点 index を名前に持つので、つまみを動かしても前の点を上書きしない。
+    # 手元の点数へ丸める (設定が実際の点数を超えていても描く)。
+    last = len(view.points) - 1
+    moved = detail_figs(view, "r0", sindy, "soma", (), 99, 0, 0)
+    assert moved and all(f.name.startswith(f"p{last}/") for f in moved)
+    # 適用先に無い comp は詳細図を描かない (レポート側はエラー図 1 枚に畳む)
+    assert detail_figs(view, "r0", sindy, "nope", (), 0, 0, 0) == []
 
 
 def test_model_figs_come_from_the_run_itself_not_a_declaration(
-    sindy_view: SeriesView, sindy: SurrogateBundle
+    sindy: SurrogateBundle,
 ) -> None:
     """モデル側の図は**その run が自分について描けるもの**で決まる (何を描くかの
-    宣言を受け取らない)。比べる N 本すべてを描く = 「代表 1 本だけ」の恣意が無い。
-    描く対象は学習 run そのもの (`kind=MODEL`) なので、レポートを増やしても同じ図が
-    複製されない。"""
-    figs = model_figs({"r0": sindy, "r1": sindy}, Tuning(eval_comp="soma"))
-    # run 横断のサマリ表はモデル側に無い (選択した N 本の産物 = レポート側)
+    宣言を受け取らない)。描く対象は学習 run そのものなので、レポートを増やしても
+    同じ図が複製されない。run 横断のサマリ表はここに無い (選択した N 本の産物)。"""
+    figs = model_figs(sindy, ())
+    # SINDy = ξ heatmap を持つ表現なので model 図が出る
+    assert "model" in {f.name for f in figs}
     assert not any("summary" in f.name for f in figs)
-    # SINDy = ξ heatmap を持つ表現なので model 図が出る。それが run ごとに揃う。
-    assert {(f.kind, f.run_id, f.name) for f in figs} >= {
-        (MODEL, "r0", "model"),
-        (MODEL, "r1", "model"),
-    }
-
-
-def test_second_report_saved_into_the_same_dest_keeps_the_first(
-    tmp_path: Path,
-) -> None:
-    """`results/` 直下が全レポート共通の dest (レポートごとに dest を割らない):
-    名前が `report/<レポート run>/...` で割れているのでファイルは潰し合わず、
-    `meta.json` も合流して前のレポートの由来が残る。`models/` は同じパスへ上書き。"""
-    save_entries([SaveEntry("report/r1/traces", new_figure())], tmp_path)
-    save_entries(
-        [
-            SaveEntry("report/r2/traces", new_figure()),
-            SaveEntry("models/m", pd.DataFrame({"a": [1]})),
-        ],
-        tmp_path,
-    )
-
-    assert (tmp_path / "report/r1/traces.png").exists()
-    assert (tmp_path / "report/r2/traces.png").exists()
-    meta = json.loads((tmp_path / "meta.json").read_text())
-    assert set(meta) == {"report/r1/traces.png", "report/r2/traces.png", "models/m.csv"}
+    assert any("summary" in f.name for f in summary_figs({"r0": sindy}))
 
 
 def test_failed_figs_fold_into_error(
@@ -333,7 +272,7 @@ def test_failed_figs_fold_into_error(
     def boom() -> Figure:
         raise KeyError("missing var")
 
-    assert [name for name, _ in collect({"ok": new_figure, "ng": boom})] == ["ok", "ng"]
+    assert [a.name for a in collect({"ok": new_figure, "ng": boom})] == ["ok", "ng"]
     assert "ng" in capsys.readouterr().err  # 失敗は握り潰さず stderr へも出す
 
 
@@ -344,8 +283,8 @@ def test_view_comps_limit_drawn_traces(
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
     ds = sindy_view.points[0].dataset
     assert len(panels_simple(ds, comps=[])) < len(panels_simple(ds))
-    assert [name for name, _ in train_figs(sindy, comps=[_train_comp(sindy)])] == [
-        name for name, _ in train_figs(sindy)
+    assert [a.name for a in train_figs(sindy, comps=[_train_comp(sindy)])] == [
+        a.name for a in train_figs(sindy)
     ]
 
 
@@ -371,7 +310,7 @@ def test_preprocessor_figs_scree_for_pca_empty_for_ae(
     sindy: SurrogateBundle,
 ) -> None:
     """PCA は scree 図を返し、AE は固有図なし → 空列 (closure_figs と同型)。"""
-    assert [name for name, _ in preprocessor_figs(sindy.preprocessor)] == ["pca_scree"]
+    assert [a.name for a in preprocessor_figs(sindy.preprocessor)] == ["pca_scree"]
     ae = fit_surrogate("_test_traub_hybrid")  # preprocessor_type=ae ではないので確認
     if isinstance(ae.preprocessor, AEPreprocessor):
         assert preprocessor_figs(ae.preprocessor) == []
@@ -389,7 +328,7 @@ def test_train_figs_render_from_reloaded_surrogate(
     assert source.comp_ids == [_train_comp(sindy)]  # 単体 hh モデル → 1 comp
     assert source.n_gate == len(sindy.meta.comp_type.gate_names)  # 全ゲート
 
-    names = [name for name, _ in train_figs(reloaded)]
+    names = [a.name for a in train_figs(reloaded)]
     assert names == [
         "train_raw",
         "train_preprocessed",

@@ -18,9 +18,9 @@ import pandas as pd
 import xarray as xr
 from matplotlib import rcParams
 
-from ..plotting import ArtifactEntries, collect, draw_engine
+from ..plotting import Artifact, collect, draw_engine
 from .dynamics import DynamicMetrics, n_spikes, spike_shape_corr, waveform_summary
-from .dynamics import dm_of as dm_of  # 軸を掛ける側 (report.grid) が使う
+from .dynamics import dm_of as dm_of  # 軸を掛ける側 (report.report) が使う
 from .dynamics import extract_metric as extract_metric
 from .figures import attractor_fig, panels_diff, panels_simple
 from .figures import current_preview_fig as current_preview_fig
@@ -34,9 +34,9 @@ def cell_figs(
     latent: Callable[[], xr.Dataset],
     comps: Sequence[int] | None = None,
     i_ext_ylim: tuple[float, float] | None = None,
-) -> ArtifactEntries:
+) -> list[Artifact]:
     """1 ペアの全図を識別子付きで一括生成 (失敗の畳み込みは `collect`)。
-    呼び出し側は種別を知らず (id, fig) を保存/表示に流すだけ。
+    呼び出し側は種別を知らず `Artifact` 列を保存/表示に流すだけ。
 
     comp_id=比較対象 (diff/attractor は 1 comp の話)、comps=全 comp を並べる図
     (simple) の表示制限。i_ext_ylim=train_raw.png と軸を揃えたいとき渡す (発表用)。
@@ -63,7 +63,7 @@ def wave_report(
     dm: DynamicMetrics,
     spike_orig: int = 0,
     spike_surr: int = 0,
-) -> ArtifactEntries:
+) -> list[Artifact]:
     """dm から波形/スパイク指標を計算し表まで組み立てて返す (metrics=波形行 + 指定
     spike があればその特徴量、metrics_scalar=全スカラーを縦持ち)。指定した spike
     index が両信号の範囲内にあるときだけ、その AP の特徴量と形状相関を足す。"""
@@ -78,4 +78,4 @@ def wave_report(
     df_scalar = pd.DataFrame(scalar.items(), columns=["metric", "value"]).set_index(
         "metric"
     )
-    return [("metrics", df_metrics), ("metrics_scalar", df_scalar)]
+    return [Artifact("metrics", df_metrics), Artifact("metrics_scalar", df_scalar)]

@@ -1,9 +1,13 @@
-"""**`SeriesView` を軸で見る成果物**: 点軸 (掃引) に沿ったメトリクスの表と折れ線、
-点を列・run を行に取る波形格子。
+"""**run 横断の図** = この選択でしか出ない成果物: 比べた N 本の
+サマリ表、点を列・run を行に取る波形格子、点軸に沿った指標の折れ線。
+marimo/MLflow 非依存。
 
-ここだけが「点軸 × run 軸に開いた並び」を図/表の形に落とす = 波形ドメイン
-(`neurosurrogate.waveform`) は 1 ペア (原系, 置換系) しか知らず、軸の話は持たない。
-並び自体は `SeriesView` が既に持つ = 図の側で組み直さない。marimo 非依存。
+**「点軸 × run 軸に開いた並び」を図/表に落とすのはここだけ** — 波形ドメイン
+(`neurosurrogate.waveform`) は 1 ペア (原系, 置換系) しか知らず軸の話を持たない。
+並び自体は `SeriesView` が既に持つので図の側で組み直さない。
+
+`model` / `series` の図が run 1 本で決まる (別のレポートで見ても同じ) のに対し、
+ここの図は「今 何本を比べているか」で中身が変わる = レポート run に属する。
 """
 
 from __future__ import annotations
@@ -17,15 +21,19 @@ from matplotlib.figure import Figure
 
 from ..core import access
 from ..core.diverge import diverged
-from ..plotting import new_figure, place_legend
+from ..plotting import Artifact, error_fig, new_figure, place_legend, use_style
 from ..sim.catalog import currents
+from ..surrogate.bundle import SurrogateBundle
+from ..surrogate.figures import summary_df
 from ..waveform import dm_of, extract_metric
+from . import SeriesView, run_names
 
 if TYPE_CHECKING:
     import xarray as xr
     from matplotlib.axes import Axes
 
-    from .results import SeriesView
+
+# --- 点軸に沿った指標 -----------------------------------------------------------
 
 
 def metrics_df(
@@ -84,6 +92,9 @@ def metric_fig(
         ax.set_ylim(*ylim)
     place_legend(ax)
     return fig
+
+
+# --- 波形格子 (列=点、行=run) ---------------------------------------------------
 
 
 def _shared_ylim(series: list) -> tuple[float, float]:
@@ -203,3 +214,36 @@ def trace_grid_fig(view: SeriesView, names: dict[str, str], comp_name: str) -> F
     comp_id = view.net.name_to_idx(comp_name)
     rows = [_run_row(view, rid, names[rid], comp_id) for rid in view.run_ids]
     return _grid_fig(_header(view), rows, view.axis)
+
+
+# --- レポート 1 本の成果物 ------------------------------------------------------
+
+
+def summary_figs(bundles: dict[str, SurrogateBundle]) -> list[Artifact]:
+    """比べた N 本のサマリ表 (**由来は学習 run 群**だけ = 波形を読まない)。
+    run 横断 = 中身が「今 何本を比べているか」で変わるのでレポートに属する。"""
+    use_style()
+    names = run_names(bundles)
+    return summary_df({names[run_id]: bundle for run_id, bundle in bundles.items()})
+
+
+def wave_report_figs(
+    view: SeriesView,
+    bundles: dict[str, SurrogateBundle],
+    eval_comp: str,
+    metric: str,
+    metric_ylim: tuple[float, float] | None,
+) -> list[Artifact]:
+    """run 軸に開いた波形格子と点軸の折れ線 (**由来は読んだ波形 run**)。
+    適用先に無い comp を指されたら図の代わりにエラー図 1 枚 (描画は止めない)。"""
+    use_style()
+    if eval_comp not in view.net.names:
+        msg = f"{view.name}: eval_comp {eval_comp!r} not in {view.target!r}"
+        return [Artifact("error", error_fig(msg))]
+    names = run_names(bundles)
+    figs = [Artifact("traces", trace_grid_fig(view, names, eval_comp))]
+    if len(view.points) > 1:
+        figs.append(
+            Artifact("metric", metric_fig(view, names, eval_comp, metric, metric_ylim))
+        )
+    return figs

@@ -1,17 +1,29 @@
-"""**結果**を扱う層: 1 系列を点軸 (電流パラメータ) × run 軸 (どの surrogate) に
-開いた `SeriesView`。marimo/mlflow 非依存。
+"""結果ドメイン: 1 系列を軸に開いて報告へ畳む (**1 レポート = 1 系列 × N モデル**)。
+marimo/MLflow 非依存。
 
-**1 レポート = 1 系列 × N モデル**なので、この層の値も `SeriesView` 1 個が単位
-(複数系列は素の dict で持つだけ = 束ねる型を作らない)。
+package 直下が持つのは 3 つの描画 module (`model` / `series` / `report`) が共有する
+**run 軸**だけ (成果物の運搬形は図を出す全層の共通型 `plotting.Artifact`):
+
+- 張る: `series_matrix` (カタログ × 学習 run → 回す組合せ)
+- 開く: `SeriesView` (1 系列を点軸 (電流パラメータ) × run 軸 (どの surrogate) に開いた
+  並び = 1 レポートの単位。複数系列は素の dict で持つだけ = 束ねる型を作らない)
+- 回す: `simulate_views` (張って開くまでをその場で。保存を経由しない経路)
+- 名乗る: `run_names` (run_id → 表示名。凡例と行見出し)
+
+`run_names` が結果を引数に取らないのに同居するのは、**衝突した label に連番を振る**
+= 「今 run 軸に何本並ぶか」を知らないと決まらないため (run 軸の関心)。
 
 **run 軸を持ち込むのはここ**: `eval.EvalSeries` が持つ surrogate は 1 つで run_id を
 知らない。カタログ (`scripts/catalog.py` の `SERIES`) に run ごとの surrogate を
 載せた系列を組むのは `series_matrix` ただ 1 つで、その場で回す経路
-(`simulate_views`) も永続化を経由する経路 (`scripts/mlflow_io.py`) も同じ
-組合せを通る。
+(`simulate_views`) も永続化を経由する経路 (`scripts/mlflow_io`) も同じ組合せを通る。
 
 **点は識別子を持たない**: 保存の単位が 1 系列 = 1 評価 run なので、点の並びは常に
 `EvalSeries.points` が単一源。結果を「並べ直す」処理はどこにも無い。
+
+図そのものは 3 module に分かれ、どれも `list[Artifact]` を返すだけ = **どの関数を
+呼んだかが保存段を決める** (図は属する run も由来も名乗らない。段を解くのは MLflow を
+知る `scripts/mlflow_io`)。
 """
 
 from __future__ import annotations

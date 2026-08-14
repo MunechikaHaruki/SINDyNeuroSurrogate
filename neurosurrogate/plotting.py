@@ -1,5 +1,6 @@
 """描画プリミティブ: 図の生成・凡例配置・エラー図と、パネル記述 (`PanelSpec` /
-`TraceSpec`) からの一括描画 (`draw_engine`)、複数図を (id, fig) 列へ畳む `collect`。
+`TraceSpec`) からの一括描画 (`draw_engine`)、複数図を `Artifact` 列へ畳む `collect`
+と、その成果物 1 件の運搬形 `Artifact` (名前 + 中身。**図を出す全層の共通の返り値**)。
 
 **このリポジトリで唯一「機能で切った」層** — 図を出すドメイン (`waveform` /
 `surrogate.figures` / `report`) がどれも同じ matplotlib の作法を要るから。
@@ -57,13 +58,24 @@ RC_PARAMS: dict[str, object] = {
 
 def use_style() -> None:
     """`RC_PARAMS` を適用する。**プロセス全体のグローバル状態**を触るので、呼ぶのは
-    描画の入口 (`report.figures.report_figs`) 1 箇所だけ。"""
+    描画の入口 (`report` の各描画関数) 1 箇所だけ。"""
     matplotlib.style.use(RC_PARAMS)
 
 
-# 各ドメインの集約関数が返す (識別子, 成果物) 列の要素型。list は invariant で
-# `collect` の list[tuple[str, Figure]] を受け付けないため covariant な Sequence。
-ArtifactEntries = Sequence[tuple[str, Figure | pd.DataFrame]]
+@dataclass(frozen=True)
+class Artifact:
+    """**成果物 1 件 = 名前 + 中身** (図 or 表)。図を出す全ドメイン
+    (`waveform` / `surrogate.figures` / `report`) の共通の返り値型で、名前は保存段の
+    下でそのまま識別子になる (`/` を含めば階層)。
+
+    保存先も拡張子も由来も持たない — それを足すのは MLflow を知る側
+    (`scripts/mlflow_io.save.SaveEntry`)。**この型を包み直す層を作らない**のが
+    不変条件 (同じ 2 フィールドの型が層ごとに増えると変換だけの層が生える)。
+    """
+
+    name: str
+    obj: Figure | pd.DataFrame
+
 
 _LEGEND_ROWS = 8  # 凡例 1 列あたりの最大項目数
 _LEGEND_MAX_COLS = 3  # これを超える本数は名前で追えない → 凡例ごと省く
@@ -117,16 +129,16 @@ def error_fig(msg: str) -> Figure:
     return fig
 
 
-def collect(jobs: dict[str, Callable[[], Figure]]) -> list[tuple[str, Figure]]:
-    """名前付き描画 job を (id, fig) 列へ畳む — `figs/` が複数図を返すときの共通規約。
+def collect(jobs: dict[str, Callable[[], Figure]]) -> list[Artifact]:
+    """名前付き描画 job を `Artifact` 列へ畳む — `figs/` が複数図を返すときの共通規約。
     1 図の失敗 (学習ドメイン外 comp 等) で列ごと落とさず error_fig に差し替える
     (呼び出し側は種別も成否も知らず保存/表示に流すだけ)。"""
-    out: list[tuple[str, Figure]] = []
+    out: list[Artifact] = []
     for name, job in jobs.items():
         try:
-            out.append((name, job()))
+            out.append(Artifact(name, job()))
         except Exception as e:  # noqa: BLE001 — 描画の失敗は図に畳む (error_fig が記録)
-            out.append((name, error_fig(f"{name}: {e}")))
+            out.append(Artifact(name, error_fig(f"{name}: {e}")))
     return out
 
 

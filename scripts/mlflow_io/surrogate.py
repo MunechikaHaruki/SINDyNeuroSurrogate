@@ -1,9 +1,9 @@
 """学習 experiment (`TARGET_EXP`): surrogate の pickle + meta.json を持つ run。
 
-**評価も描画も知らない** — ここが答えるのは「どんな学習 run が居るか」
-(`get_runs_df`) と「その run の surrogate / meta」だけ。run 一覧は marimo の run 選択
-そのものなので、読込不可の run を落とす判断もここに置く (選択肢に出せない run は
-下流へ流さない)。
+**評価 (波形) を知らない** — ここが答えるのは「どんな学習 run が居るか」
+(`get_runs_df`)、「その run の surrogate / meta」、そして**その run 自身について
+描ける成果物**(`model_entries`) だけ。run 一覧は marimo の run 選択そのものなので、
+読込不可の run を落とす判断もここに置く (選択肢に出せない run は下流へ流さない)。
 """
 
 import json
@@ -17,11 +17,14 @@ import mlflow.artifacts
 import pandas as pd
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
+from tuning import Tuning
 
+from neurosurrogate.report.model import model_figs
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
 from . import TARGET_EXP, logger
+from .save import SaveEntry, stage
 
 SURR_ARTIFACT_DIR = "surrogate"
 
@@ -85,18 +88,22 @@ def sweep_siblings(parent_id: str) -> list[str]:
     return [parent_id, *[r.info.run_id for r in children]]
 
 
-def run_name(run_id: str) -> str:
-    """MLflow の run 名。**保存段の名前** = MLflow UI の run 名なので、ディレクトリから
-    UI 側の run をそのまま引ける。引けない run (消された等) は id を段名にして描画は
-    通す (名前が取れないことは図を出さない理由にならない)。
+def model_entries(
+    bundles: dict[str, SurrogateBundle], tuning: Tuning
+) -> list[SaveEntry]:
+    """学習 run 群 → **学習 run に属する成果物** (`models/<学習 run>/`)。
 
-    学習 run にも評価 run にもレポート run にも効く (run 名は experiment を問わない
-    属性)。"""
-    try:
-        return mlflow.get_run(run_id).info.run_name or run_id
-    except Exception as e:
-        logger.debug(f"run {run_id} の名前解決に失敗: {e}")
-        return run_id
+    描画層は surrogate 1 本ずつ図を返し、run 軸で回して段の名前を解くのがここ
+    (run_id → run 名を引けるのは MLflow を知るこの層だけ)。由来はその学習 run 自身。
+
+    **全 run 分描く** — レポートの単位が 1 系列 × N モデルなので N は比べたい本数
+    そのもの (代表 1 本で済ませる必要がない)。
+    """
+    return [
+        SaveEntry(stage("models", run_id), artifact, (run_id,), tuning)
+        for run_id, bundle in bundles.items()
+        for artifact in model_figs(bundle, tuning.view_comps)
+    ]
 
 
 def _safe_meta(run_id: str) -> SurrogateMeta | None:

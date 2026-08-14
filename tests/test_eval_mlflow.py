@@ -5,6 +5,7 @@
 sqlite へ丸ごと差し替えるので、手元の `mlflow.db` / `mlruns/` は汚れない。
 """
 
+import json
 from pathlib import Path
 from typing import cast
 
@@ -14,13 +15,18 @@ import mlflow
 import mlflow_io.report as report_io  # noqa: E402
 import mlflow_io.series as series_io  # noqa: E402
 import numpy as np
+import pandas as pd
 import pytest
-from artifacts import model_entries, report_entries, series_entries, slug
 from mlflow.entities import Run
+from mlflow_io.report import report_entries
+from mlflow_io.save import SaveEntry, save_entries, slug
+from mlflow_io.series import series_entries
+from mlflow_io.surrogate import model_entries
 from test_surrogate import fit_surrogate
+from tuning import Tuning
 
 from neurosurrogate.core import access
-from neurosurrogate.report.figures import Tuning
+from neurosurrogate.plotting import Artifact, new_figure
 from neurosurrogate.sim.eval import EvalSeries, simulate
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
@@ -135,26 +141,22 @@ def test_resolved_run_ids_draw_independent_entry_groups(
 
     view = report_io.load_report(report_id)
     bundles = {RUN_ID: sindy}
-    names = {
-        rid: report_io.mlflow.get_run(rid).info.run_name or rid
-        for rid in (*view.sources, report_id)
-    } | {RUN_ID: RUN_ID}
     tuning = Tuning(eval_comp=comp)
     entries = [
-        *model_entries(bundles, tuning, names),
-        *series_entries(view, bundles, tuning, names),
-        *report_entries(view, bundles, tuning, names, report_id),
+        *model_entries(bundles, tuning),
+        *series_entries(view, bundles, tuning),
+        *report_entries(view, bundles, tuning, report_id),
     ]
-    assert len(entries) > 1 and all(e.obj is not None for e in entries)
+    assert len(entries) > 1 and all(e.artifact.obj is not None for e in entries)
     # 保存名は MLflow の 3 experiment がそのまま 3 段: models/<学習 run>/ は描く対象が
     # 学習 run そのもの (レポートを増やしても複製されない)、series/<評価 run>/ は
     # 波形 1 本で決まるもの (入力電流と詳細図)、report/<レポート run>/ は run 横断の
     # 産物。段の名前は MLflow の run 名。
-    assert {e.name.split("/")[0] for e in entries} == {"models", "series", "report"}
+    assert {e.stage.split("/")[0] for e in entries} == {"models", "series", "report"}
     # 段の名前 = run 名 + run id 先頭。**名前だけでは一意でない** (人が付け替えられ、
     # 掃引違いの評価 run は同名になる) ので、id を混ぜて別 run が潰し合わないように
     # する。学習 run は代役 (実在しない id) なので名前が引けず id 自身が名前に落ちる。
-    assert {e.name.split("/")[1] for e in entries if e.name.count("/") > 1} == {
+    assert {e.stage.split("/")[1] for e in entries} == {
         f"{RUN_ID}-{RUN_ID[:8]}",
         *(
             f"{slug(mlflow.get_run(rid).info.run_name)}-{rid[:8]}"
@@ -162,9 +164,34 @@ def test_resolved_run_ids_draw_independent_entry_groups(
         ),
     }
 
-    err = report_entries(view, bundles, Tuning(eval_comp="nope"), names, report_id)
+    # 適用先に無い comp: 波形を見る図はエラー図 1 枚に畳む (波形を見ないサマリ表は
+    # そのまま出る)。誤りは選んだレポートに紐づくのでレポート配下 = 別レポートの
+    # エラー図と潰し合わない。
+    err = report_entries(view, bundles, Tuning(eval_comp="nope"), report_id)
     report_dir = f"{slug(mlflow.get_run(report_id).info.run_name)}-{report_id[:8]}"
-    assert [e.name for e in err] == [f"report/{report_dir}/error"]
+    assert f"report/{report_dir}/error.png" in {e.path for e in err}
+    assert not any(e.artifact.name in ("traces", "metric") for e in err)
+
+
+def test_second_report_saved_into_the_same_dest_keeps_the_first(
+    tmp_path: Path,
+) -> None:
+    """`results/` 直下が全レポート共通の dest (レポートごとに dest を割らない):
+    名前が `report/<レポート run>/...` で割れているのでファイルは潰し合わず、
+    `meta.json` も合流して前のレポートの由来が残る。`models/` は同じパスへ上書き。"""
+    save_entries([SaveEntry("report/r1", Artifact("traces", new_figure()))], tmp_path)
+    save_entries(
+        [
+            SaveEntry("report/r2", Artifact("traces", new_figure())),
+            SaveEntry("models", Artifact("m", pd.DataFrame({"a": [1]}))),
+        ],
+        tmp_path,
+    )
+
+    assert (tmp_path / "report/r1/traces.png").exists()
+    assert (tmp_path / "report/r2/traces.png").exists()
+    meta = json.loads((tmp_path / "meta.json").read_text())
+    assert set(meta) == {"report/r1/traces.png", "report/r2/traces.png", "models/m.csv"}
 
 
 def _ids(runs: list[Run]) -> set[str]:

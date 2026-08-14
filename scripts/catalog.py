@@ -8,7 +8,8 @@
   の系列」として同じ経路を通る)。載るのは surrogate を持たない素の系列 =
   カタログは原系の掃引そのもので、回す側が run ごとに `with_surrogate` して
   run 軸を張る
-**描き方 (`report.figures.Tuning`) はここに持たない**: 比較対象 comp も指標も図を見て
+**描き方 (`report.tuning.Tuning`) はここに持たない**: 比較対象 comp も指標も
+図を見て
 決め直すもので、カタログに置くと「回す条件」と同じ寿命に見えてしまう。置き場所は
 marimo の widget 1 箇所 (`SimSpec.net` が解いた comp 名から選択肢が出るので、
 適用先と噛み合わない comp を書けない)。
