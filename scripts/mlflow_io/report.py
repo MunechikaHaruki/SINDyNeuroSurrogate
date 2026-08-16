@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import mlflow
 from mlflow.entities import Run
@@ -208,7 +209,7 @@ def load_report(report_run_id: str) -> Report:
 
 def _series_artifacts(
     report: Report, bundles: dict[str, SurrogateBundle], tuning: Tuning
-) -> Artifacts:
+) -> dict[Path, Artifacts]:
     """1 レポートの波形群 → **波形 1 本ずつで決まる図** (`series/<run 名>/`)。
     原系の入力電流と、置換系ごとの詳細図。
 
@@ -216,22 +217,25 @@ def _series_artifacts(
     引け、ディレクトリから元の run を辿れる。
     """
     view = report.view
-    return original_artifacts(view).under("series/original") + per_run(
-        "series",
-        {
-            run_id: detail_artifacts(
-                view,
-                run_id,
-                bundles[run_id],
-                tuning.eval_comp,
-                tuning.view_comps,
-                tuning.detail_point,
-                tuning.spike_orig,
-                tuning.spike_surr,
-            )
-            for run_id in view.run_ids
-        },
-    )
+    return {
+        Path("series/original"): original_artifacts(view),
+        **per_run(
+            "series",
+            {
+                run_id: detail_artifacts(
+                    view,
+                    run_id,
+                    bundles[run_id],
+                    tuning.eval_comp,
+                    tuning.view_comps,
+                    tuning.detail_point,
+                    tuning.spike_orig,
+                    tuning.spike_surr,
+                )
+                for run_id in view.run_ids
+            },
+        ),
+    }
 
 
 def render_report(report_run_id: str, tuning: Tuning) -> list[str]:
@@ -242,22 +246,23 @@ def render_report(report_run_id: str, tuning: Tuning) -> list[str]:
     """
     report = load_report(report_run_id)
     bundles = load_bundles(report.view.run_ids)
+    directories = per_run(
+        "models",
+        {
+            run_id: surrogate_artifacts(bundle, tuning.view_comps)
+            for run_id, bundle in bundles.items()
+        },
+    )
+    directories.update(_series_artifacts(report, bundles, tuning))
+    directories[Path()] = report_artifacts(
+        report.view,
+        bundles,
+        tuning.eval_comp,
+        tuning.metric,
+        tuning.metric_ylim,
+    )
     return save_artifacts(
-        per_run(
-            "models",
-            {
-                run_id: surrogate_artifacts(bundle, tuning.view_comps)
-                for run_id, bundle in bundles.items()
-            },
-        )
-        + _series_artifacts(report, bundles, tuning)
-        + report_artifacts(
-            report.view,
-            bundles,
-            tuning.eval_comp,
-            tuning.metric,
-            tuning.metric_ylim,
-        ),
+        directories,
         report_run_id,
         tuning,
     )

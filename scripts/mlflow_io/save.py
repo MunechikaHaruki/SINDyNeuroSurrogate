@@ -17,14 +17,15 @@ run 内の path は元の 3 段をそのまま残す (`models/<run 名>/`, `seri
 from __future__ import annotations
 
 import re
+import tempfile
 from collections import Counter
 from dataclasses import asdict
+from pathlib import Path
 
 import mlflow
-import pandas as pd
 from tuning import Tuning
 
-from neurosurrogate.artifact.model import Artifact, Artifacts
+from neurosurrogate.artifact.model import Artifacts
 
 from . import logger
 
@@ -62,33 +63,18 @@ def _run_dirs(run_ids: list[str]) -> dict[str, str]:
     }
 
 
-def per_run(prefix: str, artifacts: dict[str, Artifacts]) -> Artifacts:
+def per_run(prefix: str, artifacts: dict[str, Artifacts]) -> dict[Path, Artifacts]:
     """run 軸で開いた成果物 (学習 run_id → 図) に `<prefix>/<run 名>/` の段を付ける。
     **段名の決め方を知るのはここだけ** = `models/` も `series/` も同じ綴りで並ぶ。"""
     dirs = _run_dirs(list(artifacts))
-    return Artifacts(
-        tuple(
-            artifact
-            for run_id, run_artifacts in artifacts.items()
-            for artifact in run_artifacts.under(f"{prefix}/{dirs[run_id]}")
-        )
-    )
-
-
-def _log(client: mlflow.MlflowClient, run_id: str, artifact: Artifact) -> str:
-    """成果物 1 件をレポート run へ。**保存名は成果物の名前そのもの**で、拡張子だけ
-    中身の型で分かれる = 表示と保存で名前が食い違わない。"""
-    if isinstance(artifact.obj, pd.DataFrame):
-        path = f"{artifact.name}.csv"
-        client.log_text(run_id, artifact.obj.to_csv(), path)
-    else:
-        path = f"{artifact.name}.png"
-        client.log_figure(run_id, artifact.obj, path)
-    return path
+    return {
+        Path(prefix) / dirs[run_id]: run_artifacts
+        for run_id, run_artifacts in artifacts.items()
+    }
 
 
 def save_artifacts(
-    artifacts: Artifacts, report_run_id: str, tuning: Tuning
+    directories: dict[Path, Artifacts], report_run_id: str, tuning: Tuning
 ) -> list[str]:
     """成果物を全部レポート run へ書き、そのときの表示設定を `draw.json` 1 枚に
     添える。返り値は書いた artifact path 列 (呼び出し側は表示に流すだけ)。
@@ -98,7 +84,14 @@ def save_artifacts(
     レポート run の tag が既に指している。
     """
     client = mlflow.MlflowClient()
-    written = [_log(client, report_run_id, a) for a in artifacts]
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        written = [
+            str(file.relative_to(root))
+            for path, artifacts in directories.items()
+            for file in artifacts.save(root / path)
+        ]
+        client.log_artifacts(report_run_id, temporary)
     client.log_dict(report_run_id, asdict(tuning), DRAW_FILE)
     logger.info("成果物 %d 件をレポート run へ保存: %s", len(written), report_run_id)
     return written

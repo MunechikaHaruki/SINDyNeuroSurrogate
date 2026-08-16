@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 from ..sim.artifacts import (
     metric_artifact,
     run_names,
@@ -103,7 +101,7 @@ def detail_artifacts(
     spike_orig: int,
     spike_surr: int,
 ) -> Artifacts:
-    """選択した 1 点・1 モデルの波形成果物をまとめ、点の段名を付ける。"""
+    """選択した 1 点・1 モデルの波形成果物をまとめる。"""
     use_style()
     if eval_comp not in view.net.names:
         raise ValueError(f"eval_comp {eval_comp!r} not in {view.target!r}")
@@ -121,9 +119,4 @@ def detail_artifacts(
         metrics_artifact(dm, spike_orig, spike_surr),
         metrics_scalar_artifact(dm, spike_orig, spike_surr),
     ]
-    return Artifacts(
-        tuple(
-            replace(artifact, name=f"p{index}/{artifact.name}")
-            for artifact in artifacts
-        )
-    )
+    return Artifacts(tuple(artifacts))

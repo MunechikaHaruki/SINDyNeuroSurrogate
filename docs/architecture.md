@@ -29,9 +29,9 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,_catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
               artifacts/         # surrogate の自己記述成果物を **単一 Artifact** ずつ返す。train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree
-  artifact/  model.py            # Artifact (名前 + Figure/DataFrame) の運搬形
+  artifact/  model.py            # Artifact (名前 + Figure/DataFrame) と Artifacts。Artifacts.save(path) が配下へ PNG/CSV を保存 (MLflow 非依存)
              plotting.py         # matplotlib 描画プリミティブと共通 style。ドメイン知識を持たない
-             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を Artifacts に束ね、点の段名を付ける。描画失敗は変換せず呼び出し元へ伝播。scripts の描画生成はこの module だけを参照
+             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を Artifacts に束ねる。描画失敗は変換せず呼び出し元へ伝播。scripts の描画生成はこの module だけを参照
   waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
             dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)
             _tables.py           # その値を表に並べる (計算を増やさない)
@@ -63,7 +63,7 @@ docs/     poster/ slide/         # typst
   summary.csv
   models/<MLflow run名>/          # 比べた 1 本ずつの自己記述図
   series/original/              # 原系の入力電流
-  series/<MLflow run名>/p<点>/     # 置換系ごとの詳細図
+  series/<MLflow run名>/           # 置換系ごとの詳細図。点は draw.json の detail_point
 ```
 
 - **束ねる単位がレポートなのは、欲しいものが「N 本のモデルを比べた結果」そのものだから。**

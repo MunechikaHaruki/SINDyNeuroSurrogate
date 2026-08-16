@@ -1,9 +1,10 @@
-"""保存方式に依存しない成果物と、その集合。"""
+"""成果物と、そのファイル保存を担う集合。MLflow には依存しない。"""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 from matplotlib.figure import Figure
@@ -19,7 +20,7 @@ class Artifact:
 
 @dataclass(frozen=True)
 class Artifacts:
-    """名前付き成果物の immutable な集合。保存先や保存方式は知らない。"""
+    """名前付き成果物の immutable な集合。PNG/CSV として一括保存できる。"""
 
     items: tuple[Artifact, ...]
 
@@ -32,13 +33,16 @@ class Artifacts:
     def __bool__(self) -> bool:
         return bool(self.items)
 
-    def __add__(self, other: Artifacts) -> Artifacts:
-        return Artifacts(self.items + other.items)
-
-    def under(self, path: str) -> Artifacts:
-        """全成果物を同じ保存階層の下へ移す。I/O は行わない。"""
-        return Artifacts(
-            tuple(
-                Artifact(f"{path}/{artifact.name}", artifact.obj) for artifact in self
-            )
-        )
+    def save(self, path: Path) -> tuple[Path, ...]:
+        """全成果物を `path` 以下へ保存し、書いたファイルを返す。"""
+        written: list[Path] = []
+        for artifact in self:
+            suffix = ".csv" if isinstance(artifact.obj, pd.DataFrame) else ".png"
+            target = path / f"{artifact.name}{suffix}"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(artifact.obj, pd.DataFrame):
+                artifact.obj.to_csv(target)
+            else:
+                artifact.obj.savefig(target)
+            written.append(target)
+        return tuple(written)

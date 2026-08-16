@@ -269,11 +269,15 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     assert [f.name for f in original_artifacts(view)] == ["current"]
     waves = report_artifacts(view, {"r0": sindy}, "soma", "spike_count", None)
     assert "traces" in {f.name for f in waves}
-    # 詳細図は点 index を名前に持つので、つまみを動かしても前の点を上書きしない。
-    # 手元の点数へ丸める (設定が実際の点数を超えていても描く)。
-    last = len(view.points) - 1
+    # 設定が実際の点数を超えていても、手元の最終点へ丸めて同じ保存名で描く。
     moved = detail_artifacts(view, "r0", sindy, "soma", (), 99, 0, 0)
-    assert moved and all(f.name.startswith(f"p{last}/") for f in moved)
+    assert {artifact.name for artifact in moved} == {
+        "diff",
+        "simple",
+        "attractor",
+        "metrics",
+        "metrics_scalar",
+    }
     # 適用先に無い comp は設定誤りとして落とす。
     with pytest.raises(ValueError, match="eval_comp"):
         detail_artifacts(view, "r0", sindy, "nope", (), 0, 0, 0)
