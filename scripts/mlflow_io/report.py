@@ -15,9 +15,9 @@
 run の参照が差し替わる (`force` で波形 run が新しくなってもレポートは増えない) →
 参照は param でなく**書き換えられる tag** に置く。
 
-marimo の評価ボタンは `run_and_log`、描画前の参照解決は `load_report`、描く成果物は
-`report_artifacts` / `series_artifacts`。書き出しは `save.save_artifacts` が
-**このレポート run 自身へ** (描いたものは全部 1 レポートに束ねる)。
+marimo の評価ボタンは `run_and_log`、描画ボタンは `render_report`。後者が参照解決、
+surrogate のロード、成果物生成、保存までを隠し、**このレポート run 自身へ**描いたものを
+全部束ねる。
 """
 
 import hashlib
@@ -42,8 +42,9 @@ from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
-from .save import run_dirs, under
+from .save import per_run, save_artifacts, under
 from .series import results_of, run_series, source_run_of
+from .surrogate import load_bundles, model_artifacts
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
 _ORIGINAL_TAG = "original_series_id"
@@ -206,7 +207,7 @@ def load_report(report_run_id: str) -> Report:
     )
 
 
-def report_artifacts(
+def _report_artifacts(
     report: Report,
     bundles: dict[str, SurrogateBundle],
     tuning: Tuning,
@@ -221,22 +222,20 @@ def report_artifacts(
     ]
 
 
-def series_artifacts(
+def _series_artifacts(
     report: Report, bundles: dict[str, SurrogateBundle], tuning: Tuning
 ) -> list[Artifact]:
     """1 レポートの波形群 → **波形 1 本ずつで決まる図** (`series/<run 名>/`)。
     原系の入力電流と、置換系ごとの詳細図。
 
-    段の名前は学習 run の MLflow run 名 (`save.run_dirs`) = `models/` と同じ綴りで
+    段の名前は学習 run の MLflow run 名 (`save.per_run`) = `models/` と同じ綴りで
     引け、ディレクトリから元の run を辿れる。
     """
     view = report.view
-    dirs = run_dirs(view.run_ids)
-    out = under("series/original", original_figs(view))
-    for run_id in view.run_ids:
-        out += under(
-            f"series/{dirs[run_id]}",
-            detail_figs(
+    return under("series/original", original_figs(view)) + per_run(
+        "series",
+        {
+            run_id: detail_figs(
                 view,
                 run_id,
                 bundles[run_id],
@@ -245,6 +244,26 @@ def series_artifacts(
                 tuning.detail_point,
                 tuning.spike_orig,
                 tuning.spike_surr,
-            ),
-        )
-    return out
+            )
+            for run_id in view.run_ids
+        },
+    )
+
+
+def render_report(report_run_id: str, tuning: Tuning) -> list[str]:
+    """レポート run を描画し、全成果物を同じ run へ保存する唯一の interface。
+
+    呼び出し側が知るのはレポートの id と描画条件だけ。波形参照の解決、学習 run の
+    surrogate ロード、成果物の区分と保存順序はこの module の実装に閉じる。
+    """
+    report = load_report(report_run_id)
+    bundles = load_bundles(report.view.run_ids)
+    return save_artifacts(
+        [
+            *model_artifacts(bundles, tuning),
+            *_series_artifacts(report, bundles, tuning),
+            *_report_artifacts(report, bundles, tuning),
+        ],
+        report_run_id,
+        tuning,
+    )

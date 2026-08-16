@@ -2,7 +2,8 @@
 
 **評価 (波形) を知らない** — ここが答えるのは「どんな学習 run が居るか」
 (`get_runs_df`)、「その run の surrogate / meta」、そして**その run 自身について
-描ける成果物**(`model_artifacts`) だけ。run 一覧は marimo の run 選択そのものなので、
+描ける成果物**だけ。成果物生成は `report.render_report` の内部から呼ばれる。run 一覧は
+marimo の run 選択そのものなので、
 読込不可の run を落とす判断もここに置く (選択肢に出せない run は下流へ流さない)。
 """
 
@@ -25,7 +26,7 @@ from neurosurrogate.surrogate.figures import surrogate_figs
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
 from . import TARGET_EXP, logger
-from .save import run_dirs, under
+from .save import per_run
 
 _SURR_ARTIFACT_DIR = "surrogate"
 
@@ -95,19 +96,18 @@ def model_artifacts(
     """学習 run 群 → **比べた 1 本ずつの自己記述図** (`models/<run 名>/`)。
 
     描画層は surrogate 1 本ずつ図を返し、run 軸で回して段を付けるのがここ。段の名前は
-    学習 run の MLflow run 名 (`save.run_dirs`) = ディレクトリから元の run を辿れる。
+    学習 run の MLflow run 名 (`save.per_run`) = ディレクトリから元の run を辿れる。
 
     **全 run 分描く** — レポートの単位が 1 系列 × N モデルなので N は比べたい本数
     そのもの (代表 1 本で済ませる必要がない)。
     """
-    dirs = run_dirs(list(bundles))
-    return [
-        artifact
-        for run_id, bundle in bundles.items()
-        for artifact in under(
-            f"models/{dirs[run_id]}", surrogate_figs(bundle, tuning.view_comps)
-        )
-    ]
+    return per_run(
+        "models",
+        {
+            run_id: surrogate_figs(bundle, tuning.view_comps)
+            for run_id, bundle in bundles.items()
+        },
+    )
 
 
 def _safe_meta(run_id: str) -> SurrogateMeta | None:

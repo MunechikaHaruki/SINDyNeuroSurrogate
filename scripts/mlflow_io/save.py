@@ -17,10 +17,12 @@ run 内の path は元の 3 段をそのまま残す (`models/<run 名>/`, `seri
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, is_dataclass
+from collections import Counter
+from dataclasses import asdict
 
 import mlflow
 import pandas as pd
+from tuning import Tuning
 
 from neurosurrogate.plotting import Artifact
 
@@ -41,41 +43,48 @@ def _slug(name: str) -> str:
     return "-" if out in ("", ".", "..") else out
 
 
-def run_dirs(run_ids: list[str]) -> dict[str, str]:
+def _run_dirs(run_ids: list[str]) -> dict[str, str]:
     """学習 run_id → その run の段名 (**MLflow の run 名**)。
 
     段名は凡例の表示名 (凡例は `meta.label` 由来) と別物にする:
     label は学習構造しか語らないので、MLflow UI で run を探すときの名前と一致せず、
     どのディレクトリがどの run のものか辿れない。段は run を名指すのが仕事。
 
-    run 名は MLflow 側で一意でないので、重複したものにだけ run_id 頭を足す
-    (別 run が同じ段を奪い合わない)。
+    run 名は一意でない (同じ preset の再学習は同名になる) ので、選択の中で重複した
+    ものにだけ run_id 頭を足す = 1 レポートの中で段が奪い合われない。
     """
     names = {rid: mlflow.get_run(rid).info.run_name or rid[:8] for rid in run_ids}
-    dup = {n for n in names.values() if list(names.values()).count(n) > 1}
+    dup = {n for n, c in Counter(names.values()).items() if c > 1}
     return {rid: _slug(f"{n}-{rid[:8]}" if n in dup else n) for rid, n in names.items()}
 
 
 def under(prefix: str, artifacts: list[Artifact]) -> list[Artifact]:
-    """成果物の名前に段を付ける (`models/<run 名>/train_raw` など)。名前の `/` は
+    """成果物の名前に段を付ける (`series/original/current` など)。名前の `/` は
     そのまま artifact の階層になるので、包み直す型を作らずに段を表せる。"""
     return [Artifact(f"{prefix}/{a.name}", a.obj) for a in artifacts]
 
 
-def _log(run_id: str, artifact: Artifact) -> str:
+def per_run(prefix: str, figs: dict[str, list[Artifact]]) -> list[Artifact]:
+    """run 軸で開いた成果物 (学習 run_id → 図) に `<prefix>/<run 名>/` の段を付ける。
+    **段名の決め方を知るのはここだけ** = `models/` も `series/` も同じ綴りで並ぶ。"""
+    dirs = _run_dirs(list(figs))
+    return [a for rid, fs in figs.items() for a in under(f"{prefix}/{dirs[rid]}", fs)]
+
+
+def _log(client: mlflow.MlflowClient, run_id: str, artifact: Artifact) -> str:
     """成果物 1 件をレポート run へ。**保存名は成果物の名前そのもの**で、拡張子だけ
     中身の型で分かれる = 表示と保存で名前が食い違わない。"""
     if isinstance(artifact.obj, pd.DataFrame):
         path = f"{artifact.name}.csv"
-        mlflow.MlflowClient().log_text(run_id, artifact.obj.to_csv(), path)
+        client.log_text(run_id, artifact.obj.to_csv(), path)
     else:
         path = f"{artifact.name}.png"
-        mlflow.MlflowClient().log_figure(run_id, artifact.obj, path)
+        client.log_figure(run_id, artifact.obj, path)
     return path
 
 
 def save_artifacts(
-    artifacts: list[Artifact], report_run_id: str, tuning: object
+    artifacts: list[Artifact], report_run_id: str, tuning: Tuning
 ) -> list[str]:
     """成果物を全部レポート run へ書き、そのときの表示設定を `draw.json` 1 枚に
     添える。返り値は書いた artifact path 列 (呼び出し側は表示に流すだけ)。
@@ -84,11 +93,8 @@ def save_artifacts(
     ものだけ**を持つ (`draw.json` もその 1 回分)。成果物ごとの由来は持たない —
     どの run から読んだかはレポート run の tag が既に指している。
     """
-    written = [_log(report_run_id, a) for a in artifacts]
-    mlflow.MlflowClient().log_dict(
-        report_run_id,
-        asdict(tuning) if is_dataclass(tuning) and not isinstance(tuning, type) else {},
-        DRAW_FILE,
-    )
+    client = mlflow.MlflowClient()
+    written = [_log(client, report_run_id, a) for a in artifacts]
+    client.log_dict(report_run_id, asdict(tuning), DRAW_FILE)
     logger.info("成果物 %d 件をレポート run へ保存: %s", len(written), report_run_id)
     return written

@@ -10,16 +10,12 @@ def _():
     from catalog import SERIES
     from mlflow_io.report import (
         find_report_run,
-        load_report,
-        report_artifacts,
+        render_report,
         run_and_log,
-        series_artifacts,
     )
-    from mlflow_io.save import save_artifacts
     from mlflow_io.surrogate import (
         get_runs_df,
         load_bundles,
-        model_artifacts,
         sweep_siblings,
     )
     from tuning import Tuning
@@ -41,15 +37,11 @@ def _():
         Tuning,
         find_report_run,
         load_bundles,
-        load_report,
         mo,
-        model_artifacts,
+        render_report,
         replaceable,
-        report_artifacts,
         run_and_log,
         runs_df,
-        save_artifacts,
-        series_artifacts,
         sweep_siblings,
     )
 
@@ -170,7 +162,7 @@ def _(METRIC_KEYS, comp_options, mo):
 def _(Tuning, tuning_ui):
     # **widget → 描き方 1 値**。y レンジは「auto か否か」の 3 widget を 1 値へ畳む
     # (ドメイン側が持つのは `ylim: tuple | None` 1 つだけ = UI の都合をドメインの型に
-    # 持ち込まない)。comp 未選択 (系列未選択) は空文字のまま渡し、`report_artifacts` の
+    # 持ち込まない)。comp 未選択 (系列未選択) は空文字のまま渡し、描画側の
     # 「適用先に無い comp」と同じエラー図で気付かせる。
     values = tuning_ui.value
     tuning = Tuning(
@@ -186,32 +178,13 @@ def _(Tuning, tuning_ui):
 
 
 @app.cell
-def _(
-    draw_panel,
-    mo,
-    model_artifacts,
-    report,
-    report_artifacts,
-    report_bundles,
-    report_run_id,
-    save_artifacts,
-    series_artifacts,
-    tuning,
-):
-    # marimo で解決した run 群を成果物生成へ流し、まとめて**そのレポート run へ**書く
-    # (段の名前は各 module が解く = ここは選択を渡すだけ)。
+def _(draw_panel, mo, render_report, report_run_id, tuning):
+    # 描画の interface はレポート run_id + Tuning だけ。参照解決、bundle ロード、
+    # 成果物の組み立てと保存先は `render_report` が隠す。
     # レポート run が無い = この選択をまだ評価していない → 評価が先。
     saved = []
-    if draw_panel.value["draw"] and report:
-        saved = save_artifacts(
-            [
-                *model_artifacts(report_bundles, tuning),
-                *series_artifacts(report, report_bundles, tuning),
-                *report_artifacts(report, report_bundles, tuning),
-            ],
-            report.run_id,
-            tuning,
-        )
+    if draw_panel.value["draw"] and report_run_id:
+        saved = render_report(report_run_id, tuning)
     (
         mo.vstack([mo.md(f"✅ `{p}`") for p in saved])
         if saved
@@ -220,15 +193,6 @@ def _(
         else mo.md("この選択のレポート run が無い → 先に評価")
     )
     return
-
-
-@app.cell
-def _(load_bundles, load_report, report_run_id):
-    # 選択から得た report run_id の参照を UI 層で明示的に解決する (描画も保存も
-    # この 1 つから解ける)。
-    report = load_report(report_run_id) if report_run_id else None
-    report_bundles = load_bundles(report.view.run_ids) if report else {}
-    return report, report_bundles
 
 
 @app.cell(column=1)

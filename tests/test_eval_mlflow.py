@@ -17,9 +17,8 @@ import mlflow_io.series as series_io  # noqa: E402
 import numpy as np
 import pytest
 from mlflow.entities import Run
-from mlflow_io.report import report_artifacts, series_artifacts
-from mlflow_io.save import run_dirs, save_artifacts
-from mlflow_io.surrogate import model_artifacts
+from mlflow_io.report import render_report
+from mlflow_io.surrogate import log_surrogate_model
 from test_surrogate import fit_surrogate
 from tuning import Tuning
 
@@ -31,17 +30,16 @@ from neurosurrogate.surrogate.bundle import SurrogateBundle
 RUN_ID = "RID"  # 学習 run の代役 (評価 run が指す先)
 
 
-def _train_run(name: str) -> str:
-    """名前付きの空 run を 1 本立てる = 学習 run の実物。保存段の名前が MLflow の
-    run 名から来るので、そこを見るテストだけは代役 id では足りない。"""
-    client = mlflow.MlflowClient()
+def _train_run(name: str, bundle: SurrogateBundle) -> str:
+    """名前と surrogate artifact を持つ学習 run を 1 本立てる。"""
     exp = mlflow.get_experiment_by_name("test_train")
-    run = client.create_run(
-        exp.experiment_id if exp else mlflow.create_experiment("test_train"),
-        tags={"mlflow.runName": name},
-    )
-    client.set_terminated(run.info.run_id)
-    return str(run.info.run_id)
+    experiment_id = exp.experiment_id if exp else mlflow.create_experiment("test_train")
+    with mlflow.start_run(
+        experiment_id=experiment_id,
+        run_name=name,
+    ) as run:
+        log_surrogate_model(bundle)
+        return str(run.info.run_id)
 
 
 @pytest.fixture
@@ -173,20 +171,10 @@ def test_everything_drawn_lands_in_the_one_report_run(
     `eval_comp` が適用先に無ければ黙って描かずエラー図 1 枚 (誤りも同じレポートの中)。
     """
     # 段名は学習 run の MLflow run 名なので、代役 id でなく実在の学習 run を立てる。
-    train_id = _train_run("surr-A")
+    train_id = _train_run("surr-A", sindy)
     report_id = report_io.run_and_log({train_id: sindy}, "hh_dc", _evals(sindy))
     report = report_io.load_report(report_id)
-    bundles = {train_id: sindy}
-    tuning = Tuning(eval_comp=report.view.net.names[0])
-    written = save_artifacts(
-        [
-            *model_artifacts(bundles, tuning),
-            *series_artifacts(report, bundles, tuning),
-            *report_artifacts(report, bundles, tuning),
-        ],
-        report_id,
-        tuning,
-    )
+    written = render_report(report_id, Tuning(eval_comp=report.view.net.names[0]))
     # run 内の名前は元の 3 段のまま: models/<run 名>/ は比べた 1 本ずつの自己記述図、
     # series/<run 名>/ は波形 1 本で決まるもの、直下が run 横断の産物。
     assert {w.split("/")[0] for w in written} == {
@@ -197,8 +185,7 @@ def test_everything_drawn_lands_in_the_one_report_run(
         "metric.png",  # 掃引 (2 点) なので点軸の折れ線も出る
     }
     # 段名は学習 run の MLflow run 名 (models/ と series/ で同じ綴り)
-    name = run_dirs([train_id])[train_id]
-    assert name == "surr-A"
+    name = "surr-A"
     assert f"models/{name}/model.png" in written
     assert any(w.startswith(f"series/{name}/") for w in written)
     assert "series/original/current.png" in written
@@ -213,9 +200,9 @@ def test_everything_drawn_lands_in_the_one_report_run(
 
     # 適用先に無い comp: 波形を見る図はエラー図 1 枚に畳む (波形を見ないサマリ表は
     # そのまま出る)。
-    err = report_artifacts(report, bundles, Tuning(eval_comp="nope"))
-    assert "error" in {a.name for a in err}
-    assert not any(a.name in ("traces", "metric") for a in err)
+    err = render_report(report_id, Tuning(eval_comp="nope"))
+    assert "error.png" in err
+    assert not any(path in ("traces.png", "metric.png") for path in err)
 
 
 def _ids(runs: list[Run]) -> set[str]:
