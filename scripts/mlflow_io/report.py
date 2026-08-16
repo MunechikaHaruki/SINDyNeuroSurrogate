@@ -15,8 +15,9 @@
 run の参照が差し替わる (`force` で波形 run が新しくなってもレポートは増えない) →
 参照は param でなく**書き換えられる tag** に置く。
 
-marimo の評価ボタンは `run_and_log`、描画前の参照解決は `load_report`、run 横断の
-成果物は `report_entries` を使う。書き出しそのものは `save.save_entries`。
+marimo の評価ボタンは `run_and_log`、描画前の参照解決は `load_report`、描く成果物は
+`report_artifacts` / `series_artifacts`。書き出しは `save.save_artifacts` が
+**このレポート run 自身へ** (描いたものは全部 1 レポートに束ねる)。
 """
 
 import hashlib
@@ -28,13 +29,18 @@ import mlflow
 from mlflow.entities import Run
 from tuning import Tuning
 
+from neurosurrogate.plotting import Artifact
 from neurosurrogate.sim.eval import EvalSeries, SeriesResults, replaced_runs
-from neurosurrogate.sim.report.report import summary_figs, wave_report_figs
+from neurosurrogate.sim.report.report import (
+    run_names,
+    summary_figs,
+    wave_report_figs,
+)
 from neurosurrogate.sim.report.series import detail_figs, original_figs
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
-from .save import SaveEntry, stage
+from .save import slug, under
 from .series import results_of, run_series, source_run_of
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
@@ -197,58 +203,37 @@ def load_report(report_run_id: str) -> Report:
     )
 
 
-def report_entries(
+def report_artifacts(
     report: Report,
     bundles: dict[str, SurrogateBundle],
     tuning: Tuning,
-) -> list[SaveEntry]:
-    """1 レポート → **レポート run に属する成果物** (`report/<レポート run>/`) =
-    run 横断でこの選択でしか出ない図。
-
-    由来は成果物ごとに違う: サマリ表は比べた**学習 run 群**、波形格子と折れ線は
-    読んだ**波形 run 群** (`report.sources`)。図の名前で振り分けないよう、描画層が
-    その 2 つを別の関数として返す。
-    """
-    dest = stage("report", report.run_id)
+) -> list[Artifact]:
+    """1 レポート → **run 横断でこの選択でしか出ない図** (レポート run の直下)。
+    比べた N 本のサマリ表と、点軸 × run 軸に開いた波形格子/折れ線。"""
     return [
-        SaveEntry(dest, artifact, tuple(bundles), tuning)
-        for artifact in summary_figs(bundles)
-    ] + [
-        SaveEntry(dest, artifact, report.sources, tuning)
-        for artifact in wave_report_figs(
+        *summary_figs(bundles),
+        *wave_report_figs(
             report.view, bundles, tuning.eval_comp, tuning.metric, tuning.metric_ylim
-        )
+        ),
     ]
 
 
-def series_entries(
+def series_artifacts(
     report: Report, bundles: dict[str, SurrogateBundle], tuning: Tuning
-) -> list[SaveEntry]:
-    """1 レポートの波形群 → **波形 run に属する成果物** (`series/<評価 run>/`)。
+) -> list[Artifact]:
+    """1 レポートの波形群 → **波形 1 本ずつで決まる図** (`series/<表示名>/`)。
+    原系の入力電流と、置換系ごとの詳細図。
 
-    原系の図は原系の run へ、詳細図は置換系の run へ落ちる = レポートを増やしても
-    複製されない (run 横断の成果物は `report.report_entries`)。
+    段の名前が波形 run の id でなく表示名なのは、宛先がレポート run 1 本で衝突
+    しないから (凡例と同じ読み方で段を引ける)。
     """
     view = report.view
-    entries = [
-        SaveEntry(
-            stage("series", report.original_id),
-            artifact,
-            (report.original_id,),
-            tuning,
-        )
-        for artifact in original_figs(view)
-    ]
+    labels = run_names(bundles)
+    out = under("series/original", original_figs(view))
     for run_id in view.run_ids:
-        entries += [
-            SaveEntry(
-                stage("series", report.surr_ids[run_id]),
-                artifact,
-                # 由来は原系と置換系の 2 本 (差分図はその対から出る)
-                (report.original_id, report.surr_ids[run_id]),
-                tuning,
-            )
-            for artifact in detail_figs(
+        out += under(
+            f"series/{slug(labels[run_id])}",
+            detail_figs(
                 view,
                 run_id,
                 bundles[run_id],
@@ -257,6 +242,6 @@ def series_entries(
                 tuning.detail_point,
                 tuning.spike_orig,
                 tuning.spike_surr,
-            )
-        ]
-    return entries
+            ),
+        )
+    return out

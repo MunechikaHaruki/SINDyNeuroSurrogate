@@ -6,29 +6,26 @@ app = marimo.App(width="columns")
 
 @app.cell(column=0)
 def _():
-    from pathlib import Path
-
     import marimo as mo
     from catalog import SERIES
     from mlflow_io.report import (
         find_report_run,
         load_report,
-        report_entries,
+        report_artifacts,
         run_and_log,
-        series_entries,
+        series_artifacts,
     )
-    from mlflow_io.save import save_entries
+    from mlflow_io.save import save_artifacts
     from mlflow_io.surrogate import (
         get_runs_df,
         load_bundles,
-        model_entries,
+        model_artifacts,
         sweep_siblings,
     )
     from tuning import Tuning
 
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
-    RESULT_DIR = Path(__file__).resolve().parents[1] / "results"
     ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
 
     # marimo に残す操作は「run 選択」「評価」「描画」の 3 つ。評価 (→ 評価 run 保存)
@@ -39,19 +36,18 @@ def _():
     return (
         ALL_PRESETS,
         METRIC_KEYS,
-        RESULT_DIR,
         SERIES,
         Tuning,
         find_report_run,
         load_bundles,
         load_report,
         mo,
-        model_entries,
-        report_entries,
+        model_artifacts,
+        report_artifacts,
         run_and_log,
         runs_df,
-        save_entries,
-        series_entries,
+        save_artifacts,
+        series_artifacts,
         sweep_siblings,
     )
 
@@ -125,9 +121,9 @@ def _(mo):
             "eval": mo.ui.run_button(label="評価 (→ 評価 run 保存)"),
         }
     )
-    # 保存先は選ばせない — 成果物の名前が `models/<学習 run>/`・`series/<評価 run>/`・
-    # `report/<レポート run>/` に割れており、MLflow の run がそのまま階層になる
-    # (保存名を手で付けると同じ run が別の場所に散る)。
+    # 保存先は選ばせない — 描いたものは全部**そのレポート run の artifact**へ落ちる
+    # (比べたいのは 1 系列 × N モデルの束そのもの)。run 内の名前が
+    # `models/<表示名>/`・`series/<表示名>/`・直下 に割れる。
     draw_panel = mo.ui.dictionary({"draw": mo.ui.run_button(label="描画 (→ 図保存)")})
     mo.vstack([mo.md("### 実行パネル"), *eval_panel.values(), *draw_panel.values()])
     return draw_panel, eval_panel
@@ -172,7 +168,7 @@ def _(METRIC_KEYS, comp_options, mo):
 def _(Tuning, tuning_ui):
     # **widget → 描き方 1 値**。y レンジは「auto か否か」の 3 widget を 1 値へ畳む
     # (ドメイン側が持つのは `ylim: tuple | None` 1 つだけ = UI の都合をドメインの型に
-    # 持ち込まない)。comp 未選択 (系列未選択) は空文字のまま渡し、`report_entries` の
+    # 持ち込まない)。comp 未選択 (系列未選択) は空文字のまま渡し、`report_artifacts` の
     # 「適用先に無い comp」と同じエラー図で気付かせる。
     values = tuning_ui.value
     tuning = Tuning(
@@ -189,33 +185,33 @@ def _(Tuning, tuning_ui):
 
 @app.cell
 def _(
-    RESULT_DIR,
     draw_panel,
     mo,
-    model_entries,
+    model_artifacts,
     report,
+    report_artifacts,
     report_bundles,
-    report_entries,
     report_run_id,
-    save_entries,
-    series_entries,
+    save_artifacts,
+    series_artifacts,
     tuning,
 ):
-    # marimo で解決した run 群を、experiment ごとの成果物生成へ流す (段の名前も由来も
-    # 各 experiment の module が解く = ここは選択を渡すだけ)。
+    # marimo で解決した run 群を成果物生成へ流し、まとめて**そのレポート run へ**書く
+    # (段の名前は各 module が解く = ここは選択を渡すだけ)。
     # レポート run が無い = この選択をまだ評価していない → 評価が先。
     saved = []
     if draw_panel.value["draw"] and report:
-        saved = save_entries(
+        saved = save_artifacts(
             [
-                *model_entries(report_bundles, tuning),
-                *series_entries(report, report_bundles, tuning),
-                *report_entries(report, report_bundles, tuning),
+                *model_artifacts(report_bundles, tuning),
+                *series_artifacts(report, report_bundles, tuning),
+                *report_artifacts(report, report_bundles, tuning),
             ],
-            RESULT_DIR,
+            report.run_id,
+            tuning,
         )
     (
-        mo.vstack([mo.md(f"✅ `{p.relative_to(RESULT_DIR)}`") for p in saved])
+        mo.vstack([mo.md(f"✅ `{p}`") for p in saved])
         if saved
         else mo.md("(未実行)")
         if report_run_id
@@ -226,8 +222,8 @@ def _(
 
 @app.cell
 def _(load_bundles, load_report, report_run_id):
-    # 選択から得た report run_id の参照を UI 層で明示的に解決する (run 名は保存段を
-    # 組む側が引くので、ここでは対応表を持たない)。
+    # 選択から得た report run_id の参照を UI 層で明示的に解決する (描画も保存も
+    # この 1 つから解ける)。
     report = load_report(report_run_id) if report_run_id else None
     report_bundles = load_bundles(report.view.run_ids) if report else {}
     return report, report_bundles

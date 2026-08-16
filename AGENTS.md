@@ -37,7 +37,7 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 
 依存の向き: `core ← neurons ← sim.{catalog,spec,eval} ← surrogate ← sim.report` (`core` は他ディレクトリを一切 import しない)。
 `neurosurrogate/` = ドメイン層 (marimo/MLflow 非依存)、`scripts/` = Hydra/MLflow/marimo の入口、
-`results/` = 描画成果物 (評価結果本体は MLflow)。
+描画成果物も評価結果本体も MLflow (図はレポート run の artifact)。
 
 各ディレクトリの責務・ファイル単位の役割・設定ファイル (`scripts/conf/`, `scripts/catalog.py`) の規約は
 **`docs/architecture.md`** に分離。コード配置や設定の詳細が要るときにそれを読む。

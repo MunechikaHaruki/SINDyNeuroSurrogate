@@ -2,7 +2,7 @@
 
 **評価 (波形) を知らない** — ここが答えるのは「どんな学習 run が居るか」
 (`get_runs_df`)、「その run の surrogate / meta」、そして**その run 自身について
-描ける成果物**(`model_entries`) だけ。run 一覧は marimo の run 選択そのものなので、
+描ける成果物**(`model_artifacts`) だけ。run 一覧は marimo の run 選択そのものなので、
 読込不可の run を落とす判断もここに置く (選択肢に出せない run は下流へ流さない)。
 """
 
@@ -19,12 +19,14 @@ from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 from tuning import Tuning
 
+from neurosurrogate.plotting import Artifact
+from neurosurrogate.sim.report.report import run_names
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.figures import surrogate_figs
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
 from . import TARGET_EXP, logger
-from .save import SaveEntry, stage
+from .save import slug, under
 
 SURR_ARTIFACT_DIR = "surrogate"
 
@@ -88,21 +90,25 @@ def sweep_siblings(parent_id: str) -> list[str]:
     return [parent_id, *[r.info.run_id for r in children]]
 
 
-def model_entries(
+def model_artifacts(
     bundles: dict[str, SurrogateBundle], tuning: Tuning
-) -> list[SaveEntry]:
-    """学習 run 群 → **学習 run に属する成果物** (`models/<学習 run>/`)。
+) -> list[Artifact]:
+    """学習 run 群 → **比べた 1 本ずつの自己記述図** (`models/<表示名>/`)。
 
-    描画層は surrogate 1 本ずつ図を返し、run 軸で回して段の名前を解くのがここ
-    (run_id → run 名を引けるのは MLflow を知るこの層だけ)。由来はその学習 run 自身。
+    描画層は surrogate 1 本ずつ図を返し、run 軸で回して段を付けるのがここ。段の名前が
+    run id でなく表示名なのは、宛先がレポート run 1 本で衝突しないから (凡例と同じ
+    読み方で段を引ける)。
 
     **全 run 分描く** — レポートの単位が 1 系列 × N モデルなので N は比べたい本数
     そのもの (代表 1 本で済ませる必要がない)。
     """
+    labels = run_names(bundles)
     return [
-        SaveEntry(stage("models", run_id), artifact, (run_id,), tuning)
+        artifact
         for run_id, bundle in bundles.items()
-        for artifact in surrogate_figs(bundle, tuning.view_comps)
+        for artifact in under(
+            f"models/{slug(labels[run_id])}", surrogate_figs(bundle, tuning.view_comps)
+        )
     ]
 
 
