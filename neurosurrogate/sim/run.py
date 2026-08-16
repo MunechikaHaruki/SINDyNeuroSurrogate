@@ -1,13 +1,14 @@
 """**実行**: 記述 (`spec`) と置換器を受け取って結果 (`result`) を作る段。
 
-記述も結果も置換器を知らない (`EvalSeries` は「何を回すか」だけ、`SimResult` は
-波形だけ) → **仕様 × surrogate を掛け合わせるのはここだけ**。run 軸を掛ける
-`replaced_runs` も同じ理由でここに居る。
+記述は置換器を知らない (`EvalSeries` は「何を回すか」だけ) → **仕様 × surrogate を
+掛け合わせるのはここだけ**。run 軸を掛ける `replaced_runs` も同じ理由でここに居る。
+
+返りは列 (`SeriesRun`) = 保存もキャッシュもこの単位。
 """
 
 from __future__ import annotations
 
-from dataclasses import replace as dc_replace
+import xarray as xr
 
 from ..core.diverge import log_divergence
 from ..core.simulator import unified_simulator
@@ -15,31 +16,37 @@ from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.meta import SurrogateMeta
 from ..surrogate.replace import apply_surrogate
 from ..surrogate.replace import replaceable as node_replaceable
-from .result import SimResult
+from .result import SeriesRun
 from .spec import EvalSeries, SimSpec
 
 
-def simulate(spec: SimSpec, surrogate: SurrogateBundle | None) -> SimResult:
-    """1 シミュ。`surrogate=None` なら原系、あれば `apply_surrogate` してから回す。"""
+def simulate(spec: SimSpec, surrogate: SurrogateBundle | None) -> xr.Dataset:
+    """1 シミュ → 波形。`surrogate=None` なら原系、あれば `apply_surrogate` してから
+    回す。**入力は返さない** (呼んだ側が既に持っている)。"""
     dset = spec.materialize()
     if surrogate is None:
-        return SimResult(spec, unified_simulator(dset))
+        return unified_simulator(dset)
     surr_ds = unified_simulator(apply_surrogate(surrogate, dset))
     # 系列名は spec が持たない (カタログのキーが単一源) → 入力そのもので名乗る。
     where = f"{spec.target}/{spec.current_type} / {surrogate.meta.label}"
     log_divergence(spec.net, surr_ds, where)
-    return SimResult(spec, surr_ds)
+    return surr_ds
 
 
-def run_points(
-    series: EvalSeries, surrogate: SurrogateBundle | None
-) -> list[SimResult]:
-    """掃引の点列を順に回す (**系列 → 結果の唯一の入口**)。返りは点の並び順で、素の
-    結果に掃引軸だけ書き足す (1 シミュは自分が何の軸の上に居るかを知らない)。"""
-    return [
-        dc_replace(simulate(spec, surrogate), axis=series.param)
-        for spec in series.points
-    ]
+def run_column(
+    series: EvalSeries,
+    run_id: str | None,
+    surrogate: SurrogateBundle | None,
+) -> SeriesRun:
+    """掃引の点列を順に回して**1 列**にする (**系列 → 結果の唯一の入口**)。
+
+    `run_id` は回した置換器の出所 (学習 run の id) で、両方 `None` なら原系。波形は
+    `series.points` と同じ並びで、点ごとの仕様も掃引軸も添えない (どちらも記述の側に
+    ある)。"""
+    if (run_id is None) != (surrogate is None):
+        raise ValueError(f"run_id と置換器が対でない (run {run_id})")
+    waves = [simulate(spec, surrogate) for spec in series.points]
+    return SeriesRun(series, run_id, waves)
 
 
 def replaceable(series: EvalSeries, meta: SurrogateMeta) -> bool:

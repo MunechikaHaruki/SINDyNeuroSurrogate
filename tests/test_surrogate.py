@@ -33,8 +33,8 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
 from neurosurrogate.sim.artifacts import summary_artifact, traces_artifact
-from neurosurrogate.sim.result import SeriesResults
-from neurosurrogate.sim.run import replaced_runs, run_points
+from neurosurrogate.sim.result import SeriesResults, SeriesRun
+from neurosurrogate.sim.run import replaced_runs, run_column
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
@@ -129,11 +129,11 @@ def _simulate_view(
     """1 系列を run 軸に開いてその場で回す (保存を経由しない経路)。本番の描画入力は
     MLflow から読む `mlflow_io.load_report` なので、この経路はテストにだけ居る。"""
     return SeriesResults(
-        run_points(series, None),
-        {
-            rid: run_points(series, bundle)
+        run_column(series, None, None),
+        tuple(
+            run_column(series, rid, bundle)
             for rid, bundle in replaced_runs(series, bundles).items()
-        },
+        ),
     )
 
 
@@ -163,17 +163,18 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
-    orig, surr = _run_view({"r0": surrogate}, _spec_of(surrogate)).pair(0, "r0")
-    v = access.potential(surr.dataset, _train_comp(surrogate))
-    assert v.shape == access.time(orig.dataset).shape
+    view = _run_view({"r0": surrogate}, _spec_of(surrogate))
+    orig, surr = view.pair(0, view.column("r0"))
+    v = access.potential(surr, _train_comp(surrogate))
+    assert v.shape == access.time(orig).shape
     assert np.isfinite(v[0])
 
 
 def test_sweep_metric_choices_are_all_extractable(sindy_view: SeriesResults) -> None:
     """UI が出す掃引 metric 選択肢は全て取り出せる = 選んだのに生成されないキーで
     黙って nan の図が出ることが無い (未知キーは extract_metric が KeyError)。"""
-    orig, surr = sindy_view.pair(0, "r0")
-    dm = DynamicMetrics(orig.dataset, surr.dataset, 0, surr.spec.dt)
+    orig, surr = sindy_view.pair(0, sindy_view.column("r0"))
+    dm = DynamicMetrics(orig, surr, 0, sindy_view.dt)
     assert all(extract_metric(dm, key)[1] is not None for key in METRIC_KEYS)
     with pytest.raises(KeyError):
         extract_metric(dm, "latency_error")
@@ -183,13 +184,13 @@ def test_sindy_draws_all_artifacts(
     sindy_view: SeriesResults, sindy: SurrogateBundle
 ) -> None:
     """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
-    orig, surr = sindy_view.pair(0, "r0")
+    orig, surr = sindy_view.pair(0, sindy_view.column("r0"))
 
-    latent = preprocessed_latent(sindy, orig.spec.net, orig.dataset, 0)
+    latent = preprocessed_latent(sindy, sindy_view.net, orig, 0)
     artifacts = [
-        diff_artifact(orig.dataset, latent, surr.dataset, 0),
-        simple_artifact(orig.dataset),
-        attractor_artifact(latent, surr.dataset, 0),
+        diff_artifact(orig, latent, surr, 0),
+        simple_artifact(orig),
+        attractor_artifact(latent, surr, 0),
     ]
     assert [artifact.name for artifact in artifacts] == [
         "diff",
@@ -250,11 +251,25 @@ def test_trace_grid_rows_are_one_per_model(sindy: SurrogateBundle) -> None:
 def test_series_view_columns_must_line_up_across_runs(
     sindy_view: SeriesResults,
 ) -> None:
-    """`SeriesResults` が構築時に保証するのは点軸の列が run 間で揃うことだけ (揃わない列
-    を図の側で検出させない)。**由来の id は持たない** = MLflow の同一性はここに無く、
-    描く中身だけの純粋なデータ (id の検証は `mlflow_io.report.Report`)。"""
+    """列は自分の点数を、束は**列が同じ掃引を回したものか**を構築時に保証する
+    (揃わない列を図の側で検出させない)。**由来の id は持たない** = 評価 run の同一性は
+    ここに無く、描く中身だけの純粋なデータ (評価 run の id はレポート run の tag だけが
+    持つ)。"""
+    series = sindy_view.series
     with pytest.raises(ValueError, match="点数"):
-        SeriesResults(sindy_view.points, {"r0": []})
+        SeriesRun(series, "r0", [])
+    # 別の掃引を回した列は束ねられない (点数が同じでも計算入力が違う)
+    other = dc_replace(series, spec=dc_replace(series.spec, dt=series.spec.dt * 2))
+    with pytest.raises(ValueError, match="記述の違う列"):
+        SeriesResults(
+            sindy_view.original,
+            (SeriesRun(other, "r0", sindy_view.points),),
+        )
+    # 原系の列に run_id は載らない / 置換系の run_id は欠けない
+    with pytest.raises(ValueError, match="原系の列"):
+        SeriesResults(SeriesRun(series, "r0", sindy_view.points), ())
+    with pytest.raises(ValueError, match="置換系の run_id"):
+        SeriesResults(sindy_view.original, (sindy_view.original,))
 
 
 def test_report_draws_the_results_at_hand_not_the_declaration(
@@ -265,7 +280,7 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     なる = 計算と描画が切れている。結果は系列名すら名乗らず (`SeriesResults` が持つのは
     点と run 軸だけ)、どの run に属するか (= 保存段) は**どの関数を呼んだか**で決まる
     (段を組むのは `scripts/mlflow_io`)。"""
-    view = SeriesResults(sindy_view.points, sindy_view.surrs)
+    view = SeriesResults(sindy_view.original, sindy_view.surrs)
     assert [f.name for f in original_artifacts(view)] == ["current"]
     waves = report_artifacts(view, {"r0": sindy}, "soma", "spike_count", None)
     assert "traces" in {f.name for f in waves}
@@ -317,7 +332,7 @@ def test_view_comps_limit_drawn_traces(
 ) -> None:
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
-    ds = sindy_view.points[0].dataset
+    ds = sindy_view.points[0]
     assert len(panels_simple(ds, comps=[])) < len(panels_simple(ds))
     assert train_raw_artifact(sindy, comps=[_train_comp(sindy)]).name == (
         train_raw_artifact(sindy).name

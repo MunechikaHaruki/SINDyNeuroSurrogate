@@ -21,6 +21,7 @@ def _():
     from tuning import Tuning
 
     from neurosurrogate.sim.run import replaceable
+    from neurosurrogate.sim.spec import EvalSelection
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
     ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
@@ -32,6 +33,7 @@ def _():
     runs_df = get_runs_df()
     return (
         ALL_PRESETS,
+        EvalSelection,
         METRIC_KEYS,
         SERIES,
         Tuning,
@@ -257,7 +259,15 @@ def _(SERIES, bundles, replaceable):
 
 
 @app.cell
-def _(SERIES, bundles, eval_panel, find_report_run, run_and_log, series_name):
+def _(
+    EvalSelection,
+    SERIES,
+    bundles,
+    eval_panel,
+    find_report_run,
+    run_and_log,
+    series_name,
+):
     # 評価ボタン: 選んだ 1 系列を回して波形 run + レポート run を保存 (描画はしない)。
     # 既に同じ入力の波形 run があればシミュごとスキップされる (force で回し直す)。
     # 押していないときは同じ選択 (run 群 × 系列) の既存レポートを引くので、**この
@@ -272,7 +282,7 @@ def _(SERIES, bundles, eval_panel, find_report_run, run_and_log, series_name):
                 force=eval_panel.value["force"],
             )
             if eval_panel.value["eval"]
-            else find_report_run(list(bundles), SERIES[series_name])
+            else find_report_run(EvalSelection(SERIES[series_name], tuple(bundles)))
         )
         if series_name
         else None

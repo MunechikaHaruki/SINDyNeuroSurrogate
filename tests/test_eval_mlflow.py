@@ -5,6 +5,7 @@
 sqlite へ丸ごと差し替えるので、手元の `mlflow.db` / `mlruns/` は汚れない。
 """
 
+import json
 from pathlib import Path
 from typing import cast
 
@@ -24,10 +25,20 @@ from tuning import Tuning
 
 from neurosurrogate.core import access
 from neurosurrogate.sim.run import simulate
-from neurosurrogate.sim.spec import EvalSeries
+from neurosurrogate.sim.spec import EvalSelection, EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 RUN_ID = "RID"  # 学習 run の代役 (評価 run が指す先)
+
+
+def _source_runs(report_run_id: str) -> tuple[str, ...]:
+    """レポート run が指す波形 run (原系が先)。**本番は使わない** — `load_report` は
+    描く中身だけを返し、由来の id は描画にも保存段にも要らない。"""
+    tags = mlflow.get_run(report_run_id).data.tags
+    return (
+        tags[report_io._ORIGINAL_TAG],
+        *json.loads(tags[report_io._SURROGATE_TAG]),
+    )
 
 
 def _train_run(name: str, bundle: SurrogateBundle) -> str:
@@ -76,38 +87,38 @@ def test_eval_runs_round_trip_without_resimulating(
     # 波形は 2 本 (原系 1 + 置換系 1)、レポートは 1 本 (点では分かれない)
     assert len(_of_kind("original")) == 1 and len(_of_kind("surrogate")) == 1
     # 選択 → レポート run_id の橋は 1 本で、描画はこの id だけを見る
-    assert report_io.find_report_run([RUN_ID], series) == report_id
+    assert report_io.find_report_run(EvalSelection(series, (RUN_ID,))) == report_id
 
-    report = report_io.load_report(report_id)
-    view = report.view
+    view = report_io.load_report(report_id)
     assert view.run_ids == [RUN_ID]
+    # 結果から作り直した記述で同じレポートに当たる = 記述 (`EvalSelection`) と
+    # 結果 (`SeriesResults`) が同じ対で往復する
+    assert report_io.find_report_run(view.selection) == report_id
     # 系列名は結果 (`SeriesResults`) でなく波形 run 側にある = レポートはカタログを
     # 参照しない (名前を付け替えても過去のレポートは読める)
-    assert mlflow.get_run(report.original_id).data.params["name"] == "hh_dc"
+    original_eval, surr_eval = _source_runs(report_id)
+    assert mlflow.get_run(original_eval).data.params["name"] == "hh_dc"
     assert series_io._series_hash(series, "abcdefgh-1") != series_io._series_hash(
         series, "abcdefgh-2"
     )
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.axis, view.values) == ("duration", [170.0, 190.0])
-    orig, surr = view.pair(1, RUN_ID)
-    # 入力仕様が往復し、そこから実行入力を復元できる
-    assert surr.spec.materialize().net is series.spec.net
-    # 由来 (どの評価 run から読んだか) は描く中身 (`SeriesResults`) でなく `Report` 側が
-    # 持つ (原系 1 本 + 置換系 1 本)。置換系は**学習 run → 評価 run** の対応で持つので、
-    # 保存段も凡例も id 1 つから解ける。
-    assert report.original_id in _ids(_of_kind("original"))
-    assert report.surr_ids[RUN_ID] in _ids(_of_kind("surrogate"))
-    assert report.sources == (report.original_id, report.surr_ids[RUN_ID])
+    orig, surr = view.pair(1, view.column(RUN_ID))
+    # 記述が往復し、点の計算入力からそのまま実行入力を復元できる
+    # (波形は並びだけで点に対応する = 点ごとの仕様は保存しない)
+    assert view.series.points[1].materialize().net is series.spec.net
+    # 由来 (どの評価 run から読んだか) はレポート run の tag だけが持つ (原系 1 本 +
+    # 置換系 1 本)。描く中身にも保存段にも出てこない。
+    assert original_eval in _ids(_of_kind("original"))
+    assert surr_eval in _ids(_of_kind("surrogate"))
     # 波形は float32 で往復し、原系/置換系はそれぞれの run に入っている
     # (原系は surrogate 非依存なので回し直しても一致する)
     np.testing.assert_allclose(
-        access.potential(orig.dataset, 0),
-        access.potential(simulate(series.points[1], None).dataset, 0),
+        access.potential(orig, 0),
+        access.potential(simulate(series.points[1], None), 0),
         rtol=1e-5,
     )
-    assert not np.allclose(
-        access.potential(surr.dataset, 0), access.potential(orig.dataset, 0)
-    )
+    assert not np.allclose(access.potential(surr, 0), access.potential(orig, 0))
 
     # シミュは決定的 → 同じ掃引の 2 度目はスキップ (series_hash 一致)。同じ選択の
     # レポートも量産されず、同じ run が更新される。
@@ -123,26 +134,7 @@ def test_eval_runs_round_trip_without_resimulating(
     both = report_io.load_report(
         report_io.run_and_log({RUN_ID: sindy, "OTHER": sindy}, "hh_dc", series)
     )
-    assert (len(both.view.points), both.view.run_ids) == (2, [RUN_ID, "OTHER"])
-
-
-def test_report_rejects_ids_that_do_not_line_up_with_the_run_axis(
-    eval_store: str, sindy: SurrogateBundle
-) -> None:
-    """`Report` は id が **run 軸と揃う**ことを構築時に保証する。半端に欠けた id は
-    保存段が別の run の名前へ落ちる (由来の欠けた成果物) ので、描く前に弾く。"""
-    view = report_io.load_report(
-        report_io.run_and_log({RUN_ID: sindy}, "hh_dc", _evals(sindy))
-    ).view
-    for original_id, surr_ids in (
-        ("e0", {"other": "e1"}),  # run 軸とキーがずれる
-        ("e0", {}),  # 置換系の id が丸ごと無い
-        ("", {RUN_ID: "e1"}),  # 原系の id が無い
-        ("e0", {RUN_ID: ""}),  # 空文字の id も欠けと同じ
-        ("", {RUN_ID: ""}),
-    ):
-        with pytest.raises(ValueError, match="評価 run の id"):
-            report_io.Report("r", view, original_id, surr_ids)
+    assert (len(both.points), both.run_ids) == (2, [RUN_ID, "OTHER"])
 
 
 def test_unevaluated_selection_finds_nothing_without_creating_experiment(
@@ -151,7 +143,7 @@ def test_unevaluated_selection_finds_nothing_without_creating_experiment(
     """まだ評価していない選択は `None` が返るだけ (描画側は「先に評価」を出す)。
     探すだけの経路は experiment を作らない = 選択を変えるたびに空の experiment が
     生えない。"""
-    assert report_io.find_report_run([RUN_ID], _evals(sindy)) is None
+    assert report_io.find_report_run(EvalSelection(_evals(sindy), (RUN_ID,))) is None
     assert mlflow.get_experiment_by_name(report_io.REPORT_EXP) is None
 
 
@@ -187,8 +179,8 @@ def test_everything_drawn_lands_in_the_one_report_run(
     # 段名は学習 run の MLflow run 名なので、代役 id でなく実在の学習 run を立てる。
     train_id = _train_run("surr-A", sindy)
     report_id = report_io.run_and_log({train_id: sindy}, "hh_dc", _evals(sindy))
-    report = report_io.load_report(report_id)
-    written = render_report(report_id, Tuning(eval_comp=report.view.net.names[0]))
+    view = report_io.load_report(report_id)
+    written = render_report(report_id, Tuning(eval_comp=view.net.names[0]))
     # run 内の名前は元の 3 段のまま: models/<run 名>/ は比べた 1 本ずつの自己記述図、
     # series/<run 名>/ は波形 1 本で決まるもの、直下が run 横断の産物。
     assert {w.split("/")[0] for w in written} == {
@@ -207,7 +199,7 @@ def test_everything_drawn_lands_in_the_one_report_run(
     # 書けたのはレポート run だけ (学習 run / 波形 run の artifact は増えない)
     client = mlflow.MlflowClient()
     assert {a.path for a in client.list_artifacts(report_id)} >= {"models", "series"}
-    for rid in report.sources:
+    for rid in _source_runs(report_id):
         assert [a.path for a in client.list_artifacts(rid)] == [series_io.WAVES_FILE]
     # 描いたときの表示設定は 1 枚だけ添える (成果物ごとの由来は run が既に指している)
     assert save.DRAW_FILE in {a.path for a in client.list_artifacts(report_id)}

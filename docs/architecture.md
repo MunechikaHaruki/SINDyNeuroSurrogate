@@ -18,9 +18,9 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
   sim/  catalog/                 # **名前 → 実体の対応表だけ** (SimSpec のフィールドが引く選択肢。作り方は持たない)
           targets.py             # MCMODELS (SimSpec.target が引く適用先モデル)
           currents.py            # 注入電流波形 + CURRENT_MAP
-        spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+param+values の 1 掃引 = **保存の単位でもある**。points は派生、to_dict/from_dict/hash で往復)。surrogate より前の層 (SurrogateMeta.dataset がこれ)
-        result.py                # **結果の器だけ** (計算も描画もしない): SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) / attach (保存済み波形列 → 点列。再シミュ無しの run_points) / SeriesResults (点軸×run 軸に開いた結果の純粋なデータ。net/target/axis/values は点から読むだけ。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る)
-        run.py                   # **仕様 × surrogate を掛ける唯一の段** (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate (1 シミュ) / run_points (掃引点列 → 結果。系列 → 結果の唯一の入口) / replaceable / **run 軸** = replaced_runs (1 系列 × 学習 run → 置換できる run だけに絞る)。表示名も MLflow の id も出てこない。surrogate の後の層
+        spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない** — hash は保存の単位だけが持つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+param+values の 1 掃引 = **保存の単位でもある**。points は派生、to_dict/from_dict/hash で往復) + EvalSelection (掃引 × 学習 run 群 = **1 レポートの記述**。hash が選択そのものの同一性)。**記述 3 段が result の 波形 / SeriesRun / SeriesResults と 1 対 1**。surrogate より前の層 (SurrogateMeta.dataset がこれ)
+        result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = mlflow_io.series の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。net/target/axis/values/dt は記述から読む。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る
+        run.py                   # **仕様 × surrogate を掛ける唯一の段** (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate (1 シミュ → 波形) / run_column (series + run_id + surrogate → **1 列** `SeriesRun`。系列 → 結果の唯一の入口。両方 None が原系) / replaceable / **run 軸** = replaced_runs (1 系列 × 学習 run → 置換できる run だけに絞る)。表示名は出てこない (学習 run の id は列の標識として通るだけ)。surrogate の後の層
         artifacts.py             # 結果 (`sim.result.SeriesResults`) → **単一 Artifact**。run 横断の summary/traces/metric を個別関数で生成。**点軸×run 軸の並びを成果物へ落とす唯一の場所**。成果物列の編成と詳細点の段付けは `artifact.bundle`
   surrogate/  meta.py            # SurrogateMeta (学習構造の単一源)
               bundle.py          # SurrogateBundle.setup/load/save + SURR_CLS/PREPROCESSOR_CLS
@@ -43,8 +43,8 @@ scripts/  main.py                # Hydra エントリ
             __init__.py          # tracking URI をリポジトリ直下へ固定 (import 時に実行 = どの module を通っても最初に張られる) + TARGET_EXP
             save.py              # `report.render_report` が使う保存 module。成果物の MLflow 書込、run 名による段付け、Tuning の draw.json 保存を担う
             surrogate.py         # 学習 experiment: surrogate pickle/meta の読み書き (run_id ごとに @cache) + get_runs_df (run 一覧。読込不可 run はここで落とす) + sweep_siblings。モデル成果物生成は `render_report` の内部実装
-            series.py            # 波形 experiment eval_series (**1 run = 1 EvalSeries** = 点列の波形 1 artifact。kind=original / kind=surrogate がフラットに並び、置換系は tags.original_hash で原系を名指す = 親子関係なし)。run_series は探索と実行が対 (決定的だから同じ入力は回さない) なので分けない
-            report.py            # レポート experiment eval_report (**1 run = 1 レポート = 1 系列 × N モデル**)。run_and_log / find_report_run / load_report (→ **Report** = 描く中身 `SeriesResults` + 由来の run id。**MLflow の id を持つのはこの型だけ**でドメイン層は id を知らない) + render_report (**描画の唯一の interface** = report_run_id + Tuning。参照解決、bundle ロード、全成果物生成、その run への保存を隠す)
+            series.py            # 波形 experiment eval_series (**1 run = 1 `sim.result.SeriesRun`** = 1 列。点列の波形 1 artifact。kind=original / kind=surrogate がフラットに並び、置換系は tags.original_hash で原系を名指す = 親子関係なし)。run_series は探索と実行が対 (決定的だから同じ入力は回さない) なので分けない。column_of が run → SeriesRun の唯一の読み口 (記述も run_id も一緒に戻る)
+            report.py            # レポート experiment eval_report (**1 run = 1 レポート = 1 系列 × N モデル**)。run_and_log / find_report_run (EvalSelection 1 つで引く) / load_report (→ 描く中身 `SeriesResults` だけ。読んだ波形 run の id は描画にも保存段にも要らないので返さない) + render_report (**描画の唯一の interface** = report_run_id + Tuning。参照解決、bundle ロード、全成果物生成、その run への保存を隠す)
           marimo.py              # notebook 本体 (run 選択 + 系列 dropdown 1 件 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
           conf/                  # 学習設定 (Hydra) のみ。下記「設定ファイル」参照
 tests/    conftest.py (headless 化 + scripts/ を import path へ) / test_surrogate.py / test_inits.py / test_eval_mlflow.py (評価 run の保存/読込。tracking 先は tmp へ差し替え)

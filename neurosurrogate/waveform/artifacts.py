@@ -1,7 +1,7 @@
 """**1 ペアの詳細成果物**: 入力電流プレビューと、原系/置換系の比較。
 
 どのペアを描くかは呼び出し側が選び、ここは Dataset だけを受ける (結果型
-`SimResult`/`SeriesResults` を知らない)。成果物列への編成は
+`SeriesResults` を知らない)。成果物列への編成は
 `artifact.bundle.detail_artifacts` が受け持つ。marimo 非依存。
 """
 

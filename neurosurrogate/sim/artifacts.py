@@ -27,12 +27,13 @@ from ..core import access
 from ..core.diverge import diverged
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.diagnostics import surrogate_metrics
-from ..waveform.dynamics import dm_of, extract_metric
+from ..waveform.dynamics import DynamicMetrics, extract_metric
 from .catalog import currents
-from .result import SeriesResults, SimResult
+from .result import SeriesResults
 
 if TYPE_CHECKING:
     import numpy as np
+    import xarray as xr
     from matplotlib.axes import Axes
 
 
@@ -68,12 +69,12 @@ def _metrics_df(
     原系の値は run に依らないので `original` 列 1 本へ畳む。"""
     comp_id = view.net.name_to_idx(comp_name)
     rows: list[dict[str, float | None]] = []
-    for index, orig in enumerate(view.points):
-        row: dict[str, float | None] = {"point": orig.point}
-        for run_id in view.run_ids:
-            o, s = view.pair(index, run_id)
-            value, orig_value = extract_metric(dm_of(o, s, comp_id), metric_key)
-            row[names[run_id]] = value
+    for index, point in enumerate(view.values):
+        row: dict[str, float | None] = {"point": point}
+        for column in view.surrs:
+            dm = DynamicMetrics(*view.pair(index, column), comp_id, view.dt)
+            value, orig_value = extract_metric(dm, metric_key)
+            row[names[str(column.run_id)]] = value
             if orig_value is not None:
                 row["original"] = orig_value  # run に依らない = 同じ値の上書き
         rows.append(row)
@@ -129,17 +130,17 @@ def _shared_ylim(potentials: list[np.ndarray]) -> tuple[float, float]:
     return lo - pad, hi + pad
 
 
-def _trace_cell(ax: Axes, orig: SimResult, surr: SimResult, comp_id: int) -> None:
+def _trace_cell(ax: Axes, orig: xr.Dataset, surr: xr.Dataset, comp_id: int) -> None:
     """波形格子の 1 セル = 原系 (黒) に置換系 1 本 (赤破線) を重ねる。発散した置換系は
     レンジを潰すので描かず "diverged" を出す。"""
     ax.plot(
-        access.time(orig.dataset),
-        access.potential(orig.dataset, comp_id),
+        access.time(orig),
+        access.potential(orig, comp_id),
         "k-",
         lw=0.7,
         label="Original",
     )
-    v = access.potential(surr.dataset, comp_id)
+    v = access.potential(surr, comp_id)
     if diverged(v):
         ax.text(
             0.5,
@@ -151,9 +152,7 @@ def _trace_cell(ax: Axes, orig: SimResult, surr: SimResult, comp_id: int) -> Non
             color="red",
         )
         return
-    ax.plot(
-        access.time(surr.dataset), v, "--", lw=0.7, color="tab:red", label="surrogate"
-    )
+    ax.plot(access.time(surr), v, "--", lw=0.7, color="tab:red", label="surrogate")
 
 
 def traces_artifact(
@@ -167,26 +166,26 @@ def traces_artifact(
     「1 列の格子」に素直に退化する。
     """
     comp_id = view.net.name_to_idx(comp_name)
-    n_col, n_row = len(view.points), len(view.run_ids)
+    n_col, n_row = len(view.points), len(view.surrs)
     # **軸まわりは列数/行数に依らず一定の幅と高さを食う**ので、波形に使う分
     # (列数/行数比例) と別に固定オーバーヘッドを足す。比例分だけだと、行見出し +
     # y 目盛 + 軸外の凡例で 1 列の格子は波形が数 mm まで潰れ、行数違いの図で波形の
     # 倍率も揃わない (constrained layout は figure を広げず軸を縮めて収めるため)。
     fig = new_figure(figsize=(2.6 * n_col + 2.6, 1.8 * n_row + 0.9))
     axes = fig.subplots(n_row, n_col, squeeze=False, sharex=True)
-    ylim = _shared_ylim([access.potential(r.dataset, comp_id) for r in view.points])
+    ylim = _shared_ylim([access.potential(ds, comp_id) for ds in view.points])
     unit = currents.PARAM_UNITS.get(view.axis or "", "")
 
     for c, value in enumerate(view.values):
         if value is not None and view.axis:
             axes[0][c].set_title(f"{value:.3g} {unit}".strip())
-    for r, run_id in enumerate(view.run_ids):
+    for r, column in enumerate(view.surrs):
         # 行見出しは凡例用の複数行ラベル (`meta.label`) をそのまま使う = 凡例と同じ
         # 読み方で行を引ける。回転して置くので 1 行あたりの幅が効く → 小さめに。
-        axes[r][0].set_ylabel(names[run_id], fontsize="small")
+        axes[r][0].set_ylabel(names[str(column.run_id)], fontsize="small")
         for c in range(n_col):
             axes[r][c].set_ylim(*ylim)
-            _trace_cell(axes[r][c], *view.pair(c, run_id), comp_id)
+            _trace_cell(axes[r][c], *view.pair(c, column), comp_id)
     for c in range(n_col):
         axes[-1][c].set_xlabel("t [ms]")
     place_legend(axes[0][-1])

@@ -32,7 +32,7 @@ from ..waveform.artifacts import (
     metrics_scalar_artifact,
     simple_artifact,
 )
-from ..waveform.dynamics import dm_of
+from ..waveform.dynamics import DynamicMetrics
 from .model import Artifacts
 from .plotting import use_style
 
@@ -88,7 +88,7 @@ def report_artifacts(
 def original_artifacts(view: SeriesResults) -> Artifacts:
     """原系の波形だけで決まる成果物をまとめる。"""
     use_style()
-    return Artifacts((current_preview_artifact(view.points[0].spec),))
+    return Artifacts((current_preview_artifact(view.series.spec),))
 
 
 def detail_artifacts(
@@ -107,15 +107,15 @@ def detail_artifacts(
         raise ValueError(f"eval_comp {eval_comp!r} not in {view.target!r}")
     index = min(detail_point, len(view.points) - 1)
     comp_id = view.net.name_to_idx(eval_comp)
-    original, surrogate = view.pair(index, run_id)
+    original, surrogate = view.pair(index, view.column(run_id))
 
-    latent = preprocessed_latent(bundle, view.net, original.dataset, comp_id)
-    dm = dm_of(original, surrogate, comp_id)
+    latent = preprocessed_latent(bundle, view.net, original, comp_id)
+    dm = DynamicMetrics(original, surrogate, comp_id, view.dt)
     comps = [view.net.name_to_idx(comp) for comp in view_comps] or None
     artifacts = [
-        diff_artifact(original.dataset, latent, surrogate.dataset, comp_id),
-        simple_artifact(original.dataset, comps),
-        attractor_artifact(latent, surrogate.dataset, comp_id),
+        diff_artifact(original, latent, surrogate, comp_id),
+        simple_artifact(original, comps),
+        attractor_artifact(latent, surrogate, comp_id),
         metrics_artifact(dm, spike_orig, spike_surr),
         metrics_scalar_artifact(dm, spike_orig, spike_surr),
     ]

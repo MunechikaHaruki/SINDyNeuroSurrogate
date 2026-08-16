@@ -1,18 +1,7 @@
-"""波形 experiment (`EVAL_EXP`): **1 run = 1 `EvalSeries`** = 掃引点の波形をまとめた
-1 artifact。
-
-中身は 2 種類が並ぶだけ:
-
-    kind=original  … 掃引の原系。surrogate に依存しないので `series_hash` で共有される
-    kind=surrogate … その掃引を 1 つの学習 run の surrogate で回したもの
-
-親子関係は張らない。置換系は `original_hash` で自分の原系を名指しするので、同じ原系を
-何本の置換系が参照しても run 階層は平坦なまま。点は run の中の並び順そのもの
-(点ごとの run も点ごとの識別子も無い)。**どの波形をまとめて 1 回の評価とみなすか**は
-この層の関心でない (`report` module が持つ)。
-
-smoke test は本番の評価結果を汚さない別 experiment へ (学習側の MLFLOW_EXPERIMENT と
-同じ流儀)。
+"""波形 experiment (`EVAL_EXP`): **1 run = 1 `sim.result.SeriesRun`** = 1 列の波形を
+まとめた 1 artifact。kind=original (原系、`series_hash` で共有) と kind=surrogate が
+平坦に並び、置換系は `original_hash` で原系を名指す。点は run の中の並び順そのもの。
+**どの列をまとめて 1 回の評価とみなすか**はこの層の関心でない (`report` module)。
 """
 
 import json
@@ -27,8 +16,8 @@ import mlflow.artifacts
 import xarray as xr
 from mlflow.entities import Run
 
-from neurosurrogate.sim.result import SimResult, attach
-from neurosurrogate.sim.run import run_points
+from neurosurrogate.sim.result import SeriesRun
+from neurosurrogate.sim.run import run_column
 from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
@@ -43,15 +32,14 @@ _KIND_SURROGATE = "surrogate"
 
 def _eval_exp_id() -> str:
     """評価 experiment の id (無ければ作る)。`set_experiment` は学習側の既定を
-    書き換えてしまうので使わず、run ごとに experiment_id を指定する。"""
+    書き換えるので使わず、run ごとに experiment_id を指定する。"""
     exp = mlflow.get_experiment_by_name(EVAL_EXP)
     return exp.experiment_id if exp else mlflow.create_experiment(EVAL_EXP)
 
 
 def _series_hash(series: EvalSeries, run_id: str | None) -> str:
-    """「この掃引をこの surrogate で既に回したか」の鍵。`EvalSeries.hash` は掃引の
-    内容だけ (surrogate を含まない) なので、run_id はここで組む = 原系は鍵が掃引だけに
-    なり、学習 run を増やしても共有される。"""
+    """「この掃引をこの surrogate で既に回したか」の鍵。`EvalSeries.hash` は掃引の内容
+    だけなので run_id はここで組む = 原系は鍵が掃引だけになり全レポートで共有される。"""
     return series.hash() if run_id is None else f"{series.hash()}-{run_id}"
 
 
@@ -68,19 +56,11 @@ def _find_eval(series: EvalSeries, run_id: str | None) -> Run | None:
     return found[0] if found else None
 
 
-def _log_series(
-    name: str,
-    series: EvalSeries,
-    results: list[SimResult],
-    run_id: str | None,
-) -> str:
-    """1 系列 (点列まるごと) を 1 評価 run へ。`series` param が掃引の単一源で、
-    読み戻しはそこからの `result.attach` = 点ごとの識別子は保存しない。
-    平坦化した param は MLflow UI での絞り込み/比較用の索引。
-
-    run 名は同じ系列の原系と置換系が UI 上で並ぶので kind を添える (置換系はさらに
-    どの学習 run のものかを短縮 id で分ける)。**表示名でしかない** — 読み戻しは
-    保存した `series` / `run_id` と tag だけを見る。"""
+def _log_series(name: str, column: SeriesRun) -> str:
+    """**1 列 = 1 run**。`series` param が掃引の単一源で、波形は同じ並びで置くだけ
+    (点ごとの識別子も仕様も保存しない)。平坦化した param は MLflow UI の索引、run 名は
+    表示だけ — 読み戻しは `series` / `run_id` と tag しか見ない。"""
+    series, run_id = column.series, column.run_id
     kind = _KIND_ORIGINAL if run_id is None else f"{_KIND_SURROGATE}:{run_id[:8]}"
     with mlflow.start_run(
         experiment_id=_eval_exp_id(), run_name=f"{name} [{kind}]"
@@ -93,7 +73,7 @@ def _log_series(
                 # 区別できない。空文字を「無し」の綴りに統一する。
                 "run_id": run_id or "",
                 "axis": series.param or "",
-                "n_points": len(results),
+                "n_points": len(column.waves),
                 "target": series.spec.target,
                 "current_type": series.spec.current_type,
                 "dt": series.spec.dt,
@@ -115,8 +95,8 @@ def _log_series(
             path = Path(tmp) / WAVES_FILE
             joblib.dump(
                 [
-                    r.dataset.map(lambda v: v.astype(_WAVE_DTYPE), keep_attrs=True)
-                    for r in results
+                    ds.map(lambda v: v.astype(_WAVE_DTYPE), keep_attrs=True)
+                    for ds in column.waves
                 ],
                 path,
                 compress=1,  # float32 波形はほぼ非圧縮 → 高レベルは時間の無駄
@@ -129,47 +109,30 @@ def _log_series(
 def run_series(
     name: str,
     series: EvalSeries,
-    model: tuple[str, SurrogateBundle] | None,
+    run_id: str | None,
+    surrogate: SurrogateBundle | None,
     force: bool,
 ) -> str:
-    """1 系列 → 波形 run の id。既に同じ掃引 (同じ surrogate) の run があればそれを
-    返すだけ = **回さない** (シミュは決定的)。`force=True` は無条件に回し直して新しい
-    run を積む。
-
-    `model` は「どの学習 run のどの置換器で回すか」の対 (`None`=原系)。掃引の記述
-    (`series`) は置換器を持たないので、run_id と bundle をここで組んで渡す。
-
-    **回すか否かと保存は分けない** — 「決定的だから同じ入力は再計算しない」は探索と
-    実行が対で成り立つ不変条件で、割ると呼ぶ側が同じ判断を持つことになる。"""
-    run_id = model[0] if model else None
+    """1 列 → 波形 run の id。同じ掃引を同じ surrogate で回した run があればそれを返す
+    = **回さない** (シミュは決定的。`force` で回し直す)。`run_id`/`surrogate` が両方
+    `None` なら原系。**探索と保存は分けない** — 対で成り立つ不変条件なので割らない。"""
     found = None if force else _find_eval(series, run_id)
     if found is not None:
         return found.info.run_id
-    return _log_series(
-        name, series, run_points(series, model[1] if model else None), run_id
-    )
+    return _log_series(name, run_column(series, run_id, surrogate))
 
 
-def source_run_of(eval_run_id: str) -> str:
-    """置換系の波形 run → それを回した**学習 run の id** (波形 run 自身が param で
-    持つ)。レポート側が学習 run との対応表を別に持たずに済む = レポートは波形 run の
-    id だけを指せばよい。"""
-    return mlflow.get_run(eval_run_id).data.params["run_id"]
-
-
-def _datasets_of(eval_run_id: str) -> list[xr.Dataset]:
-    """評価 run → 点の順に並んだ波形列 (artifact を読む)。"""
+def column_of(eval_run_id: str) -> SeriesRun:
+    """波形 run の id → **その run が保存した列そのもの** (`_log_series` の逆)。記述も
+    run_id も param が持つので、呼ぶ側は id 1 つを指すだけでよい。"""
+    params = mlflow.get_run(eval_run_id).data.params
     with tempfile.TemporaryDirectory() as tmp:
         local = mlflow.artifacts.download_artifacts(
             f"runs:/{eval_run_id}/{WAVES_FILE}", dst_path=tmp
         )
-        return cast(list[xr.Dataset], joblib.load(local))
-
-
-def results_of(eval_run_id: str) -> list[SimResult]:
-    """波形 run の id → 点列の結果。掃引の定義が run に載っているので、点の並べ直しも
-    点ごとの識別子も要らない (`result.attach` が貼る)。"""
-    series = EvalSeries.from_dict(
-        json.loads(mlflow.get_run(eval_run_id).data.params["series"])
-    )
-    return attach(series, _datasets_of(eval_run_id))
+        return SeriesRun(
+            EvalSeries.from_dict(json.loads(params["series"])),
+            # 空文字が「無し」の綴り (MLflow の param は文字列なので None を書けない)。
+            params["run_id"] or None,
+            cast(list[xr.Dataset], joblib.load(local)),
+        )

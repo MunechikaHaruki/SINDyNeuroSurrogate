@@ -1,9 +1,8 @@
 """学習 experiment (`TARGET_EXP`): surrogate の pickle + meta.json を持つ run。
 
-**評価 (波形) を知らない** — ここが答えるのは「どんな学習 run が居るか」
-(`get_runs_df`) と「その run の surrogate / meta」。成果物の編成は
-`report.render_report` が担う。run 一覧は marimo の run 選択そのものなので、
-読込不可の run を落とす判断もここに置く (選択肢に出せない run は下流へ流さない)。
+**評価 (波形) を知らない** — 答えるのは「どんな学習 run が居るか」(`get_runs_df`) と
+「その run の surrogate / meta」だけ。run 一覧は marimo の run 選択そのものなので、
+読込不可の run を落とす判断もここ (選択肢に出せない run は下流へ流さない)。
 """
 
 import json
@@ -34,11 +33,8 @@ def log_surrogate_model(surrogate: SurrogateBundle) -> None:
 
 @cache
 def _load_surrogate_model(run_id: str) -> SurrogateBundle:
-    """run_id → surrogate。**run_id ごとに 1 回だけ** artifact を DL して unpickle
-    する。同じ run が一覧走査 (get_runs_df の meta 読込) と選択後のロードで最低
-    2 回、marimo のセル再実行のたびに何度も要求されるため。artifact は run に対し
-    不変なので、返す bundle を使い回してよい (bundle 側も load 後は書き換えない)。
-    """
+    """run_id → surrogate。**run_id ごとに 1 回だけ** DL + unpickle (marimo のセル
+    再実行で何度も要求される)。artifact は run に対し不変なので使い回してよい。"""
     logger.debug(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
@@ -69,9 +65,8 @@ def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
 
 
 def sweep_siblings(parent_id: str) -> list[str]:
-    """親 run (or 単発) の run_id → その sweep 群 = 自身 + 子 (parentRunId 一致)。
-    db を直接引く (runs_df 非依存)。run_selector は代表だけ出すので引数は常に親、
-    単発は子ゼロ = 1 件。"""
+    """親 run (or 単発) の run_id → sweep 群 = 自身 + 子 (parentRunId 一致)。db を直接
+    引く (runs_df 非依存)。run_selector は代表だけ出すので引数は常に親。"""
     children = mlflow.search_runs(
         filter_string=f"tags.`{MLFLOW_PARENT_RUN_ID}` = '{parent_id}'",
         output_format="list",

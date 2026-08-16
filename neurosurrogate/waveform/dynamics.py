@@ -14,16 +14,13 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, TypeVar
+from typing import TypeVar
 
 import efel
 import numpy as np
 import xarray as xr
 
 from ..core import access
-
-if TYPE_CHECKING:
-    from ..sim.result import SimResult
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -109,11 +106,6 @@ class DynamicMetrics:
         orig_feat, surr_feat = self.efel
         p, q = orig_feat.get("peak_indices"), surr_feat.get("peak_indices")
         return (list(p) if p is not None else []), (list(q) if q is not None else [])
-
-
-def dm_of(orig: SimResult, surr: SimResult, comp_id: int) -> DynamicMetrics:
-    """(原系, 置換系) の `SimResult` ペアから `DynamicMetrics` を組み立てる。"""
-    return DynamicMetrics(orig.dataset, surr.dataset, comp_id, surr.spec.dt)
 
 
 def _or_nan(fn, arr) -> float:
