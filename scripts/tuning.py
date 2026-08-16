@@ -1,6 +1,6 @@
 """**描画への入力**: 1 レポートをどう描くか (`Tuning`)。
 
-ドメイン (`neurosurrogate.report`) には置かない — 描画関数はどれも必要な値を素の
+ドメインの成果物生成 module には置かない — 描画関数はどれも必要な値を素の
 引数で受け取り、この束を知らない。値を与えるのは `scripts/marimo.py` の widget
 1 箇所で、束を解いて描画層へ渡すのは `scripts/mlflow_io` の各 module = **UI の
 つまみ 1 組**という入口側の関心にそろえる。
@@ -21,7 +21,7 @@ class Tuning:
     系列を選んだ後に決まる。残りは既定のままでもレポートが出る。
 
     **何を描くかは宣言しない**: モデル側の図はその run が自分について描けるもの
-    (`surrogate.figures.surrogate_figs` が bundle の型から解く)、評価側の図は結果の形
+    (`artifact.bundle.surrogate_artifacts` が bundle の型から解く)、評価側の図は結果の形
     (点が 2 つ以上なら折れ線が出る) で決まる。図の種類名がこの型に出てこないのが
     不変条件。
     """

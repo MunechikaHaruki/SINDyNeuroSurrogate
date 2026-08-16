@@ -1,4 +1,4 @@
-"""学習データの可視化: 閉包項に「何を食わせたか」を描く。
+"""学習データ成果物: 閉包項に「何を食わせたか」を描く。
 
 学習データの実体は保存されていない — `SurrogateMeta` (dataset/電流/dt) と
 `Ansatz.train_source` (どの comp の・先頭何ゲートか) から `bundle.train_xr` を
@@ -14,16 +14,16 @@ from collections.abc import Sequence
 
 import jax.numpy as jnp
 import numpy as np
-from matplotlib.figure import Figure
 
-from ...core import access
-from ...plotting import (
+from ...artifact.model import Artifact
+from ...artifact.plotting import (
     PanelSpec,
     TraceSpec,
     draw_engine,
     new_figure,
     place_legend,
 )
+from ...core import access
 from ..bundle import SurrogateBundle
 
 _HIST_BINS = 60
@@ -69,11 +69,11 @@ def _latents(bundle: SurrogateBundle, comp_ids: Sequence[int]) -> list[np.ndarra
     ]
 
 
-def train_raw_fig(
+def train_raw_artifact(
     bundle: SurrogateBundle,
     comps: Sequence[int] | None = None,
     i_ext_ylim: tuple[float, float] | None = None,
-) -> Figure:
+) -> Artifact:
     """生の学習軌道: 注入電流・学習 comp の V・表示先頭 comp のゲート。
 
     どの comp の軌道を食わせたかを V パネルで見る。ゲートは表示 comp の先頭 1 個のみ
@@ -83,45 +83,48 @@ def train_raw_fig(
     """
     source = bundle.ansatz.train_source(bundle.meta)
     shown = _shown(bundle, _soma_ids(bundle))
-    return draw_engine(
-        [
-            PanelSpec(
-                "I_ext(t)\n[μA/cm²]",
-                [TraceSpec(*access.i_ext(bundle.train_xr), color="#FFC107")],
-                ylim=i_ext_ylim,
-            ),
-            PanelSpec(
-                "v(t) [mV]",
-                [
-                    TraceSpec(
-                        *access.trace(bundle.train_xr, i, access.POTENTIAL_VAR),
-                        label=name,
-                    )
-                    for _, i, name in shown
-                ],
-            ),
-            PanelSpec(
-                f"gates ({shown[0][2]})",
-                [
-                    TraceSpec(
-                        access.time(bundle.train_xr),
-                        source.gate(bundle.train_xr, shown[0][1])[:, k],
-                        # 表記はポスター本文 (m, n, h, ...) に揃える
-                        label=name.lower(),
-                    )
-                    for k, name in enumerate(
-                        bundle.meta.comp_type.gate_names[: source.n_gate]
-                    )
-                ],
-            ),
-        ],
-        figsize=_figsize(3),
+    return Artifact(
+        "train_raw",
+        draw_engine(
+            [
+                PanelSpec(
+                    "I_ext(t)\n[μA/cm²]",
+                    [TraceSpec(*access.i_ext(bundle.train_xr), color="#FFC107")],
+                    ylim=i_ext_ylim,
+                ),
+                PanelSpec(
+                    "v(t) [mV]",
+                    [
+                        TraceSpec(
+                            *access.trace(bundle.train_xr, i, access.POTENTIAL_VAR),
+                            label=name,
+                        )
+                        for _, i, name in shown
+                    ],
+                ),
+                PanelSpec(
+                    f"gates ({shown[0][2]})",
+                    [
+                        TraceSpec(
+                            access.time(bundle.train_xr),
+                            source.gate(bundle.train_xr, shown[0][1])[:, k],
+                            # 表記はポスター本文 (m, n, h, ...) に揃える
+                            label=name.lower(),
+                        )
+                        for k, name in enumerate(
+                            bundle.meta.comp_type.gate_names[: source.n_gate]
+                        )
+                    ],
+                ),
+            ],
+            figsize=_figsize(3),
+        ),
     )
 
 
-def train_preprocessed_fig(
+def train_preprocessed_artifact(
     bundle: SurrogateBundle, comps: Sequence[int] | None = None
-) -> Figure:
+) -> Artifact:
     """同定器へ渡す**直前**の圧縮済みデータ (状態列 x を 1 列 1 段、comp 重ね)。
 
     fit と同じ `ansatz.train_inputs` を呼ぶ → 図に出るのが学習に入ったもの。V は圧縮
@@ -149,12 +152,12 @@ def train_preprocessed_fig(
         for k, name in enumerate(names)
         if name != access.POTENTIAL_VAR  # V は圧縮していない → 圧縮後の図には出さない
     ]
-    return draw_engine(panels, figsize=_figsize(3))
+    return Artifact("train_preprocessed", draw_engine(panels, figsize=_figsize(3)))
 
 
-def train_recon_fig(
+def train_recon_artifact(
     bundle: SurrogateBundle, comps: Sequence[int] | None = None
-) -> Figure:
+) -> Artifact:
     """preprocessor の再構成誤差 (ゲート → 潜在 → ゲートの RMSE、comp 別)。
 
     「潜在に落とした時点で何を捨てたか」= 閉包項の同定より手前で決まる誤差の下限。
@@ -162,37 +165,40 @@ def train_recon_fig(
     source = bundle.ansatz.train_source(bundle.meta)
     shown = _shown(bundle, comps)
     latents = _latents(bundle, [i for _, i, _ in shown])
-    return draw_engine(
-        [
-            PanelSpec(
-                "recon RMSE",
-                [
-                    TraceSpec(
-                        access.time(bundle.train_xr),
-                        np.sqrt(
-                            np.mean(
-                                (
-                                    source.gate(bundle.train_xr, i)
-                                    - np.asarray(
-                                        bundle.preprocessor.decode(jnp.asarray(lat))
+    return Artifact(
+        "train_recon",
+        draw_engine(
+            [
+                PanelSpec(
+                    "recon RMSE",
+                    [
+                        TraceSpec(
+                            access.time(bundle.train_xr),
+                            np.sqrt(
+                                np.mean(
+                                    (
+                                        source.gate(bundle.train_xr, i)
+                                        - np.asarray(
+                                            bundle.preprocessor.decode(jnp.asarray(lat))
+                                        )
                                     )
+                                    ** 2,
+                                    axis=1,
                                 )
-                                ** 2,
-                                axis=1,
-                            )
-                        ),
-                        label=label,
-                    )
-                    for (_, i, label), lat in zip(shown, latents, strict=True)
-                ],
-            )
-        ]
+                            ),
+                            label=label,
+                        )
+                        for (_, i, label), lat in zip(shown, latents, strict=True)
+                    ],
+                )
+            ]
+        ),
     )
 
 
-def train_v_coverage_fig(
+def train_v_coverage_artifact(
     bundle: SurrogateBundle, comps: Sequence[int] | None = None
-) -> Figure:
+) -> Artifact:
     """学習が踏んだ V の分布 (comp 別ヒストグラム)。
 
     hybrid の multi-comp 学習は「comp を足して増えるのは V の被覆だけ」を前提に
@@ -212,12 +218,12 @@ def train_v_coverage_fig(
     ax.set_ylabel("count")
     ax.set_title("Training V coverage")
     place_legend(ax)
-    return fig
+    return Artifact("train_v_coverage", fig)
 
 
-def train_manifold_fig(
+def train_manifold_artifact(
     bundle: SurrogateBundle, comps: Sequence[int] | None = None
-) -> Figure:
+) -> Artifact:
     """潜在空間の軌道 (comp 別)。学習ゲートが乗る多様体の形。
 
     学習ゲートは params-free なので comp が違っても同一多様体に乗るはず → 軌道が
@@ -245,4 +251,4 @@ def train_manifold_fig(
     ax.set_title("Latent manifold")
     ax.grid(True, linestyle=":", alpha=0.5)
     place_legend(ax)
-    return fig
+    return Artifact("train_manifold", fig)

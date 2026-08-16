@@ -49,8 +49,6 @@ def preprocessed_latent(
     """
     comp = net.nodes[comp_id]
     if not replaceable(surrogate.meta, comp):
-        # error_fig 経由で matplotlib テキストへ描かれる → CJK グリフ非対応で
-        # 文字化けするため英語で書く。
         raise ValueError(
             f"comp {comp.name!r} is outside the trained domain -> latent comparison "
             f"not possible (trained type {surrogate.meta.comp_type.name!r})"

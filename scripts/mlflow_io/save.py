@@ -24,7 +24,7 @@ import mlflow
 import pandas as pd
 from tuning import Tuning
 
-from neurosurrogate.plotting import Artifact
+from neurosurrogate.artifact.model import Artifact
 
 from . import logger
 
@@ -64,11 +64,15 @@ def under(prefix: str, artifacts: list[Artifact]) -> list[Artifact]:
     return [Artifact(f"{prefix}/{a.name}", a.obj) for a in artifacts]
 
 
-def per_run(prefix: str, figs: dict[str, list[Artifact]]) -> list[Artifact]:
+def per_run(prefix: str, artifacts: dict[str, list[Artifact]]) -> list[Artifact]:
     """run 軸で開いた成果物 (学習 run_id → 図) に `<prefix>/<run 名>/` の段を付ける。
     **段名の決め方を知るのはここだけ** = `models/` も `series/` も同じ綴りで並ぶ。"""
-    dirs = _run_dirs(list(figs))
-    return [a for rid, fs in figs.items() for a in under(f"{prefix}/{dirs[rid]}", fs)]
+    dirs = _run_dirs(list(artifacts))
+    return [
+        artifact
+        for run_id, run_artifacts in artifacts.items()
+        for artifact in under(f"{prefix}/{dirs[run_id]}", run_artifacts)
+    ]
 
 
 def _log(client: mlflow.MlflowClient, run_id: str, artifact: Artifact) -> str:

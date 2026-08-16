@@ -29,13 +29,12 @@ import mlflow
 from mlflow.entities import Run
 from tuning import Tuning
 
-from neurosurrogate.plotting import Artifact
-from neurosurrogate.sim.figures import (
-    detail_figs,
-    original_figs,
-    summary_figs,
-    wave_report_figs,
+from neurosurrogate.artifact.bundle import (
+    detail_artifacts,
+    original_artifacts,
+    report_artifacts,
 )
+from neurosurrogate.artifact.model import Artifact
 from neurosurrogate.sim.result import SeriesResults
 from neurosurrogate.sim.run import replaced_runs
 from neurosurrogate.sim.spec import EvalSeries
@@ -214,12 +213,9 @@ def _report_artifacts(
 ) -> list[Artifact]:
     """1 レポート → **run 横断でこの選択でしか出ない図** (レポート run の直下)。
     比べた N 本のサマリ表と、点軸 × run 軸に開いた波形格子/折れ線。"""
-    return [
-        *summary_figs(bundles),
-        *wave_report_figs(
-            report.view, bundles, tuning.eval_comp, tuning.metric, tuning.metric_ylim
-        ),
-    ]
+    return report_artifacts(
+        report.view, bundles, tuning.eval_comp, tuning.metric, tuning.metric_ylim
+    )
 
 
 def _series_artifacts(
@@ -232,10 +228,10 @@ def _series_artifacts(
     引け、ディレクトリから元の run を辿れる。
     """
     view = report.view
-    return under("series/original", original_figs(view)) + per_run(
+    return under("series/original", original_artifacts(view)) + per_run(
         "series",
         {
-            run_id: detail_figs(
+            run_id: detail_artifacts(
                 view,
                 run_id,
                 bundles[run_id],

@@ -162,8 +162,8 @@ def _(METRIC_KEYS, comp_options, mo):
 def _(Tuning, tuning_ui):
     # **widget → 描き方 1 値**。y レンジは「auto か否か」の 3 widget を 1 値へ畳む
     # (ドメイン側が持つのは `ylim: tuple | None` 1 つだけ = UI の都合をドメインの型に
-    # 持ち込まない)。comp 未選択 (系列未選択) は空文字のまま渡し、描画側の
-    # 「適用先に無い comp」と同じエラー図で気付かせる。
+    # 持ち込まない)。comp 未選択 (系列未選択) は空文字のまま渡し、描画側で
+    # 設定誤りとして落とす。
     values = tuning_ui.value
     tuning = Tuning(
         eval_comp=values["eval_comp"] or "",

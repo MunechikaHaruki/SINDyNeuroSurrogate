@@ -1,8 +1,8 @@
-"""**1 ペアの詳細図**: 入力電流プレビューと、原系/置換系の比較 (波形・差分・相平面)。
+"""**1 ペアの詳細成果物**: 入力電流プレビューと、原系/置換系の比較。
 
 どのペアを描くかは呼び出し側が選び、ここは Dataset だけを受ける (結果型
-`SimResult`/`SeriesResults` を知らない)。一括生成する `cell_figs` は
-`waveform/__init__.py`。marimo 非依存。
+`SimResult`/`SeriesResults` を知らない)。成果物列への編成は
+`artifact.bundle.detail_artifacts` が受け持つ。marimo 非依存。
 """
 
 from __future__ import annotations
@@ -11,23 +11,30 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import xarray as xr
-from matplotlib.figure import Figure
+from matplotlib import rcParams
 
+from ..artifact.model import Artifact
+from ..artifact.plotting import (
+    PanelSpec,
+    TraceSpec,
+    draw_engine,
+    new_figure,
+    place_legend,
+)
 from ..core import access
 from ..core.access import POTENTIAL_VAR
-from ..plotting import PanelSpec, TraceSpec, error_fig, new_figure, place_legend
+from ._tables import spike_features_df, waveform_summary_df
+from .dynamics import DynamicMetrics, n_spikes, spike_shape_corr, waveform_summary
 
 if TYPE_CHECKING:
     from ..sim.spec import SimSpec
 
 
-def current_preview_fig(spec: SimSpec) -> Figure:
-    """電流波形プレビュー。構築失敗は error_fig。marimo 非依存。"""
-    try:
-        i_ext = spec.current()
-    except Exception as e:  # noqa: BLE001
-        return error_fig(f"build failed: {e}")
+def current_preview_artifact(spec: SimSpec) -> Artifact:
+    """電流波形プレビュー。marimo 非依存。"""
+    i_ext = spec.current()
     t = np.arange(len(i_ext)) * spec.dt
     fig = new_figure(figsize=(6, 2))
     ax = fig.subplots()
@@ -35,7 +42,61 @@ def current_preview_fig(spec: SimSpec) -> Figure:
     ax.set_xlabel("t [ms]")
     ax.set_ylabel("I_ext [μA/cm²]")
     ax.set_title(f"{spec.current_type} preview")
-    return fig
+    return Artifact("current", fig)
+
+
+def diff_artifact(
+    original: xr.Dataset,
+    preprocessed: xr.Dataset,
+    surrogate: xr.Dataset,
+    comp_id: int,
+    i_ext_ylim: tuple[float, float] | None = None,
+) -> Artifact:
+    """1 ペアの差分図を単一成果物として返す。"""
+    return Artifact(
+        "diff",
+        draw_engine(
+            _panels_diff(original, preprocessed, surrogate, comp_id, i_ext_ylim),
+            figsize=(
+                rcParams["figure.figsize"][0],
+                rcParams["figure.figsize"][1] * 1.3,
+            ),
+        ),
+    )
+
+
+def simple_artifact(
+    original: xr.Dataset, comps: Sequence[int] | None = None
+) -> Artifact:
+    return Artifact("simple", draw_engine(panels_simple(original, comps)))
+
+
+def metrics_artifact(
+    dm: DynamicMetrics,
+    spike_orig: int = 0,
+    spike_surr: int = 0,
+) -> Artifact:
+    """波形指標と、指定されたスパイクの特徴量を表にする。"""
+    n_orig, n_surr = n_spikes(dm)
+    metrics = waveform_summary_df(dm)
+    if 0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr:
+        spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
+        spike.index.name = "metric"
+        metrics = pd.concat([metrics, spike])
+    return Artifact("metrics", metrics)
+
+
+def metrics_scalar_artifact(
+    dm: DynamicMetrics, spike_orig: int = 0, spike_surr: int = 0
+) -> Artifact:
+    metrics = waveform_summary(dm)
+    n_orig, n_surr = n_spikes(dm)
+    if 0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr:
+        metrics.update(spike_shape_corr(dm))
+    return Artifact(
+        "metrics_scalar",
+        pd.DataFrame(metrics.items(), columns=["metric", "value"]).set_index("metric"),
+    )
 
 
 def panels_simple(
@@ -84,7 +145,7 @@ def panels_simple(
     return spec
 
 
-def panels_diff(
+def _panels_diff(
     original: xr.Dataset,
     preprocessed: xr.Dataset,
     surrogate: xr.Dataset,
@@ -137,9 +198,11 @@ def panels_diff(
     ]
 
 
-def attractor_fig(orig_ds: xr.Dataset, surr_ds: xr.Dataset, comp_id: int) -> Figure:
+def attractor_artifact(
+    orig_ds: xr.Dataset, surr_ds: xr.Dataset, comp_id: int
+) -> Artifact:
     """相平面 (V × 第1潜在) の重ね描き。原系と置換系のダイナミクス一致度を見る。
-    変数が無い comp では KeyError が出るまま (呼び出し側の `collect` が畳む)。"""
+    変数が無い comp では KeyError が呼び出し元へ伝播する。"""
     x_var, y_var = access.POTENTIAL_VAR, access.latent_vars(1)[0]
 
     def trajectory(ds: xr.Dataset) -> tuple[np.ndarray, np.ndarray]:
@@ -163,4 +226,4 @@ def attractor_fig(orig_ds: xr.Dataset, surr_ds: xr.Dataset, comp_id: int) -> Fig
     # ランダム電流だと軌道がボヤける → グリッドがあると位置関係を追いやすい
     ax.grid(True, linestyle=":", alpha=0.5)
     place_legend(ax)
-    return fig
+    return Artifact("attractor", fig)

@@ -17,6 +17,13 @@ from hydra import compose, initialize_config_dir
 from matplotlib.figure import Figure
 from omegaconf import OmegaConf
 
+import neurosurrogate.artifact.bundle as artifact_bundle
+from neurosurrogate.artifact.bundle import (
+    detail_artifacts,
+    original_artifacts,
+    report_artifacts,
+    surrogate_artifacts,
+)
 from neurosurrogate.core import access
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
@@ -25,14 +32,7 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
-from neurosurrogate.plotting import collect, new_figure
-from neurosurrogate.sim.figures import (
-    detail_figs,
-    original_figs,
-    summary_figs,
-    trace_grid_fig,
-    wave_report_figs,
-)
+from neurosurrogate.sim.artifacts import summary_artifact, traces_artifact
 from neurosurrogate.sim.result import SeriesResults
 from neurosurrogate.sim.run import replaced_runs, run_points
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
@@ -42,18 +42,23 @@ from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
     hybrid_surr_comp_type,
 )
 from neurosurrogate.surrogate.ansatz.impl.ude import UDEAnsatz
+from neurosurrogate.surrogate.artifacts import (
+    preprocessor_artifact,
+)
+from neurosurrogate.surrogate.artifacts.model import feature_tex, tex
+from neurosurrogate.surrogate.artifacts.train import (
+    train_manifold_artifact,
+    train_preprocessed_artifact,
+    train_raw_artifact,
+    train_recon_artifact,
+    train_v_coverage_artifact,
+)
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 from neurosurrogate.surrogate.closure.base import Closure
 from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.closure.ude import UDEClosure
 from neurosurrogate.surrogate.diagnostics import preprocessed_latent
-from neurosurrogate.surrogate.figures import (
-    preprocessor_figs,
-    surrogate_figs,
-    train_figs,
-)
-from neurosurrogate.surrogate.figures.model import feature_tex, tex
 from neurosurrogate.surrogate.preprocessor.base import Preprocessor
 from neurosurrogate.surrogate.preprocessor.impl.autoencoder import AEPreprocessor
 from neurosurrogate.surrogate.preprocessor.impl.pca import PCAPreprocessor
@@ -62,7 +67,12 @@ from neurosurrogate.surrogate.replace import (
     replace_nodes,
     replaceables,
 )
-from neurosurrogate.waveform import cell_figs, panels_simple
+from neurosurrogate.waveform.artifacts import (
+    attractor_artifact,
+    diff_artifact,
+    panels_simple,
+    simple_artifact,
+)
 from neurosurrogate.waveform.dynamics import (
     METRIC_KEYS,
     DynamicMetrics,
@@ -169,18 +179,23 @@ def test_sweep_metric_choices_are_all_extractable(sindy_view: SeriesResults) -> 
         extract_metric(dm, "latency_error")
 
 
-def test_sindy_draws_all_figs(
+def test_sindy_draws_all_artifacts(
     sindy_view: SeriesResults, sindy: SurrogateBundle
 ) -> None:
     """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
     orig, surr = sindy_view.pair(0, "r0")
-    figs = cell_figs(
-        orig.dataset,
-        surr.dataset,
-        0,
-        lambda: preprocessed_latent(sindy, orig.spec.net, orig.dataset, 0),
-    )
-    assert [a.name for a in figs] == ["diff", "simple", "attractor"]
+
+    latent = preprocessed_latent(sindy, orig.spec.net, orig.dataset, 0)
+    artifacts = [
+        diff_artifact(orig.dataset, latent, surr.dataset, 0),
+        simple_artifact(orig.dataset),
+        attractor_artifact(latent, surr.dataset, 0),
+    ]
+    assert [artifact.name for artifact in artifacts] == [
+        "diff",
+        "simple",
+        "attractor",
+    ]
 
 
 def test_catalog_is_self_consistent() -> None:
@@ -225,10 +240,11 @@ def test_trace_grid_rows_are_one_per_model(sindy: SurrogateBundle) -> None:
     bundles = {"r0": sindy, "r1": sindy}
     names = {"r0": "a", "r1": "b"}
     view = _sweep_view(bundles, [5.0, 10.0])
-    fig = trace_grid_fig(view, names, "soma")
-    assert len(fig.axes) == 2 * 2  # 2 モデル行 × 2 点列
+    artifact = traces_artifact(view, names, "soma")
+    assert isinstance(artifact.obj, Figure)
+    assert len(artifact.obj.axes) == 2 * 2  # 2 モデル行 × 2 点列
     # 行がどの run かは行見出し (左列の y ラベル) で読む。
-    assert [ax.get_ylabel() for ax in fig.axes] == ["a", "", "b", ""]
+    assert [ax.get_ylabel() for ax in artifact.obj.axes] == ["a", "", "b", ""]
 
 
 def test_series_view_columns_must_line_up_across_runs(
@@ -250,42 +266,46 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     点と run 軸だけ)、どの run に属するか (= 保存段) は**どの関数を呼んだか**で決まる
     (段を組むのは `scripts/mlflow_io`)。"""
     view = SeriesResults(sindy_view.points, sindy_view.surrs)
-    assert [f.name for f in original_figs(view)] == ["current"]
-    waves = wave_report_figs(view, {"r0": sindy}, "soma", "spike_count", None)
+    assert [f.name for f in original_artifacts(view)] == ["current"]
+    waves = report_artifacts(view, {"r0": sindy}, "soma", "spike_count", None)
     assert "traces" in {f.name for f in waves}
     # 詳細図は点 index を名前に持つので、つまみを動かしても前の点を上書きしない。
     # 手元の点数へ丸める (設定が実際の点数を超えていても描く)。
     last = len(view.points) - 1
-    moved = detail_figs(view, "r0", sindy, "soma", (), 99, 0, 0)
+    moved = detail_artifacts(view, "r0", sindy, "soma", (), 99, 0, 0)
     assert moved and all(f.name.startswith(f"p{last}/") for f in moved)
-    # 適用先に無い comp は詳細図を描かない (レポート側はエラー図 1 枚に畳む)
-    assert detail_figs(view, "r0", sindy, "nope", (), 0, 0, 0) == []
+    # 適用先に無い comp は設定誤りとして落とす。
+    with pytest.raises(ValueError, match="eval_comp"):
+        detail_artifacts(view, "r0", sindy, "nope", (), 0, 0, 0)
+    with pytest.raises(ValueError, match="eval_comp"):
+        report_artifacts(view, {"r0": sindy}, "nope", "spike_count", None)
 
 
-def test_surrogate_figs_come_from_the_run_itself_not_a_declaration(
+def test_surrogate_artifacts_come_from_the_run_itself_not_a_declaration(
     sindy: SurrogateBundle,
 ) -> None:
     """モデル側の図は**その run が自分について描けるもの**で決まる (何を描くかの
     宣言を受け取らない)。描く対象は学習 run そのものなので、レポートを増やしても
     同じ図が複製されない。run 横断のサマリ表はここに無い (選択した N 本の産物)。"""
-    figs = surrogate_figs(sindy, ())
+    artifacts = surrogate_artifacts(sindy, ())
     # SINDy = ξ heatmap を持つ表現なので model 図が出る
-    assert "model" in {f.name for f in figs}
-    assert not any("summary" in f.name for f in figs)
-    assert any("summary" in f.name for f in summary_figs({"r0": sindy}))
+    assert "model" in {artifact.name for artifact in artifacts}
+    assert not any("summary" in artifact.name for artifact in artifacts)
+    assert summary_artifact({"r0": sindy}).name == "summary"
 
 
-def test_failed_figs_fold_into_error(
-    capsys: pytest.CaptureFixture[str],
+def test_artifact_failure_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+    sindy: SurrogateBundle,
 ) -> None:
-    """描画 job の失敗は列を保ったまま error 図へ畳む = 1 図の失敗で他の図まで
-    落とさない。"""
+    """描画失敗を正常な成果物へ変換せず、呼び出し元へ伝播させる。"""
 
     def boom() -> Figure:
         raise KeyError("missing var")
 
-    assert [a.name for a in collect({"ok": new_figure, "ng": boom})] == ["ok", "ng"]
-    assert "ng" in capsys.readouterr().err  # 失敗は握り潰さず stderr へも出す
+    monkeypatch.setattr(artifact_bundle, "train_raw_artifact", lambda *_: boom())
+    with pytest.raises(KeyError, match="missing var"):
+        surrogate_artifacts(sindy)
 
 
 def test_view_comps_limit_drawn_traces(
@@ -295,9 +315,9 @@ def test_view_comps_limit_drawn_traces(
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
     ds = sindy_view.points[0].dataset
     assert len(panels_simple(ds, comps=[])) < len(panels_simple(ds))
-    assert [a.name for a in train_figs(sindy, comps=[_train_comp(sindy)])] == [
-        a.name for a in train_figs(sindy)
-    ]
+    assert train_raw_artifact(sindy, comps=[_train_comp(sindy)]).name == (
+        train_raw_artifact(sindy).name
+    )
 
 
 def test_pca_metrics_report_per_component_and_cumulative_ratio(
@@ -318,17 +338,18 @@ def test_pca_metrics_report_per_component_and_cumulative_ratio(
     assert len(prep.full_explained_variance_ratio) >= n_kept
 
 
-def test_preprocessor_figs_scree_for_pca_empty_for_ae(
+def test_preprocessor_artifact_scree_for_pca_none_for_ae(
     sindy: SurrogateBundle,
 ) -> None:
-    """PCA は scree 図を返し、AE は固有図なし → 空列 (closure_figs と同型)。"""
-    assert [a.name for a in preprocessor_figs(sindy.preprocessor)] == ["pca_scree"]
+    """PCA は scree 成果物を返し、AE は固有成果物なし → None。"""
+    artifact = preprocessor_artifact(sindy.preprocessor)
+    assert artifact is not None and artifact.name == "pca_scree"
     ae = fit_surrogate("_test_traub_hybrid")  # preprocessor_type=ae ではないので確認
     if isinstance(ae.preprocessor, AEPreprocessor):
-        assert preprocessor_figs(ae.preprocessor) == []
+        assert preprocessor_artifact(ae.preprocessor) is None
 
 
-def test_train_figs_render_from_reloaded_surrogate(
+def test_train_artifacts_render_from_reloaded_surrogate(
     sindy: SurrogateBundle, tmp_path: Path
 ) -> None:
     """学習データ図は save/load を跨いで描ける: 軌道は保存されず meta +
@@ -340,7 +361,16 @@ def test_train_figs_render_from_reloaded_surrogate(
     assert source.comp_ids == [_train_comp(sindy)]  # 単体 hh モデル → 1 comp
     assert source.n_gate == len(sindy.meta.comp_type.gate_names)  # 全ゲート
 
-    names = [a.name for a in train_figs(reloaded)]
+    names = [
+        artifact.name
+        for artifact in (
+            train_raw_artifact(reloaded),
+            train_preprocessed_artifact(reloaded),
+            train_recon_artifact(reloaded),
+            train_v_coverage_artifact(reloaded),
+            train_manifold_artifact(reloaded),
+        )
+    ]
     assert names == [
         "train_raw",
         "train_preprocessed",

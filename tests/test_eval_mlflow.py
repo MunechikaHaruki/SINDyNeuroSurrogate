@@ -168,7 +168,7 @@ def test_everything_drawn_lands_in_the_one_report_run(
     束ねる単位はレポート以外に無い)。**学習 run にも波形 run にも書かない** = 記録した
     run を描画が書き換えない。
 
-    `eval_comp` が適用先に無ければ黙って描かずエラー図 1 枚 (誤りも同じレポートの中)。
+    `eval_comp` が適用先に無ければ設定誤りとして描画を失敗させる。
     """
     # 段名は学習 run の MLflow run 名なので、代役 id でなく実在の学習 run を立てる。
     train_id = _train_run("surr-A", sindy)
@@ -198,11 +198,8 @@ def test_everything_drawn_lands_in_the_one_report_run(
     # 描いたときの表示設定は 1 枚だけ添える (成果物ごとの由来は run が既に指している)
     assert save.DRAW_FILE in {a.path for a in client.list_artifacts(report_id)}
 
-    # 適用先に無い comp: 波形を見る図はエラー図 1 枚に畳む (波形を見ないサマリ表は
-    # そのまま出る)。
-    err = render_report(report_id, Tuning(eval_comp="nope"))
-    assert "error.png" in err
-    assert not any(path in ("traces.png", "metric.png") for path in err)
+    with pytest.raises(ValueError, match="eval_comp"):
+        render_report(report_id, Tuning(eval_comp="nope"))
 
 
 def _ids(runs: list[Run]) -> set[str]:

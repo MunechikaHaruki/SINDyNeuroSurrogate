@@ -1,4 +1,4 @@
-"""学習済み surrogate と適用先ネットの静的図: ニューロングラフ・閉包項の中身
+"""学習済み surrogate と適用先ネットの静的成果物: ニューロングラフ・閉包項の中身
 (SINDy 係数 heatmap と方程式)・preprocessor の固有図 (PCA scree)。
 
 **置換シミュを回さずに描ける** = run をロードしただけで出る図。共通の図が無い表現
@@ -16,11 +16,11 @@ import numpy as np
 import seaborn as sns
 import sympy as sp
 from matplotlib.colors import SymLogNorm
-from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
+from ...artifact.model import Artifact
+from ...artifact.plotting import new_figure, place_legend
 from ...core.network import NeuronGraph
-from ...plotting import new_figure, place_legend
 from ..closure.sindy import SINDyBundle
 from ..preprocessor.impl.pca import PCAPreprocessor
 
@@ -41,11 +41,11 @@ _FEATURE_FONTSCALE = (
 )
 
 
-def neuron_graph_fig(
+def neuron_graph_artifact(
     net: NeuronGraph,
     surrogate_nodes: set[str] | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Figure:
+) -> Artifact:
     """NeuronGraph を networkx で可視化。ノード色=種別、赤枠=stim ノード。
 
     surrogate_nodes (置換対象ノード名集合) を渡すと該当ノードを紫で強調。
@@ -126,7 +126,7 @@ def neuron_graph_fig(
     place_legend(ax, legend_handles)
     ax.set_title("NeuronGraph")
     ax.axis("off")
-    return fig
+    return Artifact("neurograph", fig)
 
 
 def _latex(e: sp.Basic) -> str:
@@ -148,7 +148,7 @@ def feature_tex(e: sp.Basic) -> str:
     return f"${stripped}$"
 
 
-def pca_scree_fig(prep: PCAPreprocessor) -> Figure:
+def pca_scree_artifact(prep: PCAPreprocessor) -> Artifact:
     """PCA scree 図: 成分別寄与率 (棒) + 累積寄与率 (折れ線)。保持成分を色で区別し、
     捨てた成分も含めて描く → n_components の選択が累積の飽和点に対し妥当かを見る。"""
     ratios = prep.full_explained_variance_ratio
@@ -183,10 +183,10 @@ def pca_scree_fig(prep: PCAPreprocessor) -> Figure:
             Line2D([], [], color=_STIM_BORDER, marker="o", label="cumulative"),
         ],
     )
-    return fig
+    return Artifact("pca_scree", fig)
 
 
-def sindy_coef_fig(result: SINDyBundle, figsize=(15, 3)):
+def sindy_coef_artifact(result: SINDyBundle, figsize=(15, 3)) -> Artifact:
     xi_matrix = np.asarray(result.xi)
     fig = new_figure(figsize=figsize)
     ax = fig.subplots()
@@ -233,4 +233,4 @@ def sindy_coef_fig(result: SINDyBundle, figsize=(15, 3)):
         )
         ax.set_xlabel("Library Features")
 
-    return fig
+    return Artifact("model", fig)

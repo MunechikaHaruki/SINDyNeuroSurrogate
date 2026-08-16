@@ -5,7 +5,7 @@ CLAUDE.md から分離した詳細目録。ディレクトリの中身・設定�
 ## Directory
 
 ```
-neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← sim.{catalog,spec,result} ← surrogate ← sim.{run,figures} で、**core は他ディレクトリを一切 import しない**。中身の無い `__init__.py` は置かない (再 export だけの層も作らない = 各実体を submodule から直接 import。そのため setuptools は `namespaces = true`)。**`_` 始まりのファイル名 = そのパッケージの外から import しない** (実測で内部専用のものだけが `_` を持つ)
+neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← sim.{catalog,spec,result} ← surrogate ← sim.{run,artifacts} で、**core は他ディレクトリを一切 import しない**。中身の無い `__init__.py` は置かない (再 export だけの層も作らない = 各実体を submodule から直接 import。そのため setuptools は `namespaces = true`)。**`_` 始まりのファイル名 = そのパッケージの外から import しない** (実測で内部専用のものだけが `_` を持つ)
   __init__.py                    # jax_enable_x64 を強制 ON
   core/  network.py              # Compartment/CompartmentType/NeuronGraph + DatasetConfig (**実体化済みの実行入力** = dt/net/current の 3 つだけ。名前の解決も JSON 往復も持たない)
          simulator.py            # unified_simulator (JAX Euler + lax.scan)
@@ -21,21 +21,21 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
         spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+param+values の 1 掃引 = **保存の単位でもある**。points は派生、to_dict/from_dict/hash で往復)。surrogate より前の層 (SurrogateMeta.dataset がこれ)
         result.py                # **結果の器だけ** (計算も描画もしない): SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) / attach (保存済み波形列 → 点列。再シミュ無しの run_points) / SeriesResults (点軸×run 軸に開いた結果の純粋なデータ。net/target/axis/values は点から読むだけ。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る)
         run.py                   # **仕様 × surrogate を掛ける唯一の段** (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate (1 シミュ) / run_points (掃引点列 → 結果。系列 → 結果の唯一の入口) / replaceable / **run 軸** = replaced_runs (1 系列 × 学習 run → 置換できる run だけに絞る)。表示名も MLflow の id も出てこない。surrogate の後の層
-        figures.py               # 結果 (`sim.result.SeriesResults`) → 図。**1 レポート = 1 系列 × N モデル** (1 系列の電流たちで N 本の surrogate を比べる = dest がレポートの root)。run 横断の図 (summary_figs=比べた N 本のサマリ表 (由来は学習 run 群) / wave_report_figs=波形格子 (行=run、列=点。行見出しが run の表示名) + 点軸メトリクスの折れ線 (由来は読んだ波形 run) / run_names=label 衝突に連番) と、波形 1 本で決まる図 (original_figs=原系の入力電流 / detail_figs=選択点 × **1 モデル**の詳細図。run 横断でない = 別のレポートで見ても同じ図) が同居。**点軸×run 軸の並びを図表に落とす唯一の場所**
-                                 # どれも `list[Artifact]` を返すだけ = **どの関数を呼んだかが保存段を決める** (図は属する run も由来も名乗らない)。描き方も束 (`Tuning`) では受けず素の引数で受ける。**学習 run 1 本の自己記述図はここに無い** (置換シミュの結果が要らない = `surrogate.figures.surrogate_figs`)
+        artifacts.py             # 結果 (`sim.result.SeriesResults`) → **単一 Artifact**。run 横断の summary/traces/metric を個別関数で生成。**点軸×run 軸の並びを成果物へ落とす唯一の場所**。成果物列の編成と詳細点の段付けは `artifact.bundle`
   surrogate/  meta.py            # SurrogateMeta (学習構造の単一源)
               bundle.py          # SurrogateBundle.setup/load/save + SURR_CLS/PREPROCESSOR_CLS
               replace.py         # 置換可否判定 + apply_surrogate
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,_sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,_catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
-              figures/           # surrogate の自己記述 (評価結果を受け取らない = 置換シミュ前に描ける)。__init__.py=集約 (surrogate_figs=**run 1 本が自分について描けるもの全部**。適用先も comp 名解決も学習 dataset から解く = 系列も評価 run も要らない。中身は bundle の型が決める = 何を描くかの宣言を受け取らない。内訳 closure_figs/preprocessor_figs/neuron_graph_figs/train_figs。**run 横断の summary_df はレポート側の産物**) / _train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree
-  plotting.py                    # 描画プリミティブ (new_figure/place_legend/error_fig/collect/PanelSpec/TraceSpec/draw_engine/**Artifact** (成果物 1 件 = 名前 + 中身。図を出す全層 (waveform / surrogate.figures / sim.figures) の共通の返り値型で、**包み直す層を作らない**)) + RC_PARAMS/use_style (図の見た目の既定。適用は render_report の 1 箇所)。**唯一 機能で切った層** = ドメイン知識を入れない
+              artifacts/         # surrogate の自己記述成果物を **単一 Artifact** ずつ返す。train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree
+  artifact/  model.py            # Artifact (名前 + Figure/DataFrame) の運搬形
+             plotting.py         # matplotlib 描画プリミティブと共通 style。ドメイン知識を持たない
+             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を list[Artifact] に束ね、点の段名を付ける。描画失敗は変換せず呼び出し元へ伝播。scripts の描画生成はこの module だけを参照
   waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
             dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)
             _tables.py           # その値を表に並べる (計算を増やさない)
-            _figures.py          # 波形/差分/相平面の図 + 電流プレビュー
-            __init__.py          # 集約 (cell_figs / wave_report)
+            artifacts.py         # current/diff/simple/attractor/metrics を単一 Artifact として返す
 scripts/  main.py                # Hydra エントリ
           tuning.py              # 描画への**入力**: Tuning (描き方の全キーの単一源。値は marimo の widget 1 箇所、束を解いて描画層へ渡すのは mlflow_io の各 module)
           catalog.py             # **何を回すか**の 1 枚カタログ: EVALS (素材 1 条件) / SERIES (掃引。置換器を持たない素の EvalSeries。回す側が sim.run.replaced_runs で run 軸を張る)。**描き方は持たない** (tuning.Tuning は marimo の widget が全キーを持つ)
@@ -96,7 +96,7 @@ docs/     poster/ slide/         # typst
   **描画の入力はレポート run_id 1 つ + `Tuning` だけ** (描く側は「どう回したか」を
   再構成しない)。指標の
   選択肢は `waveform.dynamics.METRIC_KEYS` (取り出せるキーの単一源)。**何の図を出すかはどこにも
-  書かない**: モデル側は run 自身が描けるもの (`surrogate.figures.surrogate_figs` が
+  書かない**: モデル側は run 自身が描けるもの (`artifact.bundle.surrogate_artifacts` が
   bundle の型から解く = SINDy なら ξ heatmap、PCA なら scree、固有図を持たない表現は
   何も出さない)、評価側は結果の形 (点が 2 つ以上なら点軸の折れ線が出る) が決める。
   図の見た目 (rcParams) は `plotting.RC_PARAMS` の 1 組だけで、切り替え機構は持たない。

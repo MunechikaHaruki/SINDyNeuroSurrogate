@@ -1,44 +1,33 @@
-"""**結果 (`result.SeriesResults`) → 図**。marimo/MLflow 非依存で、返すのはどれも
-`list[Artifact]` = **どの関数を呼んだかが保存段を決める** (図は属する run も由来も
-名乗らない)。
+"""**結果 (`result.SeriesResults`) → 単一の `Artifact`**。marimo/MLflow 非依存。
 
 図は run 横断か否かで 2 種:
 
-- **run 横断** (`summary_figs` / `wave_report_figs`) … 中身が「今 何本を比べているか」
+- **run 横断** (`summary_artifact` / `traces_artifact` / `metric_artifact`) …
+  中身が「今 何本を比べているか」
   で変わる = レポート run に属する。**「点軸 × run 軸に開いた並び」を図/表に落とすのは
   ここだけ** — 波形ドメイン (`neurosurrogate.waveform`) は 1 ペア (原系, 置換系) しか
   知らず軸の話を持たない。並び自体は `SeriesResults` が既に持つので図の側で組み直さない
-- **波形 1 本で決まる** (`original_figs` / `detail_figs`) … 別のレポートで見ても同じ図
-  (だから保存段も評価 run 側で、レポートを増やしても複製されない)。**単発と掃引で
-  経路を分けない** — 点が 1 つでも点 index を名前に持つ 1 組が出るだけ
+- **波形 1 本で決まる図**は `waveform.artifacts` が受け持つ
 
 **学習 run 1 本の自己記述図はここに無い** (置換シミュの結果が要らない =
-`surrogate.figures`)。
+`surrogate.artifacts`)。成果物列への編成は `artifact.bundle` が受け持つ。
 """
 
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib.figure import Figure
 
+from ..artifact.model import Artifact
+from ..artifact.plotting import new_figure, place_legend
 from ..core import access
 from ..core.diverge import diverged
-from ..plotting import Artifact, error_fig, new_figure, place_legend, use_style
 from ..surrogate.bundle import SurrogateBundle
-from ..surrogate.diagnostics import preprocessed_latent
-from ..surrogate.figures import summary_df
-from ..waveform import (
-    cell_figs,
-    current_preview_fig,
-    dm_of,
-    extract_metric,
-    wave_report,
-)
+from ..surrogate.diagnostics import surrogate_metrics
+from ..waveform.dynamics import dm_of, extract_metric
 from .catalog import currents
 from .result import SeriesResults, SimResult
 
@@ -47,7 +36,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 
-def _run_names(bundles: dict[str, SurrogateBundle]) -> dict[str, str]:
+def run_names(bundles: dict[str, SurrogateBundle]) -> dict[str, str]:
     """run_id → 表示名 (凡例/行見出し)。**表示名は結果でなく surrogate 側から解く**
     (結果は run_id という同一性だけを持つ)。
 
@@ -91,13 +80,13 @@ def _metrics_df(
     return pd.DataFrame(rows)
 
 
-def _metric_fig(
+def metric_artifact(
     view: SeriesResults,
     names: dict[str, str],
     comp_name: str,
     metric_key: str,
     ylim: tuple[float, float] | None = None,
-) -> Figure:
+) -> Artifact:
     """点軸に沿ったメトリクス折れ線 (Original + 各 run)。`names` は run_id → 表示名。
     marimo 非依存。"""
     data = _metrics_df(view, names, comp_name, metric_key)
@@ -124,7 +113,7 @@ def _metric_fig(
     if ylim is not None:
         ax.set_ylim(*ylim)
     place_legend(ax)
-    return fig
+    return Artifact("metric", fig)
 
 
 # --- 波形格子 (列=点、行=run) ---------------------------------------------------
@@ -167,9 +156,9 @@ def _trace_cell(ax: Axes, orig: SimResult, surr: SimResult, comp_id: int) -> Non
     )
 
 
-def trace_grid_fig(
+def traces_artifact(
     view: SeriesResults, names: dict[str, str], comp_name: str
-) -> Figure:
+) -> Artifact:
     """1 系列を run 軸で開いた波形格子 (列=点、行=run。行見出しが run の表示名)。
     `names` は run_id → 表示名。
 
@@ -201,82 +190,22 @@ def trace_grid_fig(
     for c in range(n_col):
         axes[-1][c].set_xlabel("t [ms]")
     place_legend(axes[0][-1])
-    return fig
+    return Artifact("traces", fig)
 
 
 # --- レポート 1 本の成果物 ------------------------------------------------------
 
 
-def summary_figs(bundles: dict[str, SurrogateBundle]) -> list[Artifact]:
+def summary_artifact(bundles: dict[str, SurrogateBundle]) -> Artifact:
     """比べた N 本のサマリ表 (**由来は学習 run 群**だけ = 波形を読まない)。
     run 横断 = 中身が「今 何本を比べているか」で変わるのでレポートに属する。"""
-    use_style()
-    names = _run_names(bundles)
-    return summary_df({names[run_id]: bundle for run_id, bundle in bundles.items()})
-
-
-def wave_report_figs(
-    view: SeriesResults,
-    bundles: dict[str, SurrogateBundle],
-    eval_comp: str,
-    metric: str,
-    metric_ylim: tuple[float, float] | None,
-) -> list[Artifact]:
-    """run 軸に開いた波形格子と点軸の折れ線 (**由来は読んだ波形 run**)。
-    適用先に無い comp を指されたら図の代わりにエラー図 1 枚 (描画は止めない)。"""
-    use_style()
-    if eval_comp not in view.net.names:
-        msg = f"eval_comp {eval_comp!r} not in {view.target!r}"
-        return [Artifact("error", error_fig(msg))]
-    names = _run_names(bundles)
-    figs = [Artifact("traces", trace_grid_fig(view, names, eval_comp))]
-    if len(view.points) > 1:
-        figs.append(
-            Artifact("metric", _metric_fig(view, names, eval_comp, metric, metric_ylim))
-        )
-    return figs
-
-
-# --- 波形 1 本で決まる図 --------------------------------------------------------
-
-
-def original_figs(view: SeriesResults) -> list[Artifact]:
-    """原系の波形 1 本だけで決まる図 (入力電流)。"""
-    use_style()
-    return [Artifact("current", current_preview_fig(view.points[0].spec))]
-
-
-def detail_figs(
-    view: SeriesResults,
-    run_id: str,
-    bundle: SurrogateBundle,
-    eval_comp: str,
-    view_comps: tuple[str, ...],
-    detail_point: int,
-    spike_orig: int,
-    spike_surr: int,
-) -> list[Artifact]:
-    """選択した 1 点 × **1 モデル**の詳細図 + メトリクス表。描く対象は 1 つの置換系の
-    波形そのもの (run 横断でない) = 同じ波形を別のレポートで見ても同じ図。点 index を
-    名前に入れるので、つまみを動かしても前の点を上書きしない。
-
-    潜在射影は run ごとの surrogate が要るので bundle を受け取る (結果 artifact は
-    surrogate を持たない = 呼び出し側が run_id で対応付ける)。
-    """
-    use_style()
-    net = view.net
-    if eval_comp not in net.names:
-        return []
-    index = min(detail_point, len(view.points) - 1)  # 設定が点数を超えていても描く
-    comp_id = net.name_to_idx(eval_comp)
-    orig, surr = view.pair(index, run_id)
-    cells = cell_figs(
-        orig.dataset,
-        surr.dataset,
-        comp_id,
-        lambda: preprocessed_latent(bundle, net, orig.dataset, comp_id),
-        [net.name_to_idx(c) for c in view_comps] or None,
+    names = run_names(bundles)
+    return Artifact(
+        "summary",
+        pd.DataFrame(
+            [
+                {"label": names[run_id], **surrogate_metrics(bundle)}
+                for run_id, bundle in bundles.items()
+            ]
+        ).set_index("label"),
     )
-    metrics = wave_report(dm_of(orig, surr, comp_id), spike_orig, spike_surr)
-    # 点 index は名前の 1 段目 (保存段の下でそのまま階層になる)
-    return [replace(a, name=f"p{index}/{a.name}") for a in (*cells, *metrics)]

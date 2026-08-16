@@ -1,29 +1,23 @@
-"""描画プリミティブ: 図の生成・凡例配置・エラー図と、パネル記述 (`PanelSpec` /
-`TraceSpec`) からの一括描画 (`draw_engine`)、複数図を `Artifact` 列へ畳む `collect`
-と、その成果物 1 件の運搬形 `Artifact` (名前 + 中身。**図を出す全層の共通の返り値**)。
+"""描画プリミティブ: 図の生成・凡例配置と、パネル記述 (`PanelSpec` /
+`TraceSpec`) からの一括描画 (`draw_engine`)。
 
 **このリポジトリで唯一「機能で切った」層** — 図を出すドメイン (`waveform` /
-`surrogate.figures` / `report`) がどれも同じ matplotlib の作法を要るから。
+`surrogate.artifacts` / `sim.artifacts`) がどれも同じ matplotlib の作法を要るから。
 逆に言えばドメインの知識はここに一切入れない: `TraceSpec` は t/y を numpy で持ち
 Dataset も NeuronGraph も知らない。marimo 非依存。
 """
 
 from __future__ import annotations
 
-import logging
 import math
-import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import matplotlib.style
 import numpy as np
-import pandas as pd
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-
-_logger = logging.getLogger(__name__)
 
 # 図の見た目の既定 (matplotlib の rcParams)。**発表用の 1 組だけ**を持つ:
 # 切り替える先が無いのに選択機構を置かない (別の出力向けが要るなら、その時に
@@ -57,24 +51,9 @@ _RC_PARAMS: dict[str, object] = {
 
 
 def use_style() -> None:
-    """`_RC_PARAMS` を適用する。**プロセス全体のグローバル状態**を触るので、呼ぶのは
-    描画の入口 (`report` の各描画関数) 1 箇所だけ。"""
+    """`_RC_PARAMS` を適用する。プロセス全体のグローバル状態を変更するため、
+    呼び出すのは `artifact.bundle` の成果物編成関数だけ。"""
     matplotlib.style.use(_RC_PARAMS)
-
-
-@dataclass(frozen=True)
-class Artifact:
-    """**成果物 1 件 = 名前 + 中身** (図 or 表)。図を出す全ドメイン
-    (`waveform` / `surrogate.figures` / `report`) の共通の返り値型で、名前は保存段の
-    下でそのまま識別子になる (`/` を含めば階層)。
-
-    保存先も拡張子も由来も持たない — それを足すのは MLflow を知る側
-    (`scripts/mlflow_io.save.SaveEntry`)。**この型を包み直す層を作らない**のが
-    不変条件 (同じ 2 フィールドの型が層ごとに増えると変換だけの層が生える)。
-    """
-
-    name: str
-    obj: Figure | pd.DataFrame
 
 
 _LEGEND_ROWS = 8  # 凡例 1 列あたりの最大項目数
@@ -107,39 +86,6 @@ def place_legend(ax: Axes, handles: Sequence[Artist] | None = None) -> None:
         frameon=False,
         ncols=ncols,
     )
-
-
-def error_fig(msg: str) -> Figure:
-    """描画失敗を赤テキストの Figure に畳む。戻り値型を fig で統一するため。
-    失敗は握り潰さず標準エラー/ログにも流す (marimo 表示外でも気付けるように)。"""
-    _logger.error("描画失敗: %s", msg)
-    print(f"[view] 描画失敗: {msg}", file=sys.stderr)
-    fig = new_figure()
-    ax = fig.subplots()
-    ax.text(
-        0.5,
-        0.5,
-        msg,
-        transform=ax.transAxes,
-        ha="center",
-        color="red",
-        wrap=True,
-    )
-    ax.axis("off")
-    return fig
-
-
-def collect(jobs: dict[str, Callable[[], Figure]]) -> list[Artifact]:
-    """名前付き描画 job を `Artifact` 列へ畳む — `figs/` が複数図を返すときの共通規約。
-    1 図の失敗 (学習ドメイン外 comp 等) で列ごと落とさず error_fig に差し替える
-    (呼び出し側は種別も成否も知らず保存/表示に流すだけ)。"""
-    out: list[Artifact] = []
-    for name, job in jobs.items():
-        try:
-            out.append(Artifact(name, job()))
-        except Exception as e:  # noqa: BLE001 — 描画の失敗は図に畳む (error_fig が記録)
-            out.append(Artifact(name, error_fig(f"{name}: {e}")))
-    return out
 
 
 @dataclass

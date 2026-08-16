@@ -20,9 +20,9 @@ from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 from tuning import Tuning
 
-from neurosurrogate.plotting import Artifact
+from neurosurrogate.artifact.bundle import surrogate_artifacts
+from neurosurrogate.artifact.model import Artifact
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
-from neurosurrogate.surrogate.figures import surrogate_figs
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
 from . import TARGET_EXP, logger
@@ -75,7 +75,7 @@ def _load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
 
 def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
     """run_id 列 → run_id→surrogate。他層は表示名でなく **run_id で** surrogate を
-    引く (表示名が要る描画層は `sim.figures` 側で解く)。"""
+    引く (表示名が要る描画層は `sim.artifacts` 側で解く)。"""
     return dict(zip(run_ids, _load_runs(run_ids), strict=True))
 
 
@@ -104,7 +104,7 @@ def model_artifacts(
     return per_run(
         "models",
         {
-            run_id: surrogate_figs(bundle, tuning.view_comps)
+            run_id: surrogate_artifacts(bundle, tuning.view_comps)
             for run_id, bundle in bundles.items()
         },
     )
