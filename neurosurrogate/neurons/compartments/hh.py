@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 from ...core.network import CompartmentType
 from ...core.opcost import OpCost
-from .common import _gate_ode, _inf_ode, lin_exp_form
+from ._common import _gate_ode, _inf_ode, lin_exp_form
 
 
 def alpha_m_hh(v):

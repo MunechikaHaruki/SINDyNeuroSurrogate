@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import sympy as sp
 
 # ---------------------------------------------------------------------------
-# 役割記号 V/g/u の唯一の定義源。catalog.py は項の式をこの記号で書き、Roles が
+# 役割記号 V/g/u の唯一の定義源。_catalog.py は項の式をこの記号で書き、Roles が
 # SINDy 入力行列の実列 index へ束縛する → **feature 展開の語彙**であり SINDy 固有
 # (NN 表現は連結ベクトルを受けるだけで役割記号を要さない) → closure/sindy/ に置く。
 #

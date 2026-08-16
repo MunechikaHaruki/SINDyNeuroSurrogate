@@ -8,8 +8,8 @@ from ...closure.sindy.roles import Roles
 from ...meta import SurrogateMeta
 from ...preprocessor.base import Preprocessor
 from ..base import Ansatz, TrainInputs
+from ._sindy_fit import fit_sindy
 from .hybrid_kernel import hybrid_physics, hybrid_surr_comp_type, hybrid_train_inputs
-from .sindy_fit import fit_sindy
 
 
 class HybridAnsatz(Ansatz[SINDyBundle]):

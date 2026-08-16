@@ -12,6 +12,7 @@
 - Hooksで実行されるjust lint、just formatのエラーは都度対処すること
 - 研究のまとめは、docs/poster、docs/slideディレクトリ以下にtypstとしてまとめる
 - __init__.pyに__all__フィールドは定義しないこと　過剰な複雑さ
+- `_` 始まりのモジュール名は「そのパッケージの外から import しない」印　外から使うものに `_` を付けない
 [以下のセクションは永続メモリとして上書きしても構いません。
 ただし、基本的なコマンドやディレクトリ構成などの目録のみを記述すること]
 
@@ -34,7 +35,7 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 
 ## Architecture
 
-依存の向き: `core ← neurons ← sim ← surrogate ← report` (`core` は他ディレクトリを一切 import しない)。
+依存の向き: `core ← neurons ← sim.{catalog,spec,eval} ← surrogate ← sim.report` (`core` は他ディレクトリを一切 import しない)。
 `neurosurrogate/` = ドメイン層 (marimo/MLflow 非依存)、`scripts/` = Hydra/MLflow/marimo の入口、
 `results/` = 描画成果物 (評価結果本体は MLflow)。
 

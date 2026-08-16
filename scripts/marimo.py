@@ -15,9 +15,9 @@ def _():
         load_report,
         report_entries,
         run_and_log,
+        series_entries,
     )
     from mlflow_io.save import save_entries
-    from mlflow_io.series import series_entries
     from mlflow_io.surrogate import (
         get_runs_df,
         load_bundles,
@@ -193,10 +193,10 @@ def _(
     draw_panel,
     mo,
     model_entries,
+    report,
     report_bundles,
     report_entries,
     report_run_id,
-    report_view,
     save_entries,
     series_entries,
     tuning,
@@ -205,12 +205,12 @@ def _(
     # 各 experiment の module が解く = ここは選択を渡すだけ)。
     # レポート run が無い = この選択をまだ評価していない → 評価が先。
     saved = []
-    if draw_panel.value["draw"] and report_run_id and report_view:
+    if draw_panel.value["draw"] and report:
         saved = save_entries(
             [
                 *model_entries(report_bundles, tuning),
-                *series_entries(report_view, report_bundles, tuning),
-                *report_entries(report_view, report_bundles, tuning, report_run_id),
+                *series_entries(report, report_bundles, tuning),
+                *report_entries(report, report_bundles, tuning),
             ],
             RESULT_DIR,
         )
@@ -228,9 +228,9 @@ def _(
 def _(load_bundles, load_report, report_run_id):
     # 選択から得た report run_id の参照を UI 層で明示的に解決する (run 名は保存段を
     # 組む側が引くので、ここでは対応表を持たない)。
-    report_view = load_report(report_run_id) if report_run_id else None
-    report_bundles = load_bundles(report_view.run_ids) if report_view else {}
-    return report_bundles, report_view
+    report = load_report(report_run_id) if report_run_id else None
+    report_bundles = load_bundles(report.view.run_ids) if report else {}
+    return report, report_bundles
 
 
 @app.cell(column=1)

@@ -18,9 +18,8 @@ import numpy as np
 import pandas as pd
 import pytest
 from mlflow.entities import Run
-from mlflow_io.report import report_entries
+from mlflow_io.report import report_entries, series_entries
 from mlflow_io.save import SaveEntry, save_entries, slug
-from mlflow_io.series import series_entries
 from mlflow_io.surrogate import model_entries
 from test_surrogate import fit_surrogate
 from tuning import Tuning
@@ -69,20 +68,23 @@ def test_eval_runs_round_trip_without_resimulating(
     # 選択 → レポート run_id の橋は 1 本で、描画はこの id だけを見る
     assert report_io.find_report_run([RUN_ID], series) == report_id
 
-    view = report_io.load_report(report_id)
-    assert view.name == "hh_dc"
+    report = report_io.load_report(report_id)
+    view = report.view
     assert view.run_ids == [RUN_ID]
+    # 系列名は結果 (`SeriesResults`) でなく波形 run 側にある = レポートはカタログを
+    # 参照しない (名前を付け替えても過去のレポートは読める)
+    assert series_io.name_of(report.original_id) == "hh_dc"
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.axis, view.values) == ("duration", [170.0, 190.0])
     orig, surr = view.pair(1, RUN_ID)
     # 入力仕様が往復し、そこから実行入力を復元できる
     assert surr.spec.materialize().net is series.spec.net
-    # 由来 (どの評価 run から読んだか) は結果でなく `SeriesView` 側が持つ
-    # (原系 1 本 + 置換系 1 本)。置換系は**学習 run → 評価 run** の対応で持つので、
+    # 由来 (どの評価 run から読んだか) は描く中身 (`SeriesResults`) でなく `Report` 側が
+    # 持つ (原系 1 本 + 置換系 1 本)。置換系は**学習 run → 評価 run** の対応で持つので、
     # 保存段も凡例も id 1 つから解ける。
-    assert view.original_id in _ids(_of_kind("original"))
-    assert view.surr_ids[RUN_ID] in _ids(_of_kind("surrogate"))
-    assert view.sources == (view.original_id, view.surr_ids[RUN_ID])
+    assert report.original_id in _ids(_of_kind("original"))
+    assert report.surr_ids[RUN_ID] in _ids(_of_kind("surrogate"))
+    assert report.sources == (report.original_id, report.surr_ids[RUN_ID])
     # 波形は float32 で往復し、原系/置換系はそれぞれの run に入っている
     # (原系は surrogate 非依存なので回し直しても一致する)
     np.testing.assert_allclose(
@@ -108,7 +110,26 @@ def test_eval_runs_round_trip_without_resimulating(
     both = report_io.load_report(
         report_io.run_and_log({RUN_ID: sindy, "OTHER": sindy}, "hh_dc", series)
     )
-    assert (len(both.points), both.run_ids) == (2, [RUN_ID, "OTHER"])
+    assert (len(both.view.points), both.view.run_ids) == (2, [RUN_ID, "OTHER"])
+
+
+def test_report_rejects_ids_that_do_not_line_up_with_the_run_axis(
+    eval_store: str, sindy: SurrogateBundle
+) -> None:
+    """`Report` は id が **run 軸と揃う**ことを構築時に保証する。半端に欠けた id は
+    保存段が別の run の名前へ落ちる (由来の欠けた成果物) ので、描く前に弾く。"""
+    view = report_io.load_report(
+        report_io.run_and_log({RUN_ID: sindy}, "hh_dc", _evals(sindy))
+    ).view
+    for original_id, surr_ids in (
+        ("e0", {"other": "e1"}),  # run 軸とキーがずれる
+        ("e0", {}),  # 置換系の id が丸ごと無い
+        ("", {RUN_ID: "e1"}),  # 原系の id が無い
+        ("e0", {RUN_ID: ""}),  # 空文字の id も欠けと同じ
+        ("", {RUN_ID: ""}),
+    ):
+        with pytest.raises(ValueError, match="評価 run の id"):
+            report_io.Report("r", view, original_id, surr_ids)
 
 
 def test_unevaluated_selection_finds_nothing_without_creating_experiment(
@@ -137,15 +158,14 @@ def test_resolved_run_ids_draw_independent_entry_groups(
     `eval_comp` が適用先に無ければ黙って描かずエラー図 1 枚になる (誤りは選んだ
     レポートに紐づくのでレポート配下 = 別レポートのエラー図と潰し合わない)。"""
     report_id = report_io.run_and_log({RUN_ID: sindy}, "hh_dc", _evals(sindy))
-    comp = report_io.load_report(report_id).net.names[0]
-
-    view = report_io.load_report(report_id)
+    report = report_io.load_report(report_id)
+    comp = report.view.net.names[0]
     bundles = {RUN_ID: sindy}
     tuning = Tuning(eval_comp=comp)
     entries = [
         *model_entries(bundles, tuning),
-        *series_entries(view, bundles, tuning),
-        *report_entries(view, bundles, tuning, report_id),
+        *series_entries(report, bundles, tuning),
+        *report_entries(report, bundles, tuning),
     ]
     assert len(entries) > 1 and all(e.artifact.obj is not None for e in entries)
     # 保存名は MLflow の 3 experiment がそのまま 3 段: models/<学習 run>/ は描く対象が
@@ -160,14 +180,14 @@ def test_resolved_run_ids_draw_independent_entry_groups(
         f"{RUN_ID}-{RUN_ID[:8]}",
         *(
             f"{slug(mlflow.get_run(rid).info.run_name)}-{rid[:8]}"
-            for rid in (report_id, *view.sources)
+            for rid in (report_id, *report.sources)
         ),
     }
 
     # 適用先に無い comp: 波形を見る図はエラー図 1 枚に畳む (波形を見ないサマリ表は
     # そのまま出る)。誤りは選んだレポートに紐づくのでレポート配下 = 別レポートの
     # エラー図と潰し合わない。
-    err = report_entries(view, bundles, Tuning(eval_comp="nope"), report_id)
+    err = report_entries(report, bundles, Tuning(eval_comp="nope"))
     report_dir = f"{slug(mlflow.get_run(report_id).info.run_name)}-{report_id[:8]}"
     assert f"report/{report_dir}/error.png" in {e.path for e in err}
     assert not any(e.artifact.name in ("traces", "metric") for e in err)

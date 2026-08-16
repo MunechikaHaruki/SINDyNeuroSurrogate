@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 # ---------------------------------------------------------------------------
 # ロジック層。項 = 1つの sympy 式。func(lambdify) / name(subs) / cost(op_cost) /
-# arity(len args) はすべてここから派生する。項カタログは catalog.py。
+# arity(len args) はすべてここから派生する。項カタログは _catalog.py。
 # ---------------------------------------------------------------------------
 
 
@@ -90,7 +90,7 @@ class SubLibrary:
         序数だけ (spec["latents"]、既定=全 latent)。1 束あたり何本に展開されるか
         (latent 複製 / u 無し ansatz での脱落) は項の args を見て roles が決める。
         未知 type はエラー。"""
-        from .catalog import LIB_ENTRIES
+        from ._catalog import LIB_ENTRIES
 
         if (t := spec["type"]) not in LIB_ENTRIES:
             raise ValueError(

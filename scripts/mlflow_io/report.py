@@ -22,19 +22,20 @@ marimo の評価ボタンは `run_and_log`、描画前の参照解決は `load_r
 import hashlib
 import json
 import os
+from dataclasses import dataclass
 
 import mlflow
 from mlflow.entities import Run
 from tuning import Tuning
 
-from neurosurrogate.report import SeriesView, series_matrix
-from neurosurrogate.report.report import summary_figs, wave_report_figs
-from neurosurrogate.sim.eval import EvalSeries
+from neurosurrogate.sim.eval import EvalSeries, SeriesResults, replaced_runs
+from neurosurrogate.sim.report.report import summary_figs, wave_report_figs
+from neurosurrogate.sim.report.series import detail_figs, original_figs
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
 from .save import SaveEntry, stage
-from .series import name_of, results_of, run_series, source_run_of
+from .series import results_of, run_series, source_run_of
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
 ORIGINAL_TAG = "original_series_id"
@@ -130,61 +131,132 @@ def run_and_log(
     (1 レポート = 1 系列 × N モデル)。返すのはそのレポート run の id
     = **そのまま描画の入力**。
 
-    run 軸を掛ける組合せは `report.series_matrix` が決める (その場で回す側の
-    `report.simulate_views` と同じ単一源)。1 本も置換できない系列は回す意味が無い
-    ので落ちる (marimo の選択肢は置換できる系列だけなので通常起きない)。"""
-    matrix = series_matrix({name: series}, bundles)
-    if not matrix:
+    run 軸を掛けるのは `report.view.replaced_runs` (描画側と同じ単一源)。1 本も置換
+    できない系列は回す意味が無いので拒む (marimo の選択肢は置換できる系列だけなので
+    通常起きない)。"""
+    surrs = replaced_runs(series, bundles)
+    if not surrs:
         raise ValueError(f"{name}: 選択 run のどれでも置換できない (比較対象が無い)")
-    _, original, surrs = matrix[0]
     return _log_report(
         name,
-        run_series(name, original, None, force),
+        run_series(name, series, None, force),
         [run_series(name, s, rid, force) for rid, s in surrs.items()],
         _report_hash(list(bundles), series),
     )
 
 
-def load_report(report_run_id: str) -> SeriesView:
-    """**レポート run_id 1 つ** → 描画層の `SeriesView` 1 個 (1 レポート = 1 系列)。
+@dataclass(frozen=True)
+class Report:
+    """**レポート run を解いたもの**: 描く中身 (`view`) と、それをどの run から読んだか
+    (`run_id` / `original_id` / `surr_ids`)。
+
+    **id を持つのはこの層だけ** — MLflow の同一性はドメイン層 (`SeriesView`) に入れず、
+    保存段と由来 (`meta.json`) を解くここが持つ。描画関数はどれも `view` しか見ない。
+    """
+
+    run_id: str  # レポート run (run 横断の成果物の宛先)
+    view: SeriesResults
+    original_id: str  # 原系を読んだ波形 run
+    surr_ids: dict[str, str]  # 学習 run → その置換系を読んだ波形 run
+
+    def __post_init__(self) -> None:
+        # id は **run 軸と揃う**のが条件。半端に欠けた id は保存段が別の run の名前へ
+        # 落ちる = 由来の欠けた成果物になるので、図を描く前に構築時点で弾く。
+        if (
+            set(self.surr_ids) != set(self.view.surrs)
+            or not all(self.surr_ids.values())
+            or not self.original_id
+        ):
+            raise ValueError("評価 run の id が run 軸と揃わない")
+
+    @property
+    def sources(self) -> tuple[str, ...]:
+        """読んだ波形 run の id (原系が先、置換系は run 軸の順)。成果物の由来
+        (`meta.json`) にそのまま落ちる。"""
+        return (self.original_id, *self.surr_ids.values())
+
+
+def load_report(report_run_id: str) -> Report:
+    """**レポート run_id 1 つ** → 描く中身と由来 (`Report`) (1 レポート = 1 系列)。
 
     描画の入力はこの id と描き方 (`Tuning`) だけ = 学習 run 群も系列名も渡さない。
     レポートが持つのは**波形 run の id 2 つだけ**で、系列名 (表示) も学習 run との
     対応も波形 run 側から解く (`series.name_of` / `series.source_run_of`) = レポートは
-    カタログにも学習 experiment にも依存しない。`sources` は成果物の由来
-    (`meta.json`) 用で、結果そのもの (`SimResult`) には持たせない。"""
+    カタログにも学習 experiment にも依存しない。"""
     tags = mlflow.get_run(report_run_id).data.tags
     original = tags[ORIGINAL_TAG]
     surrs: list[str] = json.loads(tags[SURROGATE_TAG])
-    return SeriesView(
-        name_of(original),
-        results_of(original),
-        {source_run_of(eid): results_of(eid) for eid in surrs},
+    return Report(
+        report_run_id,
+        SeriesResults(
+            results_of(original),
+            {source_run_of(eid): results_of(eid) for eid in surrs},
+        ),
         original,
         {source_run_of(eid): eid for eid in surrs},
     )
 
 
 def report_entries(
-    view: SeriesView,
+    report: Report,
     bundles: dict[str, SurrogateBundle],
     tuning: Tuning,
-    report_run_id: str,
 ) -> list[SaveEntry]:
     """1 レポート → **レポート run に属する成果物** (`report/<レポート run>/`) =
     run 横断でこの選択でしか出ない図。
 
     由来は成果物ごとに違う: サマリ表は比べた**学習 run 群**、波形格子と折れ線は
-    読んだ**波形 run 群** (`view.sources`)。図の名前で振り分けないよう、描画層が
+    読んだ**波形 run 群** (`report.sources`)。図の名前で振り分けないよう、描画層が
     その 2 つを別の関数として返す。
     """
-    dest = stage("report", report_run_id, view.name)
+    dest = stage("report", report.run_id)
     return [
         SaveEntry(dest, artifact, tuple(bundles), tuning)
         for artifact in summary_figs(bundles)
     ] + [
-        SaveEntry(dest, artifact, view.sources, tuning)
+        SaveEntry(dest, artifact, report.sources, tuning)
         for artifact in wave_report_figs(
-            view, bundles, tuning.eval_comp, tuning.metric, tuning.metric_ylim
+            report.view, bundles, tuning.eval_comp, tuning.metric, tuning.metric_ylim
         )
     ]
+
+
+def series_entries(
+    report: Report, bundles: dict[str, SurrogateBundle], tuning: Tuning
+) -> list[SaveEntry]:
+    """1 レポートの波形群 → **波形 run に属する成果物** (`series/<評価 run>/`)。
+
+    原系の図は原系の run へ、詳細図は置換系の run へ落ちる = レポートを増やしても
+    複製されない (run 横断の成果物は `report.report_entries`)。
+    """
+    view = report.view
+    entries = [
+        SaveEntry(
+            stage("series", report.original_id),
+            artifact,
+            (report.original_id,),
+            tuning,
+        )
+        for artifact in original_figs(view)
+    ]
+    for run_id in view.run_ids:
+        entries += [
+            SaveEntry(
+                stage("series", report.surr_ids[run_id]),
+                artifact,
+                # 由来は原系と置換系の 2 本 (差分図はその対から出る)
+                (report.original_id, report.surr_ids[run_id]),
+                tuning,
+            )
+            for artifact in detail_figs(
+                view,
+                run_id,
+                bundles[run_id],
+                tuning.eval_comp,
+                tuning.view_comps,
+                tuning.detail_point,
+                tuning.spike_orig,
+                tuning.spike_surr,
+            )
+        ]
+    return entries

@@ -9,7 +9,7 @@ from ...closure.sindy.roles import Roles
 from ...meta import SurrogateMeta
 from ...preprocessor.base import Preprocessor
 from ..base import Ansatz, TrainInputs
-from .sindy_fit import fit_sindy
+from ._sindy_fit import fit_sindy
 
 
 class SINDyAnsatz(Ansatz[SINDyBundle]):

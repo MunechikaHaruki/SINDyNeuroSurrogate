@@ -1,7 +1,7 @@
 """SINDy 同定層。
 
 同定結果 (`SINDyBundle`: xi/feature 展開/compute_theta/opcost) をここに、項ライブラリ
-を entry.py (ロジック) / catalog.py (データ) に置く。ansatz/ は方程式の列構造を決め、
+を entry.py (ロジック) / _catalog.py (データ) に置く。ansatz/ は方程式の列構造を決め、
 この層は「その列構造で何を同定するか」だけを担う。
 """
 

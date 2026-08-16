@@ -56,18 +56,15 @@ def run_name(run_id: str) -> str:
         return run_id
 
 
-def stage(kind_dir: str, run_id: str, fallback: str = "") -> str:
+def stage(kind_dir: str, run_id: str) -> str:
     """保存段 1 つ = `<段>/<run 名>-<run id 先頭>`。
 
     **run id を混ぜるのは名前が同一性でないから**: MLflow の run 名は人が付け替え
     られて一意でなく (掃引違いの評価 run は同名になる)、`slug` も単射でない
     (`a b` と `a/b` は同じ)。名前だけを段にすると別 run の図が後勝ちで潰し合う。
 
-    run が無い場合 (その場で回した結果 = 評価 run を持たない) だけ id を付けずに
-    手元の名前 (系列名 / 表示ラベル) へ落として描画は通す — MLflow に無いものを
-    id で名乗らない。"""
-    if not run_id:
-        return f"{kind_dir}/{slug(fallback)}"
+    段は必ず run に紐づく (保存する成果物はどれも MLflow から読んだ run が由来) =
+    id 無しの経路は持たない。"""
     return f"{kind_dir}/{slug(run_name(run_id))}-{run_id[:8]}"
 
 

@@ -2,7 +2,8 @@
 詳細図。marimo/MLflow 非依存。
 
 run 横断でない = 同じ波形を別のレポートで見ても同じ図 (だから保存段も評価 run 側で、
-レポートを増やしても複製されない)。run 横断の図は `report` module。
+レポートを増やしても複製されない)。run 横断の図は隣の `report` module、置換シミュの
+結果を受け取らない図 (学習 run 1 本の自己記述) は `surrogate.figures`。
 
 **単発と掃引で経路を分けない** — 点が 1 つでも点 index を名前に持つ 1 組が出るだけ。
 """
@@ -11,21 +12,21 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from ..plotting import Artifact, use_style
-from ..surrogate.bundle import SurrogateBundle
-from ..surrogate.diagnostics import preprocessed_latent
-from ..waveform import cell_figs, current_preview_fig, dm_of, wave_report
-from . import SeriesView
+from ...plotting import Artifact, use_style
+from ...surrogate.bundle import SurrogateBundle
+from ...surrogate.diagnostics import preprocessed_latent
+from ...waveform import cell_figs, current_preview_fig, dm_of, wave_report
+from ..eval import SeriesResults
 
 
-def original_figs(view: SeriesView) -> list[Artifact]:
+def original_figs(view: SeriesResults) -> list[Artifact]:
     """原系の波形 1 本だけで決まる図 (入力電流)。"""
     use_style()
     return [Artifact("current", current_preview_fig(view.points[0].spec))]
 
 
 def detail_figs(
-    view: SeriesView,
+    view: SeriesResults,
     run_id: str,
     bundle: SurrogateBundle,
     eval_comp: str,
@@ -45,7 +46,7 @@ def detail_figs(
     net = view.net
     if eval_comp not in net.names:
         return []
-    index = view.clamp(detail_point)
+    index = min(detail_point, len(view.points) - 1)  # 設定が点数を超えていても描く
     comp_id = net.name_to_idx(eval_comp)
     orig, surr = view.pair(index, run_id)
     cells = cell_figs(

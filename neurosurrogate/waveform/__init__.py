@@ -2,8 +2,8 @@
 指標と図に落とす (研究の主張のうち波形再現性の側)。
 
 - `dynamics.py` — eFEL スパイク特徴量・波形誤差の計算 (素の値だけ返す)
-- `tables.py` — その値を表に並べる
-- `figures.py` — 波形/差分/相平面の図
+- `_tables.py` — その値を表に並べる
+- `_figures.py` — 波形/差分/相平面の図
 
 ここは**常に 1 ペア** (原系, 置換系) しか知らない: 点軸 (掃引) も run 軸 (どの
 surrogate) も持たない = 軸を掛けるのは結果の関心 (`neurosurrogate.report`)。
@@ -19,12 +19,12 @@ import xarray as xr
 from matplotlib import rcParams
 
 from ..plotting import Artifact, collect, draw_engine
+from ._figures import attractor_fig, panels_diff, panels_simple
+from ._figures import current_preview_fig as current_preview_fig
+from ._tables import spike_features_df, waveform_summary_df
 from .dynamics import DynamicMetrics, n_spikes, spike_shape_corr, waveform_summary
-from .dynamics import dm_of as dm_of  # 軸を掛ける側 (report.report) が使う
+from .dynamics import dm_of as dm_of  # 軸を掛ける側 (sim.report.report) が使う
 from .dynamics import extract_metric as extract_metric
-from .figures import attractor_fig, panels_diff, panels_simple
-from .figures import current_preview_fig as current_preview_fig
-from .tables import spike_features_df, waveform_summary_df
 
 
 def cell_figs(

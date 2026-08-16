@@ -9,6 +9,7 @@ from typing import Self
 import xarray as xr
 
 from ..core.diverge import log_divergence
+from ..core.network import NeuronGraph
 from ..core.simulator import unified_simulator
 from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.meta import SurrogateMeta
@@ -65,9 +66,9 @@ class EvalSeries:
     `param` を渡さなければ単発 (点 1 つ) で、以降は掃引と同じ経路を通る。
     `surrogate=None` は原系。
 
-    **run 軸は畳み込まない**: 持つのは surrogate 1 つだけで、run_id という識別子は
-    この型にも このモジュールにも無い。複数 run を回すのは呼び出し側が run ごとに
-    `with_surrogate` した系列を回すこと。
+    **この型は run 軸を畳み込まない**: 持つのは surrogate 1 つだけで run_id を知らない。
+    run ごとの系列を組むのは `replaced_runs`、その結果を並べるのは `SeriesResults` で、
+    どちらもこの型の外に居る。
 
     **保存の単位でもある**: 1 系列 = 1 評価 run (点列を丸ごと 1 artifact に持つ)
     なので、「同じ掃引を既に回したか」を引く鍵 (`hash`) と往復の形 (`to_dict` /
@@ -141,3 +142,71 @@ class EvalSeries:
             SimResult(spec, ds, axis=self.param)
             for spec, ds in zip(self.points, datasets, strict=True)
         ]
+
+
+# --- 掃引 × run 軸 --------------------------------------------------------------------
+
+
+def replaced_runs(
+    series: EvalSeries, bundles: dict[str, SurrogateBundle]
+) -> dict[str, EvalSeries]:
+    """1 系列 × 学習 run → run_id → 置換系。**run 軸を掛ける唯一の場所**。
+
+    置換できない run は落ちる (回しても比較にならない)。空になった系列を飛ばすか
+    拒むかは呼び出し側の関心 (その場で回す側は飛ばし、保存側は拒む)。
+    """
+    return {
+        run_id: series.with_surrogate(bundle)
+        for run_id, bundle in bundles.items()
+        if series.replaceable(bundle.meta)
+    }
+
+
+@dataclass(frozen=True)
+class SeriesResults:
+    """**1 系列を両軸に開いた結果**: 点軸に値順で並んだ原系 (`points`) と、run ごとに
+    同じ並びの置換系 (`surrs`)。列の長さは常に揃う。
+
+    **持つのは結果だけ**の素のデータ: 系列名も、どの評価 run から読んだかという
+    MLflow の同一性も持たない (由来と保存段を解くのは `mlflow_io.report.Report`)。
+    描画/指標はここだけを見る = 「点を値で並べ直す」「run 軸を数える」を各図が
+    再実装しない。点の位置は list の添字そのもので、平坦キーは出てこない。
+
+    軸の値 (`net` / `target` / `axis` / `values`) はどれも点が既に持つものを読むだけ
+    = 二重に持たない (点は適用先も掃引軸も変えないので先頭から引ける)。
+    """
+
+    points: list[SimResult]  # 原系 (掃引点の値順。単発なら 1 件)
+    surrs: dict[str, list[SimResult]]  # run_id → `points` と同じ並びの置換系
+
+    def __post_init__(self) -> None:
+        bad = [rid for rid, col in self.surrs.items() if len(col) != len(self.points)]
+        if bad:
+            raise ValueError(f"点数が原系と揃わない run {bad}")
+
+    @property
+    def run_ids(self) -> list[str]:
+        """置換系の run_id (与えた順。原系は含まない)。"""
+        return list(self.surrs)
+
+    @property
+    def net(self) -> NeuronGraph:
+        return self.points[0].spec.net
+
+    @property
+    def target(self) -> str:
+        return self.points[0].spec.target
+
+    @property
+    def axis(self) -> str | None:
+        """掃引した電流パラメータ名 (単発なら None)。図の x 軸。"""
+        return self.points[0].axis
+
+    @property
+    def values(self) -> list[float | None]:
+        """点軸の値 (単発なら `[None]`)。列見出しと折れ線の x に使う。"""
+        return [r.point for r in self.points]
+
+    def pair(self, index: int, run_id: str) -> tuple[SimResult, SimResult]:
+        """点 `index` の (原系, 置換系)。"""
+        return self.points[index], self.surrs[run_id][index]

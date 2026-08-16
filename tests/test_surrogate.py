@@ -26,11 +26,13 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
 from neurosurrogate.plotting import collect, new_figure
-from neurosurrogate.report import SeriesView, simulate_views
-from neurosurrogate.report.model import model_figs
-from neurosurrogate.report.report import summary_figs, trace_grid_fig, wave_report_figs
-from neurosurrogate.report.series import detail_figs, original_figs
-from neurosurrogate.sim.eval import EvalSeries
+from neurosurrogate.sim.eval import EvalSeries, SeriesResults, replaced_runs
+from neurosurrogate.sim.report.report import (
+    summary_figs,
+    trace_grid_fig,
+    wave_report_figs,
+)
+from neurosurrogate.sim.report.series import detail_figs, original_figs
 from neurosurrogate.sim.spec import SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
@@ -44,7 +46,11 @@ from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
 from neurosurrogate.surrogate.closure.ude import UDEClosure
 from neurosurrogate.surrogate.diagnostics import preprocessed_latent
-from neurosurrogate.surrogate.figures import preprocessor_figs, train_figs
+from neurosurrogate.surrogate.figures import (
+    preprocessor_figs,
+    surrogate_figs,
+    train_figs,
+)
 from neurosurrogate.surrogate.figures.model import feature_tex, tex
 from neurosurrogate.surrogate.preprocessor.base import Preprocessor
 from neurosurrogate.surrogate.preprocessor.impl.autoencoder import AEPreprocessor
@@ -105,15 +111,24 @@ def _spec_of(bundle: SurrogateBundle) -> SimSpec:
     return bundle.meta.dataset
 
 
-def _run_view(
-    bundles: dict[str, SurrogateBundle], spec: SimSpec, series: str = "hh_dc"
-) -> SeriesView:
+def _simulate_view(
+    series: EvalSeries, bundles: dict[str, SurrogateBundle]
+) -> SeriesResults:
+    """1 系列を run 軸に開いてその場で回す (保存を経由しない経路)。本番の描画入力は
+    MLflow から読む `mlflow_io.load_report` なので、この経路はテストにだけ居る。"""
+    return SeriesResults(
+        series.simulate(),
+        {rid: s.simulate() for rid, s in replaced_runs(series, bundles).items()},
+    )
+
+
+def _run_view(bundles: dict[str, SurrogateBundle], spec: SimSpec) -> SeriesResults:
     """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした 1 系列。"""
-    return simulate_views({series: EvalSeries(spec=spec)}, bundles)[series]
+    return _simulate_view(EvalSeries(spec=spec), bundles)
 
 
 @pytest.fixture(scope="module")
-def sindy_view(sindy: SurrogateBundle) -> SeriesView:
+def sindy_view(sindy: SurrogateBundle) -> SeriesResults:
     """単発 = 点 1 つ・run 1 本の系列。"""
     return _run_view({"r0": sindy}, _spec_of(sindy))
 
@@ -139,7 +154,7 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert np.isfinite(v[0])
 
 
-def test_sweep_metric_choices_are_all_extractable(sindy_view: SeriesView) -> None:
+def test_sweep_metric_choices_are_all_extractable(sindy_view: SeriesResults) -> None:
     """UI が出す掃引 metric 選択肢は全て取り出せる = 選んだのに生成されないキーで
     黙って nan の図が出ることが無い (未知キーは extract_metric が KeyError)。"""
     orig, surr = sindy_view.pair(0, "r0")
@@ -149,7 +164,9 @@ def test_sweep_metric_choices_are_all_extractable(sindy_view: SeriesView) -> Non
         extract_metric(dm, "latency_error")
 
 
-def test_sindy_draws_all_figs(sindy_view: SeriesView, sindy: SurrogateBundle) -> None:
+def test_sindy_draws_all_figs(
+    sindy_view: SeriesResults, sindy: SurrogateBundle
+) -> None:
     """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
     orig, surr = sindy_view.pair(0, "r0")
     figs = cell_figs(
@@ -176,27 +193,25 @@ def test_catalog_is_self_consistent() -> None:
     assert len(SERIES["traub19_somastim"].points) == 5
 
 
-def _sweep_specs(name: str, values: list[float]) -> dict[str, EvalSeries]:
-    """1 系列分のカタログ項目。"""
-    return {
-        name: EvalSeries(
-            spec=SimSpec(
-                target="hh",
-                current_type="lin&steady",
-                dt=0.05,
-                current_params={"duration": 30.0, "silence_duration": 0.0},
-            ),
-            param="value",
-            values=values,
-        )
-    }
+def _sweep_series(values: list[float]) -> EvalSeries:
+    """1 系列分の掃引宣言。"""
+    return EvalSeries(
+        spec=SimSpec(
+            target="hh",
+            current_type="lin&steady",
+            dt=0.05,
+            current_params={"duration": 30.0, "silence_duration": 0.0},
+        ),
+        param="value",
+        values=values,
+    )
 
 
 def _sweep_view(
-    bundles: dict[str, SurrogateBundle], name: str, values: list[float]
-) -> SeriesView:
+    bundles: dict[str, SurrogateBundle], values: list[float]
+) -> SeriesResults:
     """1 系列分の掃引をシミュした結果。"""
-    return simulate_views(_sweep_specs(name, values), bundles)[name]
+    return _simulate_view(_sweep_series(values), bundles)
 
 
 def test_trace_grid_rows_are_one_per_model(sindy: SurrogateBundle) -> None:
@@ -204,40 +219,32 @@ def test_trace_grid_rows_are_one_per_model(sindy: SurrogateBundle) -> None:
     **1 系列の電流たち × N モデル**なので、行が増える軸は run だけ。"""
     bundles = {"r0": sindy, "r1": sindy}
     names = {"r0": "a", "r1": "b"}
-    view = _sweep_view(bundles, "a", [5.0, 10.0])
+    view = _sweep_view(bundles, [5.0, 10.0])
     fig = trace_grid_fig(view, names, "soma")
     assert len(fig.axes) == 2 * 2  # 2 モデル行 × 2 点列
-    # 行名は描かない (格子は列見出しと凡例で読む)。
-    assert not any(ax.get_ylabel() for ax in fig.axes)
+    # 行がどの run かは行見出し (左列の y ラベル) で読む。
+    assert [ax.get_ylabel() for ax in fig.axes] == ["a", "", "b", ""]
 
 
-def test_series_view_columns_must_line_up_across_runs(sindy_view: SeriesView) -> None:
-    """`SeriesView` は構築時に 2 つを保証する: 点軸の列が run 間で揃うこと (揃わない
-    列を図の側で検出させない) と、評価 run の id が run 軸と揃うか丸ごと無いか
-    (半端に欠けた id は保存段が別の run の名前へ落ちる)。"""
+def test_series_view_columns_must_line_up_across_runs(
+    sindy_view: SeriesResults,
+) -> None:
+    """`SeriesResults` が構築時に保証するのは点軸の列が run 間で揃うことだけ (揃わない列
+    を図の側で検出させない)。**由来の id は持たない** = MLflow の同一性はここに無く、
+    描く中身だけの純粋なデータ (id の検証は `mlflow_io.report.Report`)。"""
     with pytest.raises(ValueError, match="点数"):
-        SeriesView("s", sindy_view.points, {"r0": []})
-    with pytest.raises(ValueError, match="評価 run の id"):
-        SeriesView("s", sindy_view.points, sindy_view.surrs, "e0", {"other": "e1"})
-    # 片側だけ / 空文字の id も「半端」(`sources` が黙って短くなる)
-    with pytest.raises(ValueError, match="半端"):
-        SeriesView("s", sindy_view.points, sindy_view.surrs, "e0")
-    with pytest.raises(ValueError, match="半端"):
-        SeriesView("s", sindy_view.points, sindy_view.surrs, "", {"r0": "e1"})
-    with pytest.raises(ValueError, match="半端"):
-        SeriesView("s", sindy_view.points, sindy_view.surrs, "e0", {"r0": ""})
-    # 丸ごと無い = その場で回した結果 (由来を持たないだけ)
-    assert SeriesView("s", sindy_view.points, sindy_view.surrs).sources == ()
+        SeriesResults(sindy_view.points, {"r0": []})
 
 
 def test_report_draws_the_results_at_hand_not_the_declaration(
-    sindy_view: SeriesView, sindy: SurrogateBundle
+    sindy_view: SeriesResults, sindy: SurrogateBundle
 ) -> None:
     """描画は**手元の結果だけ**を見る (計算入力の設定と突き合わせない): 設定ファイル
-    に宣言の無い系列名 — 別セッションで回して artifact から読んだ結果 — もそのまま
-    図になる = 計算と描画が切れている。図は名前と中身しか名乗らず、どの run に属するか
-    (= 保存段) は**どの関数を呼んだか**で決まる (段を組むのは `scripts/mlflow_io`)。"""
-    view = dc_replace(sindy_view, name="読んだ系列")
+    に宣言の無い結果 — 別セッションで回して artifact から読んだもの — もそのまま図に
+    なる = 計算と描画が切れている。結果は系列名すら名乗らず (`SeriesResults` が持つのは
+    点と run 軸だけ)、どの run に属するか (= 保存段) は**どの関数を呼んだか**で決まる
+    (段を組むのは `scripts/mlflow_io`)。"""
+    view = SeriesResults(sindy_view.points, sindy_view.surrs)
     assert [f.name for f in original_figs(view)] == ["current"]
     waves = wave_report_figs(view, {"r0": sindy}, "soma", "spike_count", None)
     assert "traces" in {f.name for f in waves}
@@ -250,13 +257,13 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     assert detail_figs(view, "r0", sindy, "nope", (), 0, 0, 0) == []
 
 
-def test_model_figs_come_from_the_run_itself_not_a_declaration(
+def test_surrogate_figs_come_from_the_run_itself_not_a_declaration(
     sindy: SurrogateBundle,
 ) -> None:
     """モデル側の図は**その run が自分について描けるもの**で決まる (何を描くかの
     宣言を受け取らない)。描く対象は学習 run そのものなので、レポートを増やしても
     同じ図が複製されない。run 横断のサマリ表はここに無い (選択した N 本の産物)。"""
-    figs = model_figs(sindy, ())
+    figs = surrogate_figs(sindy, ())
     # SINDy = ξ heatmap を持つ表現なので model 図が出る
     assert "model" in {f.name for f in figs}
     assert not any("summary" in f.name for f in figs)
@@ -277,7 +284,7 @@ def test_failed_figs_fold_into_error(
 
 
 def test_view_comps_limit_drawn_traces(
-    sindy_view: SeriesView, sindy: SurrogateBundle
+    sindy_view: SeriesResults, sindy: SurrogateBundle
 ) -> None:
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""

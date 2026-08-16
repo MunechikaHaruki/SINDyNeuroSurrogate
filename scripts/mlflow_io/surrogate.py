@@ -19,8 +19,8 @@ from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 from tuning import Tuning
 
-from neurosurrogate.report.model import model_figs
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
+from neurosurrogate.surrogate.figures import surrogate_figs
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
 from . import TARGET_EXP, logger
@@ -102,7 +102,7 @@ def model_entries(
     return [
         SaveEntry(stage("models", run_id), artifact, (run_id,), tuning)
         for run_id, bundle in bundles.items()
-        for artifact in model_figs(bundle, tuning.view_comps)
+        for artifact in surrogate_figs(bundle, tuning.view_comps)
     ]
 
 
