@@ -1,33 +1,46 @@
-"""**run 横断の図** = この選択でしか出ない成果物: 比べた N 本の
-サマリ表、点を列・run を行に取る波形格子、点軸に沿った指標の折れ線。
-marimo/MLflow 非依存。
+"""**結果 (`result.SeriesResults`) → 図**。marimo/MLflow 非依存で、返すのはどれも
+`list[Artifact]` = **どの関数を呼んだかが保存段を決める** (図は属する run も由来も
+名乗らない)。
 
-**「点軸 × run 軸に開いた並び」を図/表に落とすのはここだけ** — 波形ドメイン
-(`neurosurrogate.waveform`) は 1 ペア (原系, 置換系) しか知らず軸の話を持たない。
-並び自体は `SeriesResults` が既に持つので図の側で組み直さない。
+図は run 横断か否かで 2 種:
 
-`series` の図 (波形 1 本) や `surrogate.figures` の図 (学習 run 1 本) が run 1 本で
-決まる (別のレポートで見ても同じ) のに対し、ここの図は「今 何本を比べているか」で
-中身が変わる = レポート run に属する。
+- **run 横断** (`summary_figs` / `wave_report_figs`) … 中身が「今 何本を比べているか」
+  で変わる = レポート run に属する。**「点軸 × run 軸に開いた並び」を図/表に落とすのは
+  ここだけ** — 波形ドメイン (`neurosurrogate.waveform`) は 1 ペア (原系, 置換系) しか
+  知らず軸の話を持たない。並び自体は `SeriesResults` が既に持つので図の側で組み直さない
+- **波形 1 本で決まる** (`original_figs` / `detail_figs`) … 別のレポートで見ても同じ図
+  (だから保存段も評価 run 側で、レポートを増やしても複製されない)。**単発と掃引で
+  経路を分けない** — 点が 1 つでも点 index を名前に持つ 1 組が出るだけ
+
+**学習 run 1 本の自己記述図はここに無い** (置換シミュの結果が要らない =
+`surrogate.figures`)。
 """
 
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.figure import Figure
 
-from ...core import access
-from ...core.diverge import diverged
-from ...plotting import Artifact, error_fig, new_figure, place_legend, use_style
-from ...surrogate.bundle import SurrogateBundle
-from ...surrogate.figures import summary_df
-from ...waveform import dm_of, extract_metric
-from ..catalog import currents
-from ..eval import SeriesResults, SimResult
+from ..core import access
+from ..core.diverge import diverged
+from ..plotting import Artifact, error_fig, new_figure, place_legend, use_style
+from ..surrogate.bundle import SurrogateBundle
+from ..surrogate.diagnostics import preprocessed_latent
+from ..surrogate.figures import summary_df
+from ..waveform import (
+    cell_figs,
+    current_preview_fig,
+    dm_of,
+    extract_metric,
+    wave_report,
+)
+from .catalog import currents
+from .result import SeriesResults, SimResult
 
 if TYPE_CHECKING:
     import numpy as np
@@ -56,7 +69,7 @@ def run_names(bundles: dict[str, SurrogateBundle]) -> dict[str, str]:
 # --- 点軸に沿った指標 -----------------------------------------------------------
 
 
-def metrics_df(
+def _metrics_df(
     view: SeriesResults,
     names: dict[str, str],
     comp_name: str,
@@ -78,7 +91,7 @@ def metrics_df(
     return pd.DataFrame(rows)
 
 
-def metric_fig(
+def _metric_fig(
     view: SeriesResults,
     names: dict[str, str],
     comp_name: str,
@@ -87,7 +100,7 @@ def metric_fig(
 ) -> Figure:
     """点軸に沿ったメトリクス折れ線 (Original + 各 run)。`names` は run_id → 表示名。
     marimo 非依存。"""
-    data = metrics_df(view, names, comp_name, metric_key)
+    data = _metrics_df(view, names, comp_name, metric_key)
     axis = view.axis or "point"
     fig = new_figure()
     ax = fig.subplots()
@@ -219,6 +232,51 @@ def wave_report_figs(
     figs = [Artifact("traces", trace_grid_fig(view, names, eval_comp))]
     if len(view.points) > 1:
         figs.append(
-            Artifact("metric", metric_fig(view, names, eval_comp, metric, metric_ylim))
+            Artifact("metric", _metric_fig(view, names, eval_comp, metric, metric_ylim))
         )
     return figs
+
+
+# --- 波形 1 本で決まる図 --------------------------------------------------------
+
+
+def original_figs(view: SeriesResults) -> list[Artifact]:
+    """原系の波形 1 本だけで決まる図 (入力電流)。"""
+    use_style()
+    return [Artifact("current", current_preview_fig(view.points[0].spec))]
+
+
+def detail_figs(
+    view: SeriesResults,
+    run_id: str,
+    bundle: SurrogateBundle,
+    eval_comp: str,
+    view_comps: tuple[str, ...],
+    detail_point: int,
+    spike_orig: int,
+    spike_surr: int,
+) -> list[Artifact]:
+    """選択した 1 点 × **1 モデル**の詳細図 + メトリクス表。描く対象は 1 つの置換系の
+    波形そのもの (run 横断でない) = 同じ波形を別のレポートで見ても同じ図。点 index を
+    名前に入れるので、つまみを動かしても前の点を上書きしない。
+
+    潜在射影は run ごとの surrogate が要るので bundle を受け取る (結果 artifact は
+    surrogate を持たない = 呼び出し側が run_id で対応付ける)。
+    """
+    use_style()
+    net = view.net
+    if eval_comp not in net.names:
+        return []
+    index = min(detail_point, len(view.points) - 1)  # 設定が点数を超えていても描く
+    comp_id = net.name_to_idx(eval_comp)
+    orig, surr = view.pair(index, run_id)
+    cells = cell_figs(
+        orig.dataset,
+        surr.dataset,
+        comp_id,
+        lambda: preprocessed_latent(bundle, net, orig.dataset, comp_id),
+        [net.name_to_idx(c) for c in view_comps] or None,
+    )
+    metrics = wave_report(dm_of(orig, surr, comp_id), spike_orig, spike_surr)
+    # 点 index は名前の 1 段目 (保存段の下でそのまま階層になる)
+    return [replace(a, name=f"p{index}/{a.name}") for a in (*cells, *metrics)]

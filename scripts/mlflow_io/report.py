@@ -30,13 +30,16 @@ from mlflow.entities import Run
 from tuning import Tuning
 
 from neurosurrogate.plotting import Artifact
-from neurosurrogate.sim.eval import EvalSeries, SeriesResults, replaced_runs
-from neurosurrogate.sim.report.report import (
+from neurosurrogate.sim.figures import (
+    detail_figs,
+    original_figs,
     run_names,
     summary_figs,
     wave_report_figs,
 )
-from neurosurrogate.sim.report.series import detail_figs, original_figs
+from neurosurrogate.sim.result import SeriesResults
+from neurosurrogate.sim.run import replaced_runs
+from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
@@ -44,8 +47,8 @@ from .save import slug, under
 from .series import results_of, run_series, source_run_of
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
-ORIGINAL_TAG = "original_series_id"
-SURROGATE_TAG = "surrogate_series_ids"  # 波形 run id の列 (与えた順 = 凡例の並び)
+_ORIGINAL_TAG = "original_series_id"
+_SURROGATE_TAG = "surrogate_series_ids"  # 波形 run id の列 (与えた順 = 凡例の並び)
 
 
 def _report_exp_id() -> str:
@@ -95,10 +98,10 @@ def _log_report(name: str, original: str, surrs: list[str], report_hash: str) ->
     client = mlflow.MlflowClient()
     found = _find_report(report_hash)
     run_id = found.info.run_id if found else _new_report_run(client, name, report_hash)
-    client.set_tag(run_id, ORIGINAL_TAG, original)
+    client.set_tag(run_id, _ORIGINAL_TAG, original)
     # **与えた順を保つ** (sort しない): 選択順が凡例/行見出しの並びとして
     # 描画層まで効く。
-    client.set_tag(run_id, SURROGATE_TAG, json.dumps(surrs))
+    client.set_tag(run_id, _SURROGATE_TAG, json.dumps(surrs))
     logger.info("レポート run 保存: %s %s (%s)", name, report_hash, run_id)
     return run_id
 
@@ -137,7 +140,7 @@ def run_and_log(
     (1 レポート = 1 系列 × N モデル)。返すのはそのレポート run の id
     = **そのまま描画の入力**。
 
-    run 軸を掛けるのは `report.view.replaced_runs` (描画側と同じ単一源)。1 本も置換
+    run 軸を絞るのは `sim.run.replaced_runs` (描画側と同じ単一源)。1 本も置換
     できない系列は回す意味が無いので拒む (marimo の選択肢は置換できる系列だけなので
     通常起きない)。"""
     surrs = replaced_runs(series, bundles)
@@ -146,7 +149,7 @@ def run_and_log(
     return _log_report(
         name,
         run_series(name, series, None, force),
-        [run_series(name, s, rid, force) for rid, s in surrs.items()],
+        [run_series(name, series, model, force) for model in surrs.items()],
         _report_hash(list(bundles), series),
     )
 
@@ -156,8 +159,9 @@ class Report:
     """**レポート run を解いたもの**: 描く中身 (`view`) と、それをどの run から読んだか
     (`run_id` / `original_id` / `surr_ids`)。
 
-    **id を持つのはこの層だけ** — MLflow の同一性はドメイン層 (`SeriesView`) に入れず、
-    保存段と由来 (`meta.json`) を解くここが持つ。描画関数はどれも `view` しか見ない。
+    **id を持つのはこの層だけ** — MLflow の同一性はドメイン層 (`SeriesResults`) に
+    入れず、保存段と由来 (`meta.json`) を解くここが持つ。描画関数はどれも `view` しか
+    見ない。
     """
 
     run_id: str  # レポート run (run 横断の成果物の宛先)
@@ -190,8 +194,8 @@ def load_report(report_run_id: str) -> Report:
     対応も波形 run 側から解く (`series.name_of` / `series.source_run_of`) = レポートは
     カタログにも学習 experiment にも依存しない。"""
     tags = mlflow.get_run(report_run_id).data.tags
-    original = tags[ORIGINAL_TAG]
-    surrs: list[str] = json.loads(tags[SURROGATE_TAG])
+    original = tags[_ORIGINAL_TAG]
+    surrs: list[str] = json.loads(tags[_SURROGATE_TAG])
     return Report(
         report_run_id,
         SeriesResults(

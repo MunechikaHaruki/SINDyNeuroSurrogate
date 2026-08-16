@@ -7,7 +7,7 @@ from typing import Literal
 import numpy as np
 
 
-def current_generator(fn: Callable) -> Callable:
+def _current_generator(fn: Callable) -> Callable:
     """silence_duration/duration を引数に持たない apply(active, dt) 返し関数を
     build(dt) 返し関数に昇格。"""
 
@@ -57,8 +57,8 @@ def current_generator(fn: Callable) -> Callable:
 # ---------------------------------------------------------------------------
 
 
-@current_generator
-def generate_steady(value: float = 10):
+@_current_generator
+def _generate_steady(value: float = 10):
     """一定の電流を生成する。value [μA/cm²]"""
 
     def apply(active: np.ndarray, _dt: float) -> None:
@@ -67,8 +67,8 @@ def generate_steady(value: float = 10):
     return apply
 
 
-@current_generator
-def generate_ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
+@_current_generator
+def _generate_ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"):
     """線形に増加・減少する電流を生成する。amplitude [μA/cm²]"""
 
     def apply(active: np.ndarray, _dt: float) -> None:
@@ -78,9 +78,9 @@ def generate_ramp(amplitude: float = 30, direction: Literal["up", "down"] = "up"
     return apply
 
 
-LINEAR_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
-    "lin&steady": generate_steady,
-    "lin&ramp": generate_ramp,
+_LINEAR_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
+    "lin&steady": _generate_steady,
+    "lin&ramp": _generate_ramp,
 }
 
 
@@ -89,8 +89,8 @@ LINEAR_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
 # ---------------------------------------------------------------------------
 
 
-@current_generator
-def generate_sinousoidal(
+@_current_generator
+def _generate_sinousoidal(
     amplitude: float = 7.5,
     frequency: float = 10.0,
     baseline: float = 7.5,
@@ -105,8 +105,8 @@ def generate_sinousoidal(
     return apply
 
 
-@current_generator
-def generate_chirp(
+@_current_generator
+def _generate_chirp(
     amplitude: float = 7.5,
     f_start: float = 1.0,
     f_stop: float = 100.0,
@@ -124,8 +124,8 @@ def generate_chirp(
     return apply
 
 
-@current_generator
-def generate_pulse_train(
+@_current_generator
+def _generate_pulse_train(
     amplitude: float = 20.0,
     frequency: float = 20.0,
     baseline: float = 0.0,
@@ -143,10 +143,10 @@ def generate_pulse_train(
     return apply
 
 
-PERIODIC_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
-    "periodic&sinousoidal": generate_sinousoidal,
-    "periodic&chirp": generate_chirp,
-    "periodic&pulse": generate_pulse_train,
+_PERIODIC_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
+    "periodic&sinousoidal": _generate_sinousoidal,
+    "periodic&chirp": _generate_chirp,
+    "periodic&pulse": _generate_pulse_train,
 }
 
 
@@ -155,8 +155,8 @@ PERIODIC_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
 # ---------------------------------------------------------------------------
 
 
-@current_generator
-def generate_rand_pulse(
+@_current_generator
+def _generate_rand_pulse(
     max_val: int = 20,
     pulse_step: int = 2000,
     flow_rate: float = 0.5,
@@ -175,8 +175,8 @@ def generate_rand_pulse(
     return apply
 
 
-@current_generator
-def generate_discretized(
+@_current_generator
+def _generate_discretized(
     pulse_step: int = 2000,
     options: list = [-5, 6.2, 6.3, 5],  # noqa: B006
     weights: list = [1, 1, 1, 1],  # noqa: B006
@@ -197,8 +197,8 @@ def generate_discretized(
     return apply
 
 
-@current_generator
-def generate_poisson_synapse(
+@_current_generator
+def _generate_poisson_synapse(
     rate: float = 20.0,
     amplitude: float = 20.0,
     tau_rise: float = 0.5,
@@ -226,10 +226,10 @@ def generate_poisson_synapse(
     return apply
 
 
-RANDOM_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
-    "random": generate_rand_pulse,
-    "random&discretized": generate_discretized,
-    "random&poisson_synapse": generate_poisson_synapse,
+_RANDOM_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
+    "random": _generate_rand_pulse,
+    "random&discretized": _generate_discretized,
+    "random&poisson_synapse": _generate_poisson_synapse,
 }
 
 
@@ -238,8 +238,8 @@ RANDOM_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
 # ---------------------------------------------------------------------------
 
 
-@current_generator
-def generate_step(values: list, step_duration: int):
+@_current_generator
+def _generate_step(values: list, step_duration: int):
     """段階的に変化する電流を生成する。values [μA/cm²]、step_duration [steps]"""
 
     def apply(active: np.ndarray, _dt: float) -> None:
@@ -254,8 +254,8 @@ def generate_step(values: list, step_duration: int):
     return apply
 
 
-@current_generator
-def add_white_noise(sigma: float = 0.1):
+@_current_generator
+def _add_white_noise(sigma: float = 0.1):
     """既存の電流にガウスホワイトノイズを加算する。sigma [μA/cm²]"""
 
     def apply(active: np.ndarray, _dt: float) -> None:
@@ -267,7 +267,7 @@ def add_white_noise(sigma: float = 0.1):
 def train(duration: float = 9000, seed: int = 991927697):
     """学習時電流。波形パラメータ固定 (duration/seed のみ可変)。
     seed = 離散値パルス列の乱数実現 (同分布の別サンプルで頑健性を見る)。"""
-    return generate_discretized(
+    return _generate_discretized(
         options=[-5, 1.3, 6.3, 20],
         weights=[0.3, 1, 1, 1],
         sigma=1,
@@ -277,27 +277,27 @@ def train(duration: float = 9000, seed: int = 991927697):
     )
 
 
-def traub_soma_dc(value: float = 1e-4 / 3.320e-5):
+def _traub_soma_dc(value: float = 1e-4 / 3.320e-5):
     """traub.c の soma DC 注入を再現。C は i_inj[soma]=1e-4[μA]/area[soma] を全時刻
     一定注入 (silence 無し, T=200ms)。MC 規約では soma の stim_area_scale=area[soma]
     が kernel の /area を打ち消す → builder 値=soma 密度 [μA/cm²] がそのまま流入。
     既定値=1e-4/area[soma] (area[soma]=3.320e-5 [cm²], traub19 SOMA_IDX)。"""
-    return generate_steady(value, silence_duration=0, duration=200)
+    return _generate_steady(value, silence_duration=0, duration=200)
 
 
-OTHER_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
+_OTHER_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     "train": train,
-    "traub_soma_dc": traub_soma_dc,
-    "step": generate_step,
-    "noise": add_white_noise,
+    "_traub_soma_dc": _traub_soma_dc,
+    "step": _generate_step,
+    "noise": _add_white_noise,
 }
 
 
 CURRENT_MAP: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
-    **OTHER_FUNC,
-    **LINEAR_FUNC,
-    **RANDOM_FUNC,
-    **PERIODIC_FUNC,
+    **_OTHER_FUNC,
+    **_LINEAR_FUNC,
+    **_RANDOM_FUNC,
+    **_PERIODIC_FUNC,
 }
 
 

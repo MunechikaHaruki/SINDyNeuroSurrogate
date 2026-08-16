@@ -19,10 +19,10 @@ from ...core.opcost import OpCost
 from .base import Closure
 
 # tanh(x) = 1 - 2 / (exp(2x) + 1) — preprocessor/autoencoder.py と同じ数え方。
-TANH_COST = OpCost(exp=1, div=1, pm=2, mul=1)
+_TANH_COST = OpCost(exp=1, div=1, pm=2, mul=1)
 
 
-def mlp(params: list[dict], x: jnp.ndarray) -> jnp.ndarray:
+def _mlp(params: list[dict], x: jnp.ndarray) -> jnp.ndarray:
     """tanh MLP。最終層のみ線形。"""
     for layer in params[:-1]:
         x = jnp.tanh(x @ layer["W"] + layer["b"])
@@ -48,7 +48,7 @@ def latent_deriv(
     ゲートが V を壊していた。範囲外に出ること自体は許し、指数的に引き戻す。
     """
     excess = jnp.maximum(jnp.abs(latent) - 1.0, 0.0) * jnp.sign(latent)
-    return mlp(layers, jnp.concatenate([latent, v_norm], axis=-1)) - pull * excess
+    return _mlp(layers, jnp.concatenate([latent, v_norm], axis=-1)) - pull * excess
 
 
 @dataclass
@@ -90,6 +90,6 @@ class UDEClosure(Closure):
             n_in, n_out = layer["W"].shape
             cost = cost + OpCost(mul=n_in * n_out, pm=n_in * n_out)
             if i < len(self.layers) - 1:
-                cost = cost + TANH_COST * n_out
+                cost = cost + _TANH_COST * n_out
         # 復元力 |z|-1 → clamp → sign 乗算 → 減算 (潜在 1 本あたり)。
         return cost + OpCost(pm=3, mul=2) * int(self.layers[-1]["W"].shape[1])

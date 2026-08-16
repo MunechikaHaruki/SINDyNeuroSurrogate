@@ -3,10 +3,10 @@
 ドメイン層 (`neurosurrogate/`) は「どう回すか」の型と手続きだけを持ち、
 **何を回すか**はここに集まる。中身は 2 つ:
 
-- `EVALS` — 素材 (1 条件 = `SimSpec`)
+- `_EVALS` — 素材 (1 条件 = `SimSpec`)
 - `SERIES` — 掃引 (`EvalSeries`。素材を電流パラメータで振ったもの。単発も「点 1 つ
   の系列」として同じ経路を通る)。載るのは surrogate を持たない素の系列 =
-  カタログは原系の掃引そのもので、回す側が run ごとに `with_surrogate` して
+  カタログは原系の掃引そのもので、回す側が run ごとに置換器を掛けて
   run 軸を張る
 **描き方 (`report.tuning.Tuning`) はここに持たない**: 比較対象 comp も指標も
 図を見て
@@ -21,15 +21,14 @@ marimo の widget 1 箇所 (`SimSpec.net` が解いた comp 名から選択肢�
 
 import numpy as np
 
-from neurosurrogate.sim.eval import EvalSeries
-from neurosurrogate.sim.spec import SimSpec
+from neurosurrogate.sim.spec import EvalSeries, SimSpec
 
 # 掃引つき評価の共通電流パラメータ (刺激前の静穏 + 本体長)。掃引軸の値は入らない
 # (`EvalSeries` が点ごとに埋める)。
 _STIM = {"silence_duration": 10.0, "duration": 300.0}
 _DT = 0.01
 
-EVALS: dict[str, SimSpec] = {
+_EVALS: dict[str, SimSpec] = {
     # 単体 traub の素の応答 (置換の足場が動くかを最短で見る)。掃引なしで完結。
     "traub_soma_dc": SimSpec(
         target="traub",
@@ -59,21 +58,21 @@ EVALS: dict[str, SimSpec] = {
     ),
 }
 
-# **系列名の単一源**。素材を `EVALS` から名前で引き、ここで軸と点を与える。
+# **系列名の単一源**。素材を `_EVALS` から名前で引き、ここで軸と点を与える。
 SERIES: dict[str, EvalSeries] = {
-    "traub_soma_dc": EvalSeries(spec=EVALS["traub_soma_dc"]),
+    "traub_soma_dc": EvalSeries(spec=_EVALS["traub_soma_dc"]),
     "traub19_somastim": EvalSeries(
-        spec=EVALS["traub19_somastim"],
+        spec=_EVALS["traub19_somastim"],
         param="value",
         values=np.linspace(0.0, 10.0, 5).tolist(),
     ),
     "traub19_dendstim": EvalSeries(
-        spec=EVALS["traub19_dendstim"],
+        spec=_EVALS["traub19_dendstim"],
         param="value",
         values=np.linspace(0.0, 10.0, 5).tolist(),
     ),
     "traub19_pulse_freq": EvalSeries(
-        spec=EVALS["traub19_pulse_freq"],
+        spec=_EVALS["traub19_pulse_freq"],
         param="frequency",
         values=np.linspace(10.0, 50.0, 5).tolist(),
     ),

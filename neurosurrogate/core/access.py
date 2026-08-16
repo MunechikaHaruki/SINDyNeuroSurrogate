@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 
-Trace = tuple[np.ndarray, np.ndarray]  # (time, value)
+_Trace = tuple[np.ndarray, np.ndarray]  # (time, value)
 
 POTENTIAL_VAR = "V"
 
@@ -53,7 +53,7 @@ def latent_variables(ds: xr.Dataset) -> list[str]:
 # --- numpy accessor (計算層) ------------------------------------------------
 
 
-def variable_values(ds: xr.Dataset, comp_id: int, variable: str) -> np.ndarray:
+def _variable_values(ds: xr.Dataset, comp_id: int, variable: str) -> np.ndarray:
     """comp_id・variable 名の系列値 (gate は variable 名で一意に決まる)。"""
     return ds["vars"].sel(comp_id=comp_id, variable=variable).to_numpy().squeeze()
 
@@ -93,13 +93,13 @@ def has_i_internal(ds: xr.Dataset) -> bool:
 # --- (t, y) accessor (描画層) -----------------------------------------------
 
 
-def trace(ds: xr.Dataset, comp_id: int, variable: str) -> Trace:
-    return time(ds), variable_values(ds, comp_id, variable)
+def trace(ds: xr.Dataset, comp_id: int, variable: str) -> _Trace:
+    return time(ds), _variable_values(ds, comp_id, variable)
 
 
-def i_ext(ds: xr.Dataset) -> Trace:
+def i_ext(ds: xr.Dataset) -> _Trace:
     return time(ds), i_ext_values(ds)
 
 
-def i_internal(ds: xr.Dataset, comp_id: int) -> Trace:
+def i_internal(ds: xr.Dataset, comp_id: int) -> _Trace:
     return time(ds), i_internal_values(ds, comp_id)

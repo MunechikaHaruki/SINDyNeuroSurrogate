@@ -35,9 +35,14 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 
 ## Architecture
 
-依存の向き: `core ← neurons ← sim.{catalog,spec,eval} ← surrogate ← sim.report` (`core` は他ディレクトリを一切 import しない)。
+依存の向き: `core ← neurons ← sim.{catalog,spec,result} ← surrogate ← sim.{run,figures}` (`core` は他ディレクトリを一切 import しない)。
 `neurosurrogate/` = ドメイン層 (marimo/MLflow 非依存)、`scripts/` = Hydra/MLflow/marimo の入口、
 描画成果物も評価結果本体も MLflow (図はレポート run の artifact)。
+
+公開範囲の綴りは機械検査される (`tests/test_conventions.py`): **module 直下の名前は他 module から
+参照されるものだけが `_` 無し**、自分の module 内でしか使わないものは `_` 始まり。動的に呼ばれる
+入口 (Hydra entry / marimo app / `vars()` ごと注入する `compartments/{hh,traub}.py`) はテスト側の
+免除リストに明記する。
 
 各ディレクトリの責務・ファイル単位の役割・設定ファイル (`scripts/conf/`, `scripts/catalog.py`) の規約は
 **`docs/architecture.md`** に分離。コード配置や設定の詳細が要るときにそれを読む。

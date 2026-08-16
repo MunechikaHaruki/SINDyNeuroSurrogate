@@ -14,7 +14,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 def _disable_proxy() -> None:
@@ -82,7 +82,7 @@ def main(cfg: DictConfig) -> None:
         if parent_id is None:
             _log_config(cfg)
         _fit_and_log(cfg)
-    logger.info(f"[{_run_name(preset)}] 完了")
+    _logger.info(f"[{_run_name(preset)}] 完了")
 
 
 if __name__ == "__main__":

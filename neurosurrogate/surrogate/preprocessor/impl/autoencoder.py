@@ -8,10 +8,10 @@ import optax
 from ....core.opcost import OpCost
 from ..base import Preprocessor
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 # tanh(x) = 1 - 2 / (exp(2x) + 1)
-TANH_COST = OpCost(exp=1, div=1, pm=2, mul=1)
+_TANH_COST = OpCost(exp=1, div=1, pm=2, mul=1)
 
 
 # ------------------------------------------------------------------
@@ -34,7 +34,7 @@ def decoder(params, z):
 # 3. _init_params（クラス内）
 
 
-def loss_fn(params, x):
+def _loss_fn(params, x):
     z = encoder(params["enc"], x)
     x_hat = decoder(params["dec"], z)
     return jnp.mean((x - x_hat) ** 2)
@@ -64,7 +64,7 @@ def _init_params(input_dim: int, n_components: int, key) -> dict:
     }
 
 
-def train_autoencoder(
+def _train_autoencoder(
     X: np.ndarray, n_components: int, epochs: int, lr: float
 ) -> tuple[dict, np.ndarray, np.ndarray]:
     """AutoEncoder を学習し (params, x_mean, x_std) を返す。標準化込み。"""
@@ -79,14 +79,14 @@ def train_autoencoder(
 
     @jax.jit
     def step(params, opt_state, x):
-        loss, grads = jax.value_and_grad(loss_fn)(params, x)
+        loss, grads = jax.value_and_grad(_loss_fn)(params, x)
         updates, opt_state = optimizer.update(grads, opt_state)
         return optax.apply_updates(params, updates), opt_state, loss
 
     for epoch in range(epochs):
         params, opt_state, loss = step(params, opt_state, X_norm)
         if (epoch + 1) % 50 == 0:
-            logger.info(f"[AutoEncoder] epoch {epoch + 1}/{epochs}  loss={loss:.6f}")
+            _logger.info(f"[AutoEncoder] epoch {epoch + 1}/{epochs}  loss={loss:.6f}")
     return params, mean, std
 
 
@@ -113,7 +113,7 @@ class AEPreprocessor(Preprocessor):
     ) -> "AEPreprocessor":
         epochs = int(spec.get("epochs", 1000))
         lr = float(spec.get("lr", 3e-2))
-        params, mean, std = train_autoencoder(
+        params, mean, std = _train_autoencoder(
             train_gate, n_components=n_components, epochs=epochs, lr=lr
         )
         inst = cls(
@@ -154,7 +154,7 @@ class AEPreprocessor(Preprocessor):
         n_gates = int(self.dec_params["W2"].shape[1])
         return (
             OpCost(mul=n_latent * hidden, pm=n_latent * hidden)  # z @ W1 + b1
-            + TANH_COST * int(hidden)
+            + _TANH_COST * int(hidden)
             + OpCost(mul=hidden * n_gates, pm=hidden * n_gates)  # h @ W2 + b2
             + OpCost(mul=n_gates, pm=n_gates)  # 標準化の逆変換 (* std + mean)
         )

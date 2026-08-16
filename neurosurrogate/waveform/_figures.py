@@ -1,7 +1,7 @@
 """**1 ペアの詳細図**: 入力電流プレビューと、原系/置換系の比較 (波形・差分・相平面)。
 
 どのペアを描くかは呼び出し側が選び、ここは Dataset だけを受ける (結果型
-`SimResult`/`SeriesView` を知らない)。一括生成する `cell_figs` は
+`SimResult`/`SeriesResults` を知らない)。一括生成する `cell_figs` は
 `waveform/__init__.py`。marimo 非依存。
 """
 

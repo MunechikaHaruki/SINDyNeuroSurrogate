@@ -27,7 +27,7 @@ from ...preprocessor.impl.autoencoder import AEPreprocessor, decoder, encoder
 from ..base import Ansatz, TrainInputs
 from .hybrid_kernel import hybrid_physics, hybrid_surr_comp_type, hybrid_train_inputs
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 def _init_mlp(dims: list[int], key) -> list[dict]:
@@ -158,7 +158,7 @@ class UDEAnsatz(Ansatz[UDEClosure]):
             key, sub = jax.random.split(key)
             params, opt_state, loss, parts = step(params, opt_state, sub)
             if (epoch + 1) % 200 == 0:
-                logger.info(
+                _logger.info(
                     f"[UDE] epoch {epoch + 1}/{epochs}  loss={float(loss):.6f} "
                     f"(traj={float(parts[0]):.6f} recon={float(parts[1]):.6f})"
                 )

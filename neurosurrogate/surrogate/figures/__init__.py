@@ -108,7 +108,7 @@ def surrogate_figs(
     系列も評価 run も要らない。
 
     **run 横断のサマリ表 (`summary_df`) はここに含めない** — 中身が「今 何本を比べて
-    いるか」で変わるのでレポートの産物 (`sim.report.report`)。
+    いるか」で変わるのでレポートの産物 (`sim.figures`)。
     """
     net = bundle.meta.dataset.net
     use_style()

@@ -20,7 +20,7 @@ from tqdm import tqdm
 from tuning import Tuning
 
 from neurosurrogate.plotting import Artifact
-from neurosurrogate.sim.report.report import run_names
+from neurosurrogate.sim.figures import run_names
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.figures import surrogate_figs
 from neurosurrogate.surrogate.meta import SurrogateMeta
@@ -28,17 +28,17 @@ from neurosurrogate.surrogate.meta import SurrogateMeta
 from . import TARGET_EXP, logger
 from .save import slug, under
 
-SURR_ARTIFACT_DIR = "surrogate"
+_SURR_ARTIFACT_DIR = "surrogate"
 
 
 def log_surrogate_model(surrogate: SurrogateBundle) -> None:
     with tempfile.TemporaryDirectory() as tmp_str:
         surrogate.save(tmp_str)
-        mlflow.log_artifacts(tmp_str, artifact_path=SURR_ARTIFACT_DIR)
+        mlflow.log_artifacts(tmp_str, artifact_path=_SURR_ARTIFACT_DIR)
 
 
 @cache
-def load_surrogate_model(run_id: str) -> SurrogateBundle:
+def _load_surrogate_model(run_id: str) -> SurrogateBundle:
     """run_id → surrogate。**run_id ごとに 1 回だけ** artifact を DL して unpickle
     する。同じ run が一覧走査 (get_runs_df の meta 読込) と選択後のロードで最低
     2 回、marimo のセル再実行のたびに何度も要求されるため。artifact は run に対し
@@ -48,35 +48,35 @@ def load_surrogate_model(run_id: str) -> SurrogateBundle:
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
             mlflow.artifacts.download_artifacts(
-                f"runs:/{run_id}/{SURR_ARTIFACT_DIR}", dst_path=tmp_str
+                f"runs:/{run_id}/{_SURR_ARTIFACT_DIR}", dst_path=tmp_str
             )
         )
         return SurrogateBundle.load(local)
 
 
 @cache
-def load_surrogate_meta(run_id: str) -> SurrogateMeta:
+def _load_surrogate_meta(run_id: str) -> SurrogateMeta:
     """run の同定情報だけを読む (meta.json のみ DL)。run 一覧は全 run 分これを呼ぶ
     ので、学習成果物の pickle まで落とさない。"""
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
             mlflow.artifacts.download_artifacts(
-                f"runs:/{run_id}/{SURR_ARTIFACT_DIR}/{META_FILE}", dst_path=tmp_str
+                f"runs:/{run_id}/{_SURR_ARTIFACT_DIR}/{META_FILE}", dst_path=tmp_str
             )
         )
         return SurrogateMeta.from_dict(json.loads(local.read_text()))
 
 
-def load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
+def _load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
     """run_id 列 → surrogate ロード。run 選択の唯一のロード経路
     (sweep 複数 / single 1件 共通)。表示名は meta.label (runName 非依存)。"""
-    return [load_surrogate_model(rid) for rid in run_ids]
+    return [_load_surrogate_model(rid) for rid in run_ids]
 
 
 def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
     """run_id 列 → run_id→surrogate。他層は表示名でなく **run_id で** surrogate を
     引く (表示名が要る描画層は `report.run_names` で解く)。"""
-    return dict(zip(run_ids, load_runs(run_ids), strict=True))
+    return dict(zip(run_ids, _load_runs(run_ids), strict=True))
 
 
 def sweep_siblings(parent_id: str) -> list[str]:
@@ -116,7 +116,7 @@ def _safe_meta(run_id: str) -> SurrogateMeta | None:
     """読込不可 (旧形式など) は None にして選択対象から外す。1 件の失敗で
     experiment 全体を見られなくしない。"""
     try:
-        return load_surrogate_meta(run_id)
+        return _load_surrogate_meta(run_id)
     except Exception as e:
         logger.debug(f"run {run_id} の meta 読込失敗: {e}")
         return None

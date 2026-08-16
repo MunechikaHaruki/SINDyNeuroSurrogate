@@ -23,7 +23,7 @@ from ._figures import attractor_fig, panels_diff, panels_simple
 from ._figures import current_preview_fig as current_preview_fig
 from ._tables import spike_features_df, waveform_summary_df
 from .dynamics import DynamicMetrics, n_spikes, spike_shape_corr, waveform_summary
-from .dynamics import dm_of as dm_of  # 軸を掛ける側 (sim.report.report) が使う
+from .dynamics import dm_of as dm_of  # 軸を掛ける側 (sim.figures) が使う
 from .dynamics import extract_metric as extract_metric
 
 

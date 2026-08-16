@@ -1,8 +1,18 @@
+"""**実験の記述**: 1 シミュの計算入力 (`SimSpec`) と 1 回の掃引 (`EvalSeries`)。
+
+**実行を知らない** = ここに書けるのは「何を回すか」だけで、どの surrogate で回すかも
+回した結果も持たない (実行は `run`、結果は `result`)。おかげで `hash()` が
+「同じ波形を出す入力か」と正確に一致し、surrogate 層に依存しない (`surrogate.meta` が
+この module を import する)。
+"""
+
 from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from dataclasses import replace as dc_replace
 from typing import Self
 
 import numpy as np
@@ -18,7 +28,7 @@ class SimSpec:
     (掃引点は `current_params` に確定済み)。これだけで波形が決まる。
 
     **識別は一切持たない** — 系列名はカタログのキー、どの surrogate で回すかは
-    `eval.simulate` の引数、出所は結果側 (`eval.SimResult`)。おかげで `hash()` が
+    `run.simulate` の引数、出所は結果側 (`result.SimResult`)。おかげで `hash()` が
     「同じ波形を出す入力か」と正確に一致する。
     """
 
@@ -55,7 +65,7 @@ class SimSpec:
     def hash(self) -> str:
         """`key()` の短縮ハッシュ。保存側が「同じ入力を既に回したか」を引くための
         キー (完全な仕様は別に持つので、衝突しない長さがあれば足りる)。"""
-        return short_hash(self.key())
+        return _short_hash(self.key())
 
     @property
     def net(self) -> NeuronGraph:
@@ -73,8 +83,63 @@ class SimSpec:
         return DatasetConfig(dt=self.dt, net=self.net, current=self.current())
 
 
-def short_hash(key: str) -> str:
+@dataclass(frozen=True)
+class EvalSeries:
+    """**1 回の掃引実験の記述**: 何を (`spec`)・どの電流パラメータで振るか
+    (`param`/`values`)。`param` を渡さなければ単発 (点 1 つ) で、以降は掃引と同じ
+    経路を通る。
+
+    **どの surrogate で回すかも run 軸も持たない**: 置換器を掛けるのは `run`、
+    run 軸に開いた結果を持つのは `result.SeriesResults` で、どちらもこの型の外に居る。
+    掃引の記述が置換器から独立している = 原系の再利用が hash 1 本で効く。
+
+    **保存の単位でもある**: 1 系列 = 1 評価 run (点列を丸ごと 1 artifact に持つ)
+    なので、「同じ掃引を既に回したか」を引く鍵 (`hash`) と往復の形 (`to_dict` /
+    `from_dict`) をこの型が持つ。
+    """
+
+    spec: SimSpec
+    param: str | None = None  # 掃引する電流パラメータ名 (None=単発)。図の x 軸
+    values: Sequence[float] = ()  # 掃引点の値列 (等間隔でなくてもよい)
+
+    def to_dict(self) -> dict:
+        """永続化 (評価 run の param) が持ち回る形 = 掃引の定義そのもの。"""
+        return {
+            "spec": self.spec.to_dict(),
+            "param": self.param,
+            "values": [float(v) for v in self.values],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Self:
+        return cls(
+            spec=SimSpec.from_dict(d["spec"]),
+            param=d["param"] or None,
+            values=[float(v) for v in d["values"]],
+        )
+
+    def hash(self) -> str:
+        """**同じ掃引を既に回したか**の鍵 (置換器は記述に含まれない = 原系の再利用が
+        これ 1 本で効く)。置換系は呼び出し側がここに run_id を組む。"""
+        return _short_hash(json.dumps(self.to_dict(), sort_keys=True, default=str))
+
+    @property
+    def points(self) -> list[SimSpec]:
+        """点ごとの計算入力 (値順)。`current_params[param]` に値を埋めた複製 =
+        `spec` と `values` からの派生で、二重に持たない。"""
+        if self.param is None:
+            return [self.spec]
+        return [
+            dc_replace(
+                self.spec,
+                current_params={**self.spec.current_params, self.param: float(v)},
+            )
+            for v in self.values
+        ]
+
+
+def _short_hash(key: str) -> str:
     """正規化文字列 → 短縮ハッシュ。「同じものを既に回したか」を引く鍵の作り方を
-    `SimSpec` と `eval.EvalSeries` で揃える (どちらも完全な仕様を別に持つので
+    `SimSpec` と `EvalSeries` で揃える (どちらも完全な仕様を別に持つので
     短くてよい)。"""
     return hashlib.sha1(key.encode()).hexdigest()[:8]

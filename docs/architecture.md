@@ -5,7 +5,7 @@ CLAUDE.md から分離した詳細目録。ディレクトリの中身・設定�
 ## Directory
 
 ```
-neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← sim.{catalog,spec,eval} ← surrogate ← sim.report で、**core は他ディレクトリを一切 import しない**。中身の無い `__init__.py` は置かない (再 export だけの層も作らない = 各実体を submodule から直接 import。そのため setuptools は `namespaces = true`)。**`_` 始まりのファイル名 = そのパッケージの外から import しない** (実測で内部専用のものだけが `_` を持つ)
+neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← sim.{catalog,spec,result} ← surrogate ← sim.{run,figures} で、**core は他ディレクトリを一切 import しない**。中身の無い `__init__.py` は置かない (再 export だけの層も作らない = 各実体を submodule から直接 import。そのため setuptools は `namespaces = true`)。**`_` 始まりのファイル名 = そのパッケージの外から import しない** (実測で内部専用のものだけが `_` を持つ)
   __init__.py                    # jax_enable_x64 を強制 ON
   core/  network.py              # Compartment/CompartmentType/NeuronGraph + DatasetConfig (**実体化済みの実行入力** = dt/net/current の 3 つだけ。名前の解決も JSON 往復も持たない)
          simulator.py            # unified_simulator (JAX Euler + lax.scan)
@@ -18,12 +18,11 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
   sim/  catalog/                 # **名前 → 実体の対応表だけ** (SimSpec のフィールドが引く選択肢。作り方は持たない)
           targets.py             # MCMODELS (SimSpec.target が引く適用先モデル)
           currents.py            # 注入電流波形 + CURRENT_MAP
-        spec.py                  # SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ)。surrogate より前の層 (SurrogateMeta.dataset がこれ)
-        eval.py                  # **どう**回すか (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate → SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) + EvalSeries (spec+param+values+surrogate の 1 掃引実験 = **保存の単位でもある**。points は派生、simulate() は引数なし、attach() で保存済み波形を点列へ貼り直す) + **run 軸** = replaced_runs (1 系列 × 学習 run → run_id → 置換系。run 軸を掛ける唯一の場所) / SeriesResults (点軸×run 軸に開いた結果の純粋なデータ。net/target/axis/values は点から読むだけ。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る)。表示名も MLflow の id も出てこない。surrogate の後の層
-        report/              # 結果ドメイン: 軸に開いて報告へ畳む。**1 レポート = 1 系列 × N モデル** (1 系列の電流たちで N 本の surrogate を比べる = dest がレポートの root)。**結果 (`sim.eval.SeriesResults`) を描く層なので sim の下**
-            series.py            # 波形 1 本で決まる図: original_figs (原系の入力電流) / detail_figs (選択点 × **1 モデル**の詳細図)。run 横断でない = 別のレポートで見ても同じ図
-            report.py            # run 横断の図: summary_figs (比べた N 本のサマリ表。由来は学習 run 群) / wave_report_figs (波形格子 (行=run、列=点。行見出しが run の表示名) + 点軸メトリクスの折れ線。由来は読んだ波形 run) + run_names (label 衝突に連番 = run 軸の本数を知らないと決まらないので run 横断の図と同居)。**点軸×run 軸の並びを図表に落とす唯一の場所**
-                                 # 2 module は互いを import せず、どれも `list[Artifact]` を返すだけ = **どの関数を呼んだかが保存段を決める** (図は属する run も由来も名乗らない)。描き方も束 (`Tuning`) では受けず素の引数で受ける。**学習 run 1 本の自己記述図はここに無い** (置換シミュの結果が要らない = `surrogate.figures.surrogate_figs`)
+        spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+param+values の 1 掃引 = **保存の単位でもある**。points は派生、to_dict/from_dict/hash で往復)。surrogate より前の層 (SurrogateMeta.dataset がこれ)
+        result.py                # **結果の器だけ** (計算も描画もしない): SimResult (spec+波形+axis のみ。識別も保存先 id も持たない) / attach (保存済み波形列 → 点列。再シミュ無しの run_points) / SeriesResults (点軸×run 軸に開いた結果の純粋なデータ。net/target/axis/values は点から読むだけ。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る)
+        run.py                   # **仕様 × surrogate を掛ける唯一の段** (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate (1 シミュ) / run_points (掃引点列 → 結果。系列 → 結果の唯一の入口) / replaceable / **run 軸** = replaced_runs (1 系列 × 学習 run → 置換できる run だけに絞る)。表示名も MLflow の id も出てこない。surrogate の後の層
+        figures.py               # 結果 (`sim.result.SeriesResults`) → 図。**1 レポート = 1 系列 × N モデル** (1 系列の電流たちで N 本の surrogate を比べる = dest がレポートの root)。run 横断の図 (summary_figs=比べた N 本のサマリ表 (由来は学習 run 群) / wave_report_figs=波形格子 (行=run、列=点。行見出しが run の表示名) + 点軸メトリクスの折れ線 (由来は読んだ波形 run) / run_names=label 衝突に連番) と、波形 1 本で決まる図 (original_figs=原系の入力電流 / detail_figs=選択点 × **1 モデル**の詳細図。run 横断でない = 別のレポートで見ても同じ図) が同居。**点軸×run 軸の並びを図表に落とす唯一の場所**
+                                 # どれも `list[Artifact]` を返すだけ = **どの関数を呼んだかが保存段を決める** (図は属する run も由来も名乗らない)。描き方も束 (`Tuning`) では受けず素の引数で受ける。**学習 run 1 本の自己記述図はここに無い** (置換シミュの結果が要らない = `surrogate.figures.surrogate_figs`)
   surrogate/  meta.py            # SurrogateMeta (学習構造の単一源)
               bundle.py          # SurrogateBundle.setup/load/save + SURR_CLS/PREPROCESSOR_CLS
               replace.py         # 置換可否判定 + apply_surrogate
@@ -31,7 +30,7 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,_catalog}.py
               preprocessor/      # base.py + impl/{pca,autoencoder}.py
               figures/           # surrogate の自己記述 (評価結果を受け取らない = 置換シミュ前に描ける)。__init__.py=集約 (surrogate_figs=**run 1 本が自分について描けるもの全部**。適用先も comp 名解決も学習 dataset から解く = 系列も評価 run も要らない。中身は bundle の型が決める = 何を描くかの宣言を受け取らない。内訳 closure_figs/preprocessor_figs/neuron_graph_figs/train_figs。**run 横断の summary_df はレポート側の産物**) / _train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree
-  plotting.py                    # 描画プリミティブ (new_figure/place_legend/error_fig/collect/PanelSpec/TraceSpec/draw_engine/**Artifact** (成果物 1 件 = 名前 + 中身。図を出す全層 (waveform / surrogate.figures / sim.report) の共通の返り値型で、**包み直す層を作らない**)) + RC_PARAMS/use_style (図の見た目の既定。適用は render_report の 1 箇所)。**唯一 機能で切った層** = ドメイン知識を入れない
+  plotting.py                    # 描画プリミティブ (new_figure/place_legend/error_fig/collect/PanelSpec/TraceSpec/draw_engine/**Artifact** (成果物 1 件 = 名前 + 中身。図を出す全層 (waveform / surrogate.figures / sim.figures) の共通の返り値型で、**包み直す層を作らない**)) + RC_PARAMS/use_style (図の見た目の既定。適用は render_report の 1 箇所)。**唯一 機能で切った層** = ドメイン知識を入れない
   waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
             dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)
             _tables.py           # その値を表に並べる (計算を増やさない)
@@ -39,7 +38,7 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
             __init__.py          # 集約 (cell_figs / wave_report)
 scripts/  main.py                # Hydra エントリ
           tuning.py              # 描画への**入力**: Tuning (描き方の全キーの単一源。値は marimo の widget 1 箇所、束を解いて描画層へ渡すのは mlflow_io の各 module)
-          catalog.py             # **何を回すか**の 1 枚カタログ: EVALS (素材 1 条件) / SERIES (掃引。surrogate を持たない素の EvalSeries。回す側が with_surrogate して run 軸を張る)。**描き方は持たない** (tuning.Tuning は marimo の widget が全キーを持つ)
+          catalog.py             # **何を回すか**の 1 枚カタログ: EVALS (素材 1 条件) / SERIES (掃引。置換器を持たない素の EvalSeries。回す側が sim.run.replaced_runs で run 軸を張る)。**描き方は持たない** (tuning.Tuning は marimo の widget が全キーを持つ)
           mlflow_io/             # MLflow I/O = **MLflow を知る唯一の場所**。experiment ごとに 1 module で、どれも「experiment id を解く / 同一性の鍵を組む / 既存を探す / 書く / **その experiment に属する成果物を組む**」。**再 export しない** (呼ぶ側は from mlflow_io.report import ... と名乗る)
             __init__.py          # tracking URI をリポジトリ直下へ固定 (import 時に実行 = どの module を通っても最初に張られる) + TARGET_EXP
             save.py              # **描いたものを全部レポート run の artifact へ**書く唯一の場所: save_artifacts (図=log_figure / 表=log_text + そのとき使った Tuning を draw.json 1 枚) + under (成果物の名前に段を付ける) + slug (label → path 安全)。**成果物は run でなく (レポート run, Tuning) に属する** — model 図も詳細図も view_comps/detail_point で中身が変わるので、宛先を学習 run / 波形 run にすると同じ run を使う別レポートが同じ path を奪い合う (後勝ちでどのレポートのものでもない図が残る)。レポート run 配下なら衝突せず、記録した run を描画が書き換えない。成果物ごとの由来 (sources) は持たない = どの run から読んだかはレポート run の tag が既に指している

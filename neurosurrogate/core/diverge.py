@@ -9,7 +9,7 @@ import xarray as xr
 
 from .network import NeuronGraph
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 _DIVERGE_V = 1e3  # |V| [mV] の発散判定閾値 (生理的な範囲は ±200 程度)
 
@@ -31,4 +31,4 @@ def log_divergence(net: NeuronGraph, surr_ds: xr.Dataset, where: str) -> None:
         if diverged(access.potential(surr_ds, int(i)))
     ]
     if names:
-        logger.warning("置換系の電位が発散 (%s): %s", where, ", ".join(names))
+        _logger.warning("置換系の電位が発散 (%s): %s", where, ", ".join(names))

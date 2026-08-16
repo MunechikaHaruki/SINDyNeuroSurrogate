@@ -29,17 +29,17 @@ from .preprocessor.base import Preprocessor
 from .preprocessor.impl.autoencoder import AEPreprocessor
 from .preprocessor.impl.pca import PCAPreprocessor
 
-BUNDLE_FILE = "surrogate.joblib"  # 学習成果物 (closure/preprocessor)
+_BUNDLE_FILE = "surrogate.joblib"  # 学習成果物 (closure/preprocessor)
 META_FILE = "meta.json"  # 同定情報。一覧はこれだけ読む
 
 # meta の dispatch キー → 実装。**解決するのは bundle だけ**なので、実装側に type 名
 # を持たせず (自分がどう選ばれたかを知らない) ここに対応表を置く。
-SURR_CLS: dict[str, type[Ansatz[Any]]] = {
+_SURR_CLS: dict[str, type[Ansatz[Any]]] = {
     "sindy": SINDyAnsatz,
     "hybrid": HybridAnsatz,
     "ude": UDEAnsatz,
 }
-PREPROCESSOR_CLS: dict[str, type[Preprocessor]] = {
+_PREPROCESSOR_CLS: dict[str, type[Preprocessor]] = {
     "pca": PCAPreprocessor,
     "ae": AEPreprocessor,
 }
@@ -67,13 +67,13 @@ class SurrogateBundle:
     @cached_property
     def ansatz(self) -> Ansatz[Any]:
         """定式化ストラテジ。meta.surrogate_type から解決する (状態なし → 保存不要)。"""
-        return SURR_CLS[self.meta.surrogate_type]()
+        return _SURR_CLS[self.meta.surrogate_type]()
 
     @cached_property
     def preprocessor_cls(self) -> type[Preprocessor]:
         """preprocessor 実装。ansatz と同じく meta の dispatch キーから解決する
         (解決だけが cached_property、学習済みインスタンスは属性 `preprocessor`)。"""
-        return PREPROCESSOR_CLS[self.meta.preprocessor_type]
+        return _PREPROCESSOR_CLS[self.meta.preprocessor_type]
 
     # --- 構築 ---------------------------------------------------------------
 
@@ -104,7 +104,7 @@ class SurrogateBundle:
         # meta は JSON 別ファイル (構造で保存)、学習成果物は pickle。run 一覧が meta
         # だけ読む経路は mlflow_io が artifact の meta.json を直読みする (bundle を
         # 経由しない) → ここは load 内でまとめて読めば足りる。
-        data = joblib.load(Path(dir) / BUNDLE_FILE)
+        data = joblib.load(Path(dir) / _BUNDLE_FILE)
         bundle = cls()
         bundle.meta = SurrogateMeta.from_dict(
             json.loads((Path(dir) / META_FILE).read_text())
@@ -120,7 +120,7 @@ class SurrogateBundle:
         )
         joblib.dump(
             {"closure": self.closure, "preprocessor": self.preprocessor},
-            Path(dir) / BUNDLE_FILE,
+            Path(dir) / _BUNDLE_FILE,
         )
 
     # --- ansatz 委譲 --------------------------------------------------------

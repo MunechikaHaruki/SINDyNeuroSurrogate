@@ -24,8 +24,9 @@ from test_surrogate import fit_surrogate
 from tuning import Tuning
 
 from neurosurrogate.core import access
-from neurosurrogate.sim.eval import EvalSeries, simulate
-from neurosurrogate.sim.report.report import run_names
+from neurosurrogate.sim.figures import run_names
+from neurosurrogate.sim.run import simulate
+from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 RUN_ID = "RID"  # 学習 run の代役 (評価 run が指す先)

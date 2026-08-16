@@ -26,14 +26,16 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
 from neurosurrogate.plotting import collect, new_figure
-from neurosurrogate.sim.eval import EvalSeries, SeriesResults, replaced_runs
-from neurosurrogate.sim.report.report import (
+from neurosurrogate.sim.figures import (
+    detail_figs,
+    original_figs,
     summary_figs,
     trace_grid_fig,
     wave_report_figs,
 )
-from neurosurrogate.sim.report.series import detail_figs, original_figs
-from neurosurrogate.sim.spec import SimSpec
+from neurosurrogate.sim.result import SeriesResults
+from neurosurrogate.sim.run import replaced_runs, run_points
+from neurosurrogate.sim.spec import EvalSeries, SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
     hybrid_physics,
@@ -117,8 +119,11 @@ def _simulate_view(
     """1 系列を run 軸に開いてその場で回す (保存を経由しない経路)。本番の描画入力は
     MLflow から読む `mlflow_io.load_report` なので、この経路はテストにだけ居る。"""
     return SeriesResults(
-        series.simulate(),
-        {rid: s.simulate() for rid, s in replaced_runs(series, bundles).items()},
+        run_points(series, None),
+        {
+            rid: run_points(series, bundle)
+            for rid, bundle in replaced_runs(series, bundles).items()
+        },
     )
 
 

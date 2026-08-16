@@ -23,13 +23,13 @@ from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 # 図の見た目の既定 (matplotlib の rcParams)。**発表用の 1 組だけ**を持つ:
 # 切り替える先が無いのに選択機構を置かない (別の出力向けが要るなら、その時に
 # ここを調整する)。mplstyle ファイルにしないのは、中身が固定値で読み手が
 # このリポジトリのコードだけだから — 設定ファイルにする理由が無い。
-RC_PARAMS: dict[str, object] = {
+_RC_PARAMS: dict[str, object] = {
     "savefig.bbox": "tight",
     "savefig.pad_inches": 0.05,
     "savefig.format": "png",
@@ -57,9 +57,9 @@ RC_PARAMS: dict[str, object] = {
 
 
 def use_style() -> None:
-    """`RC_PARAMS` を適用する。**プロセス全体のグローバル状態**を触るので、呼ぶのは
+    """`_RC_PARAMS` を適用する。**プロセス全体のグローバル状態**を触るので、呼ぶのは
     描画の入口 (`report` の各描画関数) 1 箇所だけ。"""
-    matplotlib.style.use(RC_PARAMS)
+    matplotlib.style.use(_RC_PARAMS)
 
 
 @dataclass(frozen=True)
@@ -112,7 +112,7 @@ def place_legend(ax: Axes, handles: Sequence[Artist] | None = None) -> None:
 def error_fig(msg: str) -> Figure:
     """描画失敗を赤テキストの Figure に畳む。戻り値型を fig で統一するため。
     失敗は握り潰さず標準エラー/ログにも流す (marimo 表示外でも気付けるように)。"""
-    logger.error("描画失敗: %s", msg)
+    _logger.error("描画失敗: %s", msg)
     print(f"[view] 描画失敗: {msg}", file=sys.stderr)
     fig = new_figure()
     ax = fig.subplots()

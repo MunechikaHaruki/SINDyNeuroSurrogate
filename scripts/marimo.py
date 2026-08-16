@@ -24,6 +24,7 @@ def _():
     )
     from tuning import Tuning
 
+    from neurosurrogate.sim.run import replaceable
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
     ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
@@ -43,6 +44,7 @@ def _():
         load_report,
         mo,
         model_artifacts,
+        replaceable,
         report_artifacts,
         run_and_log,
         runs_df,
@@ -66,18 +68,18 @@ def _(ALL_PRESETS, mo, runs_df):
 
 
 @app.cell
-def _(ALL_PRESETS, SERIES, mo, preset, runs_df):
+def _(ALL_PRESETS, SERIES, mo, preset, replaceable, runs_df):
     # marimo に残す唯一の「入力」= 比べたい run を選ぶだけ (**N 件**。1 レポート =
     # 1 系列 × N モデルなので run 軸の本数は選択そのもの)。各 run の sweep 兄弟は
     # 選択後に自動で加わる。preset で絞り、宣言された適用先 (SERIES の点の target) の
     # どれかへ**実際に置換できる** 代表 run (hydra sweep 親/単発 = parent_id 欠損)
-    # だけ出す (子は隠す)。1 系列ごとの置換可否は `EvalSeries.replaceable` (ドメイン
+    # だけ出す (子は隠す)。1 系列ごとの置換可否は `sim.run.replaceable` (ドメイン
     # 側) が持ち、「1 本でも置換できれば出す」という**選択の方針**だけがここ。
     in_preset = (
         runs_df if preset == ALL_PRESETS else runs_df[runs_df["preset"] == preset]
     )
     usable_mask = in_preset["meta"].map(
-        lambda m: any(s.replaceable(m) for s in SERIES.values())
+        lambda m: any(replaceable(s, m) for s in SERIES.values())
     )
     reps = in_preset[usable_mask & in_preset["parent_id"].isna()]
     runs = reps[["tags.mlflow.runName", "comp_type", "run_id"]]
@@ -279,13 +281,13 @@ def _(series_ui):
 
 
 @app.cell
-def _(SERIES, bundles):
+def _(SERIES, bundles, replaceable):
     # 選択 run 群のどれかで**実際に置換できる**系列名 = 系列 dropdown の選択肢。
-    # 置換可否の判定は `EvalSeries.replaceable` (ドメイン側) が持つ。
+    # 置換可否の判定は `sim.run.replaceable` (ドメイン側) が持つ。
     usable_series = [
         name
         for name, series in SERIES.items()
-        if any(series.replaceable(b.meta) for b in bundles.values())
+        if any(replaceable(series, b.meta) for b in bundles.values())
     ]
     return (usable_series,)
 

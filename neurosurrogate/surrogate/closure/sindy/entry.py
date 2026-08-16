@@ -69,7 +69,7 @@ def _group_by_args(
     entries: list[LibraryEntry],
 ) -> dict[tuple[sp.Symbol, ...], list[LibraryEntry]]:
     """args が同じ項をまとめる (挿入順保持)。args が同じ = 束縛先の列も arity も
-    同じ → まとめて 1 束 (= SubLibrary 1 つ) に収まる。"""
+    同じ → まとめて 1 束 (= _SubLibrary 1 つ) に収まる。"""
     groups: defaultdict[tuple[sp.Symbol, ...], list[LibraryEntry]] = defaultdict(list)
     for e in entries:
         groups[e.args].append(e)
@@ -77,14 +77,14 @@ def _group_by_args(
 
 
 @dataclass(frozen=True)
-class SubLibrary:
+class _SubLibrary:
     """1 library_spec を解決した 1 束。entries + 入力列 binding。"""
 
     entries: list[LibraryEntry]
     inputs: list[int]
 
     @classmethod
-    def expand(cls, spec: dict, roles: "Roles") -> list["SubLibrary"]:
+    def expand(cls, spec: dict, roles: "Roles") -> list["_SubLibrary"]:
         """1 library_spec を役割 (roles) で列に束縛して解決。spec = {type, latents?}
         のみ: 手書き index も役割名も不要で、指定できる番号は latent (隠れ変数) の
         序数だけ (spec["latents"]、既定=全 latent)。1 束あたり何本に展開されるか
@@ -116,7 +116,7 @@ class SubLibrary:
 
 @dataclass(frozen=True)
 class FeatureLibrary:
-    sub_libraries: list[SubLibrary]
+    sub_libraries: list[_SubLibrary]
     library: ps.GeneralizedLibrary
 
     def bound_exprs(self, columns: list[sp.Symbol]) -> list[sp.Expr]:
@@ -129,7 +129,9 @@ class FeatureLibrary:
 
     @staticmethod
     def build(library_specs: list[dict], roles: "Roles") -> "FeatureLibrary":
-        subs = [sub for spec in library_specs for sub in SubLibrary.expand(spec, roles)]
+        subs = [
+            sub for spec in library_specs for sub in _SubLibrary.expand(spec, roles)
+        ]
         return FeatureLibrary(
             sub_libraries=subs,
             library=ps.GeneralizedLibrary(

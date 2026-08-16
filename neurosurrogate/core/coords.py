@@ -10,7 +10,7 @@ from .network import Compartment
 
 
 @dataclass
-class StateAccumulator:
+class _StateAccumulator:
     """変数座標 (comp_id/variable/gate/init) を蓄積する helper。"""
 
     comp_id: list = field(default_factory=list)
@@ -36,12 +36,12 @@ class StateAccumulator:
 
 def collect_state_coords(
     nodes: list[Compartment],
-) -> tuple[StateAccumulator, np.ndarray]:
+) -> tuple[_StateAccumulator, np.ndarray]:
     """変数座標 (comp_id/variable/gate/init) と gate_offsets を収集。
     レイアウト: [0..N-1] 電位ブロック → [N..] 各 comp のゲート/状態変数を順次配置"""
     N = len(nodes)
     gate_offsets = np.full(N, -1, dtype=np.int32)
-    acc = StateAccumulator()
+    acc = _StateAccumulator()
 
     # [Pass 1] 電位変数
     for i, comp in enumerate(nodes):
@@ -75,12 +75,12 @@ def set_coords(raw, u, coords, dt) -> xr.Dataset:
     )
 
 
-def set_latent_coords(
+def _set_latent_coords(
     v: np.ndarray, latent: np.ndarray, u: np.ndarray, comp_id: int, dt: float
 ) -> xr.Dataset:
     """単一 comp の [V, z1..zN] を preprocessed Dataset に組立 (surrogate用)。"""
     n_latent = latent.shape[1]
-    acc = StateAccumulator()
+    acc = _StateAccumulator()
     acc.add(comp_id, [access.POTENTIAL_VAR], [False], [0.0])
     acc.add(
         comp_id,
@@ -102,7 +102,7 @@ def transform_gate(codec: Any, ds: xr.Dataset, comp_id: int) -> xr.Dataset:
     hybrid は先頭 n ゲートのみ学習 (Ca サブ系 XI/Q は physics へ分離) → codec の
     学習幅 (n_features) に合わせ先頭列をスライス (sindy は全ゲート幅で無変化)。
     """
-    return set_latent_coords(
+    return _set_latent_coords(
         v=access.potential(ds, comp_id),
         latent=codec.encode(access.gate_matrix(ds, comp_id)[:, : codec.n_features]),
         u=access.i_internal_values(ds, comp_id),

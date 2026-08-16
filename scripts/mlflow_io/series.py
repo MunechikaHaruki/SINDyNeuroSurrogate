@@ -27,13 +27,16 @@ import mlflow.artifacts
 import xarray as xr
 from mlflow.entities import Run
 
-from neurosurrogate.sim.eval import EvalSeries, SimResult
+from neurosurrogate.sim.result import SimResult, attach
+from neurosurrogate.sim.run import run_points
+from neurosurrogate.sim.spec import EvalSeries
+from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
 
 EVAL_EXP = os.environ.get("MLFLOW_EVAL_EXPERIMENT", "eval_series")
 WAVES_FILE = "waves.joblib"  # 点の順に並べた波形列 (1 run = 1 系列 = 1 ファイル)
-WAVE_DTYPE = "float32"  # 保存精度 (表示にも指標にも十分で容量は半分)
+_WAVE_DTYPE = "float32"  # 保存精度 (表示にも指標にも十分で容量は半分)
 _KIND_ORIGINAL = "original"
 _KIND_SURROGATE = "surrogate"
 
@@ -72,7 +75,7 @@ def _log_series(
     run_id: str | None,
 ) -> str:
     """1 系列 (点列まるごと) を 1 評価 run へ。`series` param が掃引の単一源で、
-    読み戻しはそこからの `EvalSeries.attach` = 点ごとの識別子は保存しない。
+    読み戻しはそこからの `result.attach` = 点ごとの識別子は保存しない。
     平坦化した param は MLflow UI での絞り込み/比較用の索引。
 
     run 名は同じ系列の原系と置換系が UI 上で並ぶので kind を添える (置換系はさらに
@@ -112,7 +115,7 @@ def _log_series(
             path = Path(tmp) / WAVES_FILE
             joblib.dump(
                 [
-                    r.dataset.map(lambda v: v.astype(WAVE_DTYPE), keep_attrs=True)
+                    r.dataset.map(lambda v: v.astype(_WAVE_DTYPE), keep_attrs=True)
                     for r in results
                 ],
                 path,
@@ -123,17 +126,28 @@ def _log_series(
         return run.info.run_id
 
 
-def run_series(name: str, series: EvalSeries, run_id: str | None, force: bool) -> str:
+def run_series(
+    name: str,
+    series: EvalSeries,
+    model: tuple[str, SurrogateBundle] | None,
+    force: bool,
+) -> str:
     """1 系列 → 波形 run の id。既に同じ掃引 (同じ surrogate) の run があればそれを
     返すだけ = **回さない** (シミュは決定的)。`force=True` は無条件に回し直して新しい
     run を積む。
 
+    `model` は「どの学習 run のどの置換器で回すか」の対 (`None`=原系)。掃引の記述
+    (`series`) は置換器を持たないので、run_id と bundle をここで組んで渡す。
+
     **回すか否かと保存は分けない** — 「決定的だから同じ入力は再計算しない」は探索と
     実行が対で成り立つ不変条件で、割ると呼ぶ側が同じ判断を持つことになる。"""
+    run_id = model[0] if model else None
     found = None if force else _find_eval(series, run_id)
     if found is not None:
         return found.info.run_id
-    return _log_series(name, series, series.simulate(), run_id)
+    return _log_series(
+        name, series, run_points(series, model[1] if model else None), run_id
+    )
 
 
 def source_run_of(eval_run_id: str) -> str:
@@ -160,8 +174,8 @@ def _datasets_of(eval_run_id: str) -> list[xr.Dataset]:
 
 def results_of(eval_run_id: str) -> list[SimResult]:
     """波形 run の id → 点列の結果。掃引の定義が run に載っているので、点の並べ直しも
-    点ごとの識別子も要らない (`EvalSeries.attach` が貼る)。"""
+    点ごとの識別子も要らない (`result.attach` が貼る)。"""
     series = EvalSeries.from_dict(
         json.loads(mlflow.get_run(eval_run_id).data.params["series"])
     )
-    return series.attach(_datasets_of(eval_run_id))
+    return attach(series, _datasets_of(eval_run_id))
