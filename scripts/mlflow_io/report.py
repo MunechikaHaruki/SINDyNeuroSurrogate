@@ -33,7 +33,6 @@ from neurosurrogate.plotting import Artifact
 from neurosurrogate.sim.figures import (
     detail_figs,
     original_figs,
-    run_names,
     summary_figs,
     wave_report_figs,
 )
@@ -43,7 +42,7 @@ from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
-from .save import slug, under
+from .save import run_dirs, under
 from .series import results_of, run_series, source_run_of
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
@@ -225,18 +224,18 @@ def report_artifacts(
 def series_artifacts(
     report: Report, bundles: dict[str, SurrogateBundle], tuning: Tuning
 ) -> list[Artifact]:
-    """1 レポートの波形群 → **波形 1 本ずつで決まる図** (`series/<表示名>/`)。
+    """1 レポートの波形群 → **波形 1 本ずつで決まる図** (`series/<run 名>/`)。
     原系の入力電流と、置換系ごとの詳細図。
 
-    段の名前が波形 run の id でなく表示名なのは、宛先がレポート run 1 本で衝突
-    しないから (凡例と同じ読み方で段を引ける)。
+    段の名前は学習 run の MLflow run 名 (`save.run_dirs`) = `models/` と同じ綴りで
+    引け、ディレクトリから元の run を辿れる。
     """
     view = report.view
-    labels = run_names(bundles)
+    dirs = run_dirs(view.run_ids)
     out = under("series/original", original_figs(view))
     for run_id in view.run_ids:
         out += under(
-            f"series/{slug(labels[run_id])}",
+            f"series/{dirs[run_id]}",
             detail_figs(
                 view,
                 run_id,

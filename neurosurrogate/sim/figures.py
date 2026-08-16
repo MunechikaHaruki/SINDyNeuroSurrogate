@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 
-def run_names(bundles: dict[str, SurrogateBundle]) -> dict[str, str]:
+def _run_names(bundles: dict[str, SurrogateBundle]) -> dict[str, str]:
     """run_id → 表示名 (凡例/行見出し)。**表示名は結果でなく surrogate 側から解く**
     (結果は run_id という同一性だけを持つ)。
 
@@ -211,7 +211,7 @@ def summary_figs(bundles: dict[str, SurrogateBundle]) -> list[Artifact]:
     """比べた N 本のサマリ表 (**由来は学習 run 群**だけ = 波形を読まない)。
     run 横断 = 中身が「今 何本を比べているか」で変わるのでレポートに属する。"""
     use_style()
-    names = run_names(bundles)
+    names = _run_names(bundles)
     return summary_df({names[run_id]: bundle for run_id, bundle in bundles.items()})
 
 
@@ -228,7 +228,7 @@ def wave_report_figs(
     if eval_comp not in view.net.names:
         msg = f"eval_comp {eval_comp!r} not in {view.target!r}"
         return [Artifact("error", error_fig(msg))]
-    names = run_names(bundles)
+    names = _run_names(bundles)
     figs = [Artifact("traces", trace_grid_fig(view, names, eval_comp))]
     if len(view.points) > 1:
         figs.append(

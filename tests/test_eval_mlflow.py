@@ -18,18 +18,30 @@ import numpy as np
 import pytest
 from mlflow.entities import Run
 from mlflow_io.report import report_artifacts, series_artifacts
-from mlflow_io.save import save_artifacts, slug
+from mlflow_io.save import run_dirs, save_artifacts
 from mlflow_io.surrogate import model_artifacts
 from test_surrogate import fit_surrogate
 from tuning import Tuning
 
 from neurosurrogate.core import access
-from neurosurrogate.sim.figures import run_names
 from neurosurrogate.sim.run import simulate
 from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 RUN_ID = "RID"  # 学習 run の代役 (評価 run が指す先)
+
+
+def _train_run(name: str) -> str:
+    """名前付きの空 run を 1 本立てる = 学習 run の実物。保存段の名前が MLflow の
+    run 名から来るので、そこを見るテストだけは代役 id では足りない。"""
+    client = mlflow.MlflowClient()
+    exp = mlflow.get_experiment_by_name("test_train")
+    run = client.create_run(
+        exp.experiment_id if exp else mlflow.create_experiment("test_train"),
+        tags={"mlflow.runName": name},
+    )
+    client.set_terminated(run.info.run_id)
+    return str(run.info.run_id)
 
 
 @pytest.fixture
@@ -160,9 +172,11 @@ def test_everything_drawn_lands_in_the_one_report_run(
 
     `eval_comp` が適用先に無ければ黙って描かずエラー図 1 枚 (誤りも同じレポートの中)。
     """
-    report_id = report_io.run_and_log({RUN_ID: sindy}, "hh_dc", _evals(sindy))
+    # 段名は学習 run の MLflow run 名なので、代役 id でなく実在の学習 run を立てる。
+    train_id = _train_run("surr-A")
+    report_id = report_io.run_and_log({train_id: sindy}, "hh_dc", _evals(sindy))
     report = report_io.load_report(report_id)
-    bundles = {RUN_ID: sindy}
+    bundles = {train_id: sindy}
     tuning = Tuning(eval_comp=report.view.net.names[0])
     written = save_artifacts(
         [
@@ -173,8 +187,8 @@ def test_everything_drawn_lands_in_the_one_report_run(
         report_id,
         tuning,
     )
-    # run 内の名前は元の 3 段のまま: models/<表示名>/ は比べた 1 本ずつの自己記述図、
-    # series/<表示名>/ は波形 1 本で決まるもの、直下が run 横断の産物。
+    # run 内の名前は元の 3 段のまま: models/<run 名>/ は比べた 1 本ずつの自己記述図、
+    # series/<run 名>/ は波形 1 本で決まるもの、直下が run 横断の産物。
     assert {w.split("/")[0] for w in written} == {
         "models",
         "series",
@@ -182,8 +196,11 @@ def test_everything_drawn_lands_in_the_one_report_run(
         "traces.png",
         "metric.png",  # 掃引 (2 点) なので点軸の折れ線も出る
     }
-    label = slug(run_names(bundles)[RUN_ID])
-    assert f"models/{label}/model.png" in written
+    # 段名は学習 run の MLflow run 名 (models/ と series/ で同じ綴り)
+    name = run_dirs([train_id])[train_id]
+    assert name == "surr-A"
+    assert f"models/{name}/model.png" in written
+    assert any(w.startswith(f"series/{name}/") for w in written)
     assert "series/original/current.png" in written
 
     # 書けたのはレポート run だけ (学習 run / 波形 run の artifact は増えない)

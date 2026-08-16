@@ -20,13 +20,12 @@ from tqdm import tqdm
 from tuning import Tuning
 
 from neurosurrogate.plotting import Artifact
-from neurosurrogate.sim.figures import run_names
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.figures import surrogate_figs
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
 from . import TARGET_EXP, logger
-from .save import slug, under
+from .save import run_dirs, under
 
 _SURR_ARTIFACT_DIR = "surrogate"
 
@@ -75,7 +74,7 @@ def _load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
 
 def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
     """run_id 列 → run_id→surrogate。他層は表示名でなく **run_id で** surrogate を
-    引く (表示名が要る描画層は `report.run_names` で解く)。"""
+    引く (表示名が要る描画層は `sim.figures` 側で解く)。"""
     return dict(zip(run_ids, _load_runs(run_ids), strict=True))
 
 
@@ -93,21 +92,20 @@ def sweep_siblings(parent_id: str) -> list[str]:
 def model_artifacts(
     bundles: dict[str, SurrogateBundle], tuning: Tuning
 ) -> list[Artifact]:
-    """学習 run 群 → **比べた 1 本ずつの自己記述図** (`models/<表示名>/`)。
+    """学習 run 群 → **比べた 1 本ずつの自己記述図** (`models/<run 名>/`)。
 
-    描画層は surrogate 1 本ずつ図を返し、run 軸で回して段を付けるのがここ。段の名前が
-    run id でなく表示名なのは、宛先がレポート run 1 本で衝突しないから (凡例と同じ
-    読み方で段を引ける)。
+    描画層は surrogate 1 本ずつ図を返し、run 軸で回して段を付けるのがここ。段の名前は
+    学習 run の MLflow run 名 (`save.run_dirs`) = ディレクトリから元の run を辿れる。
 
     **全 run 分描く** — レポートの単位が 1 系列 × N モデルなので N は比べたい本数
     そのもの (代表 1 本で済ませる必要がない)。
     """
-    labels = run_names(bundles)
+    dirs = run_dirs(list(bundles))
     return [
         artifact
         for run_id, bundle in bundles.items()
         for artifact in under(
-            f"models/{slug(labels[run_id])}", surrogate_figs(bundle, tuning.view_comps)
+            f"models/{dirs[run_id]}", surrogate_figs(bundle, tuning.view_comps)
         )
     ]
 

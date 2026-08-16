@@ -10,7 +10,7 @@
 学習 run / 評価 run にすると、同じ run を使う別レポートが同じ path を奪い合う
 (後勝ちで、どのレポートのものでもない図が残る)。レポート run 配下なら衝突しない。
 
-run 内の path は元の 3 段をそのまま残す (`models/<label>/`, `series/<label>/`,
+run 内の path は元の 3 段をそのまま残す (`models/<run 名>/`, `series/<run 名>/`,
 レポート自身の図は直下) = 1 レポートの中で「何について描いた図か」が読める。
 """
 
@@ -30,10 +30,9 @@ _UNSAFE = re.compile(r"[\s/\\:]+")
 DRAW_FILE = "draw.json"  # そのレポート run を描いたときの表示設定 (`Tuning`)
 
 
-def slug(name: str) -> str:
-    """path の 1 区切りに使う名前をパス安全へ。run 軸キー (`meta.label`) は凡例で
-    折り返すための改行や `/` を含むので、そのまま名前に混ぜると階層が割れる
-    (表示名 = 保存名の規約を保ったまま名前側だけ潰す)。
+def _slug(name: str) -> str:
+    """path の 1 区切りに使う名前をパス安全へ。名前は改行や `/` を含みうるので、
+    そのまま名前に混ぜると階層が割れる。
 
     空になる名前と `.` / `..` も潰す — **1 段は必ず 1 段**でなければ、段が消えたり
     上の階層へ抜けたりして「比べた 1 本 = ディレクトリ 1 つ」の対応が崩れる。
@@ -42,8 +41,23 @@ def slug(name: str) -> str:
     return "-" if out in ("", ".", "..") else out
 
 
+def run_dirs(run_ids: list[str]) -> dict[str, str]:
+    """学習 run_id → その run の段名 (**MLflow の run 名**)。
+
+    段名は凡例の表示名 (凡例は `meta.label` 由来) と別物にする:
+    label は学習構造しか語らないので、MLflow UI で run を探すときの名前と一致せず、
+    どのディレクトリがどの run のものか辿れない。段は run を名指すのが仕事。
+
+    run 名は MLflow 側で一意でないので、重複したものにだけ run_id 頭を足す
+    (別 run が同じ段を奪い合わない)。
+    """
+    names = {rid: mlflow.get_run(rid).info.run_name or rid[:8] for rid in run_ids}
+    dup = {n for n in names.values() if list(names.values()).count(n) > 1}
+    return {rid: _slug(f"{n}-{rid[:8]}" if n in dup else n) for rid, n in names.items()}
+
+
 def under(prefix: str, artifacts: list[Artifact]) -> list[Artifact]:
-    """成果物の名前に段を付ける (`models/<label>/train_raw` など)。名前の `/` は
+    """成果物の名前に段を付ける (`models/<run 名>/train_raw` など)。名前の `/` は
     そのまま artifact の階層になるので、包み直す型を作らずに段を表せる。"""
     return [Artifact(f"{prefix}/{a.name}", a.obj) for a in artifacts]
 
