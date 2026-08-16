@@ -31,7 +31,7 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
               artifacts/         # surrogate の自己記述成果物を **単一 Artifact** ずつ返す。train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree
   artifact/  model.py            # Artifact (名前 + Figure/DataFrame) の運搬形
              plotting.py         # matplotlib 描画プリミティブと共通 style。ドメイン知識を持たない
-             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を list[Artifact] に束ね、点の段名を付ける。描画失敗は変換せず呼び出し元へ伝播。scripts の描画生成はこの module だけを参照
+             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を Artifacts に束ね、点の段名を付ける。描画失敗は変換せず呼び出し元へ伝播。scripts の描画生成はこの module だけを参照
   waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
             dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)
             _tables.py           # その値を表に並べる (計算を増やさない)
@@ -61,20 +61,20 @@ docs/     poster/ slide/         # typst
   draw.json                     # そのとき使った Tuning (描画 1 回につき 1 枚)
   traces.png metric.png         # run 横断 = この選択でしか出ない図
   summary.csv
-  models/<表示名>/               # 比べた 1 本ずつの自己記述図
+  models/<MLflow run名>/          # 比べた 1 本ずつの自己記述図
   series/original/              # 原系の入力電流
-  series/<表示名>/p<点>/          # 置換系ごとの詳細図
+  series/<MLflow run名>/p<点>/     # 置換系ごとの詳細図
 ```
 
 - **束ねる単位がレポートなのは、欲しいものが「N 本のモデルを比べた結果」そのものだから。**
   1 レポート = 1 系列 × N モデルが、そのまま run 1 本に閉じる
 - **記録した run を描画が書き換えない**: 学習 run にも波形 run にも書かない
   (それらは fit / 評価の記録のまま)
-- 段の名前が run id でなく表示名 (`meta.label`) なのは、宛先が 1 run で衝突しないから
-  = 凡例と同じ読み方で段を引ける
+- 段の名前は path 安全化した MLflow run name。安全化後に重複する場合だけ完全な
+  run id を添え、MLflow UI から元の学習 run を辿れて段も衝突しないようにする
 - 成果物ごとの由来 (sources) は持たない — どの run から読んだかはレポート run の tag
   (`original_series_id` / `surrogate_series_ids`) が既に指している
-- 描き直しは同じ path を置き換える = レポート run は**最後に描いたものだけ**を持つ
+- 描き直しは同じ path を置き換える。今回生成しなかった過去の path は残る
 
 ## 設定ファイル
 

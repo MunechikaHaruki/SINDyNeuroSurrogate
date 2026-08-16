@@ -52,7 +52,7 @@ def _series_hash(series: EvalSeries, run_id: str | None) -> str:
     """「この掃引をこの surrogate で既に回したか」の鍵。`EvalSeries.hash` は掃引の
     内容だけ (surrogate を含まない) なので、run_id はここで組む = 原系は鍵が掃引だけに
     なり、学習 run を増やしても共有される。"""
-    return series.hash() if run_id is None else f"{series.hash()}-{run_id[:8]}"
+    return series.hash() if run_id is None else f"{series.hash()}-{run_id}"
 
 
 def _find_eval(series: EvalSeries, run_id: str | None) -> Run | None:
@@ -80,7 +80,7 @@ def _log_series(
 
     run 名は同じ系列の原系と置換系が UI 上で並ぶので kind を添える (置換系はさらに
     どの学習 run のものかを短縮 id で分ける)。**表示名でしかない** — 読み戻しは
-    `name` param と tag だけを見る。"""
+    保存した `series` / `run_id` と tag だけを見る。"""
     kind = _KIND_ORIGINAL if run_id is None else f"{_KIND_SURROGATE}:{run_id[:8]}"
     with mlflow.start_run(
         experiment_id=_eval_exp_id(), run_name=f"{name} [{kind}]"
@@ -155,12 +155,6 @@ def source_run_of(eval_run_id: str) -> str:
     持つ)。レポート側が学習 run との対応表を別に持たずに済む = レポートは波形 run の
     id だけを指せばよい。"""
     return mlflow.get_run(eval_run_id).data.params["run_id"]
-
-
-def name_of(eval_run_id: str) -> str:
-    """波形 run → 回したときの系列名 (表示用)。**回した記録**であって設定への参照では
-    ないので、カタログが変わっても過去の run はそのまま読める。"""
-    return mlflow.get_run(eval_run_id).data.params["name"]
 
 
 def _datasets_of(eval_run_id: str) -> list[xr.Dataset]:

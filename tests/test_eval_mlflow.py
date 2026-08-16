@@ -83,7 +83,10 @@ def test_eval_runs_round_trip_without_resimulating(
     assert view.run_ids == [RUN_ID]
     # 系列名は結果 (`SeriesResults`) でなく波形 run 側にある = レポートはカタログを
     # 参照しない (名前を付け替えても過去のレポートは読める)
-    assert series_io.name_of(report.original_id) == "hh_dc"
+    assert mlflow.get_run(report.original_id).data.params["name"] == "hh_dc"
+    assert series_io._series_hash(series, "abcdefgh-1") != series_io._series_hash(
+        series, "abcdefgh-2"
+    )
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.axis, view.values) == ("duration", [170.0, 190.0])
     orig, surr = view.pair(1, RUN_ID)
@@ -158,6 +161,17 @@ def test_run_and_log_rejects_series_no_run_can_replace(
     """1 本も置換できない選択は回す意味が無い → 空のレポートを作らず落ちる。"""
     with pytest.raises(ValueError, match="置換できない"):
         report_io.run_and_log({}, "hh_dc", _evals(sindy))
+
+
+def test_run_directories_disambiguate_after_slugging(
+    eval_store: str, sindy: SurrogateBundle
+) -> None:
+    """異なる run 名が path 安全化後に同じ綴りでも、保存段は衝突しない。"""
+    first = _train_run("a/b", sindy)
+    second = _train_run("a:b", sindy)
+    directories = save._run_dirs([first, second])
+    assert len(set(directories.values())) == 2
+    assert all(name.startswith("a-b-") for name in directories.values())
 
 
 def test_everything_drawn_lands_in_the_one_report_run(

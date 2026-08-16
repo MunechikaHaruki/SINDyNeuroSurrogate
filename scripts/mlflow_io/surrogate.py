@@ -1,9 +1,8 @@
 """学習 experiment (`TARGET_EXP`): surrogate の pickle + meta.json を持つ run。
 
 **評価 (波形) を知らない** — ここが答えるのは「どんな学習 run が居るか」
-(`get_runs_df`)、「その run の surrogate / meta」、そして**その run 自身について
-描ける成果物**だけ。成果物生成は `report.render_report` の内部から呼ばれる。run 一覧は
-marimo の run 選択そのものなので、
+(`get_runs_df`) と「その run の surrogate / meta」。成果物の編成は
+`report.render_report` が担う。run 一覧は marimo の run 選択そのものなので、
 読込不可の run を落とす判断もここに置く (選択肢に出せない run は下流へ流さない)。
 """
 
@@ -18,15 +17,11 @@ import mlflow.artifacts
 import pandas as pd
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
-from tuning import Tuning
 
-from neurosurrogate.artifact.bundle import surrogate_artifacts
-from neurosurrogate.artifact.model import Artifact
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
 from . import TARGET_EXP, logger
-from .save import per_run
 
 _SURR_ARTIFACT_DIR = "surrogate"
 
@@ -67,16 +62,10 @@ def _load_surrogate_meta(run_id: str) -> SurrogateMeta:
         return SurrogateMeta.from_dict(json.loads(local.read_text()))
 
 
-def _load_runs(run_ids: list[str]) -> list[SurrogateBundle]:
-    """run_id 列 → surrogate ロード。run 選択の唯一のロード経路
-    (sweep 複数 / single 1件 共通)。表示名は meta.label (runName 非依存)。"""
-    return [_load_surrogate_model(rid) for rid in run_ids]
-
-
 def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
     """run_id 列 → run_id→surrogate。他層は表示名でなく **run_id で** surrogate を
     引く (表示名が要る描画層は `sim.artifacts` 側で解く)。"""
-    return dict(zip(run_ids, _load_runs(run_ids), strict=True))
+    return {run_id: _load_surrogate_model(run_id) for run_id in run_ids}
 
 
 def sweep_siblings(parent_id: str) -> list[str]:
@@ -88,26 +77,6 @@ def sweep_siblings(parent_id: str) -> list[str]:
         output_format="list",
     )
     return [parent_id, *[r.info.run_id for r in children]]
-
-
-def model_artifacts(
-    bundles: dict[str, SurrogateBundle], tuning: Tuning
-) -> list[Artifact]:
-    """学習 run 群 → **比べた 1 本ずつの自己記述図** (`models/<run 名>/`)。
-
-    描画層は surrogate 1 本ずつ図を返し、run 軸で回して段を付けるのがここ。段の名前は
-    学習 run の MLflow run 名 (`save.per_run`) = ディレクトリから元の run を辿れる。
-
-    **全 run 分描く** — レポートの単位が 1 系列 × N モデルなので N は比べたい本数
-    そのもの (代表 1 本で済ませる必要がない)。
-    """
-    return per_run(
-        "models",
-        {
-            run_id: surrogate_artifacts(bundle, tuning.view_comps)
-            for run_id, bundle in bundles.items()
-        },
-    )
 
 
 def _safe_meta(run_id: str) -> SurrogateMeta | None:

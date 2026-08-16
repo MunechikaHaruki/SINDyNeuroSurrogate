@@ -33,17 +33,18 @@ from neurosurrogate.artifact.bundle import (
     detail_artifacts,
     original_artifacts,
     report_artifacts,
+    surrogate_artifacts,
 )
-from neurosurrogate.artifact.model import Artifact
+from neurosurrogate.artifact.model import Artifacts
 from neurosurrogate.sim.result import SeriesResults
 from neurosurrogate.sim.run import replaced_runs
 from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
-from .save import per_run, save_artifacts, under
+from .save import per_run, save_artifacts
 from .series import results_of, run_series, source_run_of
-from .surrogate import load_bundles, model_artifacts
+from .surrogate import load_bundles
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
 _ORIGINAL_TAG = "original_series_id"
@@ -180,8 +181,7 @@ class Report:
 
     @property
     def sources(self) -> tuple[str, ...]:
-        """読んだ波形 run の id (原系が先、置換系は run 軸の順)。成果物の由来
-        (`meta.json`) にそのまま落ちる。"""
+        """読んだ波形 run の id (原系が先、置換系は run 軸の順)。"""
         return (self.original_id, *self.surr_ids.values())
 
 
@@ -206,21 +206,9 @@ def load_report(report_run_id: str) -> Report:
     )
 
 
-def _report_artifacts(
-    report: Report,
-    bundles: dict[str, SurrogateBundle],
-    tuning: Tuning,
-) -> list[Artifact]:
-    """1 レポート → **run 横断でこの選択でしか出ない図** (レポート run の直下)。
-    比べた N 本のサマリ表と、点軸 × run 軸に開いた波形格子/折れ線。"""
-    return report_artifacts(
-        report.view, bundles, tuning.eval_comp, tuning.metric, tuning.metric_ylim
-    )
-
-
 def _series_artifacts(
     report: Report, bundles: dict[str, SurrogateBundle], tuning: Tuning
-) -> list[Artifact]:
+) -> Artifacts:
     """1 レポートの波形群 → **波形 1 本ずつで決まる図** (`series/<run 名>/`)。
     原系の入力電流と、置換系ごとの詳細図。
 
@@ -228,7 +216,7 @@ def _series_artifacts(
     引け、ディレクトリから元の run を辿れる。
     """
     view = report.view
-    return under("series/original", original_artifacts(view)) + per_run(
+    return original_artifacts(view).under("series/original") + per_run(
         "series",
         {
             run_id: detail_artifacts(
@@ -255,11 +243,21 @@ def render_report(report_run_id: str, tuning: Tuning) -> list[str]:
     report = load_report(report_run_id)
     bundles = load_bundles(report.view.run_ids)
     return save_artifacts(
-        [
-            *model_artifacts(bundles, tuning),
-            *_series_artifacts(report, bundles, tuning),
-            *_report_artifacts(report, bundles, tuning),
-        ],
+        per_run(
+            "models",
+            {
+                run_id: surrogate_artifacts(bundle, tuning.view_comps)
+                for run_id, bundle in bundles.items()
+            },
+        )
+        + _series_artifacts(report, bundles, tuning)
+        + report_artifacts(
+            report.view,
+            bundles,
+            tuning.eval_comp,
+            tuning.metric,
+            tuning.metric_ylim,
+        ),
         report_run_id,
         tuning,
     )

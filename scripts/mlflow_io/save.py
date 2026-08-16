@@ -24,7 +24,7 @@ import mlflow
 import pandas as pd
 from tuning import Tuning
 
-from neurosurrogate.artifact.model import Artifact
+from neurosurrogate.artifact.model import Artifact, Artifacts
 
 from . import logger
 
@@ -50,29 +50,29 @@ def _run_dirs(run_ids: list[str]) -> dict[str, str]:
     label は学習構造しか語らないので、MLflow UI で run を探すときの名前と一致せず、
     どのディレクトリがどの run のものか辿れない。段は run を名指すのが仕事。
 
-    run 名は一意でない (同じ preset の再学習は同名になる) ので、選択の中で重複した
-    ものにだけ run_id 頭を足す = 1 レポートの中で段が奪い合われない。
+    run 名は一意でなく、異なる名前も path 安全化後に同じ綴りになりうる。安全化した
+    名前が選択内で重複するときだけ完全な run_id を足し、段の衝突を防ぐ。
     """
     names = {rid: mlflow.get_run(rid).info.run_name or rid[:8] for rid in run_ids}
-    dup = {n for n, c in Counter(names.values()).items() if c > 1}
-    return {rid: _slug(f"{n}-{rid[:8]}" if n in dup else n) for rid, n in names.items()}
+    slugs = {run_id: _slug(name) for run_id, name in names.items()}
+    duplicates = {name for name, count in Counter(slugs.values()).items() if count > 1}
+    return {
+        run_id: f"{name}-{run_id}" if name in duplicates else name
+        for run_id, name in slugs.items()
+    }
 
 
-def under(prefix: str, artifacts: list[Artifact]) -> list[Artifact]:
-    """成果物の名前に段を付ける (`series/original/current` など)。名前の `/` は
-    そのまま artifact の階層になるので、包み直す型を作らずに段を表せる。"""
-    return [Artifact(f"{prefix}/{a.name}", a.obj) for a in artifacts]
-
-
-def per_run(prefix: str, artifacts: dict[str, list[Artifact]]) -> list[Artifact]:
+def per_run(prefix: str, artifacts: dict[str, Artifacts]) -> Artifacts:
     """run 軸で開いた成果物 (学習 run_id → 図) に `<prefix>/<run 名>/` の段を付ける。
     **段名の決め方を知るのはここだけ** = `models/` も `series/` も同じ綴りで並ぶ。"""
     dirs = _run_dirs(list(artifacts))
-    return [
-        artifact
-        for run_id, run_artifacts in artifacts.items()
-        for artifact in under(f"{prefix}/{dirs[run_id]}", run_artifacts)
-    ]
+    return Artifacts(
+        tuple(
+            artifact
+            for run_id, run_artifacts in artifacts.items()
+            for artifact in run_artifacts.under(f"{prefix}/{dirs[run_id]}")
+        )
+    )
 
 
 def _log(client: mlflow.MlflowClient, run_id: str, artifact: Artifact) -> str:
@@ -88,14 +88,14 @@ def _log(client: mlflow.MlflowClient, run_id: str, artifact: Artifact) -> str:
 
 
 def save_artifacts(
-    artifacts: list[Artifact], report_run_id: str, tuning: Tuning
+    artifacts: Artifacts, report_run_id: str, tuning: Tuning
 ) -> list[str]:
     """成果物を全部レポート run へ書き、そのときの表示設定を `draw.json` 1 枚に
     添える。返り値は書いた artifact path 列 (呼び出し側は表示に流すだけ)。
 
-    描き直しは同じ path を置き換える = レポート run の artifact は**最後に描いた
-    ものだけ**を持つ (`draw.json` もその 1 回分)。成果物ごとの由来は持たない —
-    どの run から読んだかはレポート run の tag が既に指している。
+    描き直しで同じ path は置き換わる (`draw.json` もその 1 回分)。今回生成しなかった
+    過去の path は削除しない。成果物ごとの由来は持たず、どの run から読んだかは
+    レポート run の tag が既に指している。
     """
     client = mlflow.MlflowClient()
     written = [_log(client, report_run_id, a) for a in artifacts]

@@ -35,13 +35,13 @@ from ..waveform.artifacts import (
     simple_artifact,
 )
 from ..waveform.dynamics import dm_of
-from .model import Artifact
+from .model import Artifacts
 from .plotting import use_style
 
 
 def surrogate_artifacts(
     bundle: SurrogateBundle, view_comps: tuple[str, ...] = ()
-) -> list[Artifact]:
+) -> Artifacts:
     """学習 run 1 本が自己記述できる成果物をまとめる。"""
     use_style()
     net = bundle.meta.dataset.net
@@ -50,18 +50,20 @@ def surrogate_artifacts(
         closure_artifact(bundle.closure),
         preprocessor_artifact(bundle.preprocessor),
     )
-    return [
-        *(artifact for artifact in optional if artifact is not None),
-        neuron_graph_artifact(
-            net,
-            {node.name for node in net.nodes if replaceable(bundle.meta, node)},
-        ),
-        train_raw_artifact(bundle, comps),
-        train_preprocessed_artifact(bundle, comps),
-        train_recon_artifact(bundle, comps),
-        train_v_coverage_artifact(bundle, comps),
-        train_manifold_artifact(bundle, comps),
-    ]
+    return Artifacts(
+        (
+            *(artifact for artifact in optional if artifact is not None),
+            neuron_graph_artifact(
+                net,
+                {node.name for node in net.nodes if replaceable(bundle.meta, node)},
+            ),
+            train_raw_artifact(bundle, comps),
+            train_preprocessed_artifact(bundle, comps),
+            train_recon_artifact(bundle, comps),
+            train_v_coverage_artifact(bundle, comps),
+            train_manifold_artifact(bundle, comps),
+        )
+    )
 
 
 def report_artifacts(
@@ -70,7 +72,7 @@ def report_artifacts(
     eval_comp: str,
     metric: str,
     metric_ylim: tuple[float, float] | None,
-) -> list[Artifact]:
+) -> Artifacts:
     """run 横断のサマリ・波形格子・点軸メトリクスをまとめる。"""
     use_style()
     if eval_comp not in view.net.names:
@@ -82,13 +84,13 @@ def report_artifacts(
     ]
     if len(view.points) > 1:
         artifacts.append(metric_artifact(view, names, eval_comp, metric, metric_ylim))
-    return artifacts
+    return Artifacts(tuple(artifacts))
 
 
-def original_artifacts(view: SeriesResults) -> list[Artifact]:
+def original_artifacts(view: SeriesResults) -> Artifacts:
     """原系の波形だけで決まる成果物をまとめる。"""
     use_style()
-    return [current_preview_artifact(view.points[0].spec)]
+    return Artifacts((current_preview_artifact(view.points[0].spec),))
 
 
 def detail_artifacts(
@@ -100,7 +102,7 @@ def detail_artifacts(
     detail_point: int,
     spike_orig: int,
     spike_surr: int,
-) -> list[Artifact]:
+) -> Artifacts:
     """選択した 1 点・1 モデルの波形成果物をまとめ、点の段名を付ける。"""
     use_style()
     if eval_comp not in view.net.names:
@@ -119,6 +121,9 @@ def detail_artifacts(
         metrics_artifact(dm, spike_orig, spike_surr),
         metrics_scalar_artifact(dm, spike_orig, spike_surr),
     ]
-    return [
-        replace(artifact, name=f"p{index}/{artifact.name}") for artifact in artifacts
-    ]
+    return Artifacts(
+        tuple(
+            replace(artifact, name=f"p{index}/{artifact.name}")
+            for artifact in artifacts
+        )
+    )

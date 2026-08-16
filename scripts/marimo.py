@@ -117,7 +117,7 @@ def _(mo):
     )
     # 保存先は選ばせない — 描いたものは全部**そのレポート run の artifact**へ落ちる
     # (比べたいのは 1 系列 × N モデルの束そのもの)。run 内の名前が
-    # `models/<表示名>/`・`series/<表示名>/`・直下 に割れる。
+    # `models/<MLflow run名>/`・`series/<MLflow run名>/`・直下 に割れる。
     draw_panel = mo.ui.dictionary({"draw": mo.ui.run_button(label="描画 (→ 図保存)")})
     mo.vstack([mo.md("### 実行パネル"), *eval_panel.values(), *draw_panel.values()])
     return draw_panel, eval_panel
