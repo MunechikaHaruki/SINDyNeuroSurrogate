@@ -45,8 +45,8 @@ scripts/  main.py                # Hydra エントリ
             save.py              # `report.render_report` が使う保存 module。成果物の MLflow 書込、run 名による段付け、Tuning の draw.json 保存を担う
             surrogate.py         # 学習 experiment: surrogate pickle/meta の読み書き (run_id ごとに @cache) + get_runs_df (run 一覧。読込不可 run はここで落とす) + sweep_siblings。モデル成果物生成は `render_report` の内部実装
             series.py            # 波形 experiment eval_series (**1 run = 1 `sim.result.SeriesRun`** = 1 列。点列の波形 1 artifact。kind=original / kind=surrogate がフラットに並び、置換系は tags.original_hash で原系を名指す = 親子関係なし)。run_series は探索と実行が対 (決定的だから同じ入力は回さない) なので分けない。column_of が run → SeriesRun の唯一の読み口 (記述も run_id も一緒に戻る)
-            report.py            # レポート experiment eval_report (**1 run = 1 レポート = 1 系列 × N モデル**)。run_and_log / find_report_run (EvalSelection 1 つで引く) / load_report (→ 描く中身 `SeriesResults` だけ。読んだ波形 run の id は描画にも保存段にも要らないので返さない) + render_report (**描画の唯一の interface** = report_run_id + Tuning。参照解決、bundle ロード、全成果物生成、その run への保存を隠す)
-          marimo.py              # notebook 本体 (run 選択 + 系列 dropdown 1 件 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
+            report.py            # レポート experiment eval_report (**1 run = 1 レポート = 1 系列 × N モデル**)。run_and_log / find_report_run (どちらも系列名 × 学習 run 群で引く = 呼ぶ側はカタログを触らず、EvalSelection の組立はここに閉じる) / load_report (→ 描く中身 `SeriesResults` だけ。読んだ波形 run の id は描画にも保存段にも要らないので返さない) + render_report (**描画の唯一の interface** = report_run_id + Tuning。参照解決、bundle ロード、全成果物生成、その run への保存を隠す)
+          marimo.py              # notebook 本体 (系列 dropdown 1 件 + preset 絞り → run 選択 + 評価/描画ボタン。組立は neurosurrogate 側の関数呼び出しのみ)
           conf/                  # 学習設定 (Hydra) のみ。下記「設定ファイル」参照
 tests/    conftest.py (headless 化 + scripts/ を import path へ) / test_surrogate.py / test_inits.py / test_eval_mlflow.py (評価 run の保存/読込。tracking 先は tmp へ差し替え)
 docs/     poster/ slide/         # typst
@@ -86,7 +86,8 @@ docs/     poster/ slide/         # typst
 - 評価条件は設定ファイルを持たない → `scripts/catalog.py` に型のまま並ぶ
   (`EVALS` / `SERIES`)。スキーマという型の弱い写しを二重に
   管理せず、綴り間違いは import 時に落ちる。**どの系列を回すか**は marimo の系列
-  dropdown で **1 件**(選択肢 = 選択 run で置換できる系列)。1 レポート = 1 系列 なので、
+  dropdown で **1 件**。系列は run に依存しない**選択の起点**で、逆に選んだ系列を
+  置換できる run だけが run 表に出る。1 レポート = 1 系列 なので、
   系列を選ぶことが「どのレポートを作る / 描くか」の選択そのもの。実験条件は滅多に変わらず、
   変えたら別の実験 = コードに焼いて差分に出す方が正しい。
 - **描き方 (`tuning.Tuning`) はカタログに持たない** → 全キー (比較対象 comp・

@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 
 import mlflow
+from catalog import SERIES
 from mlflow.entities import Run
 from tuning import Tuning
 
@@ -22,7 +23,7 @@ from neurosurrogate.artifact.bundle import (
 from neurosurrogate.artifact.model import Artifacts
 from neurosurrogate.sim.result import SeriesResults
 from neurosurrogate.sim.run import replaced_runs
-from neurosurrogate.sim.spec import EvalSelection, EvalSeries
+from neurosurrogate.sim.spec import EvalSelection
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
@@ -90,29 +91,26 @@ def _new_report_run(client: mlflow.MlflowClient, name: str, report_hash: str) ->
     return run.info.run_id
 
 
-def find_report_run(selection: EvalSelection) -> str | None:
-    """選択 → 既存レポート run の id (無ければ None)。**選択からレポート run_id へ渡す
-    唯一の橋**で、以降 (描画) はこの id 1 つだけを見る。"""
-    found = _find_report(selection.hash())
+def find_report_run(name: str, run_ids: tuple[str, ...]) -> str | None:
+    """選択 (系列名 × 学習 run 群) → 既存レポート run の id (無ければ None)。**選択から
+    レポート run_id へ渡す唯一の橋**で、以降 (描画) はこの id 1 つだけを見る。"""
+    found = _find_report(EvalSelection(SERIES[name], run_ids).hash())
     return found.info.run_id if found else None
 
 
-def run_and_log(
-    bundles: dict[str, SurrogateBundle],
-    name: str,
-    series: EvalSeries,
-    force: bool = False,
-) -> str:
+def run_and_log(bundles: dict[str, SurrogateBundle], name: str) -> str:
     """1 系列の評価実行 + 波形 run 保存 + レポート run 保存 (marimo の評価ボタン)。
-    既にある波形 run は再利用 = 回さない。返りはレポート run の id = そのまま描画の
-    入力。1 本も置換できない選択は回す意味が無いので拒む。"""
+    系列は**名前から引く** = 呼ぶ側はカタログを触らない。既にある波形 run は再利用
+    = 回さない。返りはレポート run の id = そのまま描画の入力。1 本も置換できない選択は
+    回す意味が無いので拒む。"""
+    series = SERIES[name]
     surrs = replaced_runs(series, bundles)
     if not surrs:
         raise ValueError(f"{name}: 選択 run のどれでも置換できない (比較対象が無い)")
     return _log_report(
         name,
-        run_series(name, series, None, None, force),
-        [run_series(name, series, rid, bundle, force) for rid, bundle in surrs.items()],
+        run_series(name, series, None, None),
+        [run_series(name, series, rid, bundle) for rid, bundle in surrs.items()],
         EvalSelection(series, tuple(bundles)).hash(),
     )
 

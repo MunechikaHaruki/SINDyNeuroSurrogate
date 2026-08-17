@@ -111,12 +111,12 @@ def run_series(
     series: EvalSeries,
     run_id: str | None,
     surrogate: SurrogateBundle | None,
-    force: bool,
 ) -> str:
     """1 列 → 波形 run の id。同じ掃引を同じ surrogate で回した run があればそれを返す
-    = **回さない** (シミュは決定的。`force` で回し直す)。`run_id`/`surrogate` が両方
-    `None` なら原系。**探索と保存は分けない** — 対で成り立つ不変条件なので割らない。"""
-    found = None if force else _find_eval(series, run_id)
+    = **回さない** (シミュは決定的なので、鍵が一致した run は常に正しい)。
+    `run_id`/`surrogate` が両方 `None` なら原系。**探索と保存は分けない** — 対で
+    成り立つ不変条件なので割らない。"""
+    found = _find_eval(series, run_id)
     if found is not None:
         return found.info.run_id
     return _log_series(name, run_column(series, run_id, surrogate))
