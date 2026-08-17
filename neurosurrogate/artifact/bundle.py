@@ -9,11 +9,11 @@ from ..sim.artifacts import (
     traces_artifact,
 )
 from ..sim.result import SeriesResults
-from ..surrogate.artifacts import (
+from ..surrogate.artifacts.model import (
     closure_artifact,
+    neuron_graph_artifact,
     preprocessor_artifact,
 )
-from ..surrogate.artifacts.model import neuron_graph_artifact
 from ..surrogate.artifacts.train import (
     train_manifold_artifact,
     train_preprocessed_artifact,
@@ -37,6 +37,12 @@ from .model import Artifacts
 from .plotting import use_style
 
 
+def _check_eval_comp(view: SeriesResults, eval_comp: str) -> None:
+    """評価対象の comp 名が束の net に居ることを確かめる (図の側で検出させない)。"""
+    if eval_comp not in view.net.names:
+        raise ValueError(f"eval_comp {eval_comp!r} not in {view.net.names!r}")
+
+
 def surrogate_artifacts(
     bundle: SurrogateBundle, view_comps: tuple[str, ...] = ()
 ) -> Artifacts:
@@ -44,13 +50,16 @@ def surrogate_artifacts(
     use_style()
     net = bundle.meta.dataset.net
     comps = [net.name_to_idx(comp) for comp in view_comps] or None
-    optional = (
-        closure_artifact(bundle.closure),
-        preprocessor_artifact(bundle.preprocessor),
-    )
     return Artifacts(
         (
-            *(artifact for artifact in optional if artifact is not None),
+            *(
+                artifact
+                for artifact in (
+                    closure_artifact(bundle.closure),
+                    preprocessor_artifact(bundle.preprocessor),
+                )
+                if artifact is not None
+            ),
             neuron_graph_artifact(
                 net,
                 {node.name for node in net.nodes if replaceable(bundle.meta, node)},
@@ -73,8 +82,7 @@ def report_artifacts(
 ) -> Artifacts:
     """run 横断のサマリ・波形格子・点軸メトリクスをまとめる。"""
     use_style()
-    if eval_comp not in view.net.names:
-        raise ValueError(f"eval_comp {eval_comp!r} not in {view.target!r}")
+    _check_eval_comp(view, eval_comp)
     names = run_names(bundles)
     artifacts = [
         summary_artifact(bundles),
@@ -103,20 +111,22 @@ def detail_artifacts(
 ) -> Artifacts:
     """選択した 1 点・1 モデルの波形成果物をまとめる。"""
     use_style()
-    if eval_comp not in view.net.names:
-        raise ValueError(f"eval_comp {eval_comp!r} not in {view.target!r}")
-    index = min(detail_point, len(view.points) - 1)
+    _check_eval_comp(view, eval_comp)
     comp_id = view.net.name_to_idx(eval_comp)
-    original, surrogate = view.pair(index, view.column(run_id))
+    original, surrogate = view.pair(
+        min(detail_point, len(view.points) - 1), view.column(run_id)
+    )
 
     latent = preprocessed_latent(bundle, view.net, original, comp_id)
     dm = DynamicMetrics(original, surrogate, comp_id, view.dt)
-    comps = [view.net.name_to_idx(comp) for comp in view_comps] or None
-    artifacts = [
-        diff_artifact(original, latent, surrogate, comp_id),
-        simple_artifact(original, comps),
-        attractor_artifact(latent, surrogate, comp_id),
-        metrics_artifact(dm, spike_orig, spike_surr),
-        metrics_scalar_artifact(dm, spike_orig, spike_surr),
-    ]
-    return Artifacts(tuple(artifacts))
+    return Artifacts(
+        (
+            diff_artifact(original, latent, surrogate, comp_id),
+            simple_artifact(
+                original, [view.net.name_to_idx(comp) for comp in view_comps] or None
+            ),
+            attractor_artifact(latent, surrogate, comp_id),
+            metrics_artifact(dm, spike_orig, spike_surr),
+            metrics_scalar_artifact(dm, spike_orig, spike_surr),
+        )
+    )

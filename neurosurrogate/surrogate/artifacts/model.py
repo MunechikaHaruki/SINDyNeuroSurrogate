@@ -2,7 +2,7 @@
 (SINDy 係数 heatmap と方程式)・preprocessor の固有図 (PCA scree)。
 
 **置換シミュを回さずに描ける** = run をロードしただけで出る図。共通の図が無い表現
-(closure/preprocessor の型ごと) は型で振り分け、非対応なら空列を返す。marimo 非依存。
+(closure/preprocessor の型ごと) は型で振り分け、非対応なら None を返す。marimo 非依存。
 """
 
 from __future__ import annotations
@@ -21,7 +21,9 @@ from matplotlib.lines import Line2D
 from ...artifact.model import Artifact
 from ...artifact.plotting import new_figure, place_legend
 from ...core.network import NeuronGraph
+from ..closure.base import Closure
 from ..closure.sindy import SINDyBundle
+from ..preprocessor.base import Preprocessor
 from ..preprocessor.impl.pca import PCAPreprocessor
 
 _NODE_COLORS = {
@@ -148,7 +150,21 @@ def feature_tex(e: sp.Basic) -> str:
     return f"${stripped}$"
 
 
-def pca_scree_artifact(prep: PCAPreprocessor) -> Artifact:
+def closure_artifact(closure: Closure) -> Artifact | None:
+    """閉包項に固有の成果物。対応する図がなければ None。"""
+    if isinstance(closure, SINDyBundle):
+        return _sindy_coef_artifact(closure)
+    return None
+
+
+def preprocessor_artifact(preprocessor: Preprocessor) -> Artifact | None:
+    """前処理器に固有の成果物。対応する図がなければ None。"""
+    if isinstance(preprocessor, PCAPreprocessor):
+        return _pca_scree_artifact(preprocessor)
+    return None
+
+
+def _pca_scree_artifact(prep: PCAPreprocessor) -> Artifact:
     """PCA scree 図: 成分別寄与率 (棒) + 累積寄与率 (折れ線)。保持成分を色で区別し、
     捨てた成分も含めて描く → n_components の選択が累積の飽和点に対し妥当かを見る。"""
     ratios = prep.full_explained_variance_ratio
@@ -186,7 +202,7 @@ def pca_scree_artifact(prep: PCAPreprocessor) -> Artifact:
     return Artifact("pca_scree", fig)
 
 
-def sindy_coef_artifact(result: SINDyBundle, figsize=(15, 3)) -> Artifact:
+def _sindy_coef_artifact(result: SINDyBundle, figsize=(15, 3)) -> Artifact:
     xi_matrix = np.asarray(result.xi)
     fig = new_figure(figsize=figsize)
     ax = fig.subplots()

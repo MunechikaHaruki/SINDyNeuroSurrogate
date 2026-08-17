@@ -27,12 +27,6 @@ class Artifacts:
     def __iter__(self) -> Iterator[Artifact]:
         return iter(self.items)
 
-    def __len__(self) -> int:
-        return len(self.items)
-
-    def __bool__(self) -> bool:
-        return bool(self.items)
-
     def save(self, path: Path) -> tuple[Path, ...]:
         """全成果物を `path` 以下へ保存し、書いたファイルを返す。"""
         written: list[Path] = []

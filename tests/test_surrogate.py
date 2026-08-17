@@ -42,10 +42,11 @@ from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
     hybrid_surr_comp_type,
 )
 from neurosurrogate.surrogate.ansatz.impl.ude import UDEAnsatz
-from neurosurrogate.surrogate.artifacts import (
+from neurosurrogate.surrogate.artifacts.model import (
+    feature_tex,
     preprocessor_artifact,
+    tex,
 )
-from neurosurrogate.surrogate.artifacts.model import feature_tex, tex
 from neurosurrogate.surrogate.artifacts.train import (
     train_manifold_artifact,
     train_preprocessed_artifact,
@@ -70,7 +71,6 @@ from neurosurrogate.surrogate.replace import (
 from neurosurrogate.waveform.artifacts import (
     attractor_artifact,
     diff_artifact,
-    panels_simple,
     simple_artifact,
 )
 from neurosurrogate.waveform.dynamics import (
@@ -333,7 +333,9 @@ def test_view_comps_limit_drawn_traces(
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
     ds = sindy_view.points[0]
-    assert len(panels_simple(ds, comps=[])) < len(panels_simple(ds))
+    assert len(simple_artifact(ds, comps=[]).obj.axes) < len(
+        simple_artifact(ds).obj.axes
+    )
     assert train_raw_artifact(sindy, comps=[_train_comp(sindy)]).name == (
         train_raw_artifact(sindy).name
     )

@@ -92,8 +92,13 @@ def test_eval_runs_round_trip_without_resimulating(
     view = report_io.load_report(report_id)
     assert view.run_ids == [RUN_ID]
     # 結果から作り直した記述で同じレポートに当たる = 記述 (`EvalSelection`) と
-    # 結果 (`SeriesResults`) が同じ対で往復する
-    assert report_io.find_report_run(view.selection) == report_id
+    # 結果 (`SeriesResults`) が同じ対で往復する。**往復するのは選択した run が全部
+    # 置換できたときだけ** — 鍵は選択そのもの (`EvalSelection` の docstring) で、
+    # 結果に並ぶのは置換できた列だけだから。
+    assert (
+        report_io.find_report_run(EvalSelection(view.series, tuple(view.run_ids)))
+        == report_id
+    )
     # 系列名は結果 (`SeriesResults`) でなく波形 run 側にある = レポートはカタログを
     # 参照しない (名前を付け替えても過去のレポートは読める)
     original_eval, surr_eval = _source_runs(report_id)
@@ -189,6 +194,7 @@ def test_everything_drawn_lands_in_the_one_report_run(
         "summary.csv",
         "traces.png",
         "metric.png",  # 掃引 (2 点) なので点軸の折れ線も出る
+        "draw.json",  # 描いたときの `Tuning` も返りに載る (返り = その run の artifact)
     }
     # 段名は学習 run の MLflow run 名 (models/ と series/ で同じ綴り)
     name = "surr-A"

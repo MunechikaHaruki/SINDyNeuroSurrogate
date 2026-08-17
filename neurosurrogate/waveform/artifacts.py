@@ -68,7 +68,7 @@ def diff_artifact(
 def simple_artifact(
     original: xr.Dataset, comps: Sequence[int] | None = None
 ) -> Artifact:
-    return Artifact("simple", draw_engine(panels_simple(original, comps)))
+    return Artifact("simple", draw_engine(_panels_simple(original, comps)))
 
 
 def metrics_artifact(
@@ -99,7 +99,7 @@ def metrics_scalar_artifact(
     )
 
 
-def panels_simple(
+def _panels_simple(
     ds: xr.Dataset, comps: Sequence[int] | None = None
 ) -> list[PanelSpec]:
     """全 comp の波形。comps を渡すとその comp だけに絞る (None=全部)。

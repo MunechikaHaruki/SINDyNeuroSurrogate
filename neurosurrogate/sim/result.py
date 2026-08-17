@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import xarray as xr
 
 from ..core.network import NeuronGraph
-from .spec import EvalSelection, EvalSeries
+from .spec import EvalSeries
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ class SeriesResults:
     復元しない。
 
     **由来は持たない**: 系列名も、どの評価 run から読んだかという MLflow の同一性も
-    無い (解くのは `mlflow_io.report.Report`)。
+    無い (解くのは `mlflow_io.report`)。
     """
 
     original: SeriesRun
@@ -90,12 +90,6 @@ class SeriesResults:
     def run_ids(self) -> list[str]:
         """置換系の run_id (列の順。原系は含まない)。"""
         return [str(column.run_id) for column in self.surrs]
-
-    @property
-    def selection(self) -> EvalSelection:
-        """**手元の束の記述** = 掃引 × 実際に並んでいる run。同一性 (レポートを引く鍵)
-        はここから作る = 記述と結果が同じ対で往復する。"""
-        return EvalSelection(self.series, tuple(self.run_ids))
 
     @property
     def net(self) -> NeuronGraph:
