@@ -4,11 +4,25 @@
 引数で受け取り、この束を知らない。値を与えるのは `scripts/marimo.py` の widget
 1 箇所で、束を解いて描画層へ渡すのは `scripts/mlflow_io` の各 module = **UI の
 つまみ 1 組**という入口側の関心にそろえる。
+
+**つまみの選択肢 (`comp_names`) と widget からの組立 (`Tuning.from_widgets`) もここ**
+= キーの綴りと既定値と選択肢が 1 file に閉じる (marimo のセルは widget を置いて
+`.value` を渡すだけ)。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
+
+from catalog import SERIES
+
+
+def comp_names(series_name: str | None) -> list[str]:
+    """系列名 → その系列の適用先に在る comp 名 (未選択は空)。comp のつまみ
+    (`eval_comp` / `view_comps`) の選択肢はこれ = 適用先と噛み合わない comp を
+    選べない。名前の解決は適用先を知る `SimSpec.net` に任せる。"""
+    return sorted(SERIES[series_name].spec.net.names) if series_name else []
 
 
 @dataclass(frozen=True)
@@ -33,3 +47,19 @@ class Tuning:
     spike_orig: int = 0  # 特徴量比較に使う原系の何本目のスパイクか
     spike_surr: int = 0  # 同じく置換系
     metric_ylim: tuple[float, float] | None = None  # 折れ線の y レンジ (None=auto)
+
+    @classmethod
+    def from_widgets(cls, values: dict[str, Any]) -> Tuning:
+        """**widget の値 1 組 → 描き方 1 値**。y レンジの 3 つ (auto/下限/上限) は
+        `metric_ylim: tuple | None` へ畳み、comp 未選択 (系列未選択) は空文字のまま
+        渡して描画側で設定誤りとして落とす。UI の都合をこの型に持ち込まないための
+        変換なので、キーの綴りを知る側 (= 既定値を持つ側) に置く。"""
+        return cls(
+            eval_comp=values["eval_comp"] or "",
+            view_comps=tuple(values["view_comps"]),
+            metric=values["metric"],
+            detail_point=int(values["detail_point"]),
+            spike_orig=int(values["spike_orig"]),
+            spike_surr=int(values["spike_surr"]),
+            metric_ylim=None if values["yauto"] else (values["ymin"], values["ymax"]),
+        )

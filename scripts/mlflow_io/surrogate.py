@@ -1,8 +1,10 @@
 """学習 experiment (`TARGET_EXP`): surrogate の pickle + meta.json を持つ run。
 
-**評価 (波形) を知らない** — 答えるのは「どんな学習 run が居るか」(`get_runs_df`) と
-「その run の surrogate / meta」だけ。run 一覧は marimo の run 選択そのものなので、
-読込不可の run を落とす判断もここ (選択肢に出せない run は下流へ流さない)。
+**評価 (波形) を知らない** — 答えるのは「どんな学習 run が居るか」(`get_runs_df` /
+`selectable_runs`) と「その run の surrogate」(`bundles_for` / `load_bundles`) だけ。
+run 一覧は marimo の run 選択そのものなので、読込不可の run を落とす判断も、選んだ
+系列で絞る判断も、代表 run → sweep 群の展開もここ (UI は選択の結果を渡すだけで、
+どの run が選択肢になるか・選択が何本の run へ広がるかを組み立てない)。
 """
 
 import json
@@ -14,15 +16,20 @@ from typing import cast
 import mlflow
 import mlflow.artifacts
 import pandas as pd
+from catalog import SERIES
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from tqdm import tqdm
 
+from neurosurrogate.sim.run import replaceable
 from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
 from . import TARGET_EXP, logger
 
 _SURR_ARTIFACT_DIR = "surrogate"
+ALL_PRESETS = "(すべて)"  # preset で絞らない選択 (dropdown の既定)
+# 選択に出す列 = 見分けに要る名前と置換対象の種類、それに選択の実体 (run_id)。
+_RUN_COLUMNS = ["tags.mlflow.runName", "comp_type", "run_id"]
 
 
 def log_surrogate_model(surrogate: SurrogateBundle) -> None:
@@ -64,14 +71,37 @@ def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
     return {run_id: _load_surrogate_model(run_id) for run_id in run_ids}
 
 
-def sweep_siblings(parent_id: str) -> list[str]:
+def _sweep_siblings(parent_id: str) -> list[str]:
     """親 run (or 単発) の run_id → sweep 群 = 自身 + 子 (parentRunId 一致)。db を直接
-    引く (runs_df 非依存)。run_selector は代表だけ出すので引数は常に親。"""
+    引く (runs_df 非依存)。選択肢は代表だけなので引数は常に親。"""
     children = mlflow.search_runs(
         filter_string=f"tags.`{MLFLOW_PARENT_RUN_ID}` = '{parent_id}'",
         output_format="list",
     )
     return [parent_id, *[r.info.run_id for r in children]]
+
+
+def bundles_for(selected_ids: list[str]) -> dict[str, SurrogateBundle]:
+    """選んだ代表 run 列 → run_id→surrogate。**選択 (代表 N 件) と run 軸 (兄弟込み
+    M 件) の差はここだけが知る**: 各代表の hydra sweep 兄弟へ与えた順で広げ、選択が
+    重なっても同じ run が 2 度出ないよう潰す。単発 preset は 1 件のまま。"""
+    return load_bundles(
+        list(dict.fromkeys(rid for sel in selected_ids for rid in _sweep_siblings(sel)))
+    )
+
+
+def selectable_runs(runs_df: pd.DataFrame, series_name: str | None, preset: str):
+    """run 表に出す行 = 選んだ系列を**実際に置換できる**代表 run (parent_id 欠損)
+    だけを preset で絞ったもの。系列は名前から引く (呼ぶ側はカタログを触らない)。
+    置換可否の判定は `sim.run.replaceable` (ドメイン側) が持ち、「1 本でも置換できれば
+    出す」という選択の方針だけがここ。`preset=ALL_PRESETS` で preset は絞らない。"""
+    if not series_name:
+        return runs_df.iloc[:0][_RUN_COLUMNS]
+    return runs_df[
+        runs_df["meta"].map(lambda m: replaceable(SERIES[series_name], m))
+        & ((preset == ALL_PRESETS) | (runs_df["preset"] == preset))
+        & runs_df["parent_id"].isna()
+    ][_RUN_COLUMNS]
 
 
 def _safe_meta(run_id: str) -> SurrogateMeta | None:

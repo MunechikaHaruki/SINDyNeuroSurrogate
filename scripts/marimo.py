@@ -14,33 +14,32 @@ def _():
         run_and_log,
     )
     from mlflow_io.surrogate import (
+        ALL_PRESETS,
+        bundles_for,
         get_runs_df,
-        load_bundles,
-        sweep_siblings,
+        selectable_runs,
     )
-    from tuning import Tuning
+    from tuning import Tuning, comp_names
 
-    from neurosurrogate.sim.run import replaceable
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
-    ALL_PRESETS = "(すべて)"  # preset dropdown の「絞らない」選択肢
-
     # 残す操作は「run 選択」「評価」「描画」の 3 つ。CLI は持たない (二重管理を避け、
-    # ここが唯一の実行経路)。中身は呼び先 1 関数に畳んであり、セルは呼ぶだけ。
+    # ここが唯一の実行経路)。**セルに置くのは widget と、それを plain 値に均す 1 行
+    # だけ** — 選択肢の導出も選択の広げ方も呼び先の 1 関数が持つ。
     runs_df = get_runs_df()
     return (
         ALL_PRESETS,
         METRIC_KEYS,
         SERIES,
         Tuning,
+        bundles_for,
+        comp_names,
         find_report_run,
-        load_bundles,
         mo,
         render_report,
-        replaceable,
         run_and_log,
         runs_df,
-        sweep_siblings,
+        selectable_runs,
     )
 
 
@@ -67,16 +66,10 @@ def _(ALL_PRESETS, SERIES, mo, runs_df):
 
 
 @app.cell
-def _(ALL_PRESETS, SERIES, mo, preset, replaceable, runs_df, series_name):
-    # 比べたい run を N 件選ぶ (1 レポート = 1 系列 × N モデル)。出すのは選んだ系列を
-    # **実際に置換できる**代表 run (parent_id 欠損) だけ。可否は `sim.run.replaceable`。
-    runs = runs_df[
-        runs_df["meta"].map(
-            lambda m: bool(series_name) and replaceable(SERIES[series_name], m)
-        )
-        & ((preset == ALL_PRESETS) | (runs_df["preset"] == preset))
-        & runs_df["parent_id"].isna()
-    ][["tags.mlflow.runName", "comp_type", "run_id"]]
+def _(mo, preset, runs_df, selectable_runs, series_name):
+    # 比べたい run を N 件選ぶ (1 レポート = 1 系列 × N モデル)。何が選択肢になるかは
+    # `selectable_runs` が持つ (絞りの条件を UI 側に複製しない)。
+    runs = selectable_runs(runs_df, series_name, preset)
     run_selector = mo.ui.table(
         runs,
         label="Run (複数可)",
@@ -102,9 +95,10 @@ def _(mo):
 
 
 @app.cell
-def _(METRIC_KEYS, comp_options, mo):
+def _(METRIC_KEYS, comp_names, mo, series_name):
     # **描き方は全部ここ** (`tuning.Tuning` の全キー)。カタログは「何を回すか」だけ。
     # metric の選択肢は `METRIC_KEYS` から引く (生成されないキーを選べない)。
+    comp_options = comp_names(series_name)
     tuning_ui = mo.ui.dictionary(
         {
             "eval_comp": mo.ui.dropdown(
@@ -135,18 +129,8 @@ def _(METRIC_KEYS, comp_options, mo):
 
 @app.cell
 def _(Tuning, tuning_ui):
-    # **widget → 描き方 1 値**。y レンジの 3 widget は `ylim: tuple | None` 1 つへ畳む
-    # (UI の都合をドメインの型に持ち込まない)。
-    values = tuning_ui.value
-    tuning = Tuning(
-        eval_comp=values["eval_comp"] or "",
-        view_comps=tuple(values["view_comps"]),
-        metric=values["metric"],
-        detail_point=int(values["detail_point"]),
-        spike_orig=int(values["spike_orig"]),
-        spike_surr=int(values["spike_surr"]),
-        metric_ylim=None if values["yauto"] else (values["ymin"], values["ymax"]),
-    )
+    # **widget → 描き方 1 値の境界**。畳み方は `Tuning` 側 (キーの綴りを知る側) が持つ。
+    tuning = Tuning.from_widgets(tuning_ui.value)
     return (tuning,)
 
 
@@ -167,14 +151,6 @@ def _(draw_button, mo, render_report, report_run_id, tuning):
 
 
 @app.cell(column=1)
-def _(SERIES, series_name):
-    # つまみに出す comp 名 = **選んだ系列の適用先に在る** comp だけ。名前の解決は
-    # 適用先を知る `SimSpec.net` に任せる。
-    comp_options = sorted(SERIES[series_name].spec.net.names) if series_name else []
-    return (comp_options,)
-
-
-@app.cell
 def _(filter_ui):
     # **widget → plain 値の境界**。以降どの関数にも widget は渡さない。
     series_name, preset = filter_ui.value["series"], filter_ui.value["preset"]
@@ -189,19 +165,10 @@ def _(run_selector):
 
 
 @app.cell
-def _(sel_ids, sweep_siblings):
-    # 代表 run の hydra sweep 兄弟 = 自身 + 子 run_id を与えた順に連結。選択が重なっても
-    # 同じ run が 2 度出ないよう与えた順で潰す。
-    run_ids_list = list(
-        dict.fromkeys(rid for sel in sel_ids for rid in sweep_siblings(sel))
-    )
-    return (run_ids_list,)
-
-
-@app.cell
-def _(load_bundles, run_ids_list):
-    # run_id → surrogate (表示名は描画層が解く)。
-    bundles = load_bundles(run_ids_list)
+def _(bundles_for, sel_ids):
+    # 選択 (代表 run) → run 軸の surrogate 群。sweep 兄弟への広げ方も表示名の解決も
+    # 呼び先が持つ (marimo は選んだ id を渡すだけ)。
+    bundles = bundles_for(sel_ids)
     return (bundles,)
 
 
