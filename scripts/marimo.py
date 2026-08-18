@@ -8,17 +8,10 @@ app = marimo.App(width="columns")
 def _():
     import marimo as mo
     from catalog import SERIES
-    from mlflow_io.report import (
-        find_report_run,
-        render_report,
-        run_and_log,
-    )
-    from mlflow_io.surrogate import (
-        ALL_PRESETS,
-        bundles_for,
-        get_runs_df,
-        selectable_runs,
-    )
+    from mlflow_io.report import find_report_run, run_report
+    from mlflow_io.runs import ALL_PRESETS, load_runs, selectable_runs
+    from mlflow_io.surrogate import bundles_for
+    from render import render_report
     from tuning import Tuning, comp_names
 
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
@@ -26,7 +19,7 @@ def _():
     # 残す操作は「run 選択」「評価」「描画」の 3 つ。CLI は持たない (二重管理を避け、
     # ここが唯一の実行経路)。**セルに置くのは widget と、それを plain 値に均す 1 行
     # だけ** — 選択肢の導出も選択の広げ方も呼び先の 1 関数が持つ。
-    runs_df = get_runs_df()
+    runs_df = load_runs()
     return (
         ALL_PRESETS,
         METRIC_KEYS,
@@ -37,7 +30,7 @@ def _():
         find_report_run,
         mo,
         render_report,
-        run_and_log,
+        run_report,
         runs_df,
         selectable_runs,
     )
@@ -173,12 +166,12 @@ def _(bundles_for, sel_ids):
 
 
 @app.cell
-def _(bundles, eval_button, find_report_run, run_and_log, series_name):
+def _(bundles, eval_button, find_report_run, run_report, series_name):
     # 評価ボタン: 1 系列を回して波形 run + レポート run を保存 (描画はしない)。押して
     # いなければ同じ選択の既存レポートを引く = **描画の入力 run_id の単一源**。
     report_run_id = (
         (
-            run_and_log(bundles, series_name)
+            run_report(bundles, series_name)
             if eval_button.value
             else find_report_run(series_name, tuple(bundles))
         )

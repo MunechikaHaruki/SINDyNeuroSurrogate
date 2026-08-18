@@ -2,7 +2,7 @@
 
 ドメインの成果物生成 module には置かない — 描画関数はどれも必要な値を素の
 引数で受け取り、この束を知らない。値を与えるのは `scripts/marimo.py` の widget
-1 箇所で、束を解いて描画層へ渡すのは `scripts/mlflow_io` の各 module = **UI の
+1 箇所で、束を解いて描画層へ渡すのは `scripts/render` = **UI の
 つまみ 1 組**という入口側の関心にそろえる。
 
 **つまみの選択肢 (`comp_names`) と widget からの組立 (`Tuning.from_widgets`) もここ**

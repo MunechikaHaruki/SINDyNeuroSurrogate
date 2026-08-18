@@ -14,7 +14,6 @@ import joblib
 import mlflow
 import mlflow.artifacts
 import xarray as xr
-from mlflow.entities import Run
 
 from neurosurrogate.sim.result import SeriesRun
 from neurosurrogate.sim.run import run_column
@@ -22,38 +21,20 @@ from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
+from ._query import exp_id, latest_by_tag
 
 EVAL_EXP = os.environ.get("MLFLOW_EVAL_EXPERIMENT", "eval_series")
 WAVES_FILE = "waves.joblib"  # 点の順に並べた波形列 (1 run = 1 系列 = 1 ファイル)
 _WAVE_DTYPE = "float32"  # 保存精度 (表示にも指標にも十分で容量は半分)
+_HASH_TAG = "series_hash"  # 同一性 = 掃引 (+ 置換系なら学習 run_id)
 _KIND_ORIGINAL = "original"
 _KIND_SURROGATE = "surrogate"
-
-
-def _eval_exp_id() -> str:
-    """評価 experiment の id (無ければ作る)。`set_experiment` は学習側の既定を
-    書き換えるので使わず、run ごとに experiment_id を指定する。"""
-    exp = mlflow.get_experiment_by_name(EVAL_EXP)
-    return exp.experiment_id if exp else mlflow.create_experiment(EVAL_EXP)
 
 
 def _series_hash(series: EvalSeries, run_id: str | None) -> str:
     """「この掃引をこの surrogate で既に回したか」の鍵。`EvalSeries.hash` は掃引の内容
     だけなので run_id はここで組む = 原系は鍵が掃引だけになり全レポートで共有される。"""
     return series.hash() if run_id is None else f"{series.hash()}-{run_id}"
-
-
-def _find_eval(series: EvalSeries, run_id: str | None) -> Run | None:
-    """同じ掃引を同じ surrogate で回した評価 run (最新)。決定的なシミュなので、
-    あれば回し直す必要はない。"""
-    found = mlflow.search_runs(
-        experiment_ids=[_eval_exp_id()],
-        filter_string=f"tags.series_hash = '{_series_hash(series, run_id)}'",
-        order_by=["attributes.start_time DESC"],
-        max_results=1,
-        output_format="list",
-    )
-    return found[0] if found else None
 
 
 def _log_series(name: str, column: SeriesRun) -> str:
@@ -63,7 +44,7 @@ def _log_series(name: str, column: SeriesRun) -> str:
     series, run_id = column.series, column.run_id
     kind = _KIND_ORIGINAL if run_id is None else f"{_KIND_SURROGATE}:{run_id[:8]}"
     with mlflow.start_run(
-        experiment_id=_eval_exp_id(), run_name=f"{name} [{kind}]"
+        experiment_id=exp_id(EVAL_EXP), run_name=f"{name} [{kind}]"
     ) as run:
         mlflow.log_params(
             {
@@ -82,7 +63,7 @@ def _log_series(name: str, column: SeriesRun) -> str:
         )
         mlflow.set_tags(
             {
-                "series_hash": _series_hash(series, run_id),
+                _HASH_TAG: _series_hash(series, run_id),
                 "kind": _KIND_ORIGINAL if run_id is None else _KIND_SURROGATE,
                 **(
                     {}
@@ -116,13 +97,14 @@ def run_series(
     = **回さない** (シミュは決定的なので、鍵が一致した run は常に正しい)。
     `run_id`/`surrogate` が両方 `None` なら原系。**探索と保存は分けない** — 対で
     成り立つ不変条件なので割らない。"""
-    found = _find_eval(series, run_id)
+    # 同じ掃引を同じ surrogate で回した run があるか (決定的なシミュ = 回し直さない)。
+    found = latest_by_tag(EVAL_EXP, _HASH_TAG, _series_hash(series, run_id))
     if found is not None:
         return found.info.run_id
     return _log_series(name, run_column(series, run_id, surrogate))
 
 
-def column_of(eval_run_id: str) -> SeriesRun:
+def load_column(eval_run_id: str) -> SeriesRun:
     """波形 run の id → **その run が保存した列そのもの** (`_log_series` の逆)。記述も
     run_id も param が持つので、呼ぶ側は id 1 つを指すだけでよい。"""
     params = mlflow.get_run(eval_run_id).data.params

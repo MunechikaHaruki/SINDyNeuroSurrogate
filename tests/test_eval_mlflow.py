@@ -1,8 +1,9 @@
 """評価結果の永続化 (MLflow の評価 experiment) の smoke。
 
 `tests/test_surrogate.py` がドメイン層だけを通すのに対し、ここは
-`scripts/mlflow_io/` = **MLflow を知る唯一の場所**を通す。tracking 先は tmp の
-sqlite へ丸ごと差し替えるので、手元の `mlflow.db` / `mlruns/` は汚れない。
+`scripts/mlflow_io/` (experiment と run) と `scripts/render/` (成果物の段と書き出し) を
+通す。tracking 先は tmp の sqlite へ丸ごと差し替えるので、手元の `mlflow.db` /
+`mlruns/` は汚れない。
 """
 
 import json
@@ -13,13 +14,13 @@ import mlflow
 
 # `scripts/` は conftest が import path へ入れている。
 import mlflow_io.report as report_io  # noqa: E402
-import mlflow_io.save as save  # noqa: E402
 import mlflow_io.series as series_io  # noqa: E402
 import numpy as np
 import pytest
+import render.save as save  # noqa: E402
 from mlflow.entities import Run
-from mlflow_io.report import render_report
 from mlflow_io.surrogate import log_surrogate_model
+from render import render_report
 from test_surrogate import fit_surrogate
 from tuning import Tuning
 
@@ -31,13 +32,40 @@ from neurosurrogate.surrogate.bundle import SurrogateBundle
 RUN_ID = "RID"  # 学習 run の代役 (評価 run が指す先)
 
 
+def _exp_id(name: str) -> str:
+    """experiment 名 → id。本番の解決子 (`mlflow_io._query`) はパッケージ内専用なので、
+    テストは MLflow を直に引く。"""
+    exp = mlflow.get_experiment_by_name(name)
+    assert exp is not None
+    return str(exp.experiment_id)
+
+
+def _by_hash(exp_name: str, tag: str, value: str) -> Run | None:
+    """同一性の鍵で run を引く。**tag の綴りはテストが直書きする** — 本番の定数を
+    借りると綴りを変えても落ちず、保存の契約を検査したことにならない (鍵の組み方の
+    ようなロジックは逆に本番のものを呼ぶ)。"""
+    return next(
+        iter(
+            cast(
+                list[Run],
+                mlflow.search_runs(
+                    experiment_ids=[_exp_id(exp_name)],
+                    filter_string=f"tags.{tag} = '{value}'",
+                    output_format="list",
+                ),
+            )
+        ),
+        None,
+    )
+
+
 def _source_runs(report_run_id: str) -> tuple[str, ...]:
     """レポート run が指す波形 run (原系が先)。**本番は使わない** — `load_report` は
     描く中身だけを返し、由来の id は描画にも保存段にも要らない。"""
     tags = mlflow.get_run(report_run_id).data.tags
     return (
-        tags[report_io._ORIGINAL_TAG],
-        *json.loads(tags[report_io._SURROGATE_TAG]),
+        tags["original_series_id"],
+        *json.loads(tags["surrogate_series_ids"]),
     )
 
 
@@ -63,7 +91,7 @@ def eval_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sindy: SurrogateBundle
 ) -> str:
     """tracking 先を tmp へ移し、評価/レポート experiment 名もテスト専用にする。
-    カタログも差し替える — `run_and_log`/`find_report_run` は系列を**名前から引く**の
+    カタログも差し替える — `run_report`/`find_report_run` は系列を**名前から引く**の
     で、テスト用の短い掃引 (`_evals`) をその名前に載せて渡す。"""
     mlflow.set_tracking_uri(f"sqlite:///{tmp_path}/mlflow.db")
     monkeypatch.setattr(series_io, "EVAL_EXP", "test_eval")
@@ -88,7 +116,7 @@ def test_eval_runs_round_trip_without_resimulating(
     **1 系列 × N モデル**が単位で、選択 (学習 run 群 × 系列 1 つ) で引き、波形 run
     への参照だけを持つ。"""
     series = _evals(sindy)
-    report_id = report_io.run_and_log({RUN_ID: sindy}, "hh_dc")
+    report_id = report_io.run_report({RUN_ID: sindy}, "hh_dc")
     # 波形は 2 本 (原系 1 + 置換系 1)、レポートは 1 本 (点では分かれない)
     assert len(_of_kind("original")) == 1 and len(_of_kind("surrogate")) == 1
     # 選択 → レポート run_id の橋は 1 本で、描画はこの id だけを見る
@@ -100,8 +128,10 @@ def test_eval_runs_round_trip_without_resimulating(
     # 結果 (`SeriesResults`) が同じ対で往復する。**往復するのは選択した run が全部
     # 置換できたときだけ** — 鍵は選択そのもの (`EvalSelection` の docstring) で、
     # 結果に並ぶのは置換できた列だけだから。
-    restored = report_io._find_report(
-        EvalSelection(view.series, tuple(view.run_ids)).hash()
+    restored = _by_hash(
+        report_io.REPORT_EXP,
+        "report_hash",
+        EvalSelection(view.series, tuple(view.run_ids)).hash(),
     )
     assert restored is not None and restored.info.run_id == report_id
     assert (
@@ -136,17 +166,17 @@ def test_eval_runs_round_trip_without_resimulating(
 
     # シミュは決定的 → 同じ掃引の 2 度目はスキップ (series_hash 一致)。同じ選択の
     # レポートも量産されず、同じ run が更新される。
-    assert report_io.run_and_log({RUN_ID: sindy}, "hh_dc") == report_id
+    assert report_io.run_report({RUN_ID: sindy}, "hh_dc") == report_id
     assert len(_of_kind("surrogate")) == 1
 
     # 別の学習 run から同じ条件 → 置換系は増えるが原系は共有される
     # (学習 run を増やしても原系の波形が複製されない)。選択が違えば別のレポート。
-    assert report_io.run_and_log({"OTHER": sindy}, "hh_dc") != report_id
+    assert report_io.run_report({"OTHER": sindy}, "hh_dc") != report_id
     assert (len(_of_kind("original")), len(_of_kind("surrogate"))) == (1, 2)
 
     # 学習 run 2 件の選択はさらに別のレポート = 別の単位 (run 軸 2 本が 1 枚に並ぶ)
     both = report_io.load_report(
-        report_io.run_and_log({RUN_ID: sindy, "OTHER": sindy}, "hh_dc")
+        report_io.run_report({RUN_ID: sindy, "OTHER": sindy}, "hh_dc")
     )
     assert (len(both.points), both.run_ids) == (2, [RUN_ID, "OTHER"])
 
@@ -161,12 +191,12 @@ def test_unevaluated_selection_finds_nothing_without_creating_experiment(
     assert mlflow.get_experiment_by_name(report_io.REPORT_EXP) is None
 
 
-def test_run_and_log_rejects_series_no_run_can_replace(
+def test_run_report_rejects_series_no_run_can_replace(
     eval_store: str, sindy: SurrogateBundle
 ) -> None:
     """1 本も置換できない選択は回す意味が無い → 空のレポートを作らず落ちる。"""
     with pytest.raises(ValueError, match="置換できない"):
-        report_io.run_and_log({}, "hh_dc")
+        report_io.run_report({}, "hh_dc")
 
 
 def test_run_directories_disambiguate_after_slugging(
@@ -192,7 +222,7 @@ def test_everything_drawn_lands_in_the_one_report_run(
     """
     # 段名は学習 run の MLflow run 名なので、代役 id でなく実在の学習 run を立てる。
     train_id = _train_run("surr-A", sindy)
-    report_id = report_io.run_and_log({train_id: sindy}, "hh_dc")
+    report_id = report_io.run_report({train_id: sindy}, "hh_dc")
     view = report_io.load_report(report_id)
     written = render_report(report_id, Tuning(eval_comp=view.net.names[0]))
     # run 内の名前は元の 3 段のまま: models/<run 名>/ は比べた 1 本ずつの自己記述図、
@@ -232,7 +262,7 @@ def _of_kind(kind: str) -> list[Run]:
     return cast(
         list[Run],
         mlflow.search_runs(
-            experiment_ids=[series_io._eval_exp_id()],
+            experiment_ids=[_exp_id(series_io.EVAL_EXP)],
             filter_string=f"tags.kind = '{kind}'",
             output_format="list",
         ),

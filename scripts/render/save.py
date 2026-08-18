@@ -2,12 +2,16 @@
 唯一の置き場所。学習 run にも評価 run にも書かない (記録した run を描画が書き換えない)。
 
 成果物は run でなく **(レポート run, `Tuning`) に属する** — 描画時のつまみで中身が
-変わるので、宛先を学習/評価 run にすると別レポートが同じ path を奪い合う。段は
-`models/<run 名>/` `series/<run 名>/` とレポート自身の図 (直下) の 3 つ。
+変わるので、宛先を学習/評価 run にすると別レポートが同じ path を奪い合う。
+
+段名の綴り (`<prefix>/<run 名>/`) を決めるのはここだけで、どの prefix を立てるかは
+組立側 (`render.__init__`)。MLflow に触るのは artifact の書き出し 1 系統だけ
+(experiment も同一性も持たない = `mlflow_io` の関心を侵さない)。
 """
 
 from __future__ import annotations
 
+import logging
 import re
 import tempfile
 from collections import Counter
@@ -19,7 +23,7 @@ from tuning import Tuning
 
 from neurosurrogate.artifact.model import Artifacts
 
-from . import logger
+_logger = logging.getLogger(__name__)
 
 _UNSAFE = re.compile(r"[\s/\\:]+")
 DRAW_FILE = "draw.json"  # そのレポート run を描いたときの表示設定 (`Tuning`)
@@ -74,5 +78,5 @@ def save_artifacts(
         client.log_artifacts(report_run_id, temporary)
     client.log_dict(report_run_id, asdict(tuning), DRAW_FILE)
     written.append(DRAW_FILE)
-    logger.info("成果物 %d 件をレポート run へ保存: %s", len(written), report_run_id)
+    _logger.info("成果物 %d 件をレポート run へ保存: %s", len(written), report_run_id)
     return written
