@@ -52,7 +52,7 @@ _RC_PARAMS: dict[str, object] = {
 
 def use_style() -> None:
     """`_RC_PARAMS` を適用する。プロセス全体のグローバル状態を変更するため、
-    呼び出すのは `artifact.bundle.build_report` だけ。"""
+    呼び出すのは `artifact.bundle.save_report` だけ。"""
     matplotlib.style.use(_RC_PARAMS)
 
 

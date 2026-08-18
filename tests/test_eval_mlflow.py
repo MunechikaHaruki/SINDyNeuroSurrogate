@@ -21,7 +21,6 @@ from mlflow.entities import Run
 from mlflow_io.surrogate import log_surrogate_model
 from test_surrogate import fit_surrogate
 
-from neurosurrogate.artifact.model import Tuning
 from neurosurrogate.core import access
 from neurosurrogate.sim.run import simulate
 from neurosurrogate.sim.spec import EvalSeries
@@ -158,7 +157,7 @@ def test_run_report_rejects_series_no_run_can_replace(
 def test_everything_drawn_lands_in_the_one_report_run(
     eval_store: str, sindy: SurrogateBundle
 ) -> None:
-    """描画の入力は**レポート run_id 1 つ + `Tuning`** だけで、描いたものは全部その
+    """描画の入力は**レポート run_id 1 つ + つまみ**だけで、描いたものは全部その
     レポート run の artifact になる (比べたいのが 1 系列 × N モデルの束そのものなので、
     束ねる単位はレポート以外に無い)。**学習 run にも波形 run にも書かない** = 記録した
     run を描画が書き換えない。
@@ -170,7 +169,7 @@ def test_everything_drawn_lands_in_the_one_report_run(
     report_id = report_io.run_report((train_id,), "hh_dc")
     view = report_io.load_report(report_id)
     written = report_io.log_report_artifacts(
-        report_id, Tuning(eval_comp=view.net.names[0])
+        report_id, {"eval_comp": view.net.names[0]}
     )
     # run 内の名前は元の 3 段のまま: models/<run 名>/ は比べた 1 本ずつの自己記述図、
     # series/<run 名>/ は波形 1 本で決まるもの、直下が run 横断の産物。
@@ -180,7 +179,8 @@ def test_everything_drawn_lands_in_the_one_report_run(
         "summary.csv",
         "traces.png",
         "metric.png",  # 掃引 (2 点) なので点軸の折れ線も出る
-        "draw.json",  # 描いたときの `Tuning` も返りに載る (返り = その run の artifact)
+        # 描いたときのつまみも返りに載る (返り = その run の artifact)
+        "tuning.json",
     }
     # 段名は学習 run の MLflow run 名 (models/ と series/ で同じ綴り)
     name = "surr-A"
@@ -194,10 +194,10 @@ def test_everything_drawn_lands_in_the_one_report_run(
     for rid in _source_runs(report_id):
         assert [a.path for a in client.list_artifacts(rid)] == [series_io.WAVES_FILE]
     # 描いたときの表示設定は 1 枚だけ添える (成果物ごとの由来は run が既に指している)
-    assert "draw.json" in {a.path for a in client.list_artifacts(report_id)}
+    assert "tuning.json" in {a.path for a in client.list_artifacts(report_id)}
 
     with pytest.raises(ValueError, match="eval_comp"):
-        report_io.log_report_artifacts(report_id, Tuning(eval_comp="nope"))
+        report_io.log_report_artifacts(report_id, {"eval_comp": "nope"})
 
 
 def _ids(runs: list[Run]) -> set[str]:

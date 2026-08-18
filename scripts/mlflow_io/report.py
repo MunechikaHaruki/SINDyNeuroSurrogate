@@ -5,7 +5,7 @@
 持たない)。重い波形は `series` 側が内容で再利用するので、作り直しの代償は run 1 本の
 メタデータだけ。marimo のレポートボタンが `run_report` → `log_report_artifacts`。
 
-成果物の内容と段構成は `artifact.bundle.build_report` が決め、このmoduleはレポートrun
+成果物の内容と段構成は `artifact.bundle.save_report` が決め、このmoduleはレポートrun
 の参照解決と書き出しを担う。
 """
 
@@ -13,12 +13,12 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import mlflow
 from catalog import SERIES
 
-from neurosurrogate.artifact.bundle import build_report
-from neurosurrogate.artifact.model import Tuning
+from neurosurrogate.artifact.bundle import save_report
 from neurosurrogate.sim.result import SeriesResults
 
 from . import logger
@@ -83,20 +83,22 @@ def load_report(report_run_id: str) -> SeriesResults:
     )
 
 
-def log_report_artifacts(report_run_id: str, tuning: Tuning) -> list[str]:
+def log_report_artifacts(report_run_id: str, tuning: dict[str, Any]) -> list[str]:
     """レポートrunを描画し、全成果物を同じrunへ書き足す唯一のinterface。
 
-    そのときの表示設定を `draw.json` 1枚添える。返りは書いたartifact path列。
+    `tuning` は marimo のつまみそのもの (意味を解くのは `save_report` 1 箇所)。
+    そのときの表示設定を `tuning.json` 1枚添える。返りは書いたartifact path列。
     描き直しで同じpathは置き換わり、生成しなかった過去のpathは残る。
     """
     view = load_report(report_run_id)
     with tempfile.TemporaryDirectory() as temporary:
-        written = [
-            str(file)
-            for file in build_report(
-                view, load_surrogate_runs(view.run_ids), tuning
-            ).save(Path(temporary))
-        ]
+        root = Path(temporary)
+        save_report(view, load_surrogate_runs(view.run_ids), tuning, root)
+        # 書いたものは**保存先を見て数える** (描く側に path 列を返させない = 段の
+        # 綴りを 2 箇所で組まない)。
+        written = sorted(
+            str(file.relative_to(root)) for file in root.rglob("*") if file.is_file()
+        )
         mlflow.MlflowClient().log_artifacts(report_run_id, temporary)
     logger.info("成果物 %d 件をレポート run へ保存: %s", len(written), report_run_id)
     return written

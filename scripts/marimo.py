@@ -11,7 +11,6 @@ def _():
     from mlflow_io.report import log_report_artifacts, run_report
     from mlflow_io.runs import ALL_PRESETS, find_selectable_runs, load_runs
 
-    from neurosurrogate.artifact.model import Tuning
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
     # 残す操作は「run 選択」「レポート」の 2 つ。CLI は持たない (二重管理を避け、
@@ -22,7 +21,6 @@ def _():
         ALL_PRESETS,
         METRIC_KEYS,
         SERIES,
-        Tuning,
         comp_names,
         find_selectable_runs,
         log_report_artifacts,
@@ -55,9 +53,20 @@ def _(ALL_PRESETS, SERIES, mo, runs_df):
 
 
 @app.cell
-def _(find_selectable_runs, mo, preset, runs_df, series_name):
-    # 比べたい run を N 件選ぶ (1 レポート = 1 系列 × N モデル)。何が選択肢になるかは
-    # `find_selectable_runs` が持つ (絞りの条件を UI 側に複製しない)。
+def _(
+    METRIC_KEYS,
+    comp_names,
+    find_selectable_runs,
+    mo,
+    preset,
+    runs_df,
+    series_name,
+):
+    # **1 レポートの入力は全部ここ**: 比べる run を N 件選び (1 レポート = 1 系列 ×
+    # N モデル)、その描き方 (つまみの全キー) を隣で決める。どちらも選んだ 1 系列で
+    # 選択肢が決まるので、離すと同じ series_name を 2 セルが読むだけになる。
+    # 何が選択肢になるかは `find_selectable_runs` が持ち (絞りの条件を UI 側に
+    # 複製しない)、metric は `METRIC_KEYS` から引く (生成されないキーを選べない)。
     runs = find_selectable_runs(runs_df, series_name, preset)
     run_selector = mo.ui.table(
         runs,
@@ -65,28 +74,6 @@ def _(find_selectable_runs, mo, preset, runs_df, series_name):
         selection="multi",
         initial_selection=[0] if len(runs) else [],
     )
-    mo.vstack(
-        [run_selector]
-        if len(runs)
-        else [run_selector, mo.md("この系列を置換できる run が無い")]
-    )
-    return (run_selector,)
-
-
-@app.cell
-def _(mo):
-    # 操作は 1 つ = **レポートを 1 本作る**。評価と描画は同じ 1 回の意図の前半と後半で、
-    # 分けても片方だけ押す使い方をしない (分けると run_id を跨いで持ち回る必要も出る)。
-    # 保存先は選ばせない (描いたものは全部レポート run の artifact)。
-    report_button = mo.ui.run_button(label="レポート (評価 → 図保存)")
-    mo.vstack([mo.md("### 実行パネル"), report_button])
-    return (report_button,)
-
-
-@app.cell
-def _(METRIC_KEYS, comp_names, mo, series_name):
-    # **描き方は全部ここ** (`Tuning` の全キー)。カタログは「何を回すか」だけ。
-    # metric の選択肢は `METRIC_KEYS` から引く (生成されないキーを選べない)。
     comp_options = comp_names(series_name)
     tuning_ui = mo.ui.dictionary(
         {
@@ -112,26 +99,25 @@ def _(METRIC_KEYS, comp_names, mo, series_name):
             "ymax": mo.ui.number(-1e4, 1e4, 1.0, value=1.0, label="y 上限"),
         }
     )
-    mo.vstack([mo.md("### つまみ"), *tuning_ui.values()])
-    return (tuning_ui,)
+    mo.vstack(
+        [
+            run_selector,
+            *([] if len(runs) else [mo.md("この系列を置換できる run が無い")]),
+            mo.md("### つまみ"),
+            *tuning_ui.values(),
+        ]
+    )
+    return run_selector, tuning_ui
 
 
 @app.cell
-def _(Tuning, tuning_ui):
-    # **widget → 描き方 1 値の境界**。y レンジの 3 つ (auto/下限/上限) をここで
-    # `metric_ylim: tuple | None` へ畳む = UI の都合を `Tuning` に持ち込まない。
-    # comp 未選択 (系列未選択) は空文字のまま渡し、描画側で設定誤りとして落とす。
-    values = tuning_ui.value
-    tuning = Tuning(
-        eval_comp=values["eval_comp"] or "",
-        view_comps=tuple(values["view_comps"]),
-        metric=values["metric"],
-        detail_point=int(values["detail_point"]),
-        spike_orig=int(values["spike_orig"]),
-        spike_surr=int(values["spike_surr"]),
-        metric_ylim=None if values["yauto"] else (values["ymin"], values["ymax"]),
-    )
-    return (tuning,)
+def _(mo):
+    # 操作は 1 つ = **レポートを 1 本作る**。評価と描画は同じ 1 回の意図の前半と後半で、
+    # 分けても片方だけ押す使い方をしない (分けると run_id を跨いで持ち回る必要も出る)。
+    # 保存先は選ばせない (描いたものは全部レポート run の artifact)。
+    report_button = mo.ui.run_button(label="レポート (評価 → 図保存)")
+    mo.vstack([mo.md("### 実行パネル"), report_button])
+    return (report_button,)
 
 
 @app.cell
@@ -142,7 +128,7 @@ def _(
     run_report,
     sel_ids,
     series_name,
-    tuning,
+    tuning_ui,
 ):
     # **レポート 1 本 = 評価 → 描画**。前半は重い (シミュ + 波形 run 保存)、後半は
     # レポート run へ図を書くだけなので、どちらを走っているかだけ spinner に出す
@@ -152,7 +138,7 @@ def _(
         with mo.status.spinner(title="評価中 (シミュ + 波形 run 保存)") as progress:
             report_run_id = run_report(tuple(sel_ids), series_name)
             progress.update(title="描画中 (図をレポート run へ保存)")
-            saved = log_report_artifacts(report_run_id, tuning)
+            saved = log_report_artifacts(report_run_id, tuning_ui.value)
     mo.vstack([mo.md(f"✅ `{p}`") for p in saved]) if saved else mo.md("(未実行)")
     return
 

@@ -1,13 +1,14 @@
 """各ドメインの単一成果物を、保存側が扱う成果物列へ編成する。
 
 **編成はここで閉じる** — どの図を作るか (`*_artifacts`) だけでなく、それを
-どの段に置くか (`build_report`) まで。保存側に残るのは「段名を何と綴るか」
-(MLflow の run 名を引く) と書き出しだけ。
+どの段へ書くか (`save_report`) まで。保存側に残るのは「どこへ書かせるか」
+(一時 dir を渡して MLflow へ流す) だけ。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from ..sim.artifacts import (
     metric_artifact,
@@ -39,7 +40,7 @@ from ..waveform.artifacts import (
     simple_artifact,
 )
 from ..waveform.dynamics import DynamicMetrics
-from .model import Artifacts, Report, Tuning
+from .model import Artifact, Artifacts
 from .plotting import use_style
 
 
@@ -135,54 +136,54 @@ def detail_artifacts(
     )
 
 
-def build_report(
+def save_report(
     view: SeriesResults,
     runs: SurrogateRuns,
-    tuning: Tuning,
-) -> Report:
-    """1 レポート分の成果物を**段ごとに開く** = 描く側の唯一の入口。
+    tuning: dict[str, Any],
+    root: Path,
+) -> None:
+    """1 レポート分の成果物を `root` 以下へ**段ごとに書く** = 描く側の唯一の入口。
 
     3 段: 直下が run 横断の産物、`models/<段名>/` が比べた 1 本ずつの自己記述図、
     `series/<段名>/` が波形 1 本で決まるもの (原系は `series/original/`)。`models/` と
-    `series/` で同じ段名を使うので、1 本の run を 2 段から同じ綴りで辿れる。
+    `series/` で同じ段名を使うので、1 本の run を 2 段から同じ綴りで辿れる。段は
+    ここに書いた path がそのまま = 中間の構造を挟まない。
 
     学習run名は `SurrogateRuns` がpathの1区切りとして有効と保証するため、凡例・表・
     保存段のすべてでそのまま使う。
+
+    **つまみ (`tuning`) を解くのはここだけ**: UI が持つ形のまま受け取り、以降へは
+    plain 値だけを渡す。記録 (`tuning.json`) は解く前の姿をそのまま添えるので、
+    UI と保存の間に中間の型を挟まない。既定値は UI が全キーを送らない場合の保険。
     """
     if len(runs) != len(view.run_ids):
         raise ValueError(
             f"surrogate と結果の run 軸が不一致 ({len(runs)} != {len(view.run_ids)})"
         )
-    use_style()
-    return Report(
-        tuning,
-        tuple(
-            {
-                Path(): report_artifacts(
-                    view, runs, tuning.eval_comp, tuning.metric, tuning.metric_ylim
-                ),
-                **{
-                    Path("models") / run_name: surrogate_artifacts(
-                        bundle, tuning.view_comps
-                    )
-                    for run_name, bundle in runs
-                },
-                Path("series/original"): original_artifacts(view),
-                **{
-                    Path("series") / run_name: detail_artifacts(
-                        view,
-                        run_id,
-                        bundle,
-                        tuning.eval_comp,
-                        tuning.view_comps,
-                        tuning.detail_point,
-                        tuning.spike_orig,
-                        tuning.spike_surr,
-                    )
-                    for run_id, (run_name, bundle) in zip(
-                        view.run_ids, runs, strict=True
-                    )
-                },
-            }.items()
-        ),
+    eval_comp = str(tuning.get("eval_comp") or "")
+    view_comps = tuple(tuning.get("view_comps") or ())
+    # y レンジは 3 つのつまみ (auto/下限/上限) で入り、図には 1 値で渡る。
+    ylim = (
+        None
+        if tuning.get("yauto", True)
+        else (float(tuning["ymin"]), float(tuning["ymax"]))
     )
+    use_style()
+    # つまみも成果物 1 件 (`tuning.json`) = 図・表と同じ経路で書く。
+    Artifact("tuning", tuning).save(root)
+    report_artifacts(
+        view, runs, eval_comp, str(tuning.get("metric", "spike_count")), ylim
+    ).save(root)
+    original_artifacts(view).save(root / "series/original")
+    for run_id, (run_name, bundle) in zip(view.run_ids, runs, strict=True):
+        surrogate_artifacts(bundle, view_comps).save(root / "models" / run_name)
+        detail_artifacts(
+            view,
+            run_id,
+            bundle,
+            eval_comp,
+            view_comps,
+            int(tuning.get("detail_point", 0)),
+            int(tuning.get("spike_orig", 0)),
+            int(tuning.get("spike_surr", 0)),
+        ).save(root / "series" / run_name)
