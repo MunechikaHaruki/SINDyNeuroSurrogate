@@ -11,6 +11,8 @@ lazy に再現する (`train_xr`) → load 後でも触れて、参照しなけ�
 """
 
 import json
+from collections.abc import Iterator
+from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -129,3 +131,40 @@ class SurrogateBundle:
     def surr_comp_type(self) -> CompartmentType:
         """置換後の CompartmentType (replace.apply_surrogate が差し込む)。"""
         return self.ansatz.surr_comp_type(self.meta, self.preprocessor, self.closure)
+
+
+@dataclass(frozen=True)
+class SurrogateRuns:
+    """一意なrun名と選択順を保ったsurrogate列。
+
+    MLflowのrun IDはI/O層だけの関心。この型はrun名の一意性、pathの1区切りとしての
+    有効性、結果のrun軸との対応を保証し、名前を凡例・行見出し・保存段にそのまま使う。
+    """
+
+    runs: tuple[tuple[str, SurrogateBundle], ...]
+
+    def __post_init__(self) -> None:
+        names = self.names
+        if len(set(names)) != len(names):
+            raise ValueError(f"学習 run 名が重複 {names}")
+        for name in names:
+            if not name or name in (".", "..") or any(c in name for c in "/\\\0"):
+                raise ValueError(f"学習 run 名をpathに使えない {name!r}")
+
+    def __iter__(self) -> Iterator[tuple[str, SurrogateBundle]]:
+        return iter(self.runs)
+
+    def __len__(self) -> int:
+        return len(self.runs)
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """選択順の学習run名。"""
+        return tuple(name for name, _ in self.runs)
+
+    def bundle(self, name: str) -> SurrogateBundle:
+        """学習run名からsurrogateを引く。"""
+        for candidate, bundle in self:
+            if candidate == name:
+                return bundle
+        raise KeyError(f"run {name!r} がsurrogate列に無い")

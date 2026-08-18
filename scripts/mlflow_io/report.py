@@ -4,25 +4,28 @@
 そのもの (`sim.spec.EvalSelection.hash`) で、同じ選択で回し直すと参照だけ差し替わる
 → param でなく tag。marimo の評価ボタンが `run_report`。
 
-**この module は書く/読むだけ** — 読んだ中身をどの図のどの段に並べるかは
-`artifact.bundle.build_report` (組立に `Tuning` と surrogate の中身が要り、
-MLflow の関心でない)。
+成果物の内容と段構成は `artifact.bundle.build_report` が決め、このmoduleはレポートrun
+の参照解決と書き出しを担う。
 """
 
 import json
 import os
+import tempfile
+from pathlib import Path
 
 import mlflow
 from catalog import SERIES
 
+from neurosurrogate.artifact.bundle import build_report
+from neurosurrogate.artifact.model import Tuning
 from neurosurrogate.sim.result import SeriesResults
 from neurosurrogate.sim.run import replaced_runs
 from neurosurrogate.sim.spec import EvalSelection
-from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 from . import logger
 from ._query import exp_id, latest_by_tag
 from .series import load_column, run_series
+from .surrogate import load_surrogate_runs
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
 _HASH_TAG = "report_hash"  # 同一性 = 選択そのもの (EvalSelection.hash)
@@ -37,7 +40,10 @@ def _report_hash(name: str, run_ids: tuple[str, ...]) -> str:
 
 
 def _log_report(
-    name: str, original: str, surrs: list[str], run_ids: tuple[str, ...]
+    name: str,
+    original: str,
+    surrs: list[str],
+    run_ids: tuple[str, ...],
 ) -> str:
     """波形 run の id 2 つを 1 レポート run へ。同じ選択の run があれば**参照先だけ
     差し替える** → param でなく tag。`name` は鍵と表示に使う。"""
@@ -74,20 +80,25 @@ def find_report_run(name: str, run_ids: tuple[str, ...]) -> str | None:
     return found.info.run_id if found else None
 
 
-def run_report(bundles: dict[str, SurrogateBundle], name: str) -> str:
+def run_report(run_ids: tuple[str, ...], name: str) -> str:
     """1 系列の評価実行 + 波形 run 保存 + レポート run 保存 (marimo の評価ボタン)。
     系列は**名前から引く** = 呼ぶ側はカタログを触らない。既にある波形 run は再利用
     = 回さない。返りはレポート run の id = そのまま描画の入力。1 本も置換できない選択は
     回す意味が無いので拒む。"""
     series = SERIES[name]
-    surrs = replaced_runs(series, bundles)
+    runs = load_surrogate_runs(list(run_ids))
+    surrs = replaced_runs(series, runs)
     if not surrs:
         raise ValueError(f"{name}: 選択 run のどれでも置換できない (比較対象が無い)")
     return _log_report(
         name,
         run_series(name, series, None, None),
-        [run_series(name, series, rid, bundle) for rid, bundle in surrs.items()],
-        tuple(bundles),
+        [
+            run_series(name, series, run_id, bundle)
+            for run_id, (run_name, bundle) in zip(run_ids, runs, strict=True)
+            if run_name in surrs.names
+        ],
+        run_ids,
     )
 
 
@@ -100,3 +111,22 @@ def load_report(report_run_id: str) -> SeriesResults:
     return SeriesResults(
         load_column(tags[_ORIGINAL_TAG]), tuple(load_column(eid) for eid in surrs)
     )
+
+
+def log_report_artifacts(report_run_id: str, tuning: Tuning) -> list[str]:
+    """レポートrunを描画し、全成果物を同じrunへ書き足す唯一のinterface。
+
+    そのときの表示設定を `draw.json` 1枚添える。返りは書いたartifact path列。
+    描き直しで同じpathは置き換わり、生成しなかった過去のpathは残る。
+    """
+    view = load_report(report_run_id)
+    with tempfile.TemporaryDirectory() as temporary:
+        written = [
+            str(file)
+            for file in build_report(
+                view, load_surrogate_runs(view.run_ids), tuning
+            ).save(Path(temporary))
+        ]
+        mlflow.MlflowClient().log_artifacts(report_run_id, temporary)
+    logger.info("成果物 %d 件をレポート run へ保存: %s", len(written), report_run_id)
+    return written

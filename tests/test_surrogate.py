@@ -54,7 +54,7 @@ from neurosurrogate.surrogate.artifacts.train import (
     train_recon_artifact,
     train_v_coverage_artifact,
 )
-from neurosurrogate.surrogate.bundle import SurrogateBundle
+from neurosurrogate.surrogate.bundle import SurrogateBundle, SurrogateRuns
 from neurosurrogate.surrogate.closure.base import Closure
 from neurosurrogate.surrogate.closure.sindy import SINDyBundle
 from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
@@ -123,29 +123,27 @@ def _spec_of(bundle: SurrogateBundle) -> SimSpec:
     return bundle.meta.dataset
 
 
-def _simulate_view(
-    series: EvalSeries, bundles: dict[str, SurrogateBundle]
-) -> SeriesResults:
+def _simulate_view(series: EvalSeries, runs: SurrogateRuns) -> SeriesResults:
     """1 系列を run 軸に開いてその場で回す (保存を経由しない経路)。本番の描画入力は
     MLflow から読む `mlflow_io.load_report` なので、この経路はテストにだけ居る。"""
     return SeriesResults(
         run_column(series, None, None),
         tuple(
             run_column(series, rid, bundle)
-            for rid, bundle in replaced_runs(series, bundles).items()
+            for rid, bundle in replaced_runs(series, runs)
         ),
     )
 
 
-def _run_view(bundles: dict[str, SurrogateBundle], spec: SimSpec) -> SeriesResults:
-    """spec を bundles (run_id → surrogate) 全部と原系で並走シミュした 1 系列。"""
-    return _simulate_view(EvalSeries(spec=spec), bundles)
+def _run_view(runs: SurrogateRuns, spec: SimSpec) -> SeriesResults:
+    """spec をsurrogate run全部と原系で並走シミュした1系列。"""
+    return _simulate_view(EvalSeries(spec=spec), runs)
 
 
 @pytest.fixture(scope="module")
 def sindy_view(sindy: SurrogateBundle) -> SeriesResults:
     """単発 = 点 1 つ・run 1 本の系列。"""
-    return _run_view({"r0": sindy}, _spec_of(sindy))
+    return _run_view(SurrogateRuns((("r0", sindy),)), _spec_of(sindy))
 
 
 @pytest.fixture(scope="module")
@@ -163,7 +161,7 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
-    view = _run_view({"r0": surrogate}, _spec_of(surrogate))
+    view = _run_view(SurrogateRuns((("r0", surrogate),)), _spec_of(surrogate))
     orig, surr = view.pair(0, view.column("r0"))
     v = access.potential(surr, _train_comp(surrogate))
     assert v.shape == access.time(orig).shape
@@ -228,20 +226,17 @@ def _sweep_series(values: list[float]) -> EvalSeries:
     )
 
 
-def _sweep_view(
-    bundles: dict[str, SurrogateBundle], values: list[float]
-) -> SeriesResults:
+def _sweep_view(runs: SurrogateRuns, values: list[float]) -> SeriesResults:
     """1 系列分の掃引をシミュした結果。"""
-    return _simulate_view(_sweep_series(values), bundles)
+    return _simulate_view(_sweep_series(values), runs)
 
 
 def test_trace_grid_rows_are_one_per_model(sindy: SurrogateBundle) -> None:
     """波形格子の行 = 比べるモデル (run 軸)、列 = 点。1 レポートが並べるのは
     **1 系列の電流たち × N モデル**なので、行が増える軸は run だけ。"""
-    bundles = {"r0": sindy, "r1": sindy}
-    names = {"r0": "a", "r1": "b"}
-    view = _sweep_view(bundles, [5.0, 10.0])
-    artifact = traces_artifact(view, names, "soma")
+    runs = SurrogateRuns((("a", sindy), ("b", sindy)))
+    view = _sweep_view(runs, [5.0, 10.0])
+    artifact = traces_artifact(view, runs, "soma")
     assert isinstance(artifact.obj, Figure)
     assert len(artifact.obj.axes) == 2 * 2  # 2 モデル行 × 2 点列
     # 行がどの run かは行見出し (左列の y ラベル) で読む。
@@ -272,6 +267,23 @@ def test_series_view_columns_must_line_up_across_runs(
         SeriesResults(sindy_view.original, (sindy_view.original,))
 
 
+def test_surrogate_runs_owns_run_axis(sindy: SurrogateBundle) -> None:
+    """surrogate列がrun名の一意性・選択順と結果軸との対応を保証する。"""
+    runs = SurrogateRuns((("r0", sindy), ("r1", sindy)))
+    assert runs.names == ("r0", "r1")
+    assert runs.bundle("r1") is sindy
+    with pytest.raises(ValueError, match="重複"):
+        SurrogateRuns((("r0", sindy), ("r0", sindy)))
+
+
+@pytest.mark.parametrize("name", ("", ".", "..", "a/b", "a\\b", "a\0b"))
+def test_surrogate_runs_rejects_names_unusable_as_path(
+    name: str, sindy: SurrogateBundle
+) -> None:
+    with pytest.raises(ValueError, match="pathに使えない"):
+        SurrogateRuns(((name, sindy),))
+
+
 def test_report_draws_the_results_at_hand_not_the_declaration(
     sindy_view: SeriesResults, sindy: SurrogateBundle
 ) -> None:
@@ -282,7 +294,8 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     (段を組むのは `scripts/mlflow_io`)。"""
     view = SeriesResults(sindy_view.original, sindy_view.surrs)
     assert [f.name for f in original_artifacts(view)] == ["current"]
-    waves = report_artifacts(view, {"r0": sindy}, "soma", "spike_count", None)
+    runs = SurrogateRuns((("r0", sindy),))
+    waves = report_artifacts(view, runs, "soma", "spike_count", None)
     assert "traces" in {f.name for f in waves}
     # 設定が実際の点数を超えていても、手元の最終点へ丸めて同じ保存名で描く。
     moved = detail_artifacts(view, "r0", sindy, "soma", (), 99, 0, 0)
@@ -297,7 +310,7 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     with pytest.raises(ValueError, match="eval_comp"):
         detail_artifacts(view, "r0", sindy, "nope", (), 0, 0, 0)
     with pytest.raises(ValueError, match="eval_comp"):
-        report_artifacts(view, {"r0": sindy}, "nope", "spike_count", None)
+        report_artifacts(view, runs, "nope", "spike_count", None)
 
 
 def test_surrogate_artifacts_come_from_the_run_itself_not_a_declaration(
@@ -310,7 +323,7 @@ def test_surrogate_artifacts_come_from_the_run_itself_not_a_declaration(
     # SINDy = ξ heatmap を持つ表現なので model 図が出る
     assert "model" in {artifact.name for artifact in artifacts}
     assert not any("summary" in artifact.name for artifact in artifacts)
-    assert summary_artifact({"r0": sindy}).name == "summary"
+    assert summary_artifact(SurrogateRuns((("r0", sindy),))).name == "summary"
 
 
 def test_artifact_failure_propagates(

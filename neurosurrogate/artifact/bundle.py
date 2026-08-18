@@ -11,7 +11,6 @@ from pathlib import Path
 
 from ..sim.artifacts import (
     metric_artifact,
-    run_names,
     summary_artifact,
     traces_artifact,
 )
@@ -28,7 +27,7 @@ from ..surrogate.artifacts.train import (
     train_recon_artifact,
     train_v_coverage_artifact,
 )
-from ..surrogate.bundle import SurrogateBundle
+from ..surrogate.bundle import SurrogateBundle, SurrogateRuns
 from ..surrogate.diagnostics import preprocessed_latent
 from ..surrogate.replace import replaceable
 from ..waveform.artifacts import (
@@ -54,7 +53,6 @@ def surrogate_artifacts(
     bundle: SurrogateBundle, view_comps: tuple[str, ...] = ()
 ) -> Artifacts:
     """学習 run 1 本が自己記述できる成果物をまとめる。"""
-    use_style()
     net = bundle.meta.dataset.net
     comps = [net.name_to_idx(comp) for comp in view_comps] or None
     return Artifacts(
@@ -82,27 +80,24 @@ def surrogate_artifacts(
 
 def report_artifacts(
     view: SeriesResults,
-    bundles: dict[str, SurrogateBundle],
+    runs: SurrogateRuns,
     eval_comp: str,
     metric: str,
     metric_ylim: tuple[float, float] | None,
 ) -> Artifacts:
     """run 横断のサマリ・波形格子・点軸メトリクスをまとめる。"""
-    use_style()
     _check_eval_comp(view, eval_comp)
-    names = run_names(bundles)
     artifacts = [
-        summary_artifact(bundles),
-        traces_artifact(view, names, eval_comp),
+        summary_artifact(runs),
+        traces_artifact(view, runs, eval_comp),
     ]
     if len(view.original_waves) > 1:
-        artifacts.append(metric_artifact(view, names, eval_comp, metric, metric_ylim))
+        artifacts.append(metric_artifact(view, runs, eval_comp, metric, metric_ylim))
     return Artifacts(tuple(artifacts))
 
 
 def original_artifacts(view: SeriesResults) -> Artifacts:
     """原系の波形だけで決まる成果物をまとめる。"""
-    use_style()
     # 描くのは**先頭点の電流** (掃引値を埋めた複製)。`series.spec` は掃引値の入って
     # いないカタログ既定なので、掃引系列では実際に回した波形と食い違う。
     return Artifacts((current_preview_artifact(view.series.points[0]),))
@@ -119,7 +114,6 @@ def detail_artifacts(
     spike_surr: int,
 ) -> Artifacts:
     """選択した 1 点・1 モデルの波形成果物をまとめる。"""
-    use_style()
     _check_eval_comp(view, eval_comp)
     comp_id = view.net.name_to_idx(eval_comp)
     original, surrogate = view.pair(
@@ -143,9 +137,8 @@ def detail_artifacts(
 
 def build_report(
     view: SeriesResults,
-    bundles: dict[str, SurrogateBundle],
+    runs: SurrogateRuns,
     tuning: Tuning,
-    run_dirs: dict[str, str],
 ) -> Report:
     """1 レポート分の成果物を**段ごとに開く** = 描く側の唯一の入口。
 
@@ -153,35 +146,42 @@ def build_report(
     `series/<段名>/` が波形 1 本で決まるもの (原系は `series/original/`)。`models/` と
     `series/` で同じ段名を使うので、1 本の run を 2 段から同じ綴りで辿れる。
 
-    `run_dirs` は学習 run_id → 段名。**段名の決め方だけは持たない** — MLflow の
-    run 名なので保存側 (`scripts/mlflow_io/artifacts.py`) が解いて渡す。
+    学習run名は `SurrogateRuns` がpathの1区切りとして有効と保証するため、凡例・表・
+    保存段のすべてでそのまま使う。
     """
+    if len(runs) != len(view.run_ids):
+        raise ValueError(
+            f"surrogate と結果の run 軸が不一致 ({len(runs)} != {len(view.run_ids)})"
+        )
+    use_style()
     return Report(
         tuning,
         tuple(
             {
                 Path(): report_artifacts(
-                    view, bundles, tuning.eval_comp, tuning.metric, tuning.metric_ylim
+                    view, runs, tuning.eval_comp, tuning.metric, tuning.metric_ylim
                 ),
                 **{
-                    Path("models") / run_dirs[run_id]: surrogate_artifacts(
+                    Path("models") / run_name: surrogate_artifacts(
                         bundle, tuning.view_comps
                     )
-                    for run_id, bundle in bundles.items()
+                    for run_name, bundle in runs
                 },
                 Path("series/original"): original_artifacts(view),
                 **{
-                    Path("series") / run_dirs[run_id]: detail_artifacts(
+                    Path("series") / run_name: detail_artifacts(
                         view,
                         run_id,
-                        bundles[run_id],
+                        bundle,
                         tuning.eval_comp,
                         tuning.view_comps,
                         tuning.detail_point,
                         tuning.spike_orig,
                         tuning.spike_surr,
                     )
-                    for run_id in view.run_ids
+                    for run_id, (run_name, bundle) in zip(
+                        view.run_ids, runs, strict=True
+                    )
                 },
             }.items()
         ),

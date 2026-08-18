@@ -13,7 +13,6 @@ from typing import cast
 import mlflow
 
 # `scripts/` は conftest が import path へ入れている。
-import mlflow_io.artifacts as artifacts_io  # noqa: E402
 import mlflow_io.report as report_io  # noqa: E402
 import mlflow_io.series as series_io  # noqa: E402
 import numpy as np
@@ -28,7 +27,7 @@ from neurosurrogate.sim.run import simulate
 from neurosurrogate.sim.spec import EvalSelection, EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
-RUN_ID = "RID"  # 学習 run の代役 (評価 run が指す先)
+RUN_NAME = "RID"
 
 
 def _exp_id(name: str) -> str:
@@ -115,14 +114,15 @@ def test_eval_runs_round_trip_without_resimulating(
     **1 系列 × N モデル**が単位で、選択 (学習 run 群 × 系列 1 つ) で引き、波形 run
     への参照だけを持つ。"""
     series = _evals(sindy)
-    report_id = report_io.run_report({RUN_ID: sindy}, "hh_dc")
+    train_id = _train_run(RUN_NAME, sindy)
+    report_id = report_io.run_report((train_id,), "hh_dc")
     # 波形は 2 本 (原系 1 + 置換系 1)、レポートは 1 本 (点では分かれない)
     assert len(_of_kind("original")) == 1 and len(_of_kind("surrogate")) == 1
     # 選択 → レポート run_id の橋は 1 本で、描画はこの id だけを見る
-    assert report_io.find_report_run("hh_dc", (RUN_ID,)) == report_id
+    assert report_io.find_report_run("hh_dc", (train_id,)) == report_id
 
     view = report_io.load_report(report_id)
-    assert view.run_ids == [RUN_ID]
+    assert view.run_ids == [train_id]
     # 結果から作り直した記述で同じレポートに当たる = 記述 (`EvalSelection`) と
     # 結果 (`SeriesResults`) が同じ対で往復する。**往復するのは選択した run が全部
     # 置換できたときだけ** — 鍵は選択そのもの (`EvalSelection` の docstring) で、
@@ -134,7 +134,7 @@ def test_eval_runs_round_trip_without_resimulating(
     )
     assert restored is not None and restored.info.run_id == report_id
     assert (
-        EvalSelection(series, (RUN_ID,)).hash()
+        EvalSelection(series, (train_id,)).hash()
         == EvalSelection(view.series, tuple(view.run_ids)).hash()
     )
     # 系列名は結果 (`SeriesResults`) でなく波形 run 側にある = レポートはカタログを
@@ -146,7 +146,7 @@ def test_eval_runs_round_trip_without_resimulating(
     )
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.axis, view.values) == ("duration", [170.0, 190.0])
-    orig, surr = view.pair(1, view.column(RUN_ID))
+    orig, surr = view.pair(1, view.column(train_id))
     # 記述が往復し、点の計算入力からそのまま実行入力を復元できる
     # (波形は並びだけで点に対応する = 点ごとの仕様は保存しない)
     assert view.series.points[1].materialize().net is series.spec.net
@@ -165,19 +165,18 @@ def test_eval_runs_round_trip_without_resimulating(
 
     # シミュは決定的 → 同じ掃引の 2 度目はスキップ (series_hash 一致)。同じ選択の
     # レポートも量産されず、同じ run が更新される。
-    assert report_io.run_report({RUN_ID: sindy}, "hh_dc") == report_id
+    assert report_io.run_report((train_id,), "hh_dc") == report_id
     assert len(_of_kind("surrogate")) == 1
 
     # 別の学習 run から同じ条件 → 置換系は増えるが原系は共有される
     # (学習 run を増やしても原系の波形が複製されない)。選択が違えば別のレポート。
-    assert report_io.run_report({"OTHER": sindy}, "hh_dc") != report_id
+    other_id = _train_run("OTHER", sindy)
+    assert report_io.run_report((other_id,), "hh_dc") != report_id
     assert (len(_of_kind("original")), len(_of_kind("surrogate"))) == (1, 2)
 
     # 学習 run 2 件の選択はさらに別のレポート = 別の単位 (run 軸 2 本が 1 枚に並ぶ)
-    both = report_io.load_report(
-        report_io.run_report({RUN_ID: sindy, "OTHER": sindy}, "hh_dc")
-    )
-    assert (len(both.original_waves), both.run_ids) == (2, [RUN_ID, "OTHER"])
+    both = report_io.load_report(report_io.run_report((train_id, other_id), "hh_dc"))
+    assert (len(both.original_waves), both.run_ids) == (2, [train_id, other_id])
 
 
 def test_unevaluated_selection_finds_nothing_without_creating_experiment(
@@ -186,7 +185,7 @@ def test_unevaluated_selection_finds_nothing_without_creating_experiment(
     """まだ評価していない選択は `None` が返るだけ (描画側は「先に評価」を出す)。
     探すだけの経路は experiment を作らない = 選択を変えるたびに空の experiment が
     生えない。"""
-    assert report_io.find_report_run("hh_dc", (RUN_ID,)) is None
+    assert report_io.find_report_run("hh_dc", (_train_run(RUN_NAME, sindy),)) is None
     assert mlflow.get_experiment_by_name(report_io.REPORT_EXP) is None
 
 
@@ -195,18 +194,7 @@ def test_run_report_rejects_series_no_run_can_replace(
 ) -> None:
     """1 本も置換できない選択は回す意味が無い → 空のレポートを作らず落ちる。"""
     with pytest.raises(ValueError, match="置換できない"):
-        report_io.run_report({}, "hh_dc")
-
-
-def test_run_directories_disambiguate_after_slugging(
-    eval_store: str, sindy: SurrogateBundle
-) -> None:
-    """異なる run 名が path 安全化後に同じ綴りでも、保存段は衝突しない。"""
-    first = _train_run("a/b", sindy)
-    second = _train_run("a:b", sindy)
-    directories = artifacts_io._run_dirs([first, second])
-    assert len(set(directories.values())) == 2
-    assert all(name.startswith("a-b-") for name in directories.values())
+        report_io.run_report((), "hh_dc")
 
 
 def test_everything_drawn_lands_in_the_one_report_run(
@@ -221,9 +209,9 @@ def test_everything_drawn_lands_in_the_one_report_run(
     """
     # 段名は学習 run の MLflow run 名なので、代役 id でなく実在の学習 run を立てる。
     train_id = _train_run("surr-A", sindy)
-    report_id = report_io.run_report({train_id: sindy}, "hh_dc")
+    report_id = report_io.run_report((train_id,), "hh_dc")
     view = report_io.load_report(report_id)
-    written = artifacts_io.log_report_artifacts(
+    written = report_io.log_report_artifacts(
         report_id, Tuning(eval_comp=view.net.names[0])
     )
     # run 内の名前は元の 3 段のまま: models/<run 名>/ は比べた 1 本ずつの自己記述図、
@@ -251,7 +239,7 @@ def test_everything_drawn_lands_in_the_one_report_run(
     assert "draw.json" in {a.path for a in client.list_artifacts(report_id)}
 
     with pytest.raises(ValueError, match="eval_comp"):
-        artifacts_io.log_report_artifacts(report_id, Tuning(eval_comp="nope"))
+        report_io.log_report_artifacts(report_id, Tuning(eval_comp="nope"))
 
 
 def _ids(runs: list[Run]) -> set[str]:

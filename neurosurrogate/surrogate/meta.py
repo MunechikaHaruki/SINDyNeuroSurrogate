@@ -84,28 +84,6 @@ class SurrogateMeta:
         )
 
     @property
-    def label(self) -> str:
-        """図凡例用の簡約名。条件の軸ごとに改行 (1 行だと凡例で潰れる)。例:
-
-            hybrid/n5/ae
-            +traub_sr_physics
-            @traub19:soma
-
-        `@` 以降 = 学習データ (MC モデル名 + 絞り込みノード)。学習構造が同じでも学習
-        データが違えば別物 → sweep の識別キー。ここまで含めないと別 run が silent に
-        1 本へ潰れる。既定値の軸は出さない。
-        """
-        return "\n".join(
-            [
-                f"{self.surrogate_type}/n{self.n_components}/{self.preprocessor_type}",
-                *([] if self.physics_type is None else [f"+{self.physics_type}"]),
-                "@"
-                + self.dataset.target
-                + ("" if self.train_comp_id is None else f":{self.train_comp.name}"),
-            ]
-        )
-
-    @property
     def surr_type_name(self) -> str:
         """置換後 CompartmentType の名前 (例 traub_hybrid_surr)。
 

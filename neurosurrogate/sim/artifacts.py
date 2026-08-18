@@ -15,7 +15,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -25,7 +24,7 @@ from ..artifact.model import Artifact
 from ..artifact.plotting import new_figure, place_legend
 from ..core import access
 from ..core.diverge import diverged
-from ..surrogate.bundle import SurrogateBundle
+from ..surrogate.bundle import SurrogateRuns
 from ..surrogate.diagnostics import surrogate_metrics
 from ..waveform.dynamics import DynamicMetrics, extract_metric
 from .catalog import currents
@@ -37,44 +36,25 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 
-def run_names(bundles: dict[str, SurrogateBundle]) -> dict[str, str]:
-    """run_id → 表示名 (凡例/行見出し)。**表示名は結果でなく surrogate 側から解く**
-    (結果は run_id という同一性だけを持つ)。
-
-    `meta.label` は学習構造 + 学習データまでしか区別しない → library_specs 違いや
-    同 config の再実行は同じ label になるため、衝突したものにだけ与えた順の連番を
-    付けて潰れを防ぐ (選択を拒否せず全部見せる)。**run 軸に何本並ぶか**を知らないと
-    決まらないので、run 横断の図と同居する。
-    """
-    labels = [b.meta.label for b in bundles.values()]
-    counts = Counter(labels)
-    seen: Counter[str] = Counter()
-    out: dict[str, str] = {}
-    for run_id, label in zip(bundles, labels, strict=True):
-        seen[label] += 1
-        out[run_id] = label if counts[label] == 1 else f"{label}#{seen[label]}"
-    return out
-
-
 # --- 点軸に沿った指標 -----------------------------------------------------------
 
 
 def _metrics_df(
     view: SeriesResults,
-    names: dict[str, str],
+    names: tuple[str, ...],
     comp_name: str,
     metric_key: str,
 ) -> pd.DataFrame:
-    """系列の点軸に沿った metric の表 (列=run 軸、列名は `names` の run_id → 表示名)。
+    """系列の点軸に沿ったmetricの表 (列=run軸、列名は学習run名)。
     原系の値は run に依らないので `original` 列 1 本へ畳む。"""
     comp_id = view.net.name_to_idx(comp_name)
     rows: list[dict[str, float | None]] = []
     for index, point in enumerate(view.values):
         row: dict[str, float | None] = {"point": point}
-        for column in view.surrs:
+        for column, run_name in zip(view.surrs, names, strict=True):
             dm = DynamicMetrics(*view.pair(index, column), comp_id, view.dt)
             value, orig_value = extract_metric(dm, metric_key)
-            row[names[str(column.run_id)]] = value
+            row[run_name] = value
             if orig_value is not None:
                 row["original"] = orig_value  # run に依らない = 同じ値の上書き
         rows.append(row)
@@ -83,13 +63,13 @@ def _metrics_df(
 
 def metric_artifact(
     view: SeriesResults,
-    names: dict[str, str],
+    runs: SurrogateRuns,
     comp_name: str,
     metric_key: str,
     ylim: tuple[float, float] | None = None,
 ) -> Artifact:
-    """点軸に沿ったメトリクス折れ線 (Original + 各 run)。`names` は run_id → 表示名。
-    marimo 非依存。"""
+    """点軸に沿ったメトリクス折れ線 (Original + 各run)。marimo非依存。"""
+    names = runs.names
     data = _metrics_df(view, names, comp_name, metric_key)
     axis = view.axis or "point"
     fig = new_figure()
@@ -98,14 +78,14 @@ def metric_artifact(
         ax.plot(data["point"], data["original"], "k-o", label="Original", zorder=3)
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for idx, run_id in enumerate(view.run_ids):
+    for idx, run_name in enumerate(names):
         ax.plot(
             data["point"],
-            data[names[run_id]],
+            data[run_name],
             marker="s",
             linestyle="--",
             color=colors[idx % len(colors)],
-            label=names[run_id],
+            label=run_name,
         )
 
     ax.set_xlabel(axis)
@@ -156,11 +136,9 @@ def _trace_cell(ax: Axes, orig: xr.Dataset, surr: xr.Dataset, comp_id: int) -> N
 
 
 def traces_artifact(
-    view: SeriesResults, names: dict[str, str], comp_name: str
+    view: SeriesResults, runs: SurrogateRuns, comp_name: str
 ) -> Artifact:
     """1 系列を run 軸で開いた波形格子 (列=点、行=run。行見出しが run の表示名)。
-    `names` は run_id → 表示名。
-
     列 (点) の数も行 (run) の数も `SeriesResults` が既に揃えているので、ここは並びを
     そのまま軸に落とすだけ。点が 1 つ (掃引軸なし) なら列見出しを出さない = 単発が
     「1 列の格子」に素直に退化する。
@@ -179,10 +157,8 @@ def traces_artifact(
     for c, value in enumerate(view.values):
         if value is not None and view.axis:
             axes[0][c].set_title(f"{value:.3g} {unit}".strip())
-    for r, column in enumerate(view.surrs):
-        # 行見出しは凡例用の複数行ラベル (`meta.label`) をそのまま使う = 凡例と同じ
-        # 読み方で行を引ける。回転して置くので 1 行あたりの幅が効く → 小さめに。
-        axes[r][0].set_ylabel(names[str(column.run_id)], fontsize="small")
+    for r, (column, (run_name, _)) in enumerate(zip(view.surrs, runs, strict=True)):
+        axes[r][0].set_ylabel(run_name, fontsize="small")
         for c in range(n_col):
             axes[r][c].set_ylim(*ylim)
             _trace_cell(axes[r][c], *view.pair(c, column), comp_id)
@@ -195,16 +171,15 @@ def traces_artifact(
 # --- レポート 1 本の成果物 ------------------------------------------------------
 
 
-def summary_artifact(bundles: dict[str, SurrogateBundle]) -> Artifact:
+def summary_artifact(runs: SurrogateRuns) -> Artifact:
     """比べた N 本のサマリ表 (**由来は学習 run 群**だけ = 波形を読まない)。
     run 横断 = 中身が「今 何本を比べているか」で変わるのでレポートに属する。"""
-    names = run_names(bundles)
     return Artifact(
         "summary",
         pd.DataFrame(
             [
-                {"label": names[run_id], **surrogate_metrics(bundle)}
-                for run_id, bundle in bundles.items()
+                {"label": run_name, **surrogate_metrics(bundle)}
+                for run_name, bundle in runs
             ]
         ).set_index("label"),
     )

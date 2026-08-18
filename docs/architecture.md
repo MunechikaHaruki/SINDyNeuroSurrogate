@@ -23,7 +23,7 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
         run.py                   # **仕様 × surrogate を掛ける唯一の段** (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate (1 シミュ → 波形) / run_column (series + run_id + surrogate → **1 列** `SeriesRun`。系列 → 結果の唯一の入口。両方 None が原系) / replaceable / **run 軸** = replaced_runs (1 系列 × 学習 run → 置換できる run だけに絞る)。表示名は出てこない (学習 run の id は列の標識として通るだけ)。surrogate の後の層
         artifacts.py             # 結果 (`sim.result.SeriesResults`) → **単一 Artifact**。run 横断の summary/traces/metric を個別関数で生成。**点軸×run 軸の並びを成果物へ落とす唯一の場所**。成果物列の編成と詳細点の段付けは `artifact.bundle`
   surrogate/  meta.py            # SurrogateMeta (学習構造の単一源)
-              bundle.py          # SurrogateBundle.setup/load/save + SURR_CLS/PREPROCESSOR_CLS
+              bundle.py          # SurrogateBundle.setup/load/save + pathの1区切りとして有効で一意な学習run名・選択順を束ねる SurrogateRuns (MLflow run IDは持たない)
               replace.py         # 置換可否判定 + apply_surrogate
               ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,_sindy_fit}.py
               closure/           # base.py / ude.py / sindy/{__init__,roles,entry,_catalog}.py
@@ -32,21 +32,20 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
   artifact/                      # `core` 同様に他ディレクトリを import しない基盤 (model.py / plotting.py)。bundle.py だけが合流点
              model.py            # Artifact / Artifacts / Tuning / Report。Report.save(path) が段ごとの PNG/CSV と draw.json を保存 (MLflow 非依存)
              plotting.py         # matplotlib 描画プリミティブと共通 style。ドメイン知識を持たない
-             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を Artifacts に束ね、それを Report の段へ開く (build_report = 直下 / models/<段名>/ / series/<段名>/ の 3 段。段名の綴りだけは持たず run_dirs で受ける)。描画失敗は変換せず呼び出し元へ伝播
+             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を Artifacts に束ね、それを Report の段へ開く (build_report = 直下 / models/<run名>/ / series/<run名>/ の 3 段)。描画失敗は変換せず呼び出し元へ伝播
   waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
             dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)
             _tables.py           # その値を表に並べる (計算を増やさない)
             artifacts.py         # current/diff/simple/attractor/metrics を単一 Artifact として返す
 scripts/  main.py                # Hydra エントリ
           catalog.py             # **何を回すか**の 1 枚カタログ: EVALS (素材 1 条件) / SERIES (掃引。置換器を持たない素の EvalSeries。回す側が sim.run.replaced_runs で run 軸を張る) + comp_names (系列名 → その適用先の comp 名 = つまみの選択肢)。**描き方は持たない** (artifact.model.Tuning は marimo の widget が全キーを持つ)
-          mlflow_io/             # MLflow I/O = **experiment と run を知る唯一の場所**。experiment ごとに 1 module (学習だけ成果物 surrogate.py と選択肢 runs.py の 2 つ) で、どれも「experiment id を解く / 同一性の鍵を組む / 既存を探す / 書く」。公開名は run_* (確保) / load_* (読み) / find_* (回さない問い合わせ) で揃える。成果物の書き出しだけは experiment を持たない artifacts.py に置く。**再 export しない** (呼ぶ側は from mlflow_io.report import ... と名乗る)
+          mlflow_io/             # MLflow I/O = **experiment と run を知る唯一の場所**。experiment ごとに 1 module (学習だけ成果物 surrogate.py と選択肢 runs.py の 2 つ) で、どれも「experiment id を解く / 同一性の鍵を組む / 既存を探す / 書く」。公開名は run_* (確保) / load_* (読み) / find_* (回さない問い合わせ) で揃える。レポート成果物の書き出しも report.py に閉じる。**再 export しない** (呼ぶ側は from mlflow_io.report import ... と名乗る)
             __init__.py          # tracking URI をリポジトリ直下へ固定 (import 時に実行 = どの module を通っても最初に張られる) + TARGET_EXP
             _query.py            # experiment id の解決 (`exp_id`。**書く側だけが作る**) と同一性 tag での最新 run 引き (`latest_by_tag`。**読む経路は experiment を作らない**)。4 点セットのうち experiment ごとに違わない 2 つをここに 1 つ置く (パッケージ外からは import しない)
-            surrogate.py         # 学習 experiment の**成果物**: surrogate pickle/meta の読み書き (run_id ごとに @cache) + load_bundles (選んだ run 列 → surrogate 群。**選択を広げも縮めもしない** = 選択がそのまま run 軸)。どの run が居るか・選べるかは知らない。モデル成果物生成は artifact.bundle の関心
+            surrogate.py         # 学習 experiment の**成果物**: surrogate pickle/meta の読み書き (run_id ごとに @cache) + load_surrogate_runs (選んだ run 列 → SurrogateRuns。**選択を広げも縮めもしない** = 選択がそのまま run 軸)。どの run が居るか・選べるかは知らない。モデル成果物生成は artifact.bundle の関心
             runs.py              # 学習 experiment の**一覧と選択肢**: load_runs (run 表。読込不可 run はここで落とす) / find_selectable_runs (選んだ系列を置換できる run = run 表の中身。hydra の親子は見ない = sweep の 1 点も単独で選べる)。**選択肢の導出はここ** = UI は選択の結果を渡すだけ。surrogate の中身は見ず、読込可否に surrogate.load_meta だけ借りる (依存は runs → surrogate の一方向)
             series.py            # 波形 experiment eval_series (**1 run = 1 `sim.result.SeriesRun`** = 1 列。点列の波形 1 artifact。kind=original / kind=surrogate がフラットに並び、置換系は tags.original_hash で原系を名指す = 親子関係なし)。run_series は探索と実行が対 (決定的だから同じ入力は回さない) なので分けない。load_column が run → SeriesRun の唯一の読み口 (記述も run_id も一緒に戻る)
-            report.py            # レポート experiment eval_report (**1 run = 1 レポート = 1 系列 × N モデル**)。run_report / find_report_run (どちらも系列名 × 学習 run 群で引く = 呼ぶ側はカタログを触らず、EvalSelection の組立はここに閉じる) / load_report (→ 描く中身 `SeriesResults` だけ。読んだ波形 run の id は描画にも保存段にも要らないので返さない)。**読み書きだけで成果物は組まない** (→ artifact.bundle)
-            artifacts.py         # レポート run の**成果物 (図/表) の書き出し**: log_report_artifacts (**描画の唯一の interface** = report_run_id + Tuning。参照解決 → 編成 → 保存を隠す)。experiment も同一性も持たない (それは report.py) — 知るのは段名の綴り (`<prefix>/<run 名>/` = MLflow の run 名) と宛先だけ。編成と draw.json を含む保存規約は artifact の Report が持つ
+            report.py            # レポート experiment eval_report (**1 run = 1 レポート = 1 系列 × N モデル**)。run_report / find_report_run (どちらも系列名 × 学習 run 群で引く = 呼ぶ側はカタログを触らず、EvalSelection の組立はここに閉じる) / load_report (→ 描く中身 `SeriesResults` だけ) / log_report_artifacts (**描画の唯一の interface** = report_run_id + Tuning。参照解決 → artifact.bundleで編成 → Report保存 → 同じrunへの書き出しを隠す)
           marimo.py              # notebook 本体 (系列 dropdown 1 件 + preset 絞り → run 選択 + 評価/描画ボタン)。**セルに置くのは widget と、それを plain 値に均す 1 行だけ** — 選択肢の導出も選択の広げ方も呼び先の 1 関数が持つ
           conf/                  # 学習設定 (Hydra) のみ。下記「設定ファイル」参照
 tests/    conftest.py (headless 化 + scripts/ を import path へ) / test_surrogate.py / test_inits.py / test_eval_mlflow.py (評価 run の保存/読込。tracking 先は tmp へ差し替え)

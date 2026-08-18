@@ -12,7 +12,7 @@ import xarray as xr
 
 from ..core.diverge import log_divergence
 from ..core.simulator import unified_simulator
-from ..surrogate.bundle import SurrogateBundle
+from ..surrogate.bundle import SurrogateBundle, SurrogateRuns
 from ..surrogate.meta import SurrogateMeta
 from ..surrogate.replace import apply_surrogate
 from ..surrogate.replace import replaceable as node_replaceable
@@ -28,7 +28,7 @@ def simulate(spec: SimSpec, surrogate: SurrogateBundle | None) -> xr.Dataset:
         return unified_simulator(dset)
     surr_ds = unified_simulator(apply_surrogate(surrogate, dset))
     # 系列名は spec が持たない (カタログのキーが単一源) → 入力そのもので名乗る。
-    where = f"{spec.target}/{spec.current_type} / {surrogate.meta.label}"
+    where = f"{spec.target}/{spec.current_type} / {surrogate.meta.surr_type_name}"
     log_divergence(spec.net, surr_ds, where)
     return surr_ds
 
@@ -55,17 +55,17 @@ def replaceable(series: EvalSeries, meta: SurrogateMeta) -> bool:
     return any(node_replaceable(meta, n) for n in series.spec.net.nodes)
 
 
-def replaced_runs(
-    series: EvalSeries, bundles: dict[str, SurrogateBundle]
-) -> dict[str, SurrogateBundle]:
+def replaced_runs(series: EvalSeries, runs: SurrogateRuns) -> SurrogateRuns:
     """1 系列 × 学習 run → 実際にこの系列を置換できる run だけ。**run 軸を絞る唯一の
     場所**。
 
     置換できない run は落ちる (回しても比較にならない)。空になった選択を飛ばすか
     拒むかは呼び出し側の関心 (その場で回す側は飛ばし、保存側は拒む)。
     """
-    return {
-        run_id: bundle
-        for run_id, bundle in bundles.items()
-        if replaceable(series, bundle.meta)
-    }
+    return SurrogateRuns(
+        tuple(
+            (run_name, bundle)
+            for run_name, bundle in runs
+            if replaceable(series, bundle.meta)
+        )
+    )

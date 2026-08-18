@@ -8,10 +8,8 @@ app = marimo.App(width="columns")
 def _():
     import marimo as mo
     from catalog import SERIES, comp_names
-    from mlflow_io.artifacts import log_report_artifacts
-    from mlflow_io.report import find_report_run, run_report
+    from mlflow_io.report import find_report_run, log_report_artifacts, run_report
     from mlflow_io.runs import ALL_PRESETS, find_selectable_runs, load_runs
-    from mlflow_io.surrogate import load_bundles
 
     from neurosurrogate.artifact.model import Tuning
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
@@ -28,7 +26,6 @@ def _():
         comp_names,
         find_report_run,
         find_selectable_runs,
-        load_bundles,
         log_report_artifacts,
         mo,
         run_report,
@@ -169,21 +166,14 @@ def _(run_selector):
 
 
 @app.cell
-def _(load_bundles, sel_ids):
-    # 選択 = run 軸そのもの → surrogate 群 (表示名の解決は呼び先が持つ)。
-    bundles = load_bundles(sel_ids)
-    return (bundles,)
-
-
-@app.cell
-def _(bundles, eval_button, find_report_run, run_report, series_name):
+def _(eval_button, find_report_run, run_report, sel_ids, series_name):
     # 評価ボタン: 1 系列を回して波形 run + レポート run を保存 (描画はしない)。押して
     # いなければ同じ選択の既存レポートを引く = **描画の入力 run_id の単一源**。
     report_run_id = (
         (
-            run_report(bundles, series_name)
+            run_report(tuple(sel_ids), series_name)
             if eval_button.value
-            else find_report_run(series_name, tuple(bundles))
+            else find_report_run(series_name, tuple(sel_ids))
         )
         if series_name
         else None

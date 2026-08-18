@@ -1,6 +1,6 @@
 """学習 experiment (`TARGET_EXP`) の**成果物**: surrogate の pickle + meta.json。
 
-答えるのは「その run の surrogate」だけ (`load_bundles`) で、**どの run が居るか・
+答えるのは「その run の surrogate」だけ (`load_surrogate_runs`)。**どの run が居るか・
 選べるかは知らない** (→ `runs` module。読込可否の判定に `load_meta` だけ貸す)。
 評価 (波形) も知らない。**選んだ run がそのまま run 軸**で、選択を広げも縮めもしない
 (hydra の親子は MLflow UI 上の grouping で、比較の単位ではない)。
@@ -14,7 +14,7 @@ from pathlib import Path
 import mlflow
 import mlflow.artifacts
 
-from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle
+from neurosurrogate.surrogate.bundle import META_FILE, SurrogateBundle, SurrogateRuns
 from neurosurrogate.surrogate.meta import SurrogateMeta
 
 from . import logger
@@ -55,7 +55,19 @@ def load_meta(run_id: str) -> SurrogateMeta:
         return SurrogateMeta.from_dict(json.loads(local.read_text()))
 
 
-def load_bundles(run_ids: list[str]) -> dict[str, SurrogateBundle]:
-    """run_id 列 → run_id→surrogate。他層は表示名でなく **run_id で** surrogate を
-    引く (表示名が要る描画層は `sim.artifacts` 側で解く)。"""
-    return {run_id: _load_surrogate_model(run_id) for run_id in run_ids}
+def _load_run_names(run_ids: list[str]) -> tuple[str, ...]:
+    """MLflowのrun ID列を一意なrun名列へ変換する。"""
+    names = tuple(mlflow.get_run(run_id).info.run_name for run_id in run_ids)
+    if None in names or len(set(names)) != len(names):
+        raise ValueError(f"学習run名が欠けるか重複 {names}")
+    return tuple(str(name) for name in names)
+
+
+def load_surrogate_runs(run_ids: list[str]) -> SurrogateRuns:
+    """MLflowのrun ID列から、一意なrun名を持つsurrogate列をロードする。"""
+    return SurrogateRuns(
+        tuple(
+            (run_name, _load_surrogate_model(run_id))
+            for run_id, run_name in zip(run_ids, _load_run_names(run_ids), strict=True)
+        )
+    )
