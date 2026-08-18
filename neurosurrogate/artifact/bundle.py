@@ -1,6 +1,13 @@
-"""各ドメインの単一成果物を、保存側が扱う成果物列へ編成する。"""
+"""各ドメインの単一成果物を、保存側が扱う成果物列へ編成する。
+
+**編成はここで閉じる** — どの図を作るか (`*_artifacts`) だけでなく、それを
+どの段に置くか (`build_report`) まで。保存側に残るのは「段名を何と綴るか」
+(MLflow の run 名を引く) と書き出しだけ。
+"""
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from ..sim.artifacts import (
     metric_artifact,
@@ -33,7 +40,7 @@ from ..waveform.artifacts import (
     simple_artifact,
 )
 from ..waveform.dynamics import DynamicMetrics
-from .model import Artifacts
+from .model import Artifacts, Report, Tuning
 from .plotting import use_style
 
 
@@ -131,4 +138,51 @@ def detail_artifacts(
             metrics_artifact(dm, spike_orig, spike_surr),
             metrics_scalar_artifact(dm, spike_orig, spike_surr),
         )
+    )
+
+
+def build_report(
+    view: SeriesResults,
+    bundles: dict[str, SurrogateBundle],
+    tuning: Tuning,
+    run_dirs: dict[str, str],
+) -> Report:
+    """1 レポート分の成果物を**段ごとに開く** = 描く側の唯一の入口。
+
+    3 段: 直下が run 横断の産物、`models/<段名>/` が比べた 1 本ずつの自己記述図、
+    `series/<段名>/` が波形 1 本で決まるもの (原系は `series/original/`)。`models/` と
+    `series/` で同じ段名を使うので、1 本の run を 2 段から同じ綴りで辿れる。
+
+    `run_dirs` は学習 run_id → 段名。**段名の決め方だけは持たない** — MLflow の
+    run 名なので保存側 (`scripts/mlflow_io/artifacts.py`) が解いて渡す。
+    """
+    return Report(
+        tuning,
+        tuple(
+            {
+                Path(): report_artifacts(
+                    view, bundles, tuning.eval_comp, tuning.metric, tuning.metric_ylim
+                ),
+                **{
+                    Path("models") / run_dirs[run_id]: surrogate_artifacts(
+                        bundle, tuning.view_comps
+                    )
+                    for run_id, bundle in bundles.items()
+                },
+                Path("series/original"): original_artifacts(view),
+                **{
+                    Path("series") / run_dirs[run_id]: detail_artifacts(
+                        view,
+                        run_id,
+                        bundles[run_id],
+                        tuning.eval_comp,
+                        tuning.view_comps,
+                        tuning.detail_point,
+                        tuning.spike_orig,
+                        tuning.spike_surr,
+                    )
+                    for run_id in view.run_ids
+                },
+            }.items()
+        ),
     )

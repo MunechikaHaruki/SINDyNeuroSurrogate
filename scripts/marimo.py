@@ -7,13 +7,13 @@ app = marimo.App(width="columns")
 @app.cell(column=0)
 def _():
     import marimo as mo
-    from catalog import SERIES
+    from catalog import SERIES, comp_names
+    from mlflow_io.artifacts import log_report_artifacts
     from mlflow_io.report import find_report_run, run_report
     from mlflow_io.runs import ALL_PRESETS, find_selectable_runs, load_runs
     from mlflow_io.surrogate import load_bundles
-    from render import render_report
-    from tuning import Tuning, comp_names
 
+    from neurosurrogate.artifact.model import Tuning
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
     # 残す操作は「run 選択」「評価」「描画」の 3 つ。CLI は持たない (二重管理を避け、
@@ -29,8 +29,8 @@ def _():
         find_report_run,
         find_selectable_runs,
         load_bundles,
+        log_report_artifacts,
         mo,
-        render_report,
         run_report,
         runs_df,
     )
@@ -89,7 +89,7 @@ def _(mo):
 
 @app.cell
 def _(METRIC_KEYS, comp_names, mo, series_name):
-    # **描き方は全部ここ** (`tuning.Tuning` の全キー)。カタログは「何を回すか」だけ。
+    # **描き方は全部ここ** (`Tuning` の全キー)。カタログは「何を回すか」だけ。
     # metric の選択肢は `METRIC_KEYS` から引く (生成されないキーを選べない)。
     comp_options = comp_names(series_name)
     tuning_ui = mo.ui.dictionary(
@@ -122,17 +122,28 @@ def _(METRIC_KEYS, comp_names, mo, series_name):
 
 @app.cell
 def _(Tuning, tuning_ui):
-    # **widget → 描き方 1 値の境界**。畳み方は `Tuning` 側 (キーの綴りを知る側) が持つ。
-    tuning = Tuning.from_widgets(tuning_ui.value)
+    # **widget → 描き方 1 値の境界**。y レンジの 3 つ (auto/下限/上限) をここで
+    # `metric_ylim: tuple | None` へ畳む = UI の都合を `Tuning` に持ち込まない。
+    # comp 未選択 (系列未選択) は空文字のまま渡し、描画側で設定誤りとして落とす。
+    values = tuning_ui.value
+    tuning = Tuning(
+        eval_comp=values["eval_comp"] or "",
+        view_comps=tuple(values["view_comps"]),
+        metric=values["metric"],
+        detail_point=int(values["detail_point"]),
+        spike_orig=int(values["spike_orig"]),
+        spike_surr=int(values["spike_surr"]),
+        metric_ylim=None if values["yauto"] else (values["ymin"], values["ymax"]),
+    )
     return (tuning,)
 
 
 @app.cell
-def _(draw_button, mo, render_report, report_run_id, tuning):
-    # 描画の interface はレポート run_id + Tuning だけ (残りは `render_report` が隠す)。
+def _(draw_button, log_report_artifacts, mo, report_run_id, tuning):
+    # 描画の interface はレポート run_id + Tuning だけ (残りは呼び先が隠す)。
     saved = []
     if draw_button.value and report_run_id:
-        saved = render_report(report_run_id, tuning)
+        saved = log_report_artifacts(report_run_id, tuning)
     (
         mo.vstack([mo.md(f"✅ `{p}`") for p in saved])
         if saved

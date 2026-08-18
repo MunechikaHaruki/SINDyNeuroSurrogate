@@ -5,7 +5,8 @@
 → param でなく tag。marimo の評価ボタンが `run_report`。
 
 **この module は書く/読むだけ** — 読んだ中身をどの図のどの段に並べるかは
-`scripts/render` (組立に `Tuning` と surrogate の中身が要り、MLflow の関心でない)。
+`artifact.bundle.build_report` (組立に `Tuning` と surrogate の中身が要り、
+MLflow の関心でない)。
 """
 
 import json

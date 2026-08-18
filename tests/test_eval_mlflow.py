@@ -1,7 +1,7 @@
 """評価結果の永続化 (MLflow の評価 experiment) の smoke。
 
 `tests/test_surrogate.py` がドメイン層だけを通すのに対し、ここは
-`scripts/mlflow_io/` (experiment と run) と `scripts/render/` (成果物の段と書き出し) を
+`scripts/mlflow_io/` (experiment と run、成果物の段名と書き出し) を
 通す。tracking 先は tmp の sqlite へ丸ごと差し替えるので、手元の `mlflow.db` /
 `mlruns/` は汚れない。
 """
@@ -13,17 +13,16 @@ from typing import cast
 import mlflow
 
 # `scripts/` は conftest が import path へ入れている。
+import mlflow_io.artifacts as artifacts_io  # noqa: E402
 import mlflow_io.report as report_io  # noqa: E402
 import mlflow_io.series as series_io  # noqa: E402
 import numpy as np
 import pytest
-import render.save as save  # noqa: E402
 from mlflow.entities import Run
 from mlflow_io.surrogate import log_surrogate_model
-from render import render_report
 from test_surrogate import fit_surrogate
-from tuning import Tuning
 
+from neurosurrogate.artifact.model import Tuning
 from neurosurrogate.core import access
 from neurosurrogate.sim.run import simulate
 from neurosurrogate.sim.spec import EvalSelection, EvalSeries
@@ -205,7 +204,7 @@ def test_run_directories_disambiguate_after_slugging(
     """異なる run 名が path 安全化後に同じ綴りでも、保存段は衝突しない。"""
     first = _train_run("a/b", sindy)
     second = _train_run("a:b", sindy)
-    directories = save._run_dirs([first, second])
+    directories = artifacts_io._run_dirs([first, second])
     assert len(set(directories.values())) == 2
     assert all(name.startswith("a-b-") for name in directories.values())
 
@@ -224,7 +223,9 @@ def test_everything_drawn_lands_in_the_one_report_run(
     train_id = _train_run("surr-A", sindy)
     report_id = report_io.run_report({train_id: sindy}, "hh_dc")
     view = report_io.load_report(report_id)
-    written = render_report(report_id, Tuning(eval_comp=view.net.names[0]))
+    written = artifacts_io.log_report_artifacts(
+        report_id, Tuning(eval_comp=view.net.names[0])
+    )
     # run 内の名前は元の 3 段のまま: models/<run 名>/ は比べた 1 本ずつの自己記述図、
     # series/<run 名>/ は波形 1 本で決まるもの、直下が run 横断の産物。
     assert {w.split("/")[0] for w in written} == {
@@ -247,10 +248,10 @@ def test_everything_drawn_lands_in_the_one_report_run(
     for rid in _source_runs(report_id):
         assert [a.path for a in client.list_artifacts(rid)] == [series_io.WAVES_FILE]
     # 描いたときの表示設定は 1 枚だけ添える (成果物ごとの由来は run が既に指している)
-    assert save.DRAW_FILE in {a.path for a in client.list_artifacts(report_id)}
+    assert "draw.json" in {a.path for a in client.list_artifacts(report_id)}
 
     with pytest.raises(ValueError, match="eval_comp"):
-        render_report(report_id, Tuning(eval_comp="nope"))
+        artifacts_io.log_report_artifacts(report_id, Tuning(eval_comp="nope"))
 
 
 def _ids(runs: list[Run]) -> set[str]:

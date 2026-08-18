@@ -8,7 +8,7 @@
   の系列」として同じ経路を通る)。載るのは surrogate を持たない素の系列 =
   カタログは原系の掃引そのもので、回す側が run ごとに置換器を掛けて
   run 軸を張る
-**描き方 (`report.tuning.Tuning`) はここに持たない**: 比較対象 comp も指標も
+**描き方 (`artifact.model.Tuning`) はここに持たない**: 比較対象 comp も指標も
 図を見て
 決め直すもので、カタログに置くと「回す条件」と同じ寿命に見えてしまう。置き場所は
 marimo の widget 1 箇所 (`SimSpec.net` が解いた comp 名から選択肢が出るので、
@@ -77,3 +77,10 @@ SERIES: dict[str, EvalSeries] = {
         values=np.linspace(10.0, 50.0, 5).tolist(),
     ),
 }
+
+
+def comp_names(series_name: str | None) -> list[str]:
+    """系列名 → その系列の適用先に在る comp 名 (未選択は空)。comp のつまみ
+    (`eval_comp` / `view_comps`) の選択肢はこれ = 適用先と噛み合わない comp を
+    選べない。名前の解決は適用先を知る `SimSpec.net` に任せる。"""
+    return sorted(SERIES[series_name].spec.net.names) if series_name else []
