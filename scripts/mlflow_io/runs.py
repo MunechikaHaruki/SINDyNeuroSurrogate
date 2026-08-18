@@ -13,8 +13,8 @@ import pandas as pd
 from catalog import SERIES
 from tqdm import tqdm
 
-from neurosurrogate.sim.run import replaceable
 from neurosurrogate.surrogate.meta import SurrogateMeta
+from neurosurrogate.surrogate.replace import applicable
 
 from . import TARGET_EXP, logger
 from .surrogate import load_meta
@@ -27,15 +27,16 @@ _RUN_COLUMNS = ["tags.mlflow.runName", "comp_type", "run_id"]
 def find_selectable_runs(runs_df: pd.DataFrame, series_name: str | None, preset: str):
     """run 表に出す行 = 選んだ系列を**実際に置換できる** run を preset で絞ったもの。
     系列は名前から引く (呼ぶ側はカタログを触らない)。置換可否の判定は
-    `sim.run.replaceable` (ドメイン側) が持ち、「1 本でも置換できれば出す」という
-    選択の方針だけがここ。`preset=ALL_PRESETS` で preset は絞らない。
+    `surrogate.replace.applicable` (ドメイン側) が持ち、meta だけで決まる = **学習
+    成果を読まずに絞れる**。「1 本でも置換できれば出す」という選択の方針だけがここ。
+    `preset=ALL_PRESETS` で preset は絞らない。
 
     **hydra の親子は見ない**: sweep の親子は MLflow UI 上の grouping で、比較の単位
     ではない。sweep の 1 点も単独で選べる = 選んだ run がそのまま run 軸。"""
     if not series_name:
         return runs_df.iloc[:0][_RUN_COLUMNS]
     return runs_df[
-        runs_df["meta"].map(lambda m: replaceable(SERIES[series_name], m))
+        runs_df["meta"].map(lambda m: applicable(m, SERIES[series_name]))
         & ((preset == ALL_PRESETS) | (runs_df["preset"] == preset))
     ][_RUN_COLUMNS]
 

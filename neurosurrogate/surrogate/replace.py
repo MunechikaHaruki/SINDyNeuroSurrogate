@@ -10,6 +10,7 @@ from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING
 
 from ..core.network import Compartment, CompartmentType, DatasetConfig, NeuronGraph
+from ..sim.spec import EvalSeries
 from .meta import SurrogateMeta
 
 if TYPE_CHECKING:
@@ -46,6 +47,15 @@ def replaceable(meta: SurrogateMeta, comp: Compartment) -> bool:
     return _PARAMS_MATCH[meta.surrogate_type](
         meta.train_comp.resolved_params, comp.resolved_params
     )
+
+
+def applicable(meta: SurrogateMeta, series: EvalSeries) -> bool:
+    """この掃引に surrogate を適用できるか = 適用先に置換されるノードが 1 つでも
+    あるか (点は適用先を変えないので `spec` で判定)。
+
+    **bundle でなく meta だけで決まる** = 学習成果を読み込む前に選択肢を絞れる。
+    """
+    return any(replaceable(meta, node) for node in series.spec.net.nodes)
 
 
 def train_comp_ids(meta: SurrogateMeta) -> list[int]:

@@ -1,7 +1,8 @@
 """**実行**: 記述 (`spec`) と置換器を受け取って結果 (`result`) を作る段。
 
 記述は置換器を知らない (`EvalSeries` は「何を回すか」だけ) → **仕様 × surrogate を
-掛け合わせるのはここだけ**。run 軸を掛ける `replaced_runs` も同じ理由でここに居る。
+掛け合わせるのはここだけ**。どの run が置換できるかの絞り込みは回す前に決まるので
+持たない (`SurrogateRuns.replacing`)。
 
 返りは列 (`SeriesRun`) = 保存もキャッシュもこの単位。
 """
@@ -12,10 +13,8 @@ import xarray as xr
 
 from ..core.diverge import log_divergence
 from ..core.simulator import unified_simulator
-from ..surrogate.bundle import SurrogateBundle, SurrogateRuns
-from ..surrogate.meta import SurrogateMeta
+from ..surrogate.bundle import SurrogateBundle
 from ..surrogate.replace import apply_surrogate
-from ..surrogate.replace import replaceable as node_replaceable
 from .result import SeriesRun
 from .spec import EvalSeries, SimSpec
 
@@ -47,25 +46,3 @@ def run_column(
         raise ValueError(f"run_id と置換器が対でない (run {run_id})")
     waves = [simulate(spec, surrogate) for spec in series.points]
     return SeriesRun(series, run_id, waves)
-
-
-def replaceable(series: EvalSeries, meta: SurrogateMeta) -> bool:
-    """この系列を置換できる surrogate か = 適用先に置換されるノードが 1 つでも
-    あるか (点は適用先を変えないので `spec` で判定)。"""
-    return any(node_replaceable(meta, n) for n in series.spec.net.nodes)
-
-
-def replaced_runs(series: EvalSeries, runs: SurrogateRuns) -> SurrogateRuns:
-    """1 系列 × 学習 run → 実際にこの系列を置換できる run だけ。**run 軸を絞る唯一の
-    場所**。
-
-    置換できない run は落ちる (回しても比較にならない)。空になった選択を飛ばすか
-    拒むかは呼び出し側の関心 (その場で回す側は飛ばし、保存側は拒む)。
-    """
-    return SurrogateRuns(
-        tuple(
-            (run_name, bundle)
-            for run_name, bundle in runs
-            if replaceable(series, bundle.meta)
-        )
-    )

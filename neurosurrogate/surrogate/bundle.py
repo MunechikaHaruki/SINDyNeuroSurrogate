@@ -21,6 +21,7 @@ import joblib
 import xarray as xr
 
 from ..core.network import CompartmentType
+from ..sim.spec import EvalSeries
 from .ansatz.base import Ansatz
 from .ansatz.impl.hybrid import HybridAnsatz
 from .ansatz.impl.sindy import SINDyAnsatz
@@ -30,6 +31,7 @@ from .meta import SurrogateMeta
 from .preprocessor.base import Preprocessor
 from .preprocessor.impl.autoencoder import AEPreprocessor
 from .preprocessor.impl.pca import PCAPreprocessor
+from .replace import applicable
 
 _BUNDLE_FILE = "surrogate.joblib"  # 学習成果物 (closure/preprocessor)
 META_FILE = "meta.json"  # 同定情報。一覧はこれだけ読む
@@ -161,6 +163,20 @@ class SurrogateRuns:
     def names(self) -> tuple[str, ...]:
         """選択順の学習run名。"""
         return tuple(name for name, _ in self.runs)
+
+    def replacing(self, series: EvalSeries) -> "SurrogateRuns":
+        """この掃引を実際に置換できる run だけの列。**run 軸を絞る唯一の場所**。
+
+        置換できない run は落ちる (回しても比較にならない)。空になった選択を飛ばすか
+        拒むかは呼び出し側の関心 (その場で回す側は飛ばし、保存側は拒む)。
+        """
+        return SurrogateRuns(
+            tuple(
+                (name, bundle)
+                for name, bundle in self
+                if applicable(bundle.meta, series)
+            )
+        )
 
     def bundle(self, name: str) -> SurrogateBundle:
         """学習run名からsurrogateを引く。"""

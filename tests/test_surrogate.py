@@ -34,7 +34,7 @@ from neurosurrogate.neurons.compartments.traub import (
 )
 from neurosurrogate.sim.artifacts import summary_artifact, traces_artifact
 from neurosurrogate.sim.result import SeriesResults, SeriesRun
-from neurosurrogate.sim.run import replaced_runs, run_column
+from neurosurrogate.sim.run import run_column
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
 from neurosurrogate.surrogate.ansatz.impl.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.ansatz.impl.hybrid_kernel import (
@@ -64,6 +64,7 @@ from neurosurrogate.surrogate.preprocessor.base import Preprocessor
 from neurosurrogate.surrogate.preprocessor.impl.autoencoder import AEPreprocessor
 from neurosurrogate.surrogate.preprocessor.impl.pca import PCAPreprocessor
 from neurosurrogate.surrogate.replace import (
+    applicable,
     apply_surrogate,
     replace_nodes,
     replaceables,
@@ -130,7 +131,8 @@ def _simulate_view(series: EvalSeries, runs: SurrogateRuns) -> SeriesResults:
         run_column(series, None, None),
         tuple(
             run_column(series, rid, bundle)
-            for rid, bundle in replaced_runs(series, runs)
+            for rid, bundle in runs
+            if applicable(bundle.meta, series)
         ),
     )
 
