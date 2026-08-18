@@ -1,8 +1,9 @@
-"""レポート experiment (`REPORT_EXP`): **1 run = 1 レポート = 1 系列 × N モデル**。
+"""レポート experiment (`REPORT_EXP`): **1 評価 = 1 run**。
 
-持つのは波形 run の id 2 tag だけで、波形もカタログ由来の値も持たない。同一性は選択
-そのもの (`sim.spec.EvalSelection.hash`) で、同じ選択で回し直すと参照だけ差し替わる
-→ param でなく tag。marimo の評価ボタンが `run_report`。
+持つのは波形 run の id 2 tag だけで、波形もカタログ由来の値も持たない。**同じ選択で
+回し直したら新しい run が立つ** = 一度書いた run を後から書き換えない (同一性の鍵を
+持たない)。重い波形は `series` 側が内容で再利用するので、作り直しの代償は run 1 本の
+メタデータだけ。marimo のレポートボタンが `run_report` → `log_report_artifacts`。
 
 成果物の内容と段構成は `artifact.bundle.build_report` が決め、このmoduleはレポートrun
 の参照解決と書き出しを担う。
@@ -19,75 +20,45 @@ from catalog import SERIES
 from neurosurrogate.artifact.bundle import build_report
 from neurosurrogate.artifact.model import Tuning
 from neurosurrogate.sim.result import SeriesResults
-from neurosurrogate.sim.run import replaced_runs
-from neurosurrogate.sim.spec import EvalSelection
 
 from . import logger
-from ._query import exp_id, latest_by_tag
+from ._query import exp_id
 from .series import load_column, run_series
 from .surrogate import load_surrogate_runs
 
 REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
-_HASH_TAG = "report_hash"  # 同一性 = 選択そのもの (EvalSelection.hash)
 _ORIGINAL_TAG = "original_series_id"
 _SURROGATE_TAG = "surrogate_series_ids"  # 波形 run id の列 (与えた順 = 凡例の並び)
 
 
-def _report_hash(name: str, run_ids: tuple[str, ...]) -> str:
-    """同一性の鍵 = 選択そのもの (系列名 × 学習 run 群)。**鍵を組むのはここだけ** =
-    書く側と探す側が同じ綴りに揃い、カタログ (`SERIES`) を引くのも 1 箇所に閉じる。"""
-    return EvalSelection(SERIES[name], run_ids).hash()
-
-
-def _log_report(
-    name: str,
-    original: str,
-    surrs: list[str],
-    run_ids: tuple[str, ...],
-) -> str:
-    """波形 run の id 2 つを 1 レポート run へ。同じ選択の run があれば**参照先だけ
-    差し替える** → param でなく tag。`name` は鍵と表示に使う。"""
-    # client 直で書く: 既存 run への追記を active experiment に左右されないため。
+def _log_report(name: str, original: str, surrs: list[str]) -> str:
+    """波形 run の id 2 つを持つレポート run を**1 本新しく立てる**。参照は生成時に
+    書き切って以降触らない = この run は立った時点で完成している。"""
+    # client 直で書く: 立てる先を active experiment に左右されないため。
     client = mlflow.MlflowClient()
-    report_hash = _report_hash(name, run_ids)
-    found = latest_by_tag(REPORT_EXP, _HASH_TAG, report_hash)
-    run_id = found.info.run_id if found else _new_report_run(client, name, report_hash)
-    client.set_tag(run_id, _ORIGINAL_TAG, original)
-    # **与えた順を保つ** (sort しない): 選択順が凡例/行見出しの並びとして
-    # 描画層まで効く。
-    client.set_tag(run_id, _SURROGATE_TAG, json.dumps(surrs))
-    logger.info("レポート run 保存: %s %s (%s)", name, report_hash, run_id)
-    return run_id
-
-
-def _new_report_run(client: mlflow.MlflowClient, name: str, report_hash: str) -> str:
-    """空のレポート run を 1 本立てる (同一性の tag と表示名まで)。参照先は呼ぶ側。"""
     run = client.create_run(
         exp_id(REPORT_EXP),
         tags={
-            _HASH_TAG: report_hash,
-            "mlflow.runName": f"{name} [{report_hash}]",
+            _ORIGINAL_TAG: original,
+            # **与えた順を保つ** (sort しない): 選択順が凡例/行見出しの並びとして
+            # 描画層まで効く。
+            _SURROGATE_TAG: json.dumps(surrs),
+            "mlflow.runName": f"{name} ×{len(surrs)}",
         },
     )
     client.set_terminated(run.info.run_id)
+    logger.info("レポート run 保存: %s (%s)", name, run.info.run_id)
     return run.info.run_id
 
 
-def find_report_run(name: str, run_ids: tuple[str, ...]) -> str | None:
-    """選択 (系列名 × 学習 run 群) → 既存レポート run の id (無ければ None)。**選択から
-    レポート run_id へ渡す唯一の橋**で、以降 (描画) はこの id 1 つだけを見る。"""
-    found = latest_by_tag(REPORT_EXP, _HASH_TAG, _report_hash(name, run_ids))
-    return found.info.run_id if found else None
-
-
 def run_report(run_ids: tuple[str, ...], name: str) -> str:
-    """1 系列の評価実行 + 波形 run 保存 + レポート run 保存 (marimo の評価ボタン)。
+    """1 系列の評価実行 + 波形 run 保存 + レポート run 保存 (レポートボタンの前半)。
     系列は**名前から引く** = 呼ぶ側はカタログを触らない。既にある波形 run は再利用
-    = 回さない。返りはレポート run の id = そのまま描画の入力。1 本も置換できない選択は
-    回す意味が無いので拒む。"""
+    = 回さない (押すたびに増えるのはレポート run だけ)。返りはレポート run の id =
+    そのまま描画の入力。1 本も置換できない選択は回す意味が無いので拒む。"""
     series = SERIES[name]
     runs = load_surrogate_runs(list(run_ids))
-    surrs = replaced_runs(series, runs)
+    surrs = runs.replacing(series)
     if not surrs:
         raise ValueError(f"{name}: 選択 run のどれでも置換できない (比較対象が無い)")
     return _log_report(
@@ -98,7 +69,6 @@ def run_report(run_ids: tuple[str, ...], name: str) -> str:
             for run_id, (run_name, bundle) in zip(run_ids, runs, strict=True)
             if run_name in surrs.names
         ],
-        run_ids,
     )
 
 

@@ -24,7 +24,7 @@ from test_surrogate import fit_surrogate
 from neurosurrogate.artifact.model import Tuning
 from neurosurrogate.core import access
 from neurosurrogate.sim.run import simulate
-from neurosurrogate.sim.spec import EvalSelection, EvalSeries
+from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.bundle import SurrogateBundle
 
 RUN_NAME = "RID"
@@ -36,25 +36,6 @@ def _exp_id(name: str) -> str:
     exp = mlflow.get_experiment_by_name(name)
     assert exp is not None
     return str(exp.experiment_id)
-
-
-def _by_hash(exp_name: str, tag: str, value: str) -> Run | None:
-    """同一性の鍵で run を引く。**tag の綴りはテストが直書きする** — 本番の定数を
-    借りると綴りを変えても落ちず、保存の契約を検査したことにならない (鍵の組み方の
-    ようなロジックは逆に本番のものを呼ぶ)。"""
-    return next(
-        iter(
-            cast(
-                list[Run],
-                mlflow.search_runs(
-                    experiment_ids=[_exp_id(exp_name)],
-                    filter_string=f"tags.{tag} = '{value}'",
-                    output_format="list",
-                ),
-            )
-        ),
-        None,
-    )
 
 
 def _source_runs(report_run_id: str) -> tuple[str, ...]:
@@ -89,8 +70,8 @@ def eval_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sindy: SurrogateBundle
 ) -> str:
     """tracking 先を tmp へ移し、評価/レポート experiment 名もテスト専用にする。
-    カタログも差し替える — `run_report`/`find_report_run` は系列を**名前から引く**の
-    で、テスト用の短い掃引 (`_evals`) をその名前に載せて渡す。"""
+    カタログも差し替える — `run_report` は系列を**名前から引く**ので、テスト用の
+    短い掃引 (`_evals`) をその名前に載せて渡す。"""
     mlflow.set_tracking_uri(f"sqlite:///{tmp_path}/mlflow.db")
     monkeypatch.setattr(series_io, "EVAL_EXP", "test_eval")
     monkeypatch.setattr(report_io, "REPORT_EXP", "test_report")
@@ -111,32 +92,17 @@ def test_eval_runs_round_trip_without_resimulating(
     """**1 波形 run = 1 EvalSeries、1 レポート run = 1 回の評価**。掃引点の波形を
     まとめた 1 artifact が往復し、再シミュ無しに点の並びごと戻る。同じ掃引の再実行は
     スキップされ、原系の run は学習 run を跨いで共有される。レポートは
-    **1 系列 × N モデル**が単位で、選択 (学習 run 群 × 系列 1 つ) で引き、波形 run
-    への参照だけを持つ。"""
+    **1 系列 × N モデル**が単位で、波形 run への参照だけを持つ。"""
     series = _evals(sindy)
     train_id = _train_run(RUN_NAME, sindy)
     report_id = report_io.run_report((train_id,), "hh_dc")
     # 波形は 2 本 (原系 1 + 置換系 1)、レポートは 1 本 (点では分かれない)
     assert len(_of_kind("original")) == 1 and len(_of_kind("surrogate")) == 1
-    # 選択 → レポート run_id の橋は 1 本で、描画はこの id だけを見る
-    assert report_io.find_report_run("hh_dc", (train_id,)) == report_id
 
     view = report_io.load_report(report_id)
     assert view.run_ids == [train_id]
-    # 結果から作り直した記述で同じレポートに当たる = 記述 (`EvalSelection`) と
-    # 結果 (`SeriesResults`) が同じ対で往復する。**往復するのは選択した run が全部
-    # 置換できたときだけ** — 鍵は選択そのもの (`EvalSelection` の docstring) で、
-    # 結果に並ぶのは置換できた列だけだから。
-    restored = _by_hash(
-        report_io.REPORT_EXP,
-        "report_hash",
-        EvalSelection(view.series, tuple(view.run_ids)).hash(),
-    )
-    assert restored is not None and restored.info.run_id == report_id
-    assert (
-        EvalSelection(series, (train_id,)).hash()
-        == EvalSelection(view.series, tuple(view.run_ids)).hash()
-    )
+    # 掃引の記述は結果から作り直せる (記述と結果が同じ対で往復する)
+    assert view.series.hash() == series.hash()
     # 系列名は結果 (`SeriesResults`) でなく波形 run 側にある = レポートはカタログを
     # 参照しない (名前を付け替えても過去のレポートは読める)
     original_eval, surr_eval = _source_runs(report_id)
@@ -163,30 +129,22 @@ def test_eval_runs_round_trip_without_resimulating(
     )
     assert not np.allclose(access.potential(surr, 0), access.potential(orig, 0))
 
-    # シミュは決定的 → 同じ掃引の 2 度目はスキップ (series_hash 一致)。同じ選択の
-    # レポートも量産されず、同じ run が更新される。
-    assert report_io.run_report((train_id,), "hh_dc") == report_id
+    # シミュは決定的 → 同じ掃引の 2 度目はスキップ (series_hash 一致)。**レポートは
+    # 押すたびに新しい run** で、既に書いた run は書き換わらない (重いのは波形だけ)。
+    again = report_io.run_report((train_id,), "hh_dc")
+    assert again != report_id
+    assert _source_runs(again) == _source_runs(report_id)
     assert len(_of_kind("surrogate")) == 1
 
     # 別の学習 run から同じ条件 → 置換系は増えるが原系は共有される
-    # (学習 run を増やしても原系の波形が複製されない)。選択が違えば別のレポート。
+    # (学習 run を増やしても原系の波形が複製されない)。
     other_id = _train_run("OTHER", sindy)
-    assert report_io.run_report((other_id,), "hh_dc") != report_id
+    report_io.run_report((other_id,), "hh_dc")
     assert (len(_of_kind("original")), len(_of_kind("surrogate"))) == (1, 2)
 
-    # 学習 run 2 件の選択はさらに別のレポート = 別の単位 (run 軸 2 本が 1 枚に並ぶ)
+    # 学習 run 2 件の選択は run 軸 2 本が 1 枚に並ぶ
     both = report_io.load_report(report_io.run_report((train_id, other_id), "hh_dc"))
     assert (len(both.original_waves), both.run_ids) == (2, [train_id, other_id])
-
-
-def test_unevaluated_selection_finds_nothing_without_creating_experiment(
-    eval_store: str, sindy: SurrogateBundle
-) -> None:
-    """まだ評価していない選択は `None` が返るだけ (描画側は「先に評価」を出す)。
-    探すだけの経路は experiment を作らない = 選択を変えるたびに空の experiment が
-    生えない。"""
-    assert report_io.find_report_run("hh_dc", (_train_run(RUN_NAME, sindy),)) is None
-    assert mlflow.get_experiment_by_name(report_io.REPORT_EXP) is None
 
 
 def test_run_report_rejects_series_no_run_can_replace(
