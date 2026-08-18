@@ -26,7 +26,7 @@ uv run scripts/main.py --multirun                                 # preset の h
 just test                  # pytest (tests/、Hydraプリセット読込→fit→置換シミュ→指標/描画) + main.py
 just format && just lint   # ruff fix+format / ruff+mypy (strict、scripts/ 除外)
 just mlflow                # MLflow UI (port 5100、backend: mlflow.db)
-just marimo                # marimo notebook (port 2700。run選択+評価ボタン+描画ボタン。CLIは持たず二重管理を避ける)
+just marimo                # marimo notebook (port 2700。run選択+レポートボタン1つ (評価→描画)。CLIは持たず二重管理を避ける)
 just marimo-mcp            # Claude Code MCP連携 (port 2701)
 just traub                 # traub_* preset を順に --multirun 一括実行
 just clean-cache / clean-log

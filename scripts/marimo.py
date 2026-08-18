@@ -8,13 +8,13 @@ app = marimo.App(width="columns")
 def _():
     import marimo as mo
     from catalog import SERIES, comp_names
-    from mlflow_io.report import find_report_run, log_report_artifacts, run_report
+    from mlflow_io.report import log_report_artifacts, run_report
     from mlflow_io.runs import ALL_PRESETS, find_selectable_runs, load_runs
 
     from neurosurrogate.artifact.model import Tuning
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
-    # 残す操作は「run 選択」「評価」「描画」の 3 つ。CLI は持たない (二重管理を避け、
+    # 残す操作は「run 選択」「レポート」の 2 つ。CLI は持たない (二重管理を避け、
     # ここが唯一の実行経路)。**セルに置くのは widget と、それを plain 値に均す 1 行
     # だけ** — 選択肢の導出は呼び先の 1 関数が持つ。
     runs_df = load_runs()
@@ -24,7 +24,6 @@ def _():
         SERIES,
         Tuning,
         comp_names,
-        find_report_run,
         find_selectable_runs,
         log_report_artifacts,
         mo,
@@ -76,12 +75,12 @@ def _(find_selectable_runs, mo, preset, runs_df, series_name):
 
 @app.cell
 def _(mo):
-    # ボタンは**別 widget のまま束ねない** — 混ぜると評価セルが描画操作にも依存し
-    # MLflow を引き直す。保存先は選ばせない (描いたものは全部レポート run の artifact)。
-    eval_button = mo.ui.run_button(label="評価 (→ 評価 run 保存)")
-    draw_button = mo.ui.run_button(label="描画 (→ 図保存)")
-    mo.vstack([mo.md("### 実行パネル"), eval_button, draw_button])
-    return draw_button, eval_button
+    # 操作は 1 つ = **レポートを 1 本作る**。評価と描画は同じ 1 回の意図の前半と後半で、
+    # 分けても片方だけ押す使い方をしない (分けると run_id を跨いで持ち回る必要も出る)。
+    # 保存先は選ばせない (描いたものは全部レポート run の artifact)。
+    report_button = mo.ui.run_button(label="レポート (評価 → 図保存)")
+    mo.vstack([mo.md("### 実行パネル"), report_button])
+    return (report_button,)
 
 
 @app.cell
@@ -136,18 +135,25 @@ def _(Tuning, tuning_ui):
 
 
 @app.cell
-def _(draw_button, log_report_artifacts, mo, report_run_id, tuning):
-    # 描画の interface はレポート run_id + Tuning だけ (残りは呼び先が隠す)。
+def _(
+    log_report_artifacts,
+    mo,
+    report_button,
+    run_report,
+    sel_ids,
+    series_name,
+    tuning,
+):
+    # **レポート 1 本 = 評価 → 描画**。前半は重い (シミュ + 波形 run 保存)、後半は
+    # レポート run へ図を書くだけなので、どちらを走っているかだけ spinner に出す
+    # (進捗率は点数にも図の枚数にも依らず出せないので出さない)。
     saved = []
-    if draw_button.value and report_run_id:
-        saved = log_report_artifacts(report_run_id, tuning)
-    (
-        mo.vstack([mo.md(f"✅ `{p}`") for p in saved])
-        if saved
-        else mo.md("(未実行)")
-        if report_run_id
-        else mo.md("この選択のレポート run が無い → 先に評価")
-    )
+    if report_button.value and series_name:
+        with mo.status.spinner(title="評価中 (シミュ + 波形 run 保存)") as progress:
+            report_run_id = run_report(tuple(sel_ids), series_name)
+            progress.update(title="描画中 (図をレポート run へ保存)")
+            saved = log_report_artifacts(report_run_id, tuning)
+    mo.vstack([mo.md(f"✅ `{p}`") for p in saved]) if saved else mo.md("(未実行)")
     return
 
 
@@ -163,22 +169,6 @@ def _(run_selector):
     # run 軸を導く単一源 = 選んだ run (与えた順)。表示名は描画側が引き直す。
     sel_ids = list(run_selector.value["run_id"])
     return (sel_ids,)
-
-
-@app.cell
-def _(eval_button, find_report_run, run_report, sel_ids, series_name):
-    # 評価ボタン: 1 系列を回して波形 run + レポート run を保存 (描画はしない)。押して
-    # いなければ同じ選択の既存レポートを引く = **描画の入力 run_id の単一源**。
-    report_run_id = (
-        (
-            run_report(tuple(sel_ids), series_name)
-            if eval_button.value
-            else find_report_run(series_name, tuple(sel_ids))
-        )
-        if series_name
-        else None
-    )
-    return (report_run_id,)
 
 
 if __name__ == "__main__":
