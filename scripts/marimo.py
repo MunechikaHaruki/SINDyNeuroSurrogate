@@ -9,8 +9,8 @@ def _():
     import marimo as mo
     from catalog import SERIES
     from mlflow_io.report import find_report_run, run_report
-    from mlflow_io.runs import ALL_PRESETS, load_runs, selectable_runs
-    from mlflow_io.surrogate import bundles_for
+    from mlflow_io.runs import ALL_PRESETS, find_selectable_runs, load_runs
+    from mlflow_io.surrogate import load_sweep_bundles
     from render import render_report
     from tuning import Tuning, comp_names
 
@@ -25,14 +25,14 @@ def _():
         METRIC_KEYS,
         SERIES,
         Tuning,
-        bundles_for,
         comp_names,
         find_report_run,
+        find_selectable_runs,
+        load_sweep_bundles,
         mo,
         render_report,
         run_report,
         runs_df,
-        selectable_runs,
     )
 
 
@@ -59,10 +59,10 @@ def _(ALL_PRESETS, SERIES, mo, runs_df):
 
 
 @app.cell
-def _(mo, preset, runs_df, selectable_runs, series_name):
+def _(find_selectable_runs, mo, preset, runs_df, series_name):
     # 比べたい run を N 件選ぶ (1 レポート = 1 系列 × N モデル)。何が選択肢になるかは
-    # `selectable_runs` が持つ (絞りの条件を UI 側に複製しない)。
-    runs = selectable_runs(runs_df, series_name, preset)
+    # `find_selectable_runs` が持つ (絞りの条件を UI 側に複製しない)。
+    runs = find_selectable_runs(runs_df, series_name, preset)
     run_selector = mo.ui.table(
         runs,
         label="Run (複数可)",
@@ -158,10 +158,10 @@ def _(run_selector):
 
 
 @app.cell
-def _(bundles_for, sel_ids):
+def _(load_sweep_bundles, sel_ids):
     # 選択 (代表 run) → run 軸の surrogate 群。sweep 兄弟への広げ方も表示名の解決も
     # 呼び先が持つ (marimo は選んだ id を渡すだけ)。
-    bundles = bundles_for(sel_ids)
+    bundles = load_sweep_bundles(sel_ids)
     return (bundles,)
 
 

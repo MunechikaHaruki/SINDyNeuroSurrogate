@@ -82,8 +82,9 @@ class SeriesResults:
         return self.original.series
 
     @property
-    def points(self) -> list[xr.Dataset]:
-        """原系の波形 (点の値順)。点軸の長さもこれが持つ。"""
+    def original_waves(self) -> list[xr.Dataset]:
+        """原系の波形 (点の値順)。点軸の長さもこれが持つ。**記述側の
+        `series.points` (= `SimSpec` の列) と綴りを分ける** — 添字だけが対応。"""
         return self.original.waves
 
     @property
@@ -123,4 +124,4 @@ class SeriesResults:
 
     def pair(self, index: int, column: SeriesRun) -> tuple[xr.Dataset, xr.Dataset]:
         """点 `index` の (原系, 置換系) の波形。"""
-        return self.points[index], column.waves[index]
+        return self.original_waves[index], column.waves[index]

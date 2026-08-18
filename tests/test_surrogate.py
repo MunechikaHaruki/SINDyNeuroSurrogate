@@ -263,11 +263,11 @@ def test_series_view_columns_must_line_up_across_runs(
     with pytest.raises(ValueError, match="記述の違う列"):
         SeriesResults(
             sindy_view.original,
-            (SeriesRun(other, "r0", sindy_view.points),),
+            (SeriesRun(other, "r0", sindy_view.original_waves),),
         )
     # 原系の列に run_id は載らない / 置換系の run_id は欠けない
     with pytest.raises(ValueError, match="原系の列"):
-        SeriesResults(SeriesRun(series, "r0", sindy_view.points), ())
+        SeriesResults(SeriesRun(series, "r0", sindy_view.original_waves), ())
     with pytest.raises(ValueError, match="置換系の run_id"):
         SeriesResults(sindy_view.original, (sindy_view.original,))
 
@@ -332,7 +332,7 @@ def test_view_comps_limit_drawn_traces(
 ) -> None:
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
     指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
-    ds = sindy_view.points[0]
+    ds = sindy_view.original_waves[0]
     assert len(simple_artifact(ds, comps=[]).obj.axes) < len(
         simple_artifact(ds).obj.axes
     )

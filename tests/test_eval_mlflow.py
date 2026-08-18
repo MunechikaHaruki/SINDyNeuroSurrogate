@@ -178,7 +178,7 @@ def test_eval_runs_round_trip_without_resimulating(
     both = report_io.load_report(
         report_io.run_report({RUN_ID: sindy, "OTHER": sindy}, "hh_dc")
     )
-    assert (len(both.points), both.run_ids) == (2, [RUN_ID, "OTHER"])
+    assert (len(both.original_waves), both.run_ids) == (2, [RUN_ID, "OTHER"])
 
 
 def test_unevaluated_selection_finds_nothing_without_creating_experiment(

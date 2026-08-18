@@ -166,14 +166,14 @@ def traces_artifact(
     「1 列の格子」に素直に退化する。
     """
     comp_id = view.net.name_to_idx(comp_name)
-    n_col, n_row = len(view.points), len(view.surrs)
+    n_col, n_row = len(view.original_waves), len(view.surrs)
     # **軸まわりは列数/行数に依らず一定の幅と高さを食う**ので、波形に使う分
     # (列数/行数比例) と別に固定オーバーヘッドを足す。比例分だけだと、行見出し +
     # y 目盛 + 軸外の凡例で 1 列の格子は波形が数 mm まで潰れ、行数違いの図で波形の
     # 倍率も揃わない (constrained layout は figure を広げず軸を縮めて収めるため)。
     fig = new_figure(figsize=(2.6 * n_col + 2.6, 1.8 * n_row + 0.9))
     axes = fig.subplots(n_row, n_col, squeeze=False, sharex=True)
-    ylim = _shared_ylim([access.potential(ds, comp_id) for ds in view.points])
+    ylim = _shared_ylim([access.potential(ds, comp_id) for ds in view.original_waves])
     unit = currents.PARAM_UNITS.get(view.axis or "", "")
 
     for c, value in enumerate(view.values):

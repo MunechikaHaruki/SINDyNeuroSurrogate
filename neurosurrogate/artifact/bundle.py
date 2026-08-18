@@ -88,7 +88,7 @@ def report_artifacts(
         summary_artifact(bundles),
         traces_artifact(view, names, eval_comp),
     ]
-    if len(view.points) > 1:
+    if len(view.original_waves) > 1:
         artifacts.append(metric_artifact(view, names, eval_comp, metric, metric_ylim))
     return Artifacts(tuple(artifacts))
 
@@ -96,7 +96,9 @@ def report_artifacts(
 def original_artifacts(view: SeriesResults) -> Artifacts:
     """原系の波形だけで決まる成果物をまとめる。"""
     use_style()
-    return Artifacts((current_preview_artifact(view.series.spec),))
+    # 描くのは**先頭点の電流** (掃引値を埋めた複製)。`series.spec` は掃引値の入って
+    # いないカタログ既定なので、掃引系列では実際に回した波形と食い違う。
+    return Artifacts((current_preview_artifact(view.series.points[0]),))
 
 
 def detail_artifacts(
@@ -114,7 +116,7 @@ def detail_artifacts(
     _check_eval_comp(view, eval_comp)
     comp_id = view.net.name_to_idx(eval_comp)
     original, surrogate = view.pair(
-        min(detail_point, len(view.points) - 1), view.column(run_id)
+        min(detail_point, len(view.original_waves) - 1), view.column(run_id)
     )
 
     latent = preprocessed_latent(bundle, view.net, original, comp_id)

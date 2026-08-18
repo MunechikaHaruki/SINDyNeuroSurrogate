@@ -1,10 +1,10 @@
 """学習 experiment (`TARGET_EXP`) の**成果物**: surrogate の pickle + meta.json。
 
-答えるのは「その run の surrogate」だけ (`load_bundles` / `bundles_for`) で、
+答えるのは「その run の surrogate」だけ (`load_bundles` / `load_sweep_bundles`) で、
 **どの run が居るか・選べるかは知らない** (→ `runs` module。読込可否の判定に
 `load_meta` だけ貸す)。
 評価 (波形) も知らない。選択 (代表 N 件) と run 軸 (sweep 兄弟込み M 件) の差は
-`bundles_for` だけが吸収する = UI は選んだ代表を渡すだけ。
+`load_sweep_bundles` だけが吸収する = UI は選んだ代表を渡すだけ。
 """
 
 import json
@@ -73,7 +73,7 @@ def _sweep_siblings(parent_id: str) -> list[str]:
     return [parent_id, *[r.info.run_id for r in children]]
 
 
-def bundles_for(selected_ids: list[str]) -> dict[str, SurrogateBundle]:
+def load_sweep_bundles(selected_ids: list[str]) -> dict[str, SurrogateBundle]:
     """選んだ代表 run 列 → run_id→surrogate。**選択 (代表 N 件) と run 軸 (兄弟込み
     M 件) の差はここだけが知る**: 各代表の hydra sweep 兄弟へ与えた順で広げ、選択が
     重なっても同じ run が 2 度出ないよう潰す。単発 preset は 1 件のまま。"""

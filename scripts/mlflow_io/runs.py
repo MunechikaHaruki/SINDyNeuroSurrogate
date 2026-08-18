@@ -24,7 +24,7 @@ ALL_PRESETS = "(すべて)"  # preset で絞らない選択 (dropdown の既定)
 _RUN_COLUMNS = ["tags.mlflow.runName", "comp_type", "run_id"]
 
 
-def selectable_runs(runs_df: pd.DataFrame, series_name: str | None, preset: str):
+def find_selectable_runs(runs_df: pd.DataFrame, series_name: str | None, preset: str):
     """run 表に出す行 = 選んだ系列を**実際に置換できる**代表 run (parent_id 欠損)
     だけを preset で絞ったもの。系列は名前から引く (呼ぶ側はカタログを触らない)。
     置換可否の判定は `sim.run.replaceable` (ドメイン側) が持ち、「1 本でも置換できれば
@@ -63,7 +63,8 @@ def load_runs():
     runs_df = runs_df.sort_values("start_time", ascending=False)
     runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
     # 親 run id (hydra --multirun の子が持つ mlflow.parentRunId)。親/単発は欠損 (NaN)。
-    # 代表判定 (parent_id.isna()) と sweep 兄弟導出 (surrogate.bundles_for) の唯一の鍵。
+    # 代表判定 (parent_id.isna()) と sweep 兄弟導出 (surrogate.load_sweep_bundles) の
+    # 唯一の鍵。
     # .get は親子 run が皆無で列自体が無い実験でも None → 全 NaN 列に落とす。
     runs_df["parent_id"] = runs_df.get("tags.mlflow.parentRunId")
     runs_df = runs_df[
