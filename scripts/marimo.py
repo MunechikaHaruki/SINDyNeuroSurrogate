@@ -118,7 +118,7 @@ def _(mo):
 def _():
     import marimo as mo
     from catalog import SERIES, comp_names
-    from mlflow_io.report import log_report_artifacts, run_report
+    from mlflow_io.report import write_report
     from mlflow_io.runs import ALL_PRESETS, find_selectable_runs, load_runs
 
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
@@ -133,10 +133,9 @@ def _():
         SERIES,
         comp_names,
         find_selectable_runs,
-        log_report_artifacts,
         mo,
-        run_report,
         runs_df,
+        write_report,
     )
 
 
@@ -155,25 +154,12 @@ def _(run_selector):
 
 
 @app.cell
-def _(
-    log_report_artifacts,
-    mo,
-    report_button,
-    run_report,
-    sel_ids,
-    series_name,
-    tuning_ui,
-):
-    # **レポート 1 本 = 評価 → 描画**。前半は重い (シミュ + 波形 run 保存)、後半は
-    # レポート run へ図を書くだけなので、どちらを走っているかだけ spinner に出す
-    # (進捗率は点数にも図の枚数にも依らず出せないので出さない)。
-    saved = []
+def _(mo, report_button, sel_ids, series_name, tuning_ui, write_report):
+    # **レポート 1 本 = 評価 → 描画**。進捗率は点数にも図の枚数にも依らず出せないので
+    # spinner だけを出し、run id の持ち回りは report module の内側に閉じる。
     if report_button.value and series_name:
-        with mo.status.spinner(title="評価中 (シミュ + 波形 run 保存)") as progress:
-            report_run_id = run_report(tuple(sel_ids), series_name)
-            progress.update(title="描画中 (図をレポート run へ保存)")
-            saved = log_report_artifacts(report_run_id, tuning_ui.value)
-    mo.vstack([mo.md(f"✅ `{p}`") for p in saved]) if saved else mo.md("(未実行)")
+        with mo.status.spinner(title="レポート作成中 (評価 → 図保存)"):
+            write_report(tuple(sel_ids), series_name, tuning_ui.value)
     return
 
 

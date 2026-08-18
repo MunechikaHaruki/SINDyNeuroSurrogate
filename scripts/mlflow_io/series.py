@@ -37,11 +37,31 @@ def _series_hash(series: EvalSeries, run_id: str | None) -> str:
     return series.hash() if run_id is None else f"{series.hash()}-{run_id}"
 
 
-def _log_series(name: str, column: SeriesRun) -> str:
-    """**1 列 = 1 run**。`series` param が掃引の単一源で、波形は同じ並びで置くだけ
-    (点ごとの識別子も仕様も保存しない)。平坦化した param は MLflow UI の索引、run 名は
-    表示だけ — 読み戻しは `series` / `run_id` と tag しか見ない。"""
-    series, run_id = column.series, column.run_id
+def _tags(series: EvalSeries, run_id: str | None) -> dict[str, str]:
+    """波形列の同一性・種類・原系への参照を MLflow tag へ落とす。"""
+    return {
+        _HASH_TAG: _series_hash(series, run_id),
+        "kind": _KIND_ORIGINAL if run_id is None else _KIND_SURROGATE,
+        **({} if run_id is None else {"original_hash": _series_hash(series, None)}),
+    }
+
+
+def run_series(
+    name: str,
+    series: EvalSeries,
+    run_id: str | None,
+    surrogate: SurrogateBundle | None,
+) -> str:
+    """1 列 → 波形 run の id。同じ掃引を同じ surrogate で回した run があればそれを返す
+    = **回さない** (シミュは決定的なので、鍵が一致した run は常に正しい)。
+    `run_id`/`surrogate` が両方 `None` なら原系。**探索と保存は分けない** — 対で
+    成り立つ不変条件なので割らない。"""
+    # 同じ掃引を同じ surrogate で回した run があるか (決定的なシミュ = 回し直さない)。
+    found = latest_by_tag(EVAL_EXP, _HASH_TAG, _series_hash(series, run_id))
+    if found is not None:
+        return found.info.run_id
+
+    column = run_column(series, run_id, surrogate)
     kind = _KIND_ORIGINAL if run_id is None else f"{_KIND_SURROGATE}:{run_id[:8]}"
     with mlflow.start_run(
         experiment_id=exp_id(EVAL_EXP), run_name=f"{name} [{kind}]"
@@ -61,17 +81,7 @@ def _log_series(name: str, column: SeriesRun) -> str:
                 **{f"cp.{k}": v for k, v in series.spec.current_params.items()},
             }
         )
-        mlflow.set_tags(
-            {
-                _HASH_TAG: _series_hash(series, run_id),
-                "kind": _KIND_ORIGINAL if run_id is None else _KIND_SURROGATE,
-                **(
-                    {}
-                    if run_id is None
-                    else {"original_hash": _series_hash(series, None)}
-                ),
-            }
-        )
+        mlflow.set_tags(_tags(series, run_id))
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / WAVES_FILE
             joblib.dump(
@@ -87,25 +97,8 @@ def _log_series(name: str, column: SeriesRun) -> str:
         return run.info.run_id
 
 
-def run_series(
-    name: str,
-    series: EvalSeries,
-    run_id: str | None,
-    surrogate: SurrogateBundle | None,
-) -> str:
-    """1 列 → 波形 run の id。同じ掃引を同じ surrogate で回した run があればそれを返す
-    = **回さない** (シミュは決定的なので、鍵が一致した run は常に正しい)。
-    `run_id`/`surrogate` が両方 `None` なら原系。**探索と保存は分けない** — 対で
-    成り立つ不変条件なので割らない。"""
-    # 同じ掃引を同じ surrogate で回した run があるか (決定的なシミュ = 回し直さない)。
-    found = latest_by_tag(EVAL_EXP, _HASH_TAG, _series_hash(series, run_id))
-    if found is not None:
-        return found.info.run_id
-    return _log_series(name, run_column(series, run_id, surrogate))
-
-
 def load_column(eval_run_id: str) -> SeriesRun:
-    """波形 run の id → **その run が保存した列そのもの** (`_log_series` の逆)。記述も
+    """波形 run の id → **その run が保存した列そのもの** (`run_series` の逆)。記述も
     run_id も param が持つので、呼ぶ側は id 1 つを指すだけでよい。"""
     params = mlflow.get_run(eval_run_id).data.params
     with tempfile.TemporaryDirectory() as tmp:

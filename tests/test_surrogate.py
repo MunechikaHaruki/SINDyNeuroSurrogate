@@ -126,7 +126,8 @@ def _spec_of(bundle: SurrogateBundle) -> SimSpec:
 
 def _simulate_view(series: EvalSeries, runs: SurrogateRuns) -> SeriesResults:
     """1 系列を run 軸に開いてその場で回す (保存を経由しない経路)。本番の描画入力は
-    MLflow から読む `mlflow_io.load_report` なので、この経路はテストにだけ居る。"""
+    MLflow から読む `mlflow_io.report` の内部実装に相当するので、この経路はテストに
+    だけ居る。"""
     return SeriesResults(
         run_column(series, None, None),
         tuple(
