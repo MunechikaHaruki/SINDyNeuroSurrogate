@@ -10,7 +10,7 @@ def _():
     from catalog import SERIES
     from mlflow_io.report import find_report_run, run_report
     from mlflow_io.runs import ALL_PRESETS, find_selectable_runs, load_runs
-    from mlflow_io.surrogate import load_sweep_bundles
+    from mlflow_io.surrogate import load_bundles
     from render import render_report
     from tuning import Tuning, comp_names
 
@@ -18,7 +18,7 @@ def _():
 
     # 残す操作は「run 選択」「評価」「描画」の 3 つ。CLI は持たない (二重管理を避け、
     # ここが唯一の実行経路)。**セルに置くのは widget と、それを plain 値に均す 1 行
-    # だけ** — 選択肢の導出も選択の広げ方も呼び先の 1 関数が持つ。
+    # だけ** — 選択肢の導出は呼び先の 1 関数が持つ。
     runs_df = load_runs()
     return (
         ALL_PRESETS,
@@ -28,7 +28,7 @@ def _():
         comp_names,
         find_report_run,
         find_selectable_runs,
-        load_sweep_bundles,
+        load_bundles,
         mo,
         render_report,
         run_report,
@@ -152,16 +152,15 @@ def _(filter_ui):
 
 @app.cell
 def _(run_selector):
-    # run 軸を導く単一源 = 選んだ代表 run (与えた順)。表示名は描画側が引き直す。
+    # run 軸を導く単一源 = 選んだ run (与えた順)。表示名は描画側が引き直す。
     sel_ids = list(run_selector.value["run_id"])
     return (sel_ids,)
 
 
 @app.cell
-def _(load_sweep_bundles, sel_ids):
-    # 選択 (代表 run) → run 軸の surrogate 群。sweep 兄弟への広げ方も表示名の解決も
-    # 呼び先が持つ (marimo は選んだ id を渡すだけ)。
-    bundles = load_sweep_bundles(sel_ids)
+def _(load_bundles, sel_ids):
+    # 選択 = run 軸そのもの → surrogate 群 (表示名の解決は呼び先が持つ)。
+    bundles = load_bundles(sel_ids)
     return (bundles,)
 
 

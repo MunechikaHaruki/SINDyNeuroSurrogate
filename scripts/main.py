@@ -50,7 +50,8 @@ def _log_config(cfg: DictConfig) -> None:
 
 def _ensure_sweep_parent(preset: str) -> str | None:
     """--multirun 時のみ: sweep の親 run を返す。無ければ yaml本体 (sweeper 抜き config)
-    を学習して親=代表を作る。子は parentRunId で紐付き run_selector は代表だけ出す。"""
+    を学習して親を作る。子は parentRunId で紐付く = **MLflow UI 上の grouping だけ**
+    (親も子も 1 モデルとして対等に選べる。評価側は親子を見ない)。"""
     if HydraConfig.get().mode != RunMode.MULTIRUN:
         return None
     sweep_id = str(HydraConfig.get().sweep.dir)
@@ -77,8 +78,8 @@ def main(cfg: DictConfig) -> None:
     with mlflow.start_run(run_name=_run_name(preset), tags=tags):
         # 出自 preset は学習に影響しない → pickle 外の MLflow param へ。
         mlflow.log_param("preset", preset)
-        # 単発 (parent_id なし) はこの run 自身が代表 → config yaml を残す。
-        # multirun の子は残さない (代表 = 親のみ)。
+        # 単発 (parent_id なし) は合成 config がこの run 固有 → yaml を残す。
+        # multirun の子は残さない (sweep 全体の合成 config は親が持つ)。
         if parent_id is None:
             _log_config(cfg)
         _fit_and_log(cfg)

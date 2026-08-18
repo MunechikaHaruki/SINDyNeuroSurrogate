@@ -25,16 +25,18 @@ _RUN_COLUMNS = ["tags.mlflow.runName", "comp_type", "run_id"]
 
 
 def find_selectable_runs(runs_df: pd.DataFrame, series_name: str | None, preset: str):
-    """run 表に出す行 = 選んだ系列を**実際に置換できる**代表 run (parent_id 欠損)
-    だけを preset で絞ったもの。系列は名前から引く (呼ぶ側はカタログを触らない)。
-    置換可否の判定は `sim.run.replaceable` (ドメイン側) が持ち、「1 本でも置換できれば
-    出す」という選択の方針だけがここ。`preset=ALL_PRESETS` で preset は絞らない。"""
+    """run 表に出す行 = 選んだ系列を**実際に置換できる** run を preset で絞ったもの。
+    系列は名前から引く (呼ぶ側はカタログを触らない)。置換可否の判定は
+    `sim.run.replaceable` (ドメイン側) が持ち、「1 本でも置換できれば出す」という
+    選択の方針だけがここ。`preset=ALL_PRESETS` で preset は絞らない。
+
+    **hydra の親子は見ない**: sweep の親子は MLflow UI 上の grouping で、比較の単位
+    ではない。sweep の 1 点も単独で選べる = 選んだ run がそのまま run 軸。"""
     if not series_name:
         return runs_df.iloc[:0][_RUN_COLUMNS]
     return runs_df[
         runs_df["meta"].map(lambda m: replaceable(SERIES[series_name], m))
         & ((preset == ALL_PRESETS) | (runs_df["preset"] == preset))
-        & runs_df["parent_id"].isna()
     ][_RUN_COLUMNS]
 
 
@@ -62,13 +64,8 @@ def load_runs():
     runs_df = all_runs_df.copy()
     runs_df = runs_df.sort_values("start_time", ascending=False)
     runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
-    # 親 run id (hydra --multirun の子が持つ mlflow.parentRunId)。親/単発は欠損 (NaN)。
-    # 代表判定 (parent_id.isna()) と sweep 兄弟導出 (surrogate.load_sweep_bundles) の
-    # 唯一の鍵。
-    # .get は親子 run が皆無で列自体が無い実験でも None → 全 NaN 列に落とす。
-    runs_df["parent_id"] = runs_df.get("tags.mlflow.parentRunId")
     runs_df = runs_df[
-        ["tags.mlflow.runName", "run_id", "start_time", "parent_id"]
+        ["tags.mlflow.runName", "run_id", "start_time"]
         + [c for c in runs_df.columns if "params" in c]
     ]
     # 各 run の同定情報を dataframe 列として付与 (mlflow params に依存せず meta.json
