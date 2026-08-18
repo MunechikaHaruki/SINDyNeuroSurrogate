@@ -69,16 +69,9 @@ def run_series(
         mlflow.log_params(
             {
                 "series": json.dumps(series.to_dict(), sort_keys=True, default=str),
-                "name": name,
                 # MLflow の param は文字列 → None は "None" と書かれて読み戻しで
                 # 区別できない。空文字を「無し」の綴りに統一する。
                 "run_id": run_id or "",
-                "axis": series.param or "",
-                "n_points": len(column.waves),
-                "target": series.spec.target,
-                "current_type": series.spec.current_type,
-                "dt": series.spec.dt,
-                **{f"cp.{k}": v for k, v in series.spec.current_params.items()},
             }
         )
         mlflow.set_tags(_tags(series, run_id))

@@ -165,10 +165,7 @@ def test_eval_runs_round_trip_without_resimulating(
     assert view.run_ids == [train_id]
     # 掃引の記述は結果から作り直せる (記述と結果が同じ対で往復する)
     assert view.series.hash() == series.hash()
-    # 系列名は結果 (`SeriesResults`) でなく波形 run 側にある = レポートはカタログを
-    # 参照しない (名前を付け替えても過去のレポートは読める)
     original_eval, surr_eval = _source_runs(report_id)
-    assert mlflow.get_run(original_eval).data.params["name"] == "hh_dc"
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.series.param, view.series.axis_values) == ("duration", [170.0, 190.0])
     orig, surr = view.pair(1, view.column(train_id))
