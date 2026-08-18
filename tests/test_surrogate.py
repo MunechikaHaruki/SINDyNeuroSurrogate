@@ -174,7 +174,7 @@ def test_sweep_metric_choices_are_all_extractable(sindy_view: SeriesResults) -> 
     """UI が出す掃引 metric 選択肢は全て取り出せる = 選んだのに生成されないキーで
     黙って nan の図が出ることが無い (未知キーは extract_metric が KeyError)。"""
     orig, surr = sindy_view.pair(0, sindy_view.column("r0"))
-    dm = DynamicMetrics(orig, surr, 0, sindy_view.dt)
+    dm = DynamicMetrics(orig, surr, 0, sindy_view.series.spec.dt)
     assert all(extract_metric(dm, key)[1] is not None for key in METRIC_KEYS)
     with pytest.raises(KeyError):
         extract_metric(dm, "latency_error")
@@ -186,7 +186,7 @@ def test_sindy_draws_all_artifacts(
     """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
     orig, surr = sindy_view.pair(0, sindy_view.column("r0"))
 
-    latent = preprocessed_latent(sindy, sindy_view.net, orig, 0)
+    latent = preprocessed_latent(sindy, sindy_view.series.spec.net, orig, 0)
     artifacts = [
         diff_artifact(orig, latent, surr, 0),
         simple_artifact(orig),
@@ -297,22 +297,27 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     view = SeriesResults(sindy_view.original, sindy_view.surrs)
     assert [f.name for f in original_artifacts(view)] == ["current"]
     runs = SurrogateRuns((("r0", sindy),))
-    waves = report_artifacts(view, runs, "soma", "spike_count", None)
+    waves = report_artifacts(view, runs, "soma", {})
     assert "traces" in {f.name for f in waves}
-    # 設定が実際の点数を超えていても、手元の最終点へ丸めて同じ保存名で描く。
-    moved = detail_artifacts(view, "r0", sindy, "soma", (), 99, 0, 0)
-    assert {artifact.name for artifact in moved} == {
+    detail = detail_artifacts(view, "r0", sindy, "soma", (), {})
+    assert {artifact.name for artifact in detail} == {
         "diff",
         "simple",
         "attractor",
         "metrics",
         "metrics_scalar",
     }
-    # 適用先に無い comp は設定誤りとして落とす。
+    # 手元の点数を超えた点 index も適用先に無い comp も、設定誤りとして落とす
+    # (端へ丸めると指定と違う点の図が同じ保存名で出る)。
+    for invalid_index in (-1, 99):
+        with pytest.raises(ValueError, match="点 index"):
+            detail_artifacts(
+                view, "r0", sindy, "soma", (), {"detail_point": invalid_index}
+            )
     with pytest.raises(ValueError, match="eval_comp"):
-        detail_artifacts(view, "r0", sindy, "nope", (), 0, 0, 0)
+        detail_artifacts(view, "r0", sindy, "nope", (), {})
     with pytest.raises(ValueError, match="eval_comp"):
-        report_artifacts(view, runs, "nope", "spike_count", None)
+        report_artifacts(view, runs, "nope", {})
 
 
 def test_surrogate_artifacts_come_from_the_run_itself_not_a_declaration(

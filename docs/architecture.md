@@ -19,7 +19,7 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
           targets.py             # MCMODELS (SimSpec.target が引く適用先モデル)
           currents.py            # 注入電流波形 + CURRENT_MAP
         spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない** — hash は保存の単位だけが持つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+param+values の 1 掃引 = **保存の単位でもある**。points は派生、to_dict/from_dict/hash で往復)。**記述 2 段が result の 波形 / SeriesRun と 1 対 1**。surrogate より前の層 (SurrogateMeta.dataset がこれ)
-        result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = mlflow_io.series の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。net/target/axis/values/dt は記述から読む。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る
+        result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = mlflow_io.series の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。**答えるのは「どの列か・どの点か」だけ** (column/pair/run_ids) = 適用先も掃引軸も刻み幅も素通しせず、要るものは view.series から直接引く。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る
         run.py                   # **仕様 × surrogate を掛ける唯一の段** (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate (1 シミュ → 波形) / run_column (series + run_id + surrogate → **1 列** `SeriesRun`。系列 → 結果の唯一の入口。両方 None が原系)。**回す前に決まること (どの run が置換できるか) は持たない** → SurrogateRuns.replacing。表示名は出てこない (学習 run の id は列の標識として通るだけ)。surrogate の後の層
         artifacts.py             # 結果 (`sim.result.SeriesResults`) → **単一 Artifact**。run 横断の summary/traces/metric を個別関数で生成。**点軸×run 軸の並びを成果物へ落とす唯一の場所**。成果物列の編成と詳細点の段付けは `artifact.bundle`
   surrogate/  meta.py            # SurrogateMeta (学習構造の単一源)
@@ -32,7 +32,7 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
   artifact/                      # `core` 同様に他ディレクトリを import しない基盤 (model.py / plotting.py)。bundle.py だけが合流点
              model.py            # Artifact (**自分を 1 つ書くだけ**の atomic な save。中身が拡張子を決める = 表 CSV / 図 PNG / dict JSON。置き場は知らない) / Artifacts (成果物の集合。save(path) で丸ごとその path へ)。**レポートを表す型は無い** = 段の構造は save_report が書く path そのもの
              plotting.py         # matplotlib 描画プリミティブと共通 style。ドメイン知識を持たない
-             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を Artifacts に束ね、渡された root 以下へ段ごとに書く (save_report = 直下 / models/<run名>/ / series/<run名>/ の 3 段。つまみも Artifact 1 件として直下へ = tuning.json)。**つまみ dict を解くのもここだけ** = 以降へ流れるのは plain 値、記録は解く前の姿のまま。描画失敗は変換せず呼び出し元へ伝播
+             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を Artifacts に束ね、渡された root 以下へ段ごとに書く (save_report = 直下 / models/<run名>/ / series/<run名>/ の 3 段。つまみも Artifact 1 件として直下へ = tuning.json)。**つまみ dict は必須の common / report / detail 3 階層**で、save_report が common を解き、特定の集約関数だけが使うキーと既定値はその関数が解く。記録は解く前の姿のまま。描画失敗は変換せず呼び出し元へ伝播
   waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
             dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)
             _tables.py           # その値を表に並べる (計算を増やさない)
@@ -59,7 +59,7 @@ docs/     poster/ slide/         # typst
 
 ```
 <レポート run>/
-  tuning.json                   # そのとき使ったつまみ (UI が持つ形のまま = dict の Artifact 1 件)
+  tuning.json                   # そのとき使ったつまみ (common / report / detail の階層を UI が持つ形のまま保存)
   traces.png metric.png         # run 横断 = この選択でしか出ない図
   summary.csv
   models/<MLflow run名>/          # 比べた 1 本ずつの自己記述図

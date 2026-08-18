@@ -47,12 +47,12 @@ def _metrics_df(
 ) -> pd.DataFrame:
     """系列の点軸に沿ったmetricの表 (列=run軸、列名は学習run名)。
     原系の値は run に依らないので `original` 列 1 本へ畳む。"""
-    comp_id = view.net.name_to_idx(comp_name)
+    comp_id = view.series.spec.net.name_to_idx(comp_name)
     rows: list[dict[str, float | None]] = []
-    for index, point in enumerate(view.values):
+    for index, point in enumerate(view.series.axis_values):
         row: dict[str, float | None] = {"point": point}
         for column, run_name in zip(view.surrs, names, strict=True):
-            dm = DynamicMetrics(*view.pair(index, column), comp_id, view.dt)
+            dm = DynamicMetrics(*view.pair(index, column), comp_id, view.series.spec.dt)
             value, orig_value = extract_metric(dm, metric_key)
             row[run_name] = value
             if orig_value is not None:
@@ -71,7 +71,7 @@ def metric_artifact(
     """点軸に沿ったメトリクス折れ線 (Original + 各run)。marimo非依存。"""
     names = runs.names
     data = _metrics_df(view, names, comp_name, metric_key)
-    axis = view.axis or "point"
+    axis = view.series.param or "point"
     fig = new_figure()
     ax = fig.subplots()
     if "original" in data.columns:
@@ -143,7 +143,7 @@ def traces_artifact(
     そのまま軸に落とすだけ。点が 1 つ (掃引軸なし) なら列見出しを出さない = 単発が
     「1 列の格子」に素直に退化する。
     """
-    comp_id = view.net.name_to_idx(comp_name)
+    comp_id = view.series.spec.net.name_to_idx(comp_name)
     n_col, n_row = len(view.original_waves), len(view.surrs)
     # **軸まわりは列数/行数に依らず一定の幅と高さを食う**ので、波形に使う分
     # (列数/行数比例) と別に固定オーバーヘッドを足す。比例分だけだと、行見出し +
@@ -152,10 +152,10 @@ def traces_artifact(
     fig = new_figure(figsize=(2.6 * n_col + 2.6, 1.8 * n_row + 0.9))
     axes = fig.subplots(n_row, n_col, squeeze=False, sharex=True)
     ylim = _shared_ylim([access.potential(ds, comp_id) for ds in view.original_waves])
-    unit = currents.PARAM_UNITS.get(view.axis or "", "")
+    unit = currents.PARAM_UNITS.get(view.series.param or "", "")
 
-    for c, value in enumerate(view.values):
-        if value is not None and view.axis:
+    for c, value in enumerate(view.series.axis_values):
+        if value is not None and view.series.param:
             axes[0][c].set_title(f"{value:.3g} {unit}".strip())
     for r, (column, (run_name, _)) in enumerate(zip(view.surrs, runs, strict=True)):
         axes[r][0].set_ylabel(run_name, fontsize="small")

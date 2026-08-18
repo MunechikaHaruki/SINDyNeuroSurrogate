@@ -110,7 +110,7 @@ def test_eval_runs_round_trip_without_resimulating(
         series, "abcdefgh-2"
     )
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
-    assert (view.axis, view.values) == ("duration", [170.0, 190.0])
+    assert (view.series.param, view.series.axis_values) == ("duration", [170.0, 190.0])
     orig, surr = view.pair(1, view.column(train_id))
     # 記述が往復し、点の計算入力からそのまま実行入力を復元できる
     # (波形は並びだけで点に対応する = 点ごとの仕様は保存しない)
@@ -169,7 +169,12 @@ def test_everything_drawn_lands_in_the_one_report_run(
     report_id = report_io.run_report((train_id,), "hh_dc")
     view = report_io.load_report(report_id)
     written = report_io.log_report_artifacts(
-        report_id, {"eval_comp": view.net.names[0]}
+        report_id,
+        {
+            "common": {"eval_comp": view.series.spec.net.names[0]},
+            "report": {},
+            "detail": {},
+        },
     )
     # run 内の名前は元の 3 段のまま: models/<run 名>/ は比べた 1 本ずつの自己記述図、
     # series/<run 名>/ は波形 1 本で決まるもの、直下が run 横断の産物。
@@ -197,7 +202,21 @@ def test_everything_drawn_lands_in_the_one_report_run(
     assert "tuning.json" in {a.path for a in client.list_artifacts(report_id)}
 
     with pytest.raises(ValueError, match="eval_comp"):
-        report_io.log_report_artifacts(report_id, {"eval_comp": "nope"})
+        report_io.log_report_artifacts(
+            report_id,
+            {"common": {"eval_comp": "nope"}, "report": {}, "detail": {}},
+        )
+
+    # 点軸の外を指した詳細図も設定誤り (端へ丸めて別の点の図を黙って出さない)
+    with pytest.raises(ValueError, match="点 index"):
+        report_io.log_report_artifacts(
+            report_id,
+            {
+                "common": {"eval_comp": view.series.spec.net.names[0]},
+                "report": {},
+                "detail": {"detail_point": 9},
+            },
+        )
 
 
 def _ids(runs: list[Run]) -> set[str]:

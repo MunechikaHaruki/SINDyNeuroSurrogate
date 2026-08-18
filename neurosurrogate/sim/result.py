@@ -19,7 +19,6 @@ from dataclasses import dataclass
 
 import xarray as xr
 
-from ..core.network import NeuronGraph
 from .spec import EvalSeries
 
 
@@ -54,8 +53,10 @@ class SeriesResults:
     構築時に保証する。
 
     **run_id は列が持つ**ので、束は id をキーに持たない (同じ id が 2 箇所に載らない)。
-    軸まわり (`net` / `target` / `axis` / `values` / `dt`) は記述を読むだけで、波形から
-    復元しない。
+
+    答えるのは**「どの列か・どの点か」だけ** (`column` / `pair` / `run_ids`)。適用先も
+    掃引軸も刻み幅も記述の側にあるので、束は素通しの読み口を持たない (要るものは
+    `view.series` から直接引く = 図が 1 つ増えるたびに束が太らない)。
 
     **由来は持たない**: 系列名も、どの評価 run から読んだかという MLflow の同一性も
     無い (解くのは `mlflow_io.report`)。
@@ -92,29 +93,6 @@ class SeriesResults:
         """置換系の run_id (列の順。原系は含まない)。"""
         return [str(column.run_id) for column in self.surrs]
 
-    @property
-    def net(self) -> NeuronGraph:
-        return self.series.spec.net
-
-    @property
-    def target(self) -> str:
-        return self.series.spec.target
-
-    @property
-    def axis(self) -> str | None:
-        """掃引した電流パラメータ名 (単発なら None)。図の x 軸。"""
-        return self.series.param
-
-    @property
-    def values(self) -> list[float | None]:
-        """点軸の値 (単発なら `[None]`)。列見出しと折れ線の x に使う。"""
-        return self.series.axis_values
-
-    @property
-    def dt(self) -> float:
-        """刻み幅 (点は変えない)。波形から時間軸を測る側が引く。"""
-        return self.series.spec.dt
-
     def column(self, run_id: str) -> SeriesRun:
         """学習 run の id → その置換系の列。"""
         for column in self.surrs:
@@ -123,5 +101,10 @@ class SeriesResults:
         raise KeyError(f"run {run_id} の列が束に無い")
 
     def pair(self, index: int, column: SeriesRun) -> tuple[xr.Dataset, xr.Dataset]:
-        """点 `index` の (原系, 置換系) の波形。"""
+        """点 `index` の (原系, 置換系) の波形。**点軸の外は設定誤りとして落とす** —
+        端へ丸めると指定した点と違う図が黙って出る (点軸の長さを知るのは束だけ)。"""
+        if not 0 <= index < len(self.original_waves):
+            raise ValueError(
+                f"点 index {index} が点軸 (0..{len(self.original_waves) - 1}) の外"
+            )
         return self.original_waves[index], column.waves[index]

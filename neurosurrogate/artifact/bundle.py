@@ -45,9 +45,10 @@ from .plotting import use_style
 
 
 def _check_eval_comp(view: SeriesResults, eval_comp: str) -> None:
-    """評価対象の comp 名が束の net に居ることを確かめる (図の側で検出させない)。"""
-    if eval_comp not in view.net.names:
-        raise ValueError(f"eval_comp {eval_comp!r} not in {view.net.names!r}")
+    """評価対象の comp 名が適用先に居ることを確かめる (図の側で検出させない)。"""
+    names = view.series.spec.net.names
+    if eval_comp not in names:
+        raise ValueError(f"eval_comp {eval_comp!r} not in {names!r}")
 
 
 def surrogate_artifacts(
@@ -83,8 +84,7 @@ def report_artifacts(
     view: SeriesResults,
     runs: SurrogateRuns,
     eval_comp: str,
-    metric: str,
-    metric_ylim: tuple[float, float] | None,
+    tuning: dict[str, Any],
 ) -> Artifacts:
     """run 横断のサマリ・波形格子・点軸メトリクスをまとめる。"""
     _check_eval_comp(view, eval_comp)
@@ -93,7 +93,21 @@ def report_artifacts(
         traces_artifact(view, runs, eval_comp),
     ]
     if len(view.original_waves) > 1:
-        artifacts.append(metric_artifact(view, runs, eval_comp, metric, metric_ylim))
+        # y レンジは 3 つのつまみ (auto/下限/上限) で入り、図には 1 値で渡る。
+        ylim = (
+            None
+            if tuning.get("yauto", True)
+            else (float(tuning["ymin"]), float(tuning["ymax"]))
+        )
+        artifacts.append(
+            metric_artifact(
+                view,
+                runs,
+                eval_comp,
+                str(tuning.get("metric", "spike_count")),
+                ylim,
+            )
+        )
     return Artifacts(tuple(artifacts))
 
 
@@ -110,24 +124,25 @@ def detail_artifacts(
     bundle: SurrogateBundle,
     eval_comp: str,
     view_comps: tuple[str, ...],
-    detail_point: int,
-    spike_orig: int,
-    spike_surr: int,
+    tuning: dict[str, Any],
 ) -> Artifacts:
     """選択した 1 点・1 モデルの波形成果物をまとめる。"""
     _check_eval_comp(view, eval_comp)
-    comp_id = view.net.name_to_idx(eval_comp)
+    net = view.series.spec.net
+    comp_id = net.name_to_idx(eval_comp)
     original, surrogate = view.pair(
-        min(detail_point, len(view.original_waves) - 1), view.column(run_id)
+        int(tuning.get("detail_point", 0)), view.column(run_id)
     )
 
-    latent = preprocessed_latent(bundle, view.net, original, comp_id)
-    dm = DynamicMetrics(original, surrogate, comp_id, view.dt)
+    latent = preprocessed_latent(bundle, net, original, comp_id)
+    dm = DynamicMetrics(original, surrogate, comp_id, view.series.spec.dt)
+    spike_orig = int(tuning.get("spike_orig", 0))
+    spike_surr = int(tuning.get("spike_surr", 0))
     return Artifacts(
         (
             diff_artifact(original, latent, surrogate, comp_id),
             simple_artifact(
-                original, [view.net.name_to_idx(comp) for comp in view_comps] or None
+                original, [net.name_to_idx(comp) for comp in view_comps] or None
             ),
             attractor_artifact(latent, surrogate, comp_id),
             metrics_artifact(dm, spike_orig, spike_surr),
@@ -152,28 +167,22 @@ def save_report(
     学習run名は `SurrogateRuns` がpathの1区切りとして有効と保証するため、凡例・表・
     保存段のすべてでそのまま使う。
 
-    **つまみ (`tuning`) を解くのはここだけ**: UI が持つ形のまま受け取り、以降へは
-    plain 値だけを渡す。記録 (`tuning.json`) は解く前の姿をそのまま添えるので、
-    UI と保存の間に中間の型を挟まない。既定値は UI が全キーを送らない場合の保険。
+    **つまみ (`tuning`) の階層を解くのはここだけ**: UI が持つ形のまま受け取り、
+    `common` は共有値へ、`report` / `detail` は対応する成果物集約関数へ渡す。各段だけが
+    使うキーの既定値はその関数が持つ。記録 (`tuning.json`) は解く前の姿をそのまま
+    添えるので、UI と保存の間に中間の型を挟まない。
     """
     if len(runs) != len(view.run_ids):
         raise ValueError(
             f"surrogate と結果の run 軸が不一致 ({len(runs)} != {len(view.run_ids)})"
         )
-    eval_comp = str(tuning.get("eval_comp") or "")
-    view_comps = tuple(tuning.get("view_comps") or ())
-    # y レンジは 3 つのつまみ (auto/下限/上限) で入り、図には 1 値で渡る。
-    ylim = (
-        None
-        if tuning.get("yauto", True)
-        else (float(tuning["ymin"]), float(tuning["ymax"]))
-    )
+    common = dict(tuning["common"])
+    eval_comp = str(common["eval_comp"])
+    view_comps = tuple(common["view_comps"])
     use_style()
     # つまみも成果物 1 件 (`tuning.json`) = 図・表と同じ経路で書く。
     Artifact("tuning", tuning).save(root)
-    report_artifacts(
-        view, runs, eval_comp, str(tuning.get("metric", "spike_count")), ylim
-    ).save(root)
+    report_artifacts(view, runs, eval_comp, dict(tuning["report"])).save(root)
     original_artifacts(view).save(root / "series/original")
     for run_id, (run_name, bundle) in zip(view.run_ids, runs, strict=True):
         surrogate_artifacts(bundle, view_comps).save(root / "models" / run_name)
@@ -183,7 +192,5 @@ def save_report(
             bundle,
             eval_comp,
             view_comps,
-            int(tuning.get("detail_point", 0)),
-            int(tuning.get("spike_orig", 0)),
-            int(tuning.get("spike_surr", 0)),
+            dict(tuning["detail"]),
         ).save(root / "series" / run_name)
