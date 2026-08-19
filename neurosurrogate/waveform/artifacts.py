@@ -50,13 +50,12 @@ def diff_artifact(
     preprocessed: xr.Dataset,
     surrogate: xr.Dataset,
     comp_id: int,
-    i_ext_ylim: tuple[float, float] | None = None,
 ) -> Artifact:
     """1 ペアの差分図を単一成果物として返す。"""
     return Artifact(
         "diff",
         draw_engine(
-            _panels_diff(original, preprocessed, surrogate, comp_id, i_ext_ylim),
+            _panels_diff(original, preprocessed, surrogate, comp_id),
             figsize=(
                 rcParams["figure.figsize"][0],
                 rcParams["figure.figsize"][1] * 1.3,
@@ -71,15 +70,28 @@ def simple_artifact(
     return Artifact("simple", draw_engine(_panels_simple(original, comps)))
 
 
-def metrics_artifact(
-    dm: DynamicMetrics,
-    spike_orig: int = 0,
-    spike_surr: int = 0,
-) -> Artifact:
-    """波形指標と、指定されたスパイクの特徴量を表にする。"""
+def _has_spike_pair(dm: DynamicMetrics, spike_orig: int, spike_surr: int) -> bool:
+    """指定されたスパイク対が両系列に存在するか。
+
+    **スパイクが 1 本も無い**のは正常 (静止した置換系など) なので、その場合は特徴量を
+    落として指標だけ返す。一方、スパイクはあるのに範囲外の番号を指されたのは指定ミス
+    なので、黙って行を落とさず知らせる (旧実装はどちらも同じく無言で落としていた)。
+    """
     n_orig, n_surr = n_spikes(dm)
+    if not n_orig or not n_surr:
+        return False
+    if not (0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr):
+        raise ValueError(
+            f"spike index が範囲外 "
+            f"(orig {spike_orig}/{n_orig}, surr {spike_surr}/{n_surr})"
+        )
+    return True
+
+
+def metrics_artifact(dm: DynamicMetrics, spike_orig: int, spike_surr: int) -> Artifact:
+    """波形指標と、指定されたスパイクの特徴量を表にする。"""
     metrics = waveform_summary_df(dm)
-    if 0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr:
+    if _has_spike_pair(dm, spike_orig, spike_surr):
         spike = spike_features_df(dm, spike_orig=spike_orig, spike_surr=spike_surr)
         spike.index.name = "metric"
         metrics = pd.concat([metrics, spike])
@@ -87,11 +99,10 @@ def metrics_artifact(
 
 
 def metrics_scalar_artifact(
-    dm: DynamicMetrics, spike_orig: int = 0, spike_surr: int = 0
+    dm: DynamicMetrics, spike_orig: int, spike_surr: int
 ) -> Artifact:
     metrics = waveform_summary(dm)
-    n_orig, n_surr = n_spikes(dm)
-    if 0 <= spike_orig < n_orig and 0 <= spike_surr < n_surr:
+    if _has_spike_pair(dm, spike_orig, spike_surr):
         metrics.update(spike_shape_corr(dm))
     return Artifact(
         "metrics_scalar",
@@ -150,15 +161,14 @@ def _panels_diff(
     preprocessed: xr.Dataset,
     surrogate: xr.Dataset,
     comp_id: int,
-    i_ext_ylim: tuple[float, float] | None = None,
 ) -> list[PanelSpec]:
     return [
         PanelSpec(
             "I_ext(t)\n[μA/cm²]",
             [TraceSpec(*access.i_ext(original), color="gold")],
-            # 未指定は評価刺激が読める発表用レンジ (train_raw と共有すると学習パルスの
-            # 最大値に引っ張られ、評価の step が潰れる)。
-            ylim=i_ext_ylim or (0.0, 5.0),
+            # 評価刺激が読める発表用レンジ (train_raw と揃えると学習パルスの最大値に
+            # 引っ張られ、評価の step が潰れる)。
+            ylim=(0.0, 5.0),
         ),
         PanelSpec(
             "v(t) [mV]",

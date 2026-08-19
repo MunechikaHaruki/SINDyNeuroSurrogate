@@ -298,9 +298,13 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     view = SeriesResults(sindy_view.original, sindy_view.surrs)
     assert [f.name for f in original_artifacts(view)] == ["current"]
     runs = SurrogateRuns((("r0", sindy),))
-    waves = report_artifacts(view, runs, "soma", {})
+    # つまみは marimo の widget が作るのと同じ**全キー**。既定値は widget にしか無く、
+    # ここは欠けたら KeyError で落ちる (握って別の値で描かない)。
+    report_tuning = {"metric": "spike_count", "yauto": True, "ymin": 0.0, "ymax": 1.0}
+    detail_tuning = {"detail_point": 0, "spike_orig": 0, "spike_surr": 0}
+    waves = report_artifacts(view, runs, "soma", report_tuning)
     assert "traces" in {f.name for f in waves}
-    detail = detail_artifacts(view, "r0", sindy, "soma", (), {})
+    detail = detail_artifacts(view, "r0", sindy, "soma", (), detail_tuning)
     assert {artifact.name for artifact in detail} == {
         "diff",
         "simple",
@@ -308,17 +312,24 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
         "metrics",
         "metrics_scalar",
     }
-    # 手元の点数を超えた点 index も適用先に無い comp も、設定誤りとして落とす
+    # 手元の点数を超えた点 index は設定誤りとして落とす
     # (端へ丸めると指定と違う点の図が同じ保存名で出る)。
     for invalid_index in (-1, 99):
         with pytest.raises(ValueError, match="点 index"):
             detail_artifacts(
-                view, "r0", sindy, "soma", (), {"detail_point": invalid_index}
+                view,
+                "r0",
+                sindy,
+                "soma",
+                (),
+                detail_tuning | {"detail_point": invalid_index},
             )
-    with pytest.raises(ValueError, match="eval_comp"):
-        detail_artifacts(view, "r0", sindy, "nope", (), {})
-    with pytest.raises(ValueError, match="eval_comp"):
-        report_artifacts(view, runs, "nope", {})
+    # 適用先に無い comp は名前解決がそのまま KeyError (先回りして検証しない)
+    with pytest.raises(KeyError):
+        detail_artifacts(view, "r0", sindy, "nope", (), detail_tuning)
+    # つまみのキーが欠けていれば、既定値で埋めずに KeyError
+    with pytest.raises(KeyError, match="detail_point"):
+        detail_artifacts(view, "r0", sindy, "soma", (), {})
 
 
 def test_surrogate_artifacts_come_from_the_run_itself_not_a_declaration(
@@ -352,14 +363,29 @@ def test_view_comps_limit_drawn_traces(
     sindy_view: SeriesResults, sindy: SurrogateBundle
 ) -> None:
     """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
-    指定するとパネル/trace が消え、学習 comp を指定した学習データ図は描ける。"""
+    指定するとパネル/trace が消える。
+
+    **学習データ図にも効く** — 以前は `comps` が署名にあるだけで body が soma 固定
+    (学会前のその場しのぎ) で、UI の選択が黙って無視されていた。"""
     ds = sindy_view.original_waves[0]
     limited, full = simple_artifact(ds, comps=[]).obj, simple_artifact(ds).obj
     assert isinstance(limited, Figure) and isinstance(full, Figure)
     assert len(limited.axes) < len(full.axes)
-    assert train_raw_artifact(sindy, comps=[_train_comp(sindy)]).name == (
-        train_raw_artifact(sindy).name
-    )
+
+    def n_traces(fig: object) -> int:
+        assert isinstance(fig, Figure)
+        return sum(len(ax.lines) for ax in fig.axes)
+
+    # 学習 comp を 1 つも含まない選択では comp 由来の trace が消える。
+    # train_raw は先頭 comp が要るゲート段ごと落ち、train_preprocessed は段は
+    # 潜在次元で決まるので段内の trace だけが消える → 数え方は trace で揃える。
+    for artifact in (train_raw_artifact, train_preprocessed_artifact):
+        assert n_traces(artifact(sindy, comps=[]).obj) < n_traces(artifact(sindy).obj)
+    assert len(train_raw_artifact(sindy, comps=[]).obj.axes) == 2  # type: ignore[union-attr]
+
+    # 学習 comp を名指しすれば全部描いたときと一致する (単体 hh は学習 comp 1 つ)
+    picked = train_raw_artifact(sindy, comps=[_train_comp(sindy)])
+    assert n_traces(picked.obj) == n_traces(train_raw_artifact(sindy).obj)
 
 
 def test_pca_metrics_report_per_component_and_cumulative_ratio(

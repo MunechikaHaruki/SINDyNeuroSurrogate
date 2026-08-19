@@ -14,8 +14,10 @@ import mlflow
 
 # `scripts/` は conftest が import path へ入れている。
 import mlflow_io.report as report_io  # noqa: E402
+import mlflow_io.runs as runs_io  # noqa: E402
 import mlflow_io.series as series_io  # noqa: E402
 import numpy as np
+import pandas as pd
 import pytest
 from mlflow.entities import Run
 from mlflow_io.surrogate import log_surrogate_model
@@ -101,10 +103,20 @@ def _artifact_paths(run_id: str) -> set[str]:
 def _tuning(
     eval_comp: str = "soma", detail: dict[str, int] | None = None
 ) -> dict[str, Any]:
+    """marimo の widget が作るのと**同じ全キー**を持つつまみ。
+
+    既定値は `mo.ui.dictionary` にしか無く、描画側は全キーが揃っている前提で解く
+    (欠ければ KeyError)。テストが部分 dict を渡すと UI と別のパスを通ってしまう。
+    """
     return {
         "common": {"eval_comp": eval_comp, "view_comps": []},
-        "report": {},
-        "detail": detail or {},
+        "report": {"metric": "spike_count", "yauto": True, "ymin": 0.0, "ymax": 1.0},
+        "detail": {
+            "detail_point": 0,
+            "spike_orig": 0,
+            "spike_surr": 0,
+            **(detail or {}),
+        },
     }
 
 
@@ -212,6 +224,36 @@ def test_write_report_rejects_series_no_run_can_replace(
         report_io.write_report((), "hh_dc", _tuning())
 
 
+def test_run_choices_are_derived_here_not_in_the_ui(
+    sindy: SurrogateBundle, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**選択肢の導出はこの module** = UI は MLflow の列名も絞りの条件も持たない。
+
+    「絞らない」は表示ラベルでなく `preset=None` で伝わる (以前は "(すべて)" という
+    日本語の表示文字列が sentinel を兼ねて I/O 層に置かれていた)。
+    """
+    monkeypatch.setattr(runs_io, "SERIES", {"hh_dc": _evals(sindy)})
+    runs_df = pd.DataFrame(
+        {
+            "tags.mlflow.runName": ["a", "b"],
+            "comp_type": ["hh", "hh"],
+            "run_id": ["r0", "r1"],
+            "meta": [sindy.meta, sindy.meta],
+            "preset": ["p1", None],  # preset 未記録の run も選択肢には出る
+        }
+    )
+    # 選択肢に「絞らない」は含まれない = それは UI の見せ方
+    assert runs_io.find_presets(runs_df) == ["p1"]
+
+    def ids(series_name: str | None, preset: str | None) -> list[str]:
+        selectable = runs_io.find_selectable_runs(runs_df, series_name, preset)
+        return list(selectable["run_id"])
+
+    assert ids("hh_dc", None) == ["r0", "r1"]  # None = preset で絞らない
+    assert ids("hh_dc", "p1") == ["r0"]
+    assert ids(None, None) == []  # 系列未選択なら選択肢は無い
+
+
 def test_everything_drawn_lands_in_the_one_report_run(
     eval_store: str, sindy: SurrogateBundle
 ) -> None:
@@ -252,7 +294,8 @@ def test_everything_drawn_lands_in_the_one_report_run(
     assert "tuning.json" in {a.path for a in client.list_artifacts(report_id)}
 
     report_ids = _report_ids()
-    with pytest.raises(ValueError, match="eval_comp"):
+    # 適用先に無い comp は名前解決の KeyError がそのまま出る (先回りして検証しない)
+    with pytest.raises(KeyError, match="nope"):
         report_io.write_report((train_id,), "hh_dc", _tuning("nope"))
     assert _report_ids() == report_ids
 

@@ -19,17 +19,27 @@ from neurosurrogate.surrogate.replace import applicable
 from . import TARGET_EXP, logger
 from .surrogate import load_meta
 
-ALL_PRESETS = "(すべて)"  # preset で絞らない選択 (dropdown の既定)
 # 選択に出す列 = 見分けに要る名前と置換対象の種類、それに選択の実体 (run_id)。
 _RUN_COLUMNS = ["tags.mlflow.runName", "comp_type", "run_id"]
 
 
-def find_selectable_runs(runs_df: pd.DataFrame, series_name: str | None, preset: str):
+def find_presets(runs_df: pd.DataFrame) -> list[str]:
+    """絞り込みに使える preset の一覧 (記録の無い run は除く)。
+
+    **「絞らない」を表す値は返さない** — それは選択肢でなく UI の見せ方なので、
+    ラベルごと marimo が持つ (`find_selectable_runs` には `preset=None` で伝わる)。
+    """
+    return sorted(runs_df["preset"].dropna().unique())
+
+
+def find_selectable_runs(
+    runs_df: pd.DataFrame, series_name: str | None, preset: str | None
+) -> pd.DataFrame:
     """run 表に出す行 = 選んだ系列を**実際に置換できる** run を preset で絞ったもの。
     系列は名前から引く (呼ぶ側はカタログを触らない)。置換可否の判定は
     `surrogate.replace.applicable` (ドメイン側) が持ち、meta だけで決まる = **学習
     成果を読まずに絞れる**。「1 本でも置換できれば出す」という選択の方針だけがここ。
-    `preset=ALL_PRESETS` で preset は絞らない。
+    `preset=None` で preset は絞らない。
 
     **hydra の親子は見ない**: sweep の親子は MLflow UI 上の grouping で、比較の単位
     ではない。sweep の 1 点も単独で選べる = 選んだ run がそのまま run 軸。"""
@@ -37,7 +47,7 @@ def find_selectable_runs(runs_df: pd.DataFrame, series_name: str | None, preset:
         return runs_df.iloc[:0][_RUN_COLUMNS]
     return runs_df[
         runs_df["meta"].map(lambda m: applicable(m, SERIES[series_name]))
-        & ((preset == ALL_PRESETS) | (runs_df["preset"] == preset))
+        & ((preset is None) | (runs_df["preset"] == preset))
     ][_RUN_COLUMNS]
 
 
@@ -51,7 +61,7 @@ def _safe_meta(run_id: str) -> SurrogateMeta | None:
         return None
 
 
-def load_runs():
+def load_runs() -> pd.DataFrame:
     experiment = mlflow.get_experiment_by_name(TARGET_EXP)
     if experiment is None:
         raise ValueError(
@@ -62,11 +72,12 @@ def load_runs():
     )
     if all_runs_df.empty:
         raise ValueError(f"Experiment '{TARGET_EXP}' にrunが存在しません。")
-    runs_df = all_runs_df.copy()
-    runs_df = runs_df.sort_values("start_time", ascending=False)
-    runs_df["start_time"] = runs_df["start_time"].dt.strftime("%m-%d %H:%M:%S")
+    # start_time は**新しい順に並べるためだけ**に使う (選択に出す列は `_RUN_COLUMNS`
+    # で、そこに時刻は入らない)。以前はここで表示用に整形していたが、その文字列が
+    # 表に出ることは一度も無かった。
+    runs_df = all_runs_df.copy().sort_values("start_time", ascending=False)
     runs_df = runs_df[
-        ["tags.mlflow.runName", "run_id", "start_time"]
+        ["tags.mlflow.runName", "run_id"]
         + [c for c in runs_df.columns if "params" in c]
     ]
     # 各 run の同定情報を dataframe 列として付与 (mlflow params に依存せず meta.json

@@ -5,9 +5,12 @@ app = marimo.App(width="columns")
 
 
 @app.cell(column=0)
-def _(ALL_PRESETS, SERIES, mo, runs_df):
+def _(SERIES, find_presets, mo, runs_df):
     # **run 表に掛かる 2 つの絞り** = 同じ 1 マスクなので 1 dictionary に束ねる。
     # 系列は run に依存させない**選択の起点** (逆向きだと run の絞りが近似になる)。
+    # 「絞らない」の**表示ラベルはここが持つ** (選択肢の導出は find_presets)。
+    # 値としては None が渡り、mlflow_io 側に日本語は出て行かない。
+    all_presets = "(すべて)"
     filter_ui = mo.ui.dictionary(
         {
             "series": mo.ui.dropdown(
@@ -16,8 +19,13 @@ def _(ALL_PRESETS, SERIES, mo, runs_df):
                 label="評価する系列 (1件)",
             ),
             "preset": mo.ui.dropdown(
-                options=[ALL_PRESETS, *sorted(runs_df["preset"].dropna().unique())],
-                value=ALL_PRESETS,
+                # 「絞らない」は**後に置く** = 同名の preset が居ても消えない
+                # (逆順だと preset 名と衝突したとき絞り解除ができなくなる)。
+                options={
+                    **{p: p for p in find_presets(runs_df)},
+                    all_presets: None,
+                },
+                value=all_presets,
                 label="preset (yaml)",
             ),
         }
@@ -119,19 +127,20 @@ def _():
     import marimo as mo
     from catalog import SERIES, comp_names
     from mlflow_io.report import write_report
-    from mlflow_io.runs import ALL_PRESETS, find_selectable_runs, load_runs
+    from mlflow_io.runs import find_presets, find_selectable_runs, load_runs
 
     from neurosurrogate.waveform.dynamics import METRIC_KEYS
 
     # 残す操作は「run 選択」「レポート」の 2 つ。CLI は持たない (二重管理を避け、
     # ここが唯一の実行経路)。**セルに置くのは widget と、それを plain 値に均す 1 行
-    # だけ** — 選択肢の導出は呼び先の 1 関数が持つ。
+    # だけ** — 選択肢の導出は呼び先の 1 関数が持つ (`find_presets` /
+    # `find_selectable_runs` / `comp_names`)。MLflow の列名はここに出さない。
     runs_df = load_runs()
     return (
-        ALL_PRESETS,
         METRIC_KEYS,
         SERIES,
         comp_names,
+        find_presets,
         find_selectable_runs,
         mo,
         runs_df,

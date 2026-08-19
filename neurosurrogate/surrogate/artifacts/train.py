@@ -50,16 +50,6 @@ def _shown(
     ]
 
 
-def _soma_ids(bundle: SurrogateBundle) -> list[int]:
-    """soma comp_id 一覧。全モデル共通で "soma" 固定命名 (neurons/__init__.py)。"""
-    nodes = bundle.meta.dataset.net.nodes
-    return [
-        i
-        for i in bundle.ansatz.train_source(bundle.meta).comp_ids
-        if nodes[i].name == "soma"
-    ]
-
-
 def _latents(bundle: SurrogateBundle, comp_ids: Sequence[int]) -> list[np.ndarray]:
     """comp ごとの潜在軌道 (time, n_components)。閉包項が実際に見た入力。"""
     source = bundle.ansatz.train_source(bundle.meta)
@@ -70,56 +60,51 @@ def _latents(bundle: SurrogateBundle, comp_ids: Sequence[int]) -> list[np.ndarra
 
 
 def train_raw_artifact(
-    bundle: SurrogateBundle,
-    comps: Sequence[int] | None = None,
-    i_ext_ylim: tuple[float, float] | None = None,
+    bundle: SurrogateBundle, comps: Sequence[int] | None = None
 ) -> Artifact:
     """生の学習軌道: 注入電流・学習 comp の V・表示先頭 comp のゲート。
 
-    どの comp の軌道を食わせたかを V パネルで見る。ゲートは表示 comp の先頭 1 個のみ
-    (全 comp 分を重ねると本数が comp×gate で潰れる。他 comp のゲートは同一多様体上
-    に乗る前提なので、被覆のズレは coverage 図が受け持つ)。i_ext_ylim は diff.png の
-    I_ext(t) と軸を揃えたいとき呼び出し側から渡す (発表用)。
+    どの comp の軌道を食わせたかを V パネルで見る。ゲートは**表示 comp の先頭 1 個**
+    のみ (全 comp 分を重ねると本数が comp×gate で潰れる。他 comp のゲートは同一多様体
+    上に乗る前提なので、被覆のズレは coverage 図が受け持つ)。
     """
     source = bundle.ansatz.train_source(bundle.meta)
-    shown = _shown(bundle, _soma_ids(bundle))
-    return Artifact(
-        "train_raw",
-        draw_engine(
-            [
-                PanelSpec(
-                    "I_ext(t)\n[μA/cm²]",
-                    [TraceSpec(*access.i_ext(bundle.train_xr), color="#FFC107")],
-                    ylim=i_ext_ylim,
-                ),
-                PanelSpec(
-                    "v(t) [mV]",
-                    [
-                        TraceSpec(
-                            *access.trace(bundle.train_xr, i, access.POTENTIAL_VAR),
-                            label=name,
-                        )
-                        for _, i, name in shown
-                    ],
-                ),
-                PanelSpec(
-                    f"gates ({shown[0][2]})",
-                    [
-                        TraceSpec(
-                            access.time(bundle.train_xr),
-                            source.gate(bundle.train_xr, shown[0][1])[:, k],
-                            # 表記はポスター本文 (m, n, h, ...) に揃える
-                            label=name.lower(),
-                        )
-                        for k, name in enumerate(
-                            bundle.meta.comp_type.gate_names[: source.n_gate]
-                        )
-                    ],
-                ),
-            ],
-            figsize=_figsize(3),
+    shown = _shown(bundle, comps)
+    panels = [
+        PanelSpec(
+            "I_ext(t)\n[μA/cm²]",
+            [TraceSpec(*access.i_ext(bundle.train_xr), color="#FFC107")],
         ),
-    )
+        PanelSpec(
+            "v(t) [mV]",
+            [
+                TraceSpec(
+                    *access.trace(bundle.train_xr, i, access.POTENTIAL_VAR),
+                    label=name,
+                )
+                for _, i, name in shown
+            ],
+        ),
+    ]
+    # 表示 comp が学習 comp と 1 つも重ならなければゲート段ごと落とす (先頭が無い)。
+    if shown:
+        panels.append(
+            PanelSpec(
+                f"gates ({shown[0][2]})",
+                [
+                    TraceSpec(
+                        access.time(bundle.train_xr),
+                        source.gate(bundle.train_xr, shown[0][1])[:, k],
+                        # 表記はポスター本文 (m, n, h, ...) に揃える
+                        label=name.lower(),
+                    )
+                    for k, name in enumerate(
+                        bundle.meta.comp_type.gate_names[: source.n_gate]
+                    )
+                ],
+            )
+        )
+    return Artifact("train_raw", draw_engine(panels, figsize=_figsize(len(panels))))
 
 
 def train_preprocessed_artifact(
@@ -134,7 +119,7 @@ def train_preprocessed_artifact(
     inputs = bundle.ansatz.train_inputs(
         bundle.meta, bundle.train_xr, bundle.preprocessor
     )
-    shown = _shown(bundle, _soma_ids(bundle))
+    shown = _shown(bundle, comps)
     panels = [
         PanelSpec(
             name,

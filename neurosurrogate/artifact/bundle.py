@@ -44,13 +44,6 @@ from .model import Artifact, Artifacts
 from .plotting import use_style
 
 
-def _check_eval_comp(view: SeriesResults, eval_comp: str) -> None:
-    """評価対象の comp 名が適用先に居ることを確かめる (図の側で検出させない)。"""
-    names = view.series.spec.net.names
-    if eval_comp not in names:
-        raise ValueError(f"eval_comp {eval_comp!r} not in {names!r}")
-
-
 def surrogate_artifacts(
     bundle: SurrogateBundle, view_comps: tuple[str, ...] = ()
 ) -> Artifacts:
@@ -87,7 +80,6 @@ def report_artifacts(
     tuning: dict[str, Any],
 ) -> Artifacts:
     """run 横断のサマリ・波形格子・点軸メトリクスをまとめる。"""
-    _check_eval_comp(view, eval_comp)
     artifacts = [
         summary_artifact(runs),
         traces_artifact(view, runs, eval_comp),
@@ -95,18 +87,10 @@ def report_artifacts(
     if len(view.original_waves) > 1:
         # y レンジは 3 つのつまみ (auto/下限/上限) で入り、図には 1 値で渡る。
         ylim = (
-            None
-            if tuning.get("yauto", True)
-            else (float(tuning["ymin"]), float(tuning["ymax"]))
+            None if tuning["yauto"] else (float(tuning["ymin"]), float(tuning["ymax"]))
         )
         artifacts.append(
-            metric_artifact(
-                view,
-                runs,
-                eval_comp,
-                str(tuning.get("metric", "spike_count")),
-                ylim,
-            )
+            metric_artifact(view, runs, eval_comp, str(tuning["metric"]), ylim)
         )
     return Artifacts(tuple(artifacts))
 
@@ -127,17 +111,14 @@ def detail_artifacts(
     tuning: dict[str, Any],
 ) -> Artifacts:
     """選択した 1 点・1 モデルの波形成果物をまとめる。"""
-    _check_eval_comp(view, eval_comp)
     net = view.series.spec.net
     comp_id = net.name_to_idx(eval_comp)
-    original, surrogate = view.pair(
-        int(tuning.get("detail_point", 0)), view.column(run_id)
-    )
+    original, surrogate = view.pair(int(tuning["detail_point"]), view.column(run_id))
 
     latent = preprocessed_latent(bundle, net, original, comp_id)
     dm = DynamicMetrics(original, surrogate, comp_id, view.series.spec.dt)
-    spike_orig = int(tuning.get("spike_orig", 0))
-    spike_surr = int(tuning.get("spike_surr", 0))
+    spike_orig = int(tuning["spike_orig"])
+    spike_surr = int(tuning["spike_surr"])
     return Artifacts(
         (
             diff_artifact(original, latent, surrogate, comp_id),
@@ -168,9 +149,11 @@ def save_report(
     保存段のすべてでそのまま使う。
 
     **つまみ (`tuning`) の階層を解くのはここだけ**: UI が持つ形のまま受け取り、
-    `common` は共有値へ、`report` / `detail` は対応する成果物集約関数へ渡す。各段だけが
-    使うキーの既定値はその関数が持つ。記録 (`tuning.json`) は解く前の姿をそのまま
-    添えるので、UI と保存の間に中間の型を挟まない。
+    `common` は共有値へ、`report` / `detail` は対応する成果物集約関数へ渡す。
+    **キーは全部必須で、既定値も検証もここには無い** — 既定値は `mo.ui.dictionary` が
+    持つ唯一の場所で、欠けていれば `KeyError` がそのまま出る (握って別の値で描くより、
+    どのキーが来ていないかがそのまま分かる方がよい)。記録 (`tuning.json`) は解く前の
+    姿をそのまま添えるので、UI と保存の間に中間の型を挟まない。
     """
     if len(runs) != len(view.run_ids):
         raise ValueError(
