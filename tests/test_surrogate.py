@@ -466,6 +466,19 @@ def test_hybrid_training_scope_covers_all_replaceable_comps() -> None:
     assert surrogate.training_gates()[0].shape[1] == n_gate
 
 
+def test_params_match_is_answered_by_the_ansatz(sindy: Surrogate) -> None:
+    """適用範囲の params 判定は**定式化の性質**なので ansatz が答える (spec 側に
+    種別ごとの表を置かない): sindy は係数へ params を焼き込むので一致必須、
+    hybrid は physics が params を入力で受けるので不問。"""
+    assert sindy.spec.ansatz().params_match((1.0,), (1.0,))
+    assert not sindy.spec.ansatz().params_match((1.0,), (2.0,))
+    assert (
+        dc_replace(sindy.spec, surrogate_type="hybrid")
+        .ansatz()
+        .params_match((1.0,), (2.0,))
+    )
+
+
 def test_ae_preprocessor_path_runs() -> None:
     """AE 経路の smoke (pca 固定の他テストが踏まない encode/decode を通す)。
     epochs を切り詰めるので再構成品質は問わない — 形状と潜在次元の整合のみ。"""

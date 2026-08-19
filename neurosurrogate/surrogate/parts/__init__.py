@@ -136,6 +136,14 @@ class Ansatz(ABC, Generic[C]):
     """
 
     @abstractmethod
+    def params_match(self, train: tuple | None, node: tuple | None) -> bool:
+        """学習ノードの回路 params で同定したものを、params が `node` のノードへ
+        適用してよいか。**定式化そのものの性質** (回路 params を入力として受ける
+        形なら不変、係数へ焼き込む形なら一致が要る) なので契約に載せる。
+        `SurrogateSpec.replaceable` が適用範囲の判定に使う。"""
+        ...
+
+    @abstractmethod
     def n_train_gate(self, spec: SurrogateSpec) -> int:
         """先頭から学習するゲート本数 (残りは physics)。定式化ごとに違う唯一の学習範囲
         — comp 選択は定式化に依らず `scope.train_comp_ids` が共通で組む。"""

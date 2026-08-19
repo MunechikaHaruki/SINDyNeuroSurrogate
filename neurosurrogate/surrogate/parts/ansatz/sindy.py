@@ -18,6 +18,11 @@ if TYPE_CHECKING:
 
 
 class SINDyAnsatz(Ansatz[SINDyBundle]):
+    def params_match(self, train: tuple | None, node: tuple | None) -> bool:
+        """params 完全一致のノードにしか適用できない: dV も含め全部を係数へ同定する
+        ので、回路 params が ξ に焼き込まれている。"""
+        return train == node
+
     def n_train_gate(self, spec: SurrogateSpec) -> int:
         """全ゲートを学習 (V+gate を丸ごと同定 → physics へ分離する列が無い)。"""
         return len(spec.comp_type.gate_names)

@@ -110,6 +110,11 @@ class HybridAnsatz(Ansatz[C]):
     ``dlatent`` だけ。学習列と kernel の組立順序はこの interface の内側に置く。
     """
 
+    def params_match(self, train: tuple | None, node: tuple | None) -> bool:
+        """回路 params を問わず適用できる: physics 側が params を**入力として**受け、
+        閉包項は潜在ゲートの形だけを担うので係数に params が焼き込まれない。"""
+        return True
+
     def _physics(self, spec: SurrogateSpec) -> _HybridPhysics:
         return HYBRID_PHYSICS[spec.physics_type or spec.comp_type.name]
 

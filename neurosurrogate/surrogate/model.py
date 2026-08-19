@@ -11,7 +11,6 @@ lazy に再現する (`training_data`)。load 後でも触れ、参照しなけ�
 """
 
 import json
-from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 from functools import cached_property
@@ -48,11 +47,6 @@ _PREPROCESSOR_CLS: dict[str, type[Preprocessor]] = {
     "pca": PCAPreprocessor,
     "ae": AEPreprocessor,
 }
-_PARAMS_MATCH: dict[str, Callable[[tuple | None, tuple | None], bool]] = {
-    "sindy": lambda train, node: train == node,
-    "hybrid": lambda train, node: True,
-    "ude": lambda train, node: True,
-}
 
 
 @dataclass(frozen=True)
@@ -66,6 +60,11 @@ class SurrogateSpec:
     comp_type: CompartmentType
     train_comp_id: int | None
     physics_type: str | None
+
+    def ansatz(self) -> Ansatz[Any]:
+        """定式化ストラテジ。**dispatch キーを解くのはここだけ** (状態なしなので
+        毎回作ってよい)。適用範囲の判定 (`replaceable`) も学習も同じ実体に問う。"""
+        return _SURR_CLS[self.surrogate_type]()
 
     def surr_type_name(self) -> str:
         """置換後 CompartmentType の衝突しない名前。"""
@@ -87,7 +86,7 @@ class SurrogateSpec:
         """comp が適用範囲にあるか (種類一致かつ params 両立)。"""
         if comp.type != self.comp_type:
             return False
-        return _PARAMS_MATCH[self.surrogate_type](
+        return self.ansatz().params_match(
             self.train_comp().resolved_params, comp.resolved_params
         )
 
@@ -198,8 +197,8 @@ class Surrogate:
 
     @cached_property
     def _ansatz(self) -> Ansatz[Any]:
-        """定式化ストラテジ。仕様の type から解決する (状態なし → 保存不要)。"""
-        return _SURR_CLS[self.spec.surrogate_type]()
+        """定式化ストラテジ (spec が解決する。状態なし → 保存不要)。"""
+        return self.spec.ansatz()
 
     @cached_property
     def _preprocessor_cls(self) -> type[Preprocessor]:
