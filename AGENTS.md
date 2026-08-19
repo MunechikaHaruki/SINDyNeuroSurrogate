@@ -40,13 +40,20 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 `neurosurrogate/` = ドメイン層 (marimo/MLflow 非依存)、`scripts/` = Hydra/MLflow/marimo の入口、
 描画成果物も評価結果本体も MLflow (図はレポート run の artifact)。
 
-公開範囲の綴りは機械検査される (`tests/test_conventions.py`): **module 直下の名前は他 module から
-参照されるものだけが `_` 無し**、自分の module 内でしか使わないものは `_` 始まり。動的に呼ばれる
+これらは全部 `tests/test_conventions.py` で**機械検査される** — 依存の向き (層の表 `_LAYERS` が
+そのまま実行される)、ドメイン層が marimo/MLflow/Hydra を import しないこと、`__all__` の不在、
+そして公開範囲の綴り: **名前も module 名も、外から参照されるものだけが `_` 無し**。動的に呼ばれる
 入口 (Hydra entry / marimo app / `vars()` ごと注入する `compartments/{hh,traub}.py`) はテスト側の
-免除リストに明記する。
+免除リストに明記する。落ちたらテストを緩めるのでなくコードを直す。
 
 各ディレクトリの責務・ファイル単位の役割・設定ファイル (`scripts/conf/`, `scripts/catalog.py`) の規約は
 **`docs/architecture.md`** に分離。コード配置や設定の詳細が要るときにそれを読む。
+
+## Design principles
+
+リファクタ・設計変更の**判断基準** (抽象を消すか / class を割るか / 中間の型を作らないか、および
+リファクタの進め方と止まる条件) は **`docs/agents/design-principles.md`**。設計に手を入れる前に読む。
+上の機械検査が「守れているか」を見るのに対し、あれは「どちらへ倒すか」を決める。
 
 ## Agent skills
 
@@ -71,3 +78,8 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## RTK
+
+シェルコマンドの `rtk` 前置は出力を縮めるだけで**終了コードは素通し** = exit≠0 は rtk 起因でない。
+出力が変なときだけ `rtk proxy <cmd>` の素の出力と比べる (コマンド一覧はグローバル設定が持つ)。
