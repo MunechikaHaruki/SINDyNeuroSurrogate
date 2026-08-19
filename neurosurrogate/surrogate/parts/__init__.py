@@ -1,20 +1,102 @@
+"""`Surrogate` が差し替える 3 構成要素の**契約をここに集約する**。
+
+`Closure` (学習成果物) / `Preprocessor` (ゲート↔潜在変換) / `Ansatz` (方程式の骨格)
+の 3 つは互いを参照し合う (Ansatz は両者を受けて kernel を組み、型引数で Closure に
+束縛される) ので、契約は 1 モジュールに置く = パッケージ間の抽象レベルの依存辺を
+持たない。**実装は各サブパッケージ** (`ansatz/` `closure/` `preprocessor/`) に並び、
+`from .. import Closure` のように上から契約を引く。
+
+3 つは対等ではない: `closure` / `preprocessor` が leaf、`ansatz` が両者を合成する。
+"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
+import jax.numpy as jnp
 import numpy as np
 import sympy as sp
 import xarray as xr
 
 from ...core import access
 from ...core.network import CompartmentType
-from ..closure import Closure
-from ..preprocessor import Preprocessor
+from ...core.opcost import OpCost
 
 if TYPE_CHECKING:
     from ..model import SurrogateSpec
+
+
+class Closure(ABC):
+    @abstractmethod
+    def metrics(self) -> dict[str, float]:
+        """MLflow へ流すモデル指標 (表現ごとに中身は違う)。bundle が型を知らない
+        まま呼ぶ窓口。"""
+        ...
+
+    @abstractmethod
+    def opcost(self) -> OpCost:
+        """閉包項 1 回の評価コスト。構成は表現ごとに違うが問い方は引数なしで同一 →
+        全実装が持ち ansatz が一律に呼ぶので契約に載せる。"""
+        ...
+
+
+def _reconstruction_stats(
+    encode: Callable, decode: Callable, train_gate: np.ndarray
+) -> tuple[float, float]:
+    reconstructed = np.asarray(decode(encode(train_gate)))
+    mse = float(np.mean((train_gate - reconstructed) ** 2))
+    return mse, mse / float(np.var(train_gate))
+
+
+class Preprocessor(ABC):
+    """ゲート ↔ 潜在の可逆変換。学習結果を np で保持し直列化可能。"""
+
+    # 以下は _set_fit_artifacts が fit 末尾で設定する (__init__ 引数ではない)。
+    reconstruction_mse: float
+    reconstruction_mse_ratio: float
+    # 学習データ先頭の潜在 = 置換シミュの初期ゲート値。
+    gate_inits: list
+
+    @classmethod
+    @abstractmethod
+    def fit(cls, train_gate: np.ndarray, n_components: int, spec: dict) -> Preprocessor:
+        """潜在次元 n_components (全種共通) と spec (種別固有 hyperparams) で学習。"""
+        ...
+
+    @abstractmethod
+    def encode(self, x: np.ndarray) -> np.ndarray:
+        """ゲート → 潜在 (診断 / 学習データ変換)。"""
+        ...
+
+    @abstractmethod
+    def decode(self, state: jnp.ndarray) -> jnp.ndarray:
+        """潜在 → ゲート (kernel で毎ステップ呼ぶ)。"""
+        ...
+
+    @abstractmethod
+    def metrics(self) -> dict: ...
+
+    @abstractmethod
+    def opcost(self) -> OpCost:
+        """decode 1 回の演算コスト (hybrid kernel の decode 分)。"""
+        ...
+
+    @property
+    @abstractmethod
+    def n_features(self) -> int:
+        """encode 入力のゲート数 (transform_gate の幅整合用)。"""
+        ...
+
+    def _set_fit_artifacts(self, train_gate: np.ndarray) -> None:
+        """encode/decode 確定後に再構成統計と初期潜在を埋める (fit 末尾で呼ぶ)。"""
+        self.reconstruction_mse, self.reconstruction_mse_ratio = _reconstruction_stats(
+            self.encode, self.decode, train_gate
+        )
+        self.gate_inits = self.encode(train_gate)[0].tolist()
+
 
 C = TypeVar("C", bound=Closure)
 

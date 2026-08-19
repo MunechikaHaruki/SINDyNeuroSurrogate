@@ -24,7 +24,7 @@ from ..artifact.model import Artifact
 from ..artifact.plotting import new_figure, place_legend
 from ..core import access
 from ..core.diverge import diverged
-from ..surrogate.diagnostics import surrogate_metrics
+from ..surrogate.model import Surrogate
 from ..surrogate.runs import SurrogateRuns
 from ..waveform.dynamics import DynamicMetrics, extract_metric
 from .catalog import currents
@@ -171,6 +171,30 @@ def traces_artifact(
 # --- レポート 1 本の成果物 ------------------------------------------------------
 
 
+def _surrogate_metrics(surrogate: Surrogate) -> dict:
+    """サマリ表へ流す学習側指標。closure/preprocessor 固有指標 + 演算コスト差分
+    (`cost/*`)。**cost/* のキー空間組立はここの関心** (OpCost 代数側は持たない)。
+    surr のコストは `surr_comp_type` に焼き込み済 (別経路を持たない)。original が
+    無ければ差分は出さない。"""
+    orig = surrogate.spec.original_opcost()
+    cost: dict[str, int] = {}
+    if orig is not None:
+        surr = surrogate.surr_comp_type.opcost
+        assert surr is not None  # surr_comp_type は必ず opcost を焼き込む
+        surr_d = surr.to_dict()
+        orig_d = orig.to_dict()
+        cost = {
+            **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
+            **{f"cost/original/{k}": v for k, v in orig_d.items()},
+            **{f"cost/surr-orig/{k}": surr_d[k] - orig_d[k] for k in orig_d},
+        }
+    return {
+        **surrogate.closure.metrics(),
+        **surrogate.preprocessor.metrics(),
+        **cost,
+    }
+
+
 def summary_artifact(runs: SurrogateRuns) -> Artifact:
     """比べた N 本のサマリ表 (**由来は学習 run 群**だけ = 波形を読まない)。
     run 横断 = 中身が「今 何本を比べているか」で変わるのでレポートに属する。"""
@@ -178,7 +202,7 @@ def summary_artifact(runs: SurrogateRuns) -> Artifact:
         "summary",
         pd.DataFrame(
             [
-                {"label": run_name, **surrogate_metrics(bundle)}
+                {"label": run_name, **_surrogate_metrics(bundle)}
                 for run_name, bundle in runs
             ]
         ).set_index("label"),

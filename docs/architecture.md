@@ -24,9 +24,10 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
         artifacts.py             # 結果 (`sim.result.SeriesResults`) → **単一 Artifact**。run 横断の summary/traces/metric を個別関数で生成。**点軸×run 軸の並びを成果物へ落とす唯一の場所**。成果物列の編成と詳細点の段付けは `artifact.bundle`
   surrogate/  model.py           # config→SurrogateSpec の唯一の変換。SurrogateSpec が学習・適用範囲を、Surrogate が fit/load/save・学習済み成果物・Dataset への適用を答える
               runs.py            # 一意な名前と選択順を持つ SurrogateRuns。評価系列へ適用できる run 軸への絞り込み
-              ansatz/            # __init__.py (Ansatz/学習入力) / sindy.py / hybrid.py / ude.py / _sindy_fit.py。hybrid.py が物理骨格と SINDy hybrid を集約
-              closure/           # __init__.py (Closure) / ude.py / sindy/{__init__,roles,entry,_catalog}.py
-              preprocessor/      # __init__.py (Preprocessor/再構成統計) / pca.py / autoencoder.py
+              parts/  __init__.py # Surrogate が差し替える 3 構成要素の**契約を集約**: Closure / Preprocessor (+再構成統計) / Ansatz・TrainInputs。3 つは互いを参照する (Ansatz が両者を受け、型引数で Closure に束縛) ので契約は 1 モジュール = 抽象レベルのパッケージ間依存辺を持たない。実装は下の 3 パッケージが `from .. import` で引く。対等ではなく closure/preprocessor が leaf、ansatz が両者を合成
+                ansatz/          # sindy.py / hybrid.py / ude.py / _sindy_fit.py。hybrid.py が物理骨格と SINDy hybrid を集約
+                closure/         # ude.py / sindy/{__init__,roles,entry,_catalog}.py
+                preprocessor/    # pca.py / autoencoder.py
               artifacts/         # surrogate の自己記述成果物を **単一 Artifact** ずつ返す。train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree + 表現の型で振り分ける closure_artifact / preprocessor_artifact (対応する図が無ければ None)
   artifact/                      # `core` 同様に他ディレクトリを import しない基盤 (model.py / plotting.py)。bundle.py だけが合流点
              model.py            # Artifact (**自分を 1 つ書くだけ**の atomic な save。中身が拡張子を決める = 表 CSV / 図 PNG / dict JSON。置き場は知らない) / Artifacts (成果物の集合。save(path) で丸ごとその path へ)。**レポートを表す型は無い** = 段の構造は save_report が書く path そのもの

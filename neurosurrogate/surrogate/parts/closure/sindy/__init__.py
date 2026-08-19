@@ -14,8 +14,8 @@ import numpy as np
 import pysindy as ps
 import sympy as sp
 
-from ....core.opcost import OpCost
-from .. import Closure
+from .....core.opcost import OpCost
+from ... import Closure
 
 if TYPE_CHECKING:
     from collections.abc import Callable

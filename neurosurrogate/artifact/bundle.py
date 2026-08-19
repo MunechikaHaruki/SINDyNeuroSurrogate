@@ -10,6 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import xarray as xr
+
+from ..core.coords import transform_gate
+from ..core.network import NeuronGraph
 from ..sim.artifacts import (
     metric_artifact,
     summary_artifact,
@@ -28,7 +32,6 @@ from ..surrogate.artifacts.train import (
     train_recon_artifact,
     train_v_coverage_artifact,
 )
-from ..surrogate.diagnostics import preprocessed_latent
 from ..surrogate.model import Surrogate
 from ..surrogate.runs import SurrogateRuns
 from ..waveform.artifacts import (
@@ -102,6 +105,21 @@ def original_artifacts(view: SeriesResults) -> Artifacts:
     return Artifacts((current_preview_artifact(view.series.points[0]),))
 
 
+def _preprocessed_latent(
+    surrogate: Surrogate, net: NeuronGraph, ds: xr.Dataset, comp_id: int
+) -> xr.Dataset:
+    """comp_id ノードの原系ゲートを surrogate の latent 空間へ射影した (V, latent...)
+    xr (詳細図用)。置換対象外 (学習ドメイン外) は latent 比較不可。
+    """
+    comp = net.nodes[comp_id]
+    if not surrogate.spec.replaceable(comp):
+        raise ValueError(
+            f"comp {comp.name!r} is outside the trained domain -> latent comparison "
+            f"not possible (trained type {surrogate.spec.comp_type.name!r})"
+        )
+    return transform_gate(surrogate.preprocessor, ds, comp_id)
+
+
 def detail_artifacts(
     view: SeriesResults,
     run_id: str,
@@ -117,7 +135,7 @@ def detail_artifacts(
         int(tuning["detail_point"]), view.column(run_id)
     )
 
-    latent = preprocessed_latent(surrogate, net, original, comp_id)
+    latent = _preprocessed_latent(surrogate, net, original, comp_id)
     dm = DynamicMetrics(original, surrogate_wave, comp_id, view.series.spec.dt)
     spike_orig = int(tuning["spike_orig"])
     spike_surr = int(tuning["spike_surr"])

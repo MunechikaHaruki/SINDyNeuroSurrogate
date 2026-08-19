@@ -25,6 +25,7 @@ from neurosurrogate.artifact.bundle import (
     surrogate_artifacts,
 )
 from neurosurrogate.core import access
+from neurosurrogate.core.coords import transform_gate
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
 from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
@@ -36,11 +37,6 @@ from neurosurrogate.sim.artifacts import summary_artifact, traces_artifact
 from neurosurrogate.sim.result import SeriesResults, SeriesRun
 from neurosurrogate.sim.run import run_column
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
-from neurosurrogate.surrogate.ansatz.hybrid import (
-    HYBRID_PHYSICS,
-    HybridAnsatz,
-)
-from neurosurrogate.surrogate.ansatz.ude import UDEAnsatz
 from neurosurrogate.surrogate.artifacts.model import (
     feature_tex,
     preprocessor_artifact,
@@ -53,15 +49,18 @@ from neurosurrogate.surrogate.artifacts.train import (
     train_recon_artifact,
     train_v_coverage_artifact,
 )
-from neurosurrogate.surrogate.closure import Closure
-from neurosurrogate.surrogate.closure.sindy import SINDyBundle
-from neurosurrogate.surrogate.closure.sindy.entry import FeatureLibrary
-from neurosurrogate.surrogate.closure.ude import UDEClosure
-from neurosurrogate.surrogate.diagnostics import preprocessed_latent
 from neurosurrogate.surrogate.model import Surrogate
-from neurosurrogate.surrogate.preprocessor import Preprocessor
-from neurosurrogate.surrogate.preprocessor.autoencoder import AEPreprocessor
-from neurosurrogate.surrogate.preprocessor.pca import PCAPreprocessor
+from neurosurrogate.surrogate.parts import Closure, Preprocessor
+from neurosurrogate.surrogate.parts.ansatz.hybrid import (
+    HYBRID_PHYSICS,
+    HybridAnsatz,
+)
+from neurosurrogate.surrogate.parts.ansatz.ude import UDEAnsatz
+from neurosurrogate.surrogate.parts.closure.sindy import SINDyBundle
+from neurosurrogate.surrogate.parts.closure.sindy.entry import FeatureLibrary
+from neurosurrogate.surrogate.parts.closure.ude import UDEClosure
+from neurosurrogate.surrogate.parts.preprocessor.autoencoder import AEPreprocessor
+from neurosurrogate.surrogate.parts.preprocessor.pca import PCAPreprocessor
 from neurosurrogate.surrogate.runs import SurrogateRuns
 from neurosurrogate.waveform.artifacts import (
     attractor_artifact,
@@ -179,7 +178,7 @@ def test_sindy_draws_all_artifacts(sindy_view: SeriesResults, sindy: Surrogate) 
     """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
     orig, surr = sindy_view.pair(0, sindy_view.column("r0"))
 
-    latent = preprocessed_latent(sindy, sindy_view.series.spec.net, orig, 0)
+    latent = transform_gate(sindy.preprocessor, orig, 0)
     artifacts = [
         diff_artifact(orig, latent, surr, 0),
         simple_artifact(orig),

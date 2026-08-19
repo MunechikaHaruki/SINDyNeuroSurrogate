@@ -27,14 +27,12 @@ from ..core.opcost import OpCost
 from ..core.simulator import unified_simulator
 from ..neurons.compartments import COMPARTMENT_TYPES
 from ..sim.spec import EvalSeries, SimSpec
-from .ansatz import Ansatz, TrainInputs
-from .ansatz.hybrid import HybridSINDyAnsatz
-from .ansatz.sindy import SINDyAnsatz
-from .ansatz.ude import UDEAnsatz
-from .closure import Closure
-from .preprocessor import Preprocessor
-from .preprocessor.autoencoder import AEPreprocessor
-from .preprocessor.pca import PCAPreprocessor
+from .parts import Ansatz, Closure, Preprocessor, TrainInputs
+from .parts.ansatz.hybrid import HybridSINDyAnsatz
+from .parts.ansatz.sindy import SINDyAnsatz
+from .parts.ansatz.ude import UDEAnsatz
+from .parts.preprocessor.autoencoder import AEPreprocessor
+from .parts.preprocessor.pca import PCAPreprocessor
 
 _BUNDLE_FILE = "surrogate.joblib"  # 学習成果物 (closure/preprocessor)
 SPEC_FILE = "spec.json"  # 同定情報。一覧はこれだけ読む

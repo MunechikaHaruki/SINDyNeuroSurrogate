@@ -5,17 +5,16 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import xarray as xr
 
-from ...core import access
-from ...core.coords import transform_gate
-from ...core.network import CompartmentType
+from ....core import access
+from ....core.coords import transform_gate
+from ....core.network import CompartmentType
+from .. import Ansatz, Preprocessor, TrainInputs
 from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
-from ..preprocessor import Preprocessor
-from . import Ansatz, TrainInputs
 from ._sindy_fit import fit_sindy
 
 if TYPE_CHECKING:
-    from ..model import SurrogateSpec
+    from ...model import SurrogateSpec
 
 
 class SINDyAnsatz(Ansatz[SINDyBundle]):

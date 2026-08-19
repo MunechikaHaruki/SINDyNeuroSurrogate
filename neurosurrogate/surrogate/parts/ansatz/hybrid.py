@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING, Any, TypeVar
 import jax.numpy as jnp
 import xarray as xr
 
-from ...core import access
-from ...core.network import CompartmentType
-from ...core.opcost import OpCost
-from ...neurons.compartments.hh import HH_DV_COST, HHParams, hh_dv
-from ...neurons.compartments.traub import (
+from ....core import access
+from ....core.network import CompartmentType
+from ....core.opcost import OpCost
+from ....neurons.compartments.hh import HH_DV_COST, HHParams, hh_dv
+from ....neurons.compartments.traub import (
     TRAUB_CA_COST,
     TRAUB_DV_COST,
     TRAUB_EXTRA_GATE_NAMES,
@@ -29,18 +29,16 @@ from ...neurons.compartments.traub import (
     traub_sr_calcium_step,
     traub_sr_extra_inits,
 )
-from ..closure import Closure
+from .. import Ansatz, Closure, Preprocessor, TrainInputs
 from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
-from ..preprocessor import Preprocessor
-from . import Ansatz, TrainInputs
 from ._sindy_fit import fit_sindy
 
 C = TypeVar("C", bound=Closure)
 _DLatent = Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
 
 if TYPE_CHECKING:
-    from ..model import SurrogateSpec
+    from ...model import SurrogateSpec
 
 
 @dataclass(frozen=True)

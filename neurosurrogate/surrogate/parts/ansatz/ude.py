@@ -22,14 +22,14 @@ import numpy as np
 import optax
 import xarray as xr
 
-from ...core import access
+from ....core import access
+from .. import Preprocessor
 from ..closure.ude import UDEClosure, latent_deriv
-from ..preprocessor import Preprocessor
 from ..preprocessor.autoencoder import AEPreprocessor, decoder, encoder
 from .hybrid import HybridAnsatz
 
 if TYPE_CHECKING:
-    from ..model import SurrogateSpec
+    from ...model import SurrogateSpec
 
 _logger = logging.getLogger(__name__)
 
