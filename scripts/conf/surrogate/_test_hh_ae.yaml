@@ -2,7 +2,7 @@
 # テスト専用プリセット (自己完結)。pca 固定の他テストが踏まない AE の encode/decode
 # を通す。epochs を切り詰めるので再構成品質は問わない (経路が通ることだけ)。
 surrogate:
-  meta:
+  spec:
     comp_type: hh
     surrogate_type: hybrid
     preprocessor_type: ae

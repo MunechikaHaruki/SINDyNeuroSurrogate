@@ -183,7 +183,7 @@ def calc_traub_channel(p: TraubParams, u_t, v, states):
 # (TrainSource.gate) なので、学習するものを先頭へ並べる = この順序が分割位置を決める。
 TRAUB_STATE_NAMES = ["M", "N", "C", "A", "H", "B", "S", "R", "Q", "XI"]
 
-# hybrid での学習/physics 分割は 2 通りあり、preset (meta.physics_type) が選ぶ。
+# hybrid での学習/physics 分割は 2 通りあり、preset (spec.physics_type) が選ぶ。
 # どちらも「学習ゲート = 先頭 n 本、残りが extra」という TrainSource の規約に乗る
 # ので、状態順序が分割位置をそのまま決める。
 #
@@ -322,7 +322,7 @@ TRAUB_DV_COST = (
 
 
 # calc_traub_channel 1 ステップ全体。置換前コスト = サロゲートの比較基準になる
-# (`SurrogateMeta.original_opcost`) → 実測でなく実装どおりの積算で揃える。
+# (`SurrogateSpec.original_opcost`) → 実測でなく実装どおりの積算で揃える。
 # i_ca は dv 内と Ca サブ系で 2 度計算されるが、実装がそうなので両方数える。
 _TRAUB_OPCOST = (
     sum(TRAUB_RATE_COST_MAP.values(), OpCost())  # V 依存レート 8 ゲート分 (α,β)
@@ -350,7 +350,7 @@ TRAUB_TYPE = CompartmentType(
 # 動力学を分けたいのではなく、置換したくないノードを comp_type=traub の照合から外す
 # ためだけの識別子。soma だけを traub 型に残し dendrite をこの型にした MC モデル
 # (traub19_soma) を適用先にすれば、既存の comp_type=traub の学習を **preset 変更なし**
-# で soma 1 ノードだけへ適用できる (置換対象を絞る新しい軸を meta へ足さずに済む)。
+# で soma 1 ノードだけへ適用できる (置換対象を絞る新しい軸を spec へ足さずに済む)。
 # simulator は CompartmentType を type 名でバケット化して各自 kernel を適用するだけ
 # なので、同一 kernel の別名型でも挙動は traub と変わらない。
 TRAUB_DUMMY_TYPE = CompartmentType(

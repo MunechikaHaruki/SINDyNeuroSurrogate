@@ -1,6 +1,6 @@
 # @package _global_
 surrogate:
-  meta:
+  spec:
     comp_type: traub  # 置換対象のコンパートメント種類
     surrogate_type: sindy
     preprocessor_type: pca

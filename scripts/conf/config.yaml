@@ -3,12 +3,12 @@ defaults:
   - surrogate: hh_sindy
 
 
-# surrogate 直下の 3 ブロックは SurrogateBundle.setup の宛先そのもの
-# (meta=SurrogateMeta.build / preprocessor=preprocessor_cls.fit / ansatz=ansatz.fit)。
-# 学習構造 (surrogate_type / preprocessor_type / n_components) は meta が単一源で、
+# surrogate 直下の 3 ブロックは Surrogate.fit の宛先そのもの
+# (spec は model._build_spec、残りは preprocessor / ansatz の各設定)。
+# 学習構造 (surrogate_type / preprocessor_type / n_components) は spec が単一源で、
 # 値は各 preset が保持する。
 surrogate:
-  meta:
+  spec:
     datasets:
       dt: 0.01
     # 学習を 1 ノードへ絞る指定 (省略/null = 置換対象ノード全部で学習)。

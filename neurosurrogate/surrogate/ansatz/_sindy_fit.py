@@ -8,9 +8,9 @@ HybridAnsatz の fit が roles だけ差し替えて共有する (列構造 = ro
 
 import numpy as np
 
-from ...closure.sindy import SINDyBundle
-from ...closure.sindy.roles import Roles
-from ..base import TrainInputs
+from ..closure.sindy import SINDyBundle
+from ..closure.sindy.roles import Roles
+from . import TrainInputs
 
 
 def fit_sindy(

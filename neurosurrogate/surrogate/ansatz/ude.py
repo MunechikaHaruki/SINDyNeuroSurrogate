@@ -6,12 +6,15 @@
 座標と方程式を同じ目的関数で決めれば消える → 潜在方程式も NN にし「潜在を積分した軌道が
 元のゲート軌道に合うか」を直接ロスにする。
 
-kernel 骨格・physics 分離・初期値は `hybrid_kernel.py` の共有関数を使い、SINDy 版との差
-は fit と潜在方程式の評価 (NN vs ξ 内積) だけ。
+kernel 骨格・physics 分離・初期値は `HybridAnsatz` が持ち、SINDy 版との差は fit と
+潜在方程式の評価 (NN vs ξ 内積) だけ。
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import jax
 import jax.numpy as jnp
@@ -19,13 +22,14 @@ import numpy as np
 import optax
 import xarray as xr
 
-from ....core.network import CompartmentType
-from ...closure.ude import UDEClosure, latent_deriv
-from ...meta import SurrogateMeta
-from ...preprocessor.base import Preprocessor
-from ...preprocessor.impl.autoencoder import AEPreprocessor, decoder, encoder
-from ..base import Ansatz, TrainInputs
-from .hybrid_kernel import hybrid_physics, hybrid_surr_comp_type, hybrid_train_inputs
+from ...core import access
+from ..closure.ude import UDEClosure, latent_deriv
+from ..preprocessor import Preprocessor
+from ..preprocessor.autoencoder import AEPreprocessor, decoder, encoder
+from .hybrid import HybridAnsatz
+
+if TYPE_CHECKING:
+    from ..model import SurrogateSpec
 
 _logger = logging.getLogger(__name__)
 
@@ -47,56 +51,45 @@ def _init_mlp(dims: list[int], key) -> list[dict]:
     return layers
 
 
-class UDEAnsatz(Ansatz[UDEClosure]):
+class UDEAnsatz(HybridAnsatz[UDEClosure]):
     """Hybrid + 潜在方程式を NN にし encoder/decoder ごと ODE 解を通して joint 学習。
 
     ロス 2 項: traj = 窓頭を encode→Euler rollout→decode した軌道が真のゲート軌道に
     一致するか / recon = 同点の再構成 (decoder の外挿崩れを防ぐアンカー、重み w_recon)。
-    kernel 骨格は `hybrid_*` 関数と共有し、ここは joint 学習 (fit) と潜在方程式の評価
-    (NN) だけを担う。
+    kernel 骨格は `HybridAnsatz` から継承し、ここは joint 学習 (fit) と潜在方程式の
+    評価 (NN) だけを担う。
     """
-
-    def n_train_gate(self, meta: SurrogateMeta) -> int:
-        """純電位依存ゲートのみ学習 (Ca サブ系は physics へ分離)。"""
-        return hybrid_physics(meta).n_learned
-
-    def train_inputs(
-        self,
-        meta: SurrogateMeta,
-        train_xr: xr.Dataset,
-        preprocessor: Preprocessor,
-    ) -> TrainInputs:
-        return hybrid_train_inputs(
-            self.train_source(meta), train_xr, preprocessor, meta.n_components
-        )
 
     def fit(
         self,
-        meta: SurrogateMeta,
-        train_xr: xr.Dataset,
+        spec: SurrogateSpec,
+        training_data: xr.Dataset,
         preprocessor: Preprocessor,
-        spec: dict,
+        config: dict,
     ) -> UDEClosure:
         if not isinstance(preprocessor, AEPreprocessor):
             raise ValueError(
                 "ude は encoder/decoder を学習変数として更新するため "
                 f"preprocessor_type=ae が要る (指定: {type(preprocessor).__name__})"
             )
-        epochs = int(spec.get("epochs", 3000))
-        lr = float(spec.get("lr", 3e-3))
-        window = int(spec.get("window", 100))
-        batch = int(spec.get("batch", 128))
-        hidden = int(spec.get("hidden", 32))
-        depth = int(spec.get("depth", 2))
-        w_recon = float(spec.get("w_recon", 1.0))
+        epochs = int(config.get("epochs", 3000))
+        lr = float(config.get("lr", 3e-3))
+        window = int(config.get("window", 100))
+        batch = int(config.get("batch", 128))
+        hidden = int(config.get("hidden", 32))
+        depth = int(config.get("depth", 2))
+        w_recon = float(config.get("w_recon", 1.0))
         # 値域外の復元力。学習も同じ右辺で rollout する (推論だけの後付け項は学習が
         # 知らない力で軌道を曲げる)。
-        pull = float(spec.get("pull", 20.0))
+        pull = float(config.get("pull", 20.0))
 
-        source = self.train_source(meta)
+        comp_ids = spec.train_comp_ids()
         # (n_comp, T, n_gate) / (n_comp, T)。窓は comp を跨がせない (別軌道)。
-        gate = jnp.asarray(np.stack(source.gates(train_xr)), dtype=jnp.float32)
-        volt = jnp.asarray(np.stack(source.potentials(train_xr)), dtype=jnp.float32)
+        training_gates = self.training_gates(spec, training_data)
+        gate = jnp.asarray(np.stack(training_gates), dtype=jnp.float32)
+        volt = jnp.asarray(
+            np.stack(access.potentials(training_data, comp_ids)), dtype=jnp.float32
+        )
         n_comp, n_time, _ = gate.shape
         if n_time <= window:
             raise ValueError(f"window={window} が学習軌道長 {n_time} 以上")
@@ -108,13 +101,13 @@ class UDEAnsatz(Ansatz[UDEClosure]):
         )
         v_mean, v_std = float(volt.mean()), float(volt.std() + 1e-8)
         v_norm = (volt - v_mean) / v_std
-        dt = float(meta.dataset.dt)
+        dt = float(spec.dataset.dt)
 
         params: dict[str, Any] = {
             "enc": {k: jnp.asarray(v) for k, v in preprocessor.enc_params.items()},
             "dec": {k: jnp.asarray(v) for k, v in preprocessor.dec_params.items()},
             "nn": _init_mlp(
-                [meta.n_components + 1] + [hidden] * depth + [meta.n_components],
+                [spec.n_components + 1] + [hidden] * depth + [spec.n_components],
                 jax.random.PRNGKey(0),
             ),
         }
@@ -170,7 +163,7 @@ class UDEAnsatz(Ansatz[UDEClosure]):
         # 更新後の値になる)。
         preprocessor.enc_params = {k: np.asarray(v) for k, v in params["enc"].items()}
         preprocessor.dec_params = {k: np.asarray(v) for k, v in params["dec"].items()}
-        preprocessor._set_fit_artifacts(np.asarray(source.stacked_gate(train_xr)))
+        preprocessor._set_fit_artifacts(np.concatenate(training_gates, axis=0))
 
         return UDEClosure(
             layers=[{k: np.asarray(v) for k, v in ly.items()} for ly in params["nn"]],
@@ -184,10 +177,10 @@ class UDEAnsatz(Ansatz[UDEClosure]):
             },
         )
 
-    def surr_comp_type(
+    def dlatent(
         self,
-        meta: SurrogateMeta,
+        spec: SurrogateSpec,
         preprocessor: Preprocessor,
         closure: UDEClosure,
-    ) -> CompartmentType:
-        return hybrid_surr_comp_type(meta, preprocessor, closure, closure.apply())
+    ) -> Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]:
+        return closure.apply()

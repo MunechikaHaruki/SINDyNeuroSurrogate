@@ -21,7 +21,7 @@ Protocol / 抽象基底クラス / dataclass wrapper / factory 関数 / `extra` 
 - `with_*` のような immutable-copy ヘルパは、呼び出しが 1〜2 箇所なら `dataclasses.replace()`
   かコンストラクタ直書きで済ませる
 - 抽象を剥がすと**同型の別実装を並べられる**ようになるのが典型的な効き方
-  (`SurrogateBundle` Protocol を消したことで `HybridSINDyNeuroSurrogate` を並列追加できた)
+  (`Surrogate` Protocol を消したことで `HybridSINDyNeuroSurrogate` を並列追加できた)
 
 **発火条件**: 抽象を新設しようとしたとき → 「今すぐ必要か? 将来の何のためか?」を明示できなければ
 足さない。既存の抽象を見つけたとき → 使用箇所を数え、薄ければ削除を提案する。

@@ -3,7 +3,7 @@
 # 8 → 6)。physics 分割を preset で振れること = 状態次元/初期値/置換が両分割で通る
 # ことを踏む。defaults 継承せず全構造を直接書き下す (physics_type だけが違い)。
 surrogate:
-  meta:
+  spec:
     comp_type: traub
     surrogate_type: hybrid
     preprocessor_type: pca

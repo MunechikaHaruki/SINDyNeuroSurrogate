@@ -160,7 +160,7 @@
 )
 
 // ================= ④ decoder/SINDy を等価回路の gate 計算に差し込んでシミュレーション =================
-// hybrid_kernel.py の 1 ステップ: decode(z) → gates → 元の dV/dt (等価回路, 不変) と
+// ansatz/hybrid.py の 1 ステップ: decode(z) → gates → 元の dV/dt (等価回路, 不変) と
 // 並行して SINDy が dz/dt を返す → 積分して次ステップへ。等価回路の"構造"自体は
 // 一切変えず、ゲート計算部分だけを学習済み decoder+SINDy に差替えていることを示す。
 // CeTZ の手動座標は狭い列幅で崩れやすいので、typst 標準の box + 矢印テキストで組む

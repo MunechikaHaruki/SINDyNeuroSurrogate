@@ -5,7 +5,7 @@ defaults:
   - traub_useMC19CompForTeachingData
 
 surrogate:
-  meta:
+  spec:
     physics_type: traub_sr_physics
     n_components: 5 #6=>5
     preprocessor_type: pca

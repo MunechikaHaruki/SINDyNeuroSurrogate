@@ -3,7 +3,7 @@
 # results/obsolete へ退避したので defaults 継承しない (移動で壊れないため)。
 # smoke 用に学習構造 (sweep 軸で振れる ansatz/preprocessor) と電流長を固定する。
 surrogate:
-  meta:
+  spec:
     comp_type: hh
     surrogate_type: sindy
     # 決定的で速い pca に固定 (AE は 1000 epoch でテスト時間が数倍、乱数初期化で

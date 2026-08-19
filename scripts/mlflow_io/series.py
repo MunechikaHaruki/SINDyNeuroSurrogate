@@ -18,7 +18,7 @@ import xarray as xr
 from neurosurrogate.sim.result import SeriesRun
 from neurosurrogate.sim.run import run_column
 from neurosurrogate.sim.spec import EvalSeries
-from neurosurrogate.surrogate.bundle import SurrogateBundle
+from neurosurrogate.surrogate.model import Surrogate
 
 from . import logger
 from ._query import exp_id, latest_by_tag
@@ -50,7 +50,7 @@ def run_series(
     name: str,
     series: EvalSeries,
     run_id: str | None,
-    surrogate: SurrogateBundle | None,
+    surrogate: Surrogate | None,
 ) -> str:
     """1 列 → 波形 run の id。同じ掃引を同じ surrogate で回した run があればそれを返す
     = **回さない** (シミュは決定的なので、鍵が一致した run は常に正しい)。

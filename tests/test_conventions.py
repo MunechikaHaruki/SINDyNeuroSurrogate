@@ -45,7 +45,7 @@ _EXEMPT_ENTRY_MODULES = {"scripts/main.py", "scripts/marimo.py"}
 # 場所 → 層 (module path の前方一致。長い方が勝つ = ファイル単位で層を割れる)。
 # 新しいディレクトリを足したらここに書く必要がある = **層の所属は必ず宣言される**。
 _GROUP_OF = {
-    "neurosurrogate/__init__": "base",  # jax_enable_x64 を張るだけ
+    "neurosurrogate/__init__": "base",  # package import 時に jax_enable_x64 を張る入口
     "neurosurrogate/core/": "base",
     "neurosurrogate/artifact/model": "base",
     "neurosurrogate/artifact/plotting": "base",
@@ -162,11 +162,9 @@ def _group_of(module_path: str) -> str | None:
 
 
 def _defined() -> dict[tuple[pathlib.Path, str], int]:
-    """module 直下の公開名 → 行番号 (`__init__.py` は再 export の場なので除く)。"""
+    """module 直下の公開名 → 行番号。"""
     out: dict[tuple[pathlib.Path, str], int] = {}
     for path in _py_files(SRC_DIRS):
-        if path.name == "__init__.py":
-            continue
         for node in ast.parse(path.read_text()).body:
             names = []
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
@@ -274,8 +272,7 @@ def test_public_modules_are_imported_from_outside() -> None:
     bad = [
         str(path.relative_to(ROOT))
         for path in _py_files(SRC_DIRS)
-        if path.name != "__init__.py"
-        and not path.name.startswith("_")
+        if not path.name.startswith("_")
         and path not in outside
         and str(path.relative_to(ROOT)) not in _EXEMPT_ENTRY_MODULES
         and path.stem not in yaml

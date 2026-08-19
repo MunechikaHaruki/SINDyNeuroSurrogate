@@ -21,10 +21,10 @@ from matplotlib.lines import Line2D
 from ...artifact.model import Artifact
 from ...artifact.plotting import new_figure, place_legend
 from ...core.network import NeuronGraph
-from ..closure.base import Closure
+from ..closure import Closure
 from ..closure.sindy import SINDyBundle
-from ..preprocessor.base import Preprocessor
-from ..preprocessor.impl.pca import PCAPreprocessor
+from ..preprocessor import Preprocessor
+from ..preprocessor.pca import PCAPreprocessor
 
 _NODE_COLORS = {
     "hh": "#4C9BE8",

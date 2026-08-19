@@ -1,6 +1,6 @@
 """MLflow I/O = **experiment と run を知る唯一の場所**。experiment ごとに 1 module:
 
-- `surrogate` (学習): run が持つ surrogate の pickle + meta.json
+- `surrogate` (学習): run が持つ surrogate の pickle + spec.json
 - `runs` (学習): どんな run が居るか・今の系列で選べるのはどれか (成果物は見ない)
 - `series` (波形): **1 run = 1 `sim.result.SeriesRun`** = 1 列の波形 1 artifact
 - `report` (レポート): **1 run = 1 系列 × N モデル** = `series` の run_id への参照表だけ
@@ -25,7 +25,7 @@ TARGET_EXP = "test_static_params"
 logger = logging.getLogger(__name__)
 
 
-def setup_mlflow() -> None:
+def _setup_mlflow() -> None:
     """tracking 先をリポジトリ直下の `mlflow.db` に固定する (**import 時に実行**)。
     MLflow 3 の既定 URI は cwd 相対なので、放っておくと居たディレクトリに空 DB が生え
     「run が無い」に見える。`__file__` を resolve して辿る = cwd にも symlink にも
@@ -35,8 +35,8 @@ def setup_mlflow() -> None:
     # smoke test は MLFLOW_EXPERIMENT=smoke_test で本番 experiment を汚さず隔離
     # (just clean-test が丸ごと削除)。既定は本番 experiment のまま。
     mlflow.set_experiment(os.environ.get("MLFLOW_EXPERIMENT", TARGET_EXP))
-    # 全 run の meta 読込で artifact DL 進捗バーが大量出力 → 抑制
+    # 全 run の spec 読込で artifact DL 進捗バーが大量出力 → 抑制
     os.environ["MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR"] = "false"
 
 
-setup_mlflow()
+_setup_mlflow()

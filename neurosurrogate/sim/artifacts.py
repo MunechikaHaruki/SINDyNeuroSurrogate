@@ -24,8 +24,8 @@ from ..artifact.model import Artifact
 from ..artifact.plotting import new_figure, place_legend
 from ..core import access
 from ..core.diverge import diverged
-from ..surrogate.bundle import SurrogateRuns
 from ..surrogate.diagnostics import surrogate_metrics
+from ..surrogate.runs import SurrogateRuns
 from ..waveform.dynamics import DynamicMetrics, extract_metric
 from .catalog import currents
 from .result import SeriesResults

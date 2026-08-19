@@ -18,16 +18,15 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
   sim/  catalog/                 # **名前 → 実体の対応表だけ** (SimSpec のフィールドが引く選択肢。作り方は持たない)
           targets.py             # MCMODELS (SimSpec.target が引く適用先モデル)
           currents.py            # 注入電流波形 + CURRENT_MAP
-        spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない** — hash は保存の単位だけが持つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+param+values の 1 掃引 = **保存の単位でもある**。points は派生、to_dict/from_dict/hash で往復)。**記述 2 段が result の 波形 / SeriesRun と 1 対 1**。surrogate より前の層 (SurrogateMeta.dataset がこれ)
+        spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない** — hash は保存の単位だけが持つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+param+values の 1 掃引 = **保存の単位でもある**。points は派生、to_dict/from_dict/hash で往復)。**記述 2 段が result の 波形 / SeriesRun と 1 対 1**。surrogate より前の層 (SurrogateSpec.dataset がこれ)
         result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = mlflow_io.series の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。**答えるのは「どの列か・どの点か」だけ** (column/pair/run_ids) = 適用先も掃引軸も刻み幅も素通しせず、要るものは view.series から直接引く。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る
         run.py                   # **仕様 × surrogate を掛ける唯一の段** (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate (1 シミュ → 波形) / run_column (series + run_id + surrogate → **1 列** `SeriesRun`。系列 → 結果の唯一の入口。両方 None が原系)。**回す前に決まること (どの run が置換できるか) は持たない** → SurrogateRuns.replacing。表示名は出てこない (学習 run の id は列の標識として通るだけ)。surrogate の後の層
         artifacts.py             # 結果 (`sim.result.SeriesResults`) → **単一 Artifact**。run 横断の summary/traces/metric を個別関数で生成。**点軸×run 軸の並びを成果物へ落とす唯一の場所**。成果物列の編成と詳細点の段付けは `artifact.bundle`
-  surrogate/  meta.py            # SurrogateMeta (学習構造の単一源)
-              bundle.py          # SurrogateBundle.setup/load/save + pathの1区切りとして有効で一意な学習run名・選択順を束ねる SurrogateRuns (MLflow run IDは持たない。**run 軸を絞るのも自分** = replacing(series) が置換できる run だけの同じ型を返す)
-              replace.py         # 置換可否判定 (replaceable: comp 1 つ / applicable: 掃引 1 つ。**どちらも meta だけで決まる** = 学習成果を読まずに選択肢を絞れる) + apply_surrogate
-              ansatz/            # base.py + impl/{sindy,hybrid,hybrid_kernel,ude,_sindy_fit}.py
-              closure/           # base.py / ude.py / sindy/{__init__,roles,entry,_catalog}.py
-              preprocessor/      # base.py + impl/{pca,autoencoder}.py
+  surrogate/  model.py           # config→SurrogateSpec の唯一の変換。SurrogateSpec が学習・適用範囲を、Surrogate が fit/load/save・学習済み成果物・Dataset への適用を答える
+              runs.py            # 一意な名前と選択順を持つ SurrogateRuns。評価系列へ適用できる run 軸への絞り込み
+              ansatz/            # __init__.py (Ansatz/学習入力) / sindy.py / hybrid.py / ude.py / _sindy_fit.py。hybrid.py が物理骨格と SINDy hybrid を集約
+              closure/           # __init__.py (Closure) / ude.py / sindy/{__init__,roles,entry,_catalog}.py
+              preprocessor/      # __init__.py (Preprocessor/再構成統計) / pca.py / autoencoder.py
               artifacts/         # surrogate の自己記述成果物を **単一 Artifact** ずつ返す。train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree + 表現の型で振り分ける closure_artifact / preprocessor_artifact (対応する図が無ければ None)
   artifact/                      # `core` 同様に他ディレクトリを import しない基盤 (model.py / plotting.py)。bundle.py だけが合流点
              model.py            # Artifact (**自分を 1 つ書くだけ**の atomic な save。中身が拡張子を決める = 表 CSV / 図 PNG / dict JSON。置き場は知らない) / Artifacts (成果物の集合。save(path) で丸ごとその path へ)。**レポートを表す型は無い** = 段の構造は save_report が書く path そのもの
@@ -42,8 +41,8 @@ scripts/  main.py                # Hydra エントリ
           mlflow_io/             # MLflow I/O = **experiment と run を知る唯一の場所**。experiment ごとに 1 module (学習だけ成果物 surrogate.py と選択肢 runs.py の 2 つ) で、どれも「experiment id を解く / 同一性の鍵を組む / 既存を探す / 書く」。公開名は run_* (確保) / load_* (読み) / find_* (回さない問い合わせ) で揃え、複数段を完遂する report.py だけ write_report 1 本へ畳む。**再 export しない** (呼ぶ側は from mlflow_io.report import ... と名乗る)
             __init__.py          # tracking URI をリポジトリ直下へ固定 (import 時に実行 = どの module を通っても最初に張られる) + TARGET_EXP
             _query.py            # experiment id の解決 (`exp_id`。**書く側だけが作る**) と同一性 tag での最新 run 引き (`latest_by_tag`。**読む経路は experiment を作らない**)。4 点セットのうち experiment ごとに違わない 2 つをここに 1 つ置く (パッケージ外からは import しない)
-            surrogate.py         # 学習 experiment の**成果物**: surrogate pickle/meta の読み書き (run_id ごとに @cache) + load_surrogate_runs (選んだ run 列 → SurrogateRuns。**選択を広げも縮めもしない** = 選択がそのまま run 軸)。どの run が居るか・選べるかは知らない。モデル成果物生成は artifact.bundle の関心
-            runs.py              # 学習 experiment の**一覧と選択肢**: load_runs (run 表。読込不可 run はここで落とす) / find_selectable_runs (選んだ系列を置換できる run = run 表の中身。`preset=None` で preset を絞らない。hydra の親子は見ない = sweep の 1 点も単独で選べる) / find_presets (絞りに使える preset)。**選択肢の導出はここ** = UI は選択の結果を渡すだけで、MLflow の列名も絞りの条件も持たない。「絞らない」の表示ラベルだけは marimo が持つ (選択肢でなく見せ方なので、日本語をここへ置かない)。surrogate の中身は見ず、読込可否に surrogate.load_meta だけ借りる (依存は runs → surrogate の一方向)
+            surrogate.py         # 学習 experiment の**成果物**: surrogate pickle/spec の読み書き (run_id ごとに @cache) + load_surrogate_runs (選んだ run 列 → SurrogateRuns。**選択を広げも縮めもしない** = 選択がそのまま run 軸)。どの run が居るか・選べるかは知らない。モデル成果物生成は artifact.bundle の関心
+            runs.py              # 学習 experiment の**一覧と選択肢**: load_runs (run 表。読込不可 run はここで落とす) / find_selectable_runs (選んだ系列を置換できる run = run 表の中身。`preset=None` で preset を絞らない。hydra の親子は見ない = sweep の 1 点も単独で選べる) / find_presets (絞りに使える preset)。**選択肢の導出はここ** = UI は選択の結果を渡すだけで、MLflow の列名も絞りの条件も持たない。「絞らない」の表示ラベルだけは marimo が持つ (選択肢でなく見せ方なので、日本語をここへ置かない)。surrogate の中身は見ず、読込可否に surrogate.load_spec だけ借りる (依存は runs → surrogate の一方向)
             series.py            # 波形 experiment eval_series (**1 run = 1 `sim.result.SeriesRun`** = 1 列。点列の波形 1 artifact。kind=original / kind=surrogate がフラットに並び、置換系は tags.original_hash で原系を名指す = 親子関係なし)。run_series は探索と実行が対 (決定的だから同じ入力は回さない) なので分けない。load_column が run → SeriesRun の唯一の読み口 (記述も run_id も一緒に戻る)
             report.py            # レポート experiment eval_report (**1 評価 = 1 run = 1 系列 × N モデル**。同一性の鍵を持たず、評価のたびに新しい run が立つ = 書いた run を後から書き換えない)。公開関数は write_report 1 つだけ = 学習 run 群 × 系列名 × つまみから、評価・波形再利用・run 作成・参照解決・artifact.bundle.save_report・同じ run への書き出しまでを隠して完遂し、値は返さない
           marimo.py              # notebook 本体 (系列 dropdown 1 件 + preset 絞り → run 選択 + レポートボタン 1 つ = 評価してそのまま描く)。**セルに置くのは widget と、それを plain 値に均す 1 行だけ** — 選択肢の導出も選択の広げ方も呼び先の 1 関数が持つ
@@ -80,8 +79,8 @@ docs/     poster/ slide/         # typst
 ## 設定ファイル
 
 - `scripts/conf/config.yaml` + `surrogate/<preset>.yaml` — 学習設定。`surrogate` 直下は
-  `meta` / `preprocessor` / `ansatz` の 3 ブロックで `SurrogateBundle.setup` の宛先と 1 対 1
-  (`meta.datasets` は `SimSpec` のフィールドそのもの = target/current_type/dt/current_params)。
+  `spec` / `preprocessor` / `ansatz` の 3 ブロックで `Surrogate.fit` の宛先と 1 対 1
+  (`spec.datasets` は `SimSpec` のフィールドそのもの = target/current_type/dt/current_params)。
   `_test_*.yaml` はテスト専用 preset (tests は preset 名を指すだけ)。
 - 評価条件は設定ファイルを持たない → `scripts/catalog.py` に型のまま並ぶ
   (`EVALS` / `SERIES`)。スキーマという型の弱い写しを二重に

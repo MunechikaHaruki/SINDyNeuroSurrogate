@@ -27,7 +27,7 @@ from neurosurrogate.core import access
 from neurosurrogate.sim.result import SeriesResults
 from neurosurrogate.sim.run import simulate
 from neurosurrogate.sim.spec import EvalSeries
-from neurosurrogate.surrogate.bundle import SurrogateBundle
+from neurosurrogate.surrogate.model import Surrogate
 
 RUN_NAME = "RID"
 
@@ -120,7 +120,7 @@ def _tuning(
     }
 
 
-def _train_run(name: str, bundle: SurrogateBundle) -> str:
+def _train_run(name: str, bundle: Surrogate) -> str:
     """名前と surrogate artifact を持つ学習 run を 1 本立てる。"""
     exp = mlflow.get_experiment_by_name("test_train")
     experiment_id = exp.experiment_id if exp else mlflow.create_experiment("test_train")
@@ -133,13 +133,13 @@ def _train_run(name: str, bundle: SurrogateBundle) -> str:
 
 
 @pytest.fixture(scope="module")
-def sindy() -> SurrogateBundle:
+def sindy() -> Surrogate:
     return fit_surrogate("_test_hh_sindy")
 
 
 @pytest.fixture
 def eval_store(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sindy: SurrogateBundle
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sindy: Surrogate
 ) -> str:
     """tracking 先を tmp へ移し、評価/レポート experiment 名もテスト専用にする。
     カタログも差し替える — `write_report` は系列を**名前から引く**ので、テスト用の
@@ -151,15 +151,15 @@ def eval_store(
     return "test_eval"
 
 
-def _evals(bundle: SurrogateBundle) -> EvalSeries:
+def _evals(bundle: Surrogate) -> EvalSeries:
     """学習と同じ入力を**さらに短く**した評価仕様 (2 点の掃引)。ここで見たいのは
     保存/読込の往復であって波形の質ではないので、シミュ長は最小で足りる。掃引に
     してあるのは、点の並びが `EvalSeries.points` から復元されることを見るため。"""
-    return EvalSeries(spec=bundle.meta.dataset, param="duration", values=[170.0, 190.0])
+    return EvalSeries(spec=bundle.spec.dataset, param="duration", values=[170.0, 190.0])
 
 
 def test_eval_runs_round_trip_without_resimulating(
-    eval_store: str, sindy: SurrogateBundle, monkeypatch: pytest.MonkeyPatch
+    eval_store: str, sindy: Surrogate, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """**1 波形 run = 1 EvalSeries、1 レポート run = 1 回の評価**。掃引点の波形を
     まとめた 1 artifact が往復し、再シミュ無しに点の並びごと戻る。同じ掃引の再実行は
@@ -217,7 +217,7 @@ def test_eval_runs_round_trip_without_resimulating(
 
 
 def test_write_report_rejects_series_no_run_can_replace(
-    eval_store: str, sindy: SurrogateBundle
+    eval_store: str, sindy: Surrogate
 ) -> None:
     """1 本も置換できない選択は回す意味が無い → 空のレポートを作らず落ちる。"""
     with pytest.raises(ValueError, match="置換できない"):
@@ -225,7 +225,7 @@ def test_write_report_rejects_series_no_run_can_replace(
 
 
 def test_run_choices_are_derived_here_not_in_the_ui(
-    sindy: SurrogateBundle, monkeypatch: pytest.MonkeyPatch
+    sindy: Surrogate, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """**選択肢の導出はこの module** = UI は MLflow の列名も絞りの条件も持たない。
 
@@ -238,7 +238,7 @@ def test_run_choices_are_derived_here_not_in_the_ui(
             "tags.mlflow.runName": ["a", "b"],
             "comp_type": ["hh", "hh"],
             "run_id": ["r0", "r1"],
-            "meta": [sindy.meta, sindy.meta],
+            "spec": [sindy.spec, sindy.spec],
             "preset": ["p1", None],  # preset 未記録の run も選択肢には出る
         }
     )
@@ -255,7 +255,7 @@ def test_run_choices_are_derived_here_not_in_the_ui(
 
 
 def test_everything_drawn_lands_in_the_one_report_run(
-    eval_store: str, sindy: SurrogateBundle
+    eval_store: str, sindy: Surrogate
 ) -> None:
     """描画の入力は**レポート run_id 1 つ + つまみ**だけで、描いたものは全部その
     レポート run の artifact になる (比べたいのが 1 系列 × N モデルの束そのものなので、

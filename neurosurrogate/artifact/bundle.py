@@ -28,9 +28,9 @@ from ..surrogate.artifacts.train import (
     train_recon_artifact,
     train_v_coverage_artifact,
 )
-from ..surrogate.bundle import SurrogateBundle, SurrogateRuns
 from ..surrogate.diagnostics import preprocessed_latent
-from ..surrogate.replace import replaceable
+from ..surrogate.model import Surrogate
+from ..surrogate.runs import SurrogateRuns
 from ..waveform.artifacts import (
     attractor_artifact,
     current_preview_artifact,
@@ -45,30 +45,30 @@ from .plotting import use_style
 
 
 def surrogate_artifacts(
-    bundle: SurrogateBundle, view_comps: tuple[str, ...] = ()
+    surrogate: Surrogate, view_comps: tuple[str, ...] = ()
 ) -> Artifacts:
     """学習 run 1 本が自己記述できる成果物をまとめる。"""
-    net = bundle.meta.dataset.net
+    net = surrogate.spec.dataset.net
     comps = [net.name_to_idx(comp) for comp in view_comps] or None
     return Artifacts(
         (
             *(
                 artifact
                 for artifact in (
-                    closure_artifact(bundle.closure),
-                    preprocessor_artifact(bundle.preprocessor),
+                    closure_artifact(surrogate.closure),
+                    preprocessor_artifact(surrogate.preprocessor),
                 )
                 if artifact is not None
             ),
             neuron_graph_artifact(
                 net,
-                {node.name for node in net.nodes if replaceable(bundle.meta, node)},
+                {node.name for node in net.nodes if surrogate.spec.replaceable(node)},
             ),
-            train_raw_artifact(bundle, comps),
-            train_preprocessed_artifact(bundle, comps),
-            train_recon_artifact(bundle, comps),
-            train_v_coverage_artifact(bundle, comps),
-            train_manifold_artifact(bundle, comps),
+            train_raw_artifact(surrogate, comps),
+            train_preprocessed_artifact(surrogate, comps),
+            train_recon_artifact(surrogate, comps),
+            train_v_coverage_artifact(surrogate, comps),
+            train_manifold_artifact(surrogate, comps),
         )
     )
 
@@ -105,7 +105,7 @@ def original_artifacts(view: SeriesResults) -> Artifacts:
 def detail_artifacts(
     view: SeriesResults,
     run_id: str,
-    bundle: SurrogateBundle,
+    surrogate: Surrogate,
     eval_comp: str,
     view_comps: tuple[str, ...],
     tuning: dict[str, Any],
@@ -113,19 +113,21 @@ def detail_artifacts(
     """選択した 1 点・1 モデルの波形成果物をまとめる。"""
     net = view.series.spec.net
     comp_id = net.name_to_idx(eval_comp)
-    original, surrogate = view.pair(int(tuning["detail_point"]), view.column(run_id))
+    original, surrogate_wave = view.pair(
+        int(tuning["detail_point"]), view.column(run_id)
+    )
 
-    latent = preprocessed_latent(bundle, net, original, comp_id)
-    dm = DynamicMetrics(original, surrogate, comp_id, view.series.spec.dt)
+    latent = preprocessed_latent(surrogate, net, original, comp_id)
+    dm = DynamicMetrics(original, surrogate_wave, comp_id, view.series.spec.dt)
     spike_orig = int(tuning["spike_orig"])
     spike_surr = int(tuning["spike_surr"])
     return Artifacts(
         (
-            diff_artifact(original, latent, surrogate, comp_id),
+            diff_artifact(original, latent, surrogate_wave, comp_id),
             simple_artifact(
                 original, [net.name_to_idx(comp) for comp in view_comps] or None
             ),
-            attractor_artifact(latent, surrogate, comp_id),
+            attractor_artifact(latent, surrogate_wave, comp_id),
             metrics_artifact(dm, spike_orig, spike_surr),
             metrics_scalar_artifact(dm, spike_orig, spike_surr),
         )
@@ -167,12 +169,12 @@ def save_report(
     Artifact("tuning", tuning).save(root)
     report_artifacts(view, runs, eval_comp, dict(tuning["report"])).save(root)
     original_artifacts(view).save(root / "series/original")
-    for run_id, (run_name, bundle) in zip(view.run_ids, runs, strict=True):
-        surrogate_artifacts(bundle, view_comps).save(root / "models" / run_name)
+    for run_id, (run_name, surrogate) in zip(view.run_ids, runs, strict=True):
+        surrogate_artifacts(surrogate, view_comps).save(root / "models" / run_name)
         detail_artifacts(
             view,
             run_id,
-            bundle,
+            surrogate,
             eval_comp,
             view_comps,
             dict(tuning["detail"]),

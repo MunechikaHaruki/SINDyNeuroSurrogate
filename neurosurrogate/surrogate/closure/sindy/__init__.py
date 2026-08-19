@@ -15,7 +15,7 @@ import pysindy as ps
 import sympy as sp
 
 from ....core.opcost import OpCost
-from ..base import Closure
+from .. import Closure
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from .entry import FeatureLibrary
     from .roles import Roles
 
-OPTIMIZER_CLS: dict[str, type] = {
+_OPTIMIZER_CLS: dict[str, type] = {
     "stlsq": ps.optimizers.STLSQ,
     "sr3": ps.optimizers.SR3,
 }
@@ -93,7 +93,7 @@ class SINDyBundle(Closure):
         )
         sindy = ps.SINDy(
             feature_library=bundle.feature_library.library,
-            optimizer=_instantiate(optimizer_spec, OPTIMIZER_CLS),
+            optimizer=_instantiate(optimizer_spec, _OPTIMIZER_CLS),
         )
         sindy.fit(x, u=u, t=t, feature_names=[str(s) for s in bundle.columns])
         bundle.xi = sindy.coefficients()

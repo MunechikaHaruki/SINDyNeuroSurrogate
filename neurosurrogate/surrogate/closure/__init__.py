@@ -10,10 +10,10 @@ ansatz が方程式の骨格 (どの状態をどう並べ、どこを物理で�
 `opcost()`。前者は bundle が、後者は ansatz が呼ぶが、どちらも「引数なしで問う」
 形で表現に依らない (中身の構成は違っても問い方は同一)。逆に SINDy の ξ・feature
 展開のような**具体型固有の引き出し**は `Ansatz[C]` が型を知って行う → 契約に載せ
-ない。何を食わせて同定したか (学習入力の選択規則) も持たない — meta だけで決まる
-ので `Ansatz.train_source` から引ける (成果物に焼き付ける必要がない)。
+ない。何を食わせて同定したか (学習入力の選択規則) も持たない — spec だけで決まる
+ので scope / ansatz の規則から引ける (成果物に焼き付ける必要がない)。
 
-surrogate 内 leaf (meta.py と同格)。
+surrogate 内 leaf。
 """
 
 from abc import ABC, abstractmethod

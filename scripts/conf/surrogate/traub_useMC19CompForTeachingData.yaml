@@ -1,7 +1,7 @@
 # @package _global_
 # 教師データ = 19-comp MC の全 comp 軌道 (置換対象 = traub 型 comp 全部)。
 surrogate:
-  meta:
+  spec:
     comp_type: traub  # 置換対象のコンパートメント種類
     surrogate_type: hybrid
     preprocessor_type: pca
@@ -9,7 +9,7 @@ surrogate:
     datasets:
       target: traub19
       current_type: train
-      # 19 comp 全部が学習軌道になる (ansatz/hybrid.py `train_source`) → 1 軌道を
+      # 19 comp 全部が学習軌道になる (`scope.train_comp_ids`) → 1 軌道を
       # 短くして総サンプル数を単体モデル (duration=9000) と同程度に揃える。
       current_params:
         duration: 1000
@@ -24,5 +24,5 @@ surrogate:
 hydra:
   sweeper:
     params:
-      surrogate.meta.n_components: 6,7,8
-      surrogate.meta.preprocessor_type: pca
+      surrogate.spec.n_components: 6,7,8
+      surrogate.spec.preprocessor_type: pca

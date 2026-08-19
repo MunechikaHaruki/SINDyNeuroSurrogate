@@ -12,7 +12,7 @@ from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from mlflow_io.surrogate import log_surrogate_model
 from omegaconf import DictConfig, OmegaConf
 
-from neurosurrogate.surrogate.bundle import SurrogateBundle
+from neurosurrogate.surrogate.model import Surrogate
 
 _logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def _fit_and_log(cfg: DictConfig) -> None:
     surrogate から直接計算するので MLflow へは残さない (依存最小)。"""
     cfg_surr = OmegaConf.to_container(cfg, resolve=True)["surrogate"]
     assert isinstance(cfg_surr, dict)
-    log_surrogate_model(SurrogateBundle.setup(cfg_surr))
+    log_surrogate_model(Surrogate.fit(cfg_surr))
 
 
 def _log_config(cfg: DictConfig) -> None:

@@ -1,6 +1,6 @@
 # @package _global_
 surrogate:
-  meta:
+  spec:
     comp_type: hh  # 置換対象のコンパートメント種類
     surrogate_type: hybrid
     preprocessor_type: pca
@@ -19,5 +19,5 @@ surrogate:
 hydra:
   sweeper:
     params:
-      surrogate.meta.n_components: 1,2
-      surrogate.meta.preprocessor_type: pca
+      surrogate.spec.n_components: 1,2
+      surrogate.spec.preprocessor_type: pca

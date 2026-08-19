@@ -68,6 +68,16 @@ def gate_matrix(ds: xr.Dataset, comp_id: int) -> np.ndarray:
     return ds["vars"].sel(gate=True, comp_id=comp_id).to_numpy()
 
 
+def gate_matrices(ds: xr.Dataset, comp_ids: list[int]) -> list[np.ndarray]:
+    """comp_ids 順のゲート/状態変数行列。"""
+    return [gate_matrix(ds, comp_id) for comp_id in comp_ids]
+
+
+def potentials(ds: xr.Dataset, comp_ids: list[int]) -> list[np.ndarray]:
+    """comp_ids 順の電位系列。"""
+    return [potential(ds, comp_id) for comp_id in comp_ids]
+
+
 def comp_matrix(ds: xr.Dataset, comp_id: int) -> np.ndarray:
     """comp_id の全変数行列 (time, n_var)。"""
     return ds["vars"].sel(comp_id=comp_id).to_numpy()

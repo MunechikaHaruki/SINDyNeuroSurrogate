@@ -1,36 +1,42 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import jax.numpy as jnp
 import xarray as xr
 
-from ....core import access
-from ....core.coords import transform_gate
-from ....core.network import CompartmentType
-from ...closure.sindy import SINDyBundle
-from ...closure.sindy.roles import Roles
-from ...meta import SurrogateMeta
-from ...preprocessor.base import Preprocessor
-from ..base import Ansatz, TrainInputs
+from ...core import access
+from ...core.coords import transform_gate
+from ...core.network import CompartmentType
+from ..closure.sindy import SINDyBundle
+from ..closure.sindy.roles import Roles
+from ..preprocessor import Preprocessor
+from . import Ansatz, TrainInputs
 from ._sindy_fit import fit_sindy
+
+if TYPE_CHECKING:
+    from ..model import SurrogateSpec
 
 
 class SINDyAnsatz(Ansatz[SINDyBundle]):
-    def n_train_gate(self, meta: SurrogateMeta) -> int:
+    def n_train_gate(self, spec: SurrogateSpec) -> int:
         """全ゲートを学習 (V+gate を丸ごと同定 → physics へ分離する列が無い)。"""
-        return len(meta.comp_type.gate_names)
+        return len(spec.comp_type.gate_names)
 
     def train_inputs(
         self,
-        meta: SurrogateMeta,
-        train_xr: xr.Dataset,
+        spec: SurrogateSpec,
+        training_data: xr.Dataset,
         preprocessor: Preprocessor,
     ) -> TrainInputs:
         # 状態 [V, z1..zN] 丸ごと、入力は流入電流 (transform_gate が I_internal を u
         # 列へ)。comp ごとに 1 軌道 (縦連結は偽微分)。
-        comp_ids = self.train_source(meta).comp_ids
+        comp_ids = spec.train_comp_ids()
         preprocessed = [
-            transform_gate(preprocessor, train_xr, comp_id=i) for i in comp_ids
+            transform_gate(preprocessor, training_data, comp_id=i) for i in comp_ids
         ]
         return TrainInputs(
-            x_names=[access.POTENTIAL_VAR, *access.latent_vars(meta.n_components)],
+            x_names=[access.POTENTIAL_VAR, *access.latent_vars(spec.n_components)],
             u_names=["u"],
             x=[
                 access.comp_matrix(pre, i)
@@ -41,26 +47,26 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
 
     def fit(
         self,
-        meta: SurrogateMeta,
-        train_xr: xr.Dataset,
+        spec: SurrogateSpec,
+        training_data: xr.Dataset,
         preprocessor: Preprocessor,
-        spec: dict,
+        config: dict,
     ) -> SINDyBundle:
-        inputs = self.train_inputs(meta, train_xr, preprocessor)
-        n = meta.n_components
+        inputs = self.train_inputs(spec, training_data, preprocessor)
+        n = spec.n_components
         # 列構造: [V, z1..zN, u]。V=0, gate 群, 末尾に外部電流。
         roles = Roles(V=0, g=list(range(1, 1 + n)), u=1 + n)
-        return fit_sindy(inputs, access.time(train_xr), roles, spec)
+        return fit_sindy(inputs, access.time(training_data), roles, config)
 
     def surr_comp_type(
         self,
-        meta: SurrogateMeta,
+        spec: SurrogateSpec,
         preprocessor: Preprocessor,
         closure: SINDyBundle,
     ) -> CompartmentType:
         xi = jnp.asarray(closure.xi)
         compute_theta = closure.compute_theta()
-        n_latent = meta.n_components
+        n_latent = spec.n_components
 
         def surr_kernel(params, i_t, v, state):
             # 束縛順 [V, z1..zN, u]、xi の行も同順 (0=V, 1..=latent)。
@@ -68,12 +74,12 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
             return xi[0] @ theta, xi[1:] @ theta
 
         return CompartmentType(
-            name=meta.surr_type_name,
+            name=spec.surr_type_name(),
             kernel=surr_kernel,
             param_cls=None,
             gate_names=access.latent_vars(n_latent),
             # param_cls=None → 学習元ノードの初期状態を引き継ぐ (置換は params 完全一致
             # のノードのみ)。
-            inits=lambda _: [meta.train_comp.init[0]] + preprocessor.gate_inits,
+            inits=lambda _: [spec.train_comp().init[0]] + preprocessor.gate_inits,
             opcost=closure.opcost(),  # 丸ごと同定 → コスト = 閉包項の評価
         )

@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from ...core.opcost import OpCost
-from .base import Closure
+from . import Closure
 
 # tanh(x) = 1 - 2 / (exp(2x) + 1) — preprocessor/autoencoder.py と同じ数え方。
 _TANH_COST = OpCost(exp=1, div=1, pm=2, mul=1)

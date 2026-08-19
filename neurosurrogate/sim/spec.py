@@ -4,7 +4,7 @@
 **実行を知らない** = ここに書けるのは「何を回すか」だけで、どの surrogate で回すかも
 回した結果も持たない (実行は `run`、結果は `result`)。おかげで**同一性が記述だけで
 決まり** (`hash` を持つのは再利用の単位である `EvalSeries`)、
-surrogate 層にも依存しない (`surrogate.meta` がこの module を import する)。
+surrogate 層にも依存しない (`surrogate.model` がこの module を import する)。
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ class SimSpec:
         return CURRENT_MAP[self.current_type](**self.current_params)(self.dt)
 
     def materialize(self) -> DatasetConfig:
-        """仕様 → 実行入力 (原系)。置換系は `surrogate.replace.apply_surrogate` が
+        """仕様 → 実行入力 (原系)。置換系は `Surrogate.apply` が
         この実行入力から非破壊で作る。"""
         return DatasetConfig(dt=self.dt, net=self.net, current=self.current())
 

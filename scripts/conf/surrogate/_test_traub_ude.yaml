@@ -5,7 +5,7 @@
 # results/test_later へ退避したので defaults 継承しない。
 # smoke なので epochs/window/batch を切り詰める (回って有限値が出ることだけ見る)。
 surrogate:
-  meta:
+  spec:
     comp_type: traub
     surrogate_type: ude
     preprocessor_type: ae # ude は encoder/decoder を学習変数にするので ae 固定

@@ -1,7 +1,7 @@
 """学習データ成果物: 閉包項に「何を食わせたか」を描く。
 
-学習データの実体は保存されていない — `SurrogateMeta` (dataset/電流/dt) と
-`Ansatz.train_source` (どの comp の・先頭何ゲートか) から `bundle.train_xr` を
+学習データの実体は保存されていない — `SurrogateSpec` (dataset/電流/dt) と
+`scope.train_comp_ids` と ansatz の学習ゲート規則から `surrogate.training_data` を
 再生成し、そこから図を組む。→ MLflow から load した run でも同じ図が出る。
 
 evaluate 後の比較図 (sim.py) と違い、**surrogate 単体にしか依存しない** ので
@@ -24,7 +24,7 @@ from ...artifact.plotting import (
     place_legend,
 )
 from ...core import access
-from ..bundle import SurrogateBundle
+from ..model import Surrogate
 
 _HIST_BINS = 60
 _PANEL_HEIGHT = 1.6  # 時系列図 1 段の高さ [inch]
@@ -37,30 +37,36 @@ def _figsize(n_rows: int) -> tuple[float, float]:
 
 
 def _shown(
-    bundle: SurrogateBundle, comps: Sequence[int] | None
+    surrogate: Surrogate, comps: Sequence[int] | None
 ) -> list[tuple[int, int, str]]:
-    """描く学習 comp の (train_source 内の位置, comp_id, 表示名)。comps=None は
-    学習 comp 全部。位置は train_inputs / _latents の並び (source.comp_ids 順) と
+    """描く学習 comp の (学習範囲内の位置, comp_id, 表示名)。comps=None は
+    学習 comp 全部。位置は train_inputs / _latents の並び (comp_ids 順) と
     対応する。traub19 のような多 comp 学習は全部重ねると読めない → UI で絞る。"""
-    nodes = bundle.meta.dataset.net.nodes
+    nodes = surrogate.spec.dataset.net.nodes
     return [
         (k, i, nodes[i].name)
-        for k, i in enumerate(bundle.ansatz.train_source(bundle.meta).comp_ids)
+        for k, i in enumerate(surrogate.spec.train_comp_ids())
         if comps is None or i in comps
     ]
 
 
-def _latents(bundle: SurrogateBundle, comp_ids: Sequence[int]) -> list[np.ndarray]:
+def _latents(surrogate: Surrogate, comp_ids: Sequence[int]) -> list[np.ndarray]:
     """comp ごとの潜在軌道 (time, n_components)。閉包項が実際に見た入力。"""
-    source = bundle.ansatz.train_source(bundle.meta)
     return [
-        np.asarray(bundle.preprocessor.encode(source.gate(bundle.train_xr, i)))
+        np.asarray(surrogate.preprocessor.encode(_training_gate(surrogate, i)))
         for i in comp_ids
     ]
 
 
+def _training_gate(surrogate: Surrogate, comp_id: int) -> np.ndarray:
+    """comp_id のうち ansatz が学習するゲート列。"""
+    return access.gate_matrix(surrogate.training_data, comp_id)[
+        :, : surrogate.n_training_gates
+    ]
+
+
 def train_raw_artifact(
-    bundle: SurrogateBundle, comps: Sequence[int] | None = None
+    surrogate: Surrogate, comps: Sequence[int] | None = None
 ) -> Artifact:
     """生の学習軌道: 注入電流・学習 comp の V・表示先頭 comp のゲート。
 
@@ -68,18 +74,17 @@ def train_raw_artifact(
     のみ (全 comp 分を重ねると本数が comp×gate で潰れる。他 comp のゲートは同一多様体
     上に乗る前提なので、被覆のズレは coverage 図が受け持つ)。
     """
-    source = bundle.ansatz.train_source(bundle.meta)
-    shown = _shown(bundle, comps)
+    shown = _shown(surrogate, comps)
     panels = [
         PanelSpec(
             "I_ext(t)\n[μA/cm²]",
-            [TraceSpec(*access.i_ext(bundle.train_xr), color="#FFC107")],
+            [TraceSpec(*access.i_ext(surrogate.training_data), color="#FFC107")],
         ),
         PanelSpec(
             "v(t) [mV]",
             [
                 TraceSpec(
-                    *access.trace(bundle.train_xr, i, access.POTENTIAL_VAR),
+                    *access.trace(surrogate.training_data, i, access.POTENTIAL_VAR),
                     label=name,
                 )
                 for _, i, name in shown
@@ -93,13 +98,15 @@ def train_raw_artifact(
                 f"gates ({shown[0][2]})",
                 [
                     TraceSpec(
-                        access.time(bundle.train_xr),
-                        source.gate(bundle.train_xr, shown[0][1])[:, k],
+                        access.time(surrogate.training_data),
+                        _training_gate(surrogate, shown[0][1])[:, k],
                         # 表記はポスター本文 (m, n, h, ...) に揃える
                         label=name.lower(),
                     )
                     for k, name in enumerate(
-                        bundle.meta.comp_type.gate_names[: source.n_gate]
+                        surrogate.spec.comp_type.gate_names[
+                            : surrogate.n_training_gates
+                        ]
                     )
                 ],
             )
@@ -108,7 +115,7 @@ def train_raw_artifact(
 
 
 def train_preprocessed_artifact(
-    bundle: SurrogateBundle, comps: Sequence[int] | None = None
+    surrogate: Surrogate, comps: Sequence[int] | None = None
 ) -> Artifact:
     """同定器へ渡す**直前**の圧縮済みデータ (状態列 x を 1 列 1 段、comp 重ね)。
 
@@ -116,16 +123,14 @@ def train_preprocessed_artifact(
     対象でない (hybrid では入力 u、sindy では x の 1 列として素通し) ので、圧縮後の図
     には出さない。
     """
-    inputs = bundle.ansatz.train_inputs(
-        bundle.meta, bundle.train_xr, bundle.preprocessor
-    )
-    shown = _shown(bundle, comps)
+    inputs = surrogate.training_inputs()
+    shown = _shown(surrogate, comps)
     panels = [
         PanelSpec(
             name,
             [
                 TraceSpec(
-                    access.time(bundle.train_xr),
+                    access.time(surrogate.training_data),
                     mats[pos][:, k],
                     label=label,
                     color="red",
@@ -141,15 +146,14 @@ def train_preprocessed_artifact(
 
 
 def train_recon_artifact(
-    bundle: SurrogateBundle, comps: Sequence[int] | None = None
+    surrogate: Surrogate, comps: Sequence[int] | None = None
 ) -> Artifact:
     """preprocessor の再構成誤差 (ゲート → 潜在 → ゲートの RMSE、comp 別)。
 
     「潜在に落とした時点で何を捨てたか」= 閉包項の同定より手前で決まる誤差の下限。
     """
-    source = bundle.ansatz.train_source(bundle.meta)
-    shown = _shown(bundle, comps)
-    latents = _latents(bundle, [i for _, i, _ in shown])
+    shown = _shown(surrogate, comps)
+    latents = _latents(surrogate, [i for _, i, _ in shown])
     return Artifact(
         "train_recon",
         draw_engine(
@@ -158,13 +162,15 @@ def train_recon_artifact(
                     "recon RMSE",
                     [
                         TraceSpec(
-                            access.time(bundle.train_xr),
+                            access.time(surrogate.training_data),
                             np.sqrt(
                                 np.mean(
                                     (
-                                        source.gate(bundle.train_xr, i)
+                                        _training_gate(surrogate, i)
                                         - np.asarray(
-                                            bundle.preprocessor.decode(jnp.asarray(lat))
+                                            surrogate.preprocessor.decode(
+                                                jnp.asarray(lat)
+                                            )
                                         )
                                     )
                                     ** 2,
@@ -182,7 +188,7 @@ def train_recon_artifact(
 
 
 def train_v_coverage_artifact(
-    bundle: SurrogateBundle, comps: Sequence[int] | None = None
+    surrogate: Surrogate, comps: Sequence[int] | None = None
 ) -> Artifact:
     """学習が踏んだ V の分布 (comp 別ヒストグラム)。
 
@@ -192,9 +198,9 @@ def train_v_coverage_artifact(
     """
     fig = new_figure()
     ax = fig.subplots()
-    for _, i, name in _shown(bundle, comps):
+    for _, i, name in _shown(surrogate, comps):
         ax.hist(
-            access.potential(bundle.train_xr, i),
+            access.potential(surrogate.training_data, i),
             bins=_HIST_BINS,
             histtype="step",
             label=name,
@@ -207,20 +213,20 @@ def train_v_coverage_artifact(
 
 
 def train_manifold_artifact(
-    bundle: SurrogateBundle, comps: Sequence[int] | None = None
+    surrogate: Surrogate, comps: Sequence[int] | None = None
 ) -> Artifact:
     """潜在空間の軌道 (comp 別)。学習ゲートが乗る多様体の形。
 
     学習ゲートは params-free なので comp が違っても同一多様体に乗るはず → 軌道が
     重ならなければ multi-comp 学習の前提が崩れている (潜在次元不足か params 混入)。
     """
-    shown = _shown(bundle, comps)
-    latents = _latents(bundle, [i for _, i, _ in shown])
-    latent_names = access.latent_vars(bundle.meta.n_components)
-    if bundle.meta.n_components < 2:
+    shown = _shown(surrogate, comps)
+    latents = _latents(surrogate, [i for _, i, _ in shown])
+    latent_names = access.latent_vars(surrogate.spec.n_components)
+    if surrogate.spec.n_components < 2:
         # 潜在が 1 次元なら軌道が描けない → V を横軸に取る (z1 の V 依存を見る)。
         x_label, y_label = access.POTENTIAL_VAR, latent_names[0]
-        xs = [access.potential(bundle.train_xr, i) for _, i, _ in shown]
+        xs = [access.potential(surrogate.training_data, i) for _, i, _ in shown]
         ys = [lat[:, 0] for lat in latents]
     else:
         x_label, y_label = latent_names[0], latent_names[1]

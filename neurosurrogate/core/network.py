@@ -21,7 +21,7 @@ class CompartmentType:
     gate_names: list[str]
     # params -> [V, *gates] 初期状態。初期値は params からの導出量 (Traub の Ca 濃度
     # XI は phi_area/g_Ca 依存、静止電位は V_LEAK/E_REST) なので型に定数で焼かず、
-    # ノード自身の params で毎回解く。module 関数で束縛 (meta が pickle される)。
+    # ノード自身の params で毎回解く。module 関数で束縛 (spec が pickle される)。
     inits: Callable[..., list[float]]
     opcost: "OpCost | None" = None
 
@@ -49,7 +49,7 @@ class Compartment:
     def resolved_params(self) -> "tuple | None":
         """実効 params: 明示 params、無ければ型 default (param_cls())。
 
-        置換の params 一致判定 (surrogate/replace.py) と初期状態の解決に使う共通基準。
+        置換の params 一致判定と初期状態の解決に使う共通基準。
         surr のように param_cls=None の型は params を持たず None。
         """
         if self.params is not None:
@@ -127,7 +127,7 @@ class DatasetConfig:
     仕様 (適用先の名前・電流の種類とパラメータ) は持たない — それは `spec.SimSpec`
     で、`SimSpec.materialize()` がここへ落とす。**名前 → 実体の解決を core に
     持ち込まない**ための分割で、おかげでこの層は他のディレクトリを一切 import
-    しない (置換は `surrogate.replace` が net を差し替えた複製を作る)。
+    しない (置換は `Surrogate.apply` が net を差し替えた複製を作る)。
     """
 
     dt: float

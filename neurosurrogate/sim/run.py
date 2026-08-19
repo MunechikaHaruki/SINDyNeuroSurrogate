@@ -13,21 +13,20 @@ import xarray as xr
 
 from ..core.diverge import log_divergence
 from ..core.simulator import unified_simulator
-from ..surrogate.bundle import SurrogateBundle
-from ..surrogate.replace import apply_surrogate
+from ..surrogate.model import Surrogate
 from .result import SeriesRun
 from .spec import EvalSeries, SimSpec
 
 
-def simulate(spec: SimSpec, surrogate: SurrogateBundle | None) -> xr.Dataset:
+def simulate(spec: SimSpec, surrogate: Surrogate | None) -> xr.Dataset:
     """1 シミュ → 波形。`surrogate=None` なら原系、あれば `apply_surrogate` してから
     回す。**入力は返さない** (呼んだ側が既に持っている)。"""
     dset = spec.materialize()
     if surrogate is None:
         return unified_simulator(dset)
-    surr_ds = unified_simulator(apply_surrogate(surrogate, dset))
+    surr_ds = unified_simulator(surrogate.apply(dset))
     # 系列名は spec が持たない (カタログのキーが単一源) → 入力そのもので名乗る。
-    where = f"{spec.target}/{spec.current_type} / {surrogate.meta.surr_type_name}"
+    where = f"{spec.target}/{spec.current_type} / {surrogate.spec.surr_type_name()}"
     log_divergence(spec.net, surr_ds, where)
     return surr_ds
 
@@ -35,7 +34,7 @@ def simulate(spec: SimSpec, surrogate: SurrogateBundle | None) -> xr.Dataset:
 def run_column(
     series: EvalSeries,
     run_id: str | None,
-    surrogate: SurrogateBundle | None,
+    surrogate: Surrogate | None,
 ) -> SeriesRun:
     """掃引の点列を順に回して**1 列**にする (**系列 → 結果の唯一の入口**)。
 

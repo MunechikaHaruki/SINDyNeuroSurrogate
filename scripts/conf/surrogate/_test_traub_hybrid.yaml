@@ -3,7 +3,7 @@
 # preset は results/obsolete へ退避したので defaults 継承しない。
 # Ca サブ系 (XI/Q) の physics 分離と traub19 への移植を踏む経路。
 surrogate:
-  meta:
+  spec:
     comp_type: traub
     surrogate_type: hybrid
     preprocessor_type: pca # 決定的で速い pca に固定 (AE は乱数初期化で品質がブレる)
