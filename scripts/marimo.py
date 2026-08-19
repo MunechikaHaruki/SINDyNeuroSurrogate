@@ -129,7 +129,7 @@ def _():
     from mlflow_io.report import write_report
     from mlflow_io.runs import find_presets, find_selectable_runs, load_runs
 
-    from neurosurrogate.waveform.dynamics import METRIC_KEYS
+    from neurosurrogate.sim.waveform import METRIC_KEYS
 
     # 残す操作は「run 選択」「レポート」の 2 つ。CLI は持たない (二重管理を避け、
     # ここが唯一の実行経路)。**セルに置くのは widget と、それを plain 値に均す 1 行

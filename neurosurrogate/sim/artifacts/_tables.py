@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .dynamics import (
+from ..waveform import (
     DynamicMetrics,
     diff_or_nan,
     spike_feature_values,

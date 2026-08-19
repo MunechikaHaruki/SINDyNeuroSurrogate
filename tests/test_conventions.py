@@ -55,7 +55,6 @@ _GROUP_OF = {
     "neurosurrogate/sim/artifacts": "sim_exec",
     "neurosurrogate/sim/": "sim_desc",
     "neurosurrogate/surrogate/": "surrogate",
-    "neurosurrogate/waveform/": "waveform",
 }
 # 層 → import してよい層 (自分自身は常に可)。推移的な許可も**明示的に**書く
 # = 「どこから何が見えるか」がこの表だけで読める。
@@ -63,13 +62,10 @@ _LAYERS = {
     "base": frozenset(),  # 他ディレクトリを一切 import しない基盤
     "neurons": frozenset({"base"}),
     "sim_desc": frozenset({"base", "neurons"}),
-    "waveform": frozenset({"base", "sim_desc"}),  # neurons も surrogate も見ない枝
     "surrogate": frozenset({"base", "neurons", "sim_desc"}),
-    "sim_exec": frozenset({"base", "neurons", "sim_desc", "surrogate", "waveform"}),
+    "sim_exec": frozenset({"base", "neurons", "sim_desc", "surrogate"}),
     # 合流点。全部見てよいのはここだけ
-    "bundle": frozenset(
-        {"base", "neurons", "sim_desc", "waveform", "surrogate", "sim_exec"}
-    ),
+    "bundle": frozenset({"base", "neurons", "sim_desc", "surrogate", "sim_exec"}),
 }
 
 # ドメイン層が触ってはいけない基盤 (実行/記録の入口は scripts/ だけが知る)。

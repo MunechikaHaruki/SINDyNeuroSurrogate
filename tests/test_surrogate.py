@@ -8,6 +8,7 @@ Hydra プリセットを実設定源として読み、UI/実験ログを介さ�
 from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -17,13 +18,8 @@ from hydra import compose, initialize_config_dir
 from matplotlib.figure import Figure
 from omegaconf import OmegaConf
 
-import neurosurrogate.artifact.bundle as artifact_bundle
-from neurosurrogate.artifact.bundle import (
-    detail_artifacts,
-    original_artifacts,
-    report_artifacts,
-    surrogate_artifacts,
-)
+import neurosurrogate.surrogate.artifacts as surrogate_artifact_pkg
+from neurosurrogate.artifact.bundle import save_report
 from neurosurrogate.core import access
 from neurosurrogate.core.coords import transform_gate
 from neurosurrogate.core.opcost import OpCost
@@ -33,10 +29,22 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
-from neurosurrogate.sim.artifacts import summary_artifact, traces_artifact
+from neurosurrogate.sim.artifacts import (
+    detail_artifacts,
+    original_artifacts,
+    report_artifacts,
+)
+from neurosurrogate.sim.artifacts.detail import (
+    attractor_artifact,
+    diff_artifact,
+    simple_artifact,
+)
+from neurosurrogate.sim.artifacts.report import summary_artifact, traces_artifact
 from neurosurrogate.sim.result import SeriesResults, SeriesRun
 from neurosurrogate.sim.run import run_column
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
+from neurosurrogate.sim.waveform import METRIC_KEYS, DynamicMetrics, extract_metric
+from neurosurrogate.surrogate.artifacts import surrogate_artifacts
 from neurosurrogate.surrogate.artifacts.model import (
     feature_tex,
     preprocessor_artifact,
@@ -62,16 +70,6 @@ from neurosurrogate.surrogate.parts.closure.ude import UDEClosure
 from neurosurrogate.surrogate.parts.preprocessor.autoencoder import AEPreprocessor
 from neurosurrogate.surrogate.parts.preprocessor.pca import PCAPreprocessor
 from neurosurrogate.surrogate.runs import SurrogateRuns
-from neurosurrogate.waveform.artifacts import (
-    attractor_artifact,
-    diff_artifact,
-    simple_artifact,
-)
-from neurosurrogate.waveform.dynamics import (
-    METRIC_KEYS,
-    DynamicMetrics,
-    extract_metric,
-)
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
 LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, z1..zN, u] の両端
@@ -289,13 +287,21 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
     view = SeriesResults(sindy_view.original, sindy_view.surrs)
     assert [f.name for f in original_artifacts(view)] == ["current"]
     runs = SurrogateRuns((("r0", sindy),))
-    # つまみは marimo の widget が作るのと同じ**全キー**。既定値は widget にしか無く、
-    # ここは欠けたら KeyError で落ちる (握って別の値で描かない)。
-    report_tuning = {"metric": "spike_count", "yauto": True, "ymin": 0.0, "ymax": 1.0}
-    detail_tuning = {"detail_point": 0, "spike_orig": 0, "spike_surr": 0}
-    waves = report_artifacts(view, runs, "soma", report_tuning)
-    assert "traces" in {f.name for f in waves}
-    detail = detail_artifacts(view, "r0", sindy, "soma", (), detail_tuning)
+    assert "traces" in {
+        f.name for f in report_artifacts(view, runs, "soma", "spike_count", None)
+    }
+    comp_id = view.series.spec.net.name_to_idx("soma")
+    original, surrogate_wave = view.pair(0, view.column("r0"))
+    detail = detail_artifacts(
+        original,
+        transform_gate(sindy.preprocessor, original, comp_id),
+        surrogate_wave,
+        comp_id,
+        view.series.spec.dt,
+        None,
+        0,
+        0,
+    )
     assert {artifact.name for artifact in detail} == {
         "diff",
         "simple",
@@ -303,24 +309,42 @@ def test_report_draws_the_results_at_hand_not_the_declaration(
         "metrics",
         "metrics_scalar",
     }
+
+
+def test_save_report_resolves_the_knobs_without_filling_in_defaults(
+    sindy_view: SeriesResults, sindy: Surrogate, tmp_path: Path
+) -> None:
+    """つまみを解くのは `save_report` だけ = 誤った指定はここで落ちる。既定値で
+    埋めない (握って別の値で描くより、どのキーが来ていないかが分かる方がよい)。"""
+    view = SeriesResults(sindy_view.original, sindy_view.surrs)
+    runs = SurrogateRuns((("r0", sindy),))
+    # つまみは marimo の widget が作るのと同じ**全キー**。既定値は widget にしか無い。
+    tuning: dict[str, Any] = {
+        "common": {"eval_comp": "soma", "view_comps": []},
+        "report": {"metric": "spike_count", "yauto": True, "ymin": 0.0, "ymax": 1.0},
+        "detail": {"detail_point": 0, "spike_orig": 0, "spike_surr": 0},
+    }
     # 手元の点数を超えた点 index は設定誤りとして落とす
     # (端へ丸めると指定と違う点の図が同じ保存名で出る)。
     for invalid_index in (-1, 99):
         with pytest.raises(ValueError, match="点 index"):
-            detail_artifacts(
+            save_report(
                 view,
-                "r0",
-                sindy,
-                "soma",
-                (),
-                detail_tuning | {"detail_point": invalid_index},
+                runs,
+                tuning | {"detail": tuning["detail"] | {"detail_point": invalid_index}},
+                tmp_path,
             )
     # 適用先に無い comp は名前解決がそのまま KeyError (先回りして検証しない)
     with pytest.raises(KeyError):
-        detail_artifacts(view, "r0", sindy, "nope", (), detail_tuning)
+        save_report(
+            view,
+            runs,
+            tuning | {"common": {"eval_comp": "nope", "view_comps": []}},
+            tmp_path,
+        )
     # つまみのキーが欠けていれば、既定値で埋めずに KeyError
     with pytest.raises(KeyError, match="detail_point"):
-        detail_artifacts(view, "r0", sindy, "soma", (), {})
+        save_report(view, runs, tuning | {"detail": {}}, tmp_path)
 
 
 def test_surrogate_artifacts_come_from_the_run_itself_not_a_declaration(
@@ -345,7 +369,7 @@ def test_artifact_failure_propagates(
     def boom() -> Figure:
         raise KeyError("missing var")
 
-    monkeypatch.setattr(artifact_bundle, "train_raw_artifact", lambda *_: boom())
+    monkeypatch.setattr(surrogate_artifact_pkg, "train_raw_artifact", lambda *_: boom())
     with pytest.raises(KeyError, match="missing var"):
         surrogate_artifacts(sindy)
 

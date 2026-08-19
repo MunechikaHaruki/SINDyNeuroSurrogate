@@ -1,7 +1,10 @@
-"""各ドメインの単一成果物を、保存側が扱う成果物列へ編成する。
+"""各ドメインの成果物を集めて、**どの段へ書くか**を決める唯一の場所。
 
-**編成はここで閉じる** — どの図を作るか (`*_artifacts`) だけでなく、それを
-どの段へ書くか (`save_report`) まで。保存側に残るのは「どこへ書かせるか」
+**何を描くかはここに無い** — 成果物の集合 (`Artifacts`) はそれを持つドメインが
+自分で組む (`sim.artifacts` = run 横断・原系・1 ペア、`surrogate.artifacts` =
+学習 run 1 本)。
+ここが持つのは、ドメインを跨ぐ組み立て (原系ゲートの latent 射影) と、つまみを
+解いて段へ配ること (`save_report`) だけ。保存側に残るのは「どこへ書かせるか」
 (一時 dir を渡して MLflow へ流す) だけ。
 """
 
@@ -15,94 +18,16 @@ import xarray as xr
 from ..core.coords import transform_gate
 from ..core.network import NeuronGraph
 from ..sim.artifacts import (
-    metric_artifact,
-    summary_artifact,
-    traces_artifact,
+    detail_artifacts,
+    original_artifacts,
+    report_artifacts,
 )
 from ..sim.result import SeriesResults
-from ..surrogate.artifacts.model import (
-    closure_artifact,
-    neuron_graph_artifact,
-    preprocessor_artifact,
-)
-from ..surrogate.artifacts.train import (
-    train_manifold_artifact,
-    train_preprocessed_artifact,
-    train_raw_artifact,
-    train_recon_artifact,
-    train_v_coverage_artifact,
-)
+from ..surrogate.artifacts import surrogate_artifacts
 from ..surrogate.model import Surrogate
 from ..surrogate.runs import SurrogateRuns
-from ..waveform.artifacts import (
-    attractor_artifact,
-    current_preview_artifact,
-    diff_artifact,
-    metrics_artifact,
-    metrics_scalar_artifact,
-    simple_artifact,
-)
-from ..waveform.dynamics import DynamicMetrics
-from .model import Artifact, Artifacts
+from .model import Artifact
 from .plotting import use_style
-
-
-def surrogate_artifacts(
-    surrogate: Surrogate, view_comps: tuple[str, ...] = ()
-) -> Artifacts:
-    """学習 run 1 本が自己記述できる成果物をまとめる。"""
-    net = surrogate.spec.dataset.net
-    comps = [net.name_to_idx(comp) for comp in view_comps] or None
-    return Artifacts(
-        (
-            *(
-                artifact
-                for artifact in (
-                    closure_artifact(surrogate.closure),
-                    preprocessor_artifact(surrogate.preprocessor),
-                )
-                if artifact is not None
-            ),
-            neuron_graph_artifact(
-                net,
-                {node.name for node in net.nodes if surrogate.spec.replaceable(node)},
-            ),
-            train_raw_artifact(surrogate, comps),
-            train_preprocessed_artifact(surrogate, comps),
-            train_recon_artifact(surrogate, comps),
-            train_v_coverage_artifact(surrogate, comps),
-            train_manifold_artifact(surrogate, comps),
-        )
-    )
-
-
-def report_artifacts(
-    view: SeriesResults,
-    runs: SurrogateRuns,
-    eval_comp: str,
-    tuning: dict[str, Any],
-) -> Artifacts:
-    """run 横断のサマリ・波形格子・点軸メトリクスをまとめる。"""
-    artifacts = [
-        summary_artifact(runs),
-        traces_artifact(view, runs, eval_comp),
-    ]
-    if len(view.original_waves) > 1:
-        # y レンジは 3 つのつまみ (auto/下限/上限) で入り、図には 1 値で渡る。
-        ylim = (
-            None if tuning["yauto"] else (float(tuning["ymin"]), float(tuning["ymax"]))
-        )
-        artifacts.append(
-            metric_artifact(view, runs, eval_comp, str(tuning["metric"]), ylim)
-        )
-    return Artifacts(tuple(artifacts))
-
-
-def original_artifacts(view: SeriesResults) -> Artifacts:
-    """原系の波形だけで決まる成果物をまとめる。"""
-    # 描くのは**先頭点の電流** (掃引値を埋めた複製)。`series.spec` は掃引値の入って
-    # いないカタログ既定なので、掃引系列では実際に回した波形と食い違う。
-    return Artifacts((current_preview_artifact(view.series.points[0]),))
 
 
 def _preprocessed_latent(
@@ -118,38 +43,6 @@ def _preprocessed_latent(
             f"not possible (trained type {surrogate.spec.comp_type.name!r})"
         )
     return transform_gate(surrogate.preprocessor, ds, comp_id)
-
-
-def detail_artifacts(
-    view: SeriesResults,
-    run_id: str,
-    surrogate: Surrogate,
-    eval_comp: str,
-    view_comps: tuple[str, ...],
-    tuning: dict[str, Any],
-) -> Artifacts:
-    """選択した 1 点・1 モデルの波形成果物をまとめる。"""
-    net = view.series.spec.net
-    comp_id = net.name_to_idx(eval_comp)
-    original, surrogate_wave = view.pair(
-        int(tuning["detail_point"]), view.column(run_id)
-    )
-
-    latent = _preprocessed_latent(surrogate, net, original, comp_id)
-    dm = DynamicMetrics(original, surrogate_wave, comp_id, view.series.spec.dt)
-    spike_orig = int(tuning["spike_orig"])
-    spike_surr = int(tuning["spike_surr"])
-    return Artifacts(
-        (
-            diff_artifact(original, latent, surrogate_wave, comp_id),
-            simple_artifact(
-                original, [net.name_to_idx(comp) for comp in view_comps] or None
-            ),
-            attractor_artifact(latent, surrogate_wave, comp_id),
-            metrics_artifact(dm, spike_orig, spike_surr),
-            metrics_scalar_artifact(dm, spike_orig, spike_surr),
-        )
-    )
 
 
 def save_report(
@@ -182,18 +75,34 @@ def save_report(
     common = dict(tuning["common"])
     eval_comp = str(common["eval_comp"])
     view_comps = tuple(common["view_comps"])
+    net = view.series.spec.net
+    comp_id = net.name_to_idx(eval_comp)
+    comps = [net.name_to_idx(comp) for comp in view_comps] or None
+    report, detail = dict(tuning["report"]), dict(tuning["detail"])
     use_style()
     # つまみも成果物 1 件 (`tuning.json`) = 図・表と同じ経路で書く。
     Artifact("tuning", tuning).save(root)
-    report_artifacts(view, runs, eval_comp, dict(tuning["report"])).save(root)
+    report_artifacts(
+        view,
+        runs,
+        eval_comp,
+        str(report["metric"]),
+        # y レンジは 3 つのつまみ (auto/下限/上限) で入り、図には 1 値で渡る。
+        None if report["yauto"] else (float(report["ymin"]), float(report["ymax"])),
+    ).save(root)
     original_artifacts(view).save(root / "series/original")
     for run_id, (run_name, surrogate) in zip(view.run_ids, runs, strict=True):
         surrogate_artifacts(surrogate, view_comps).save(root / "models" / run_name)
+        original, surrogate_wave = view.pair(
+            int(detail["detail_point"]), view.column(run_id)
+        )
         detail_artifacts(
-            view,
-            run_id,
-            surrogate,
-            eval_comp,
-            view_comps,
-            dict(tuning["detail"]),
+            original,
+            _preprocessed_latent(surrogate, net, original, comp_id),
+            surrogate_wave,
+            comp_id,
+            view.series.spec.dt,
+            comps,
+            int(detail["spike_orig"]),
+            int(detail["spike_surr"]),
         ).save(root / "series" / run_name)

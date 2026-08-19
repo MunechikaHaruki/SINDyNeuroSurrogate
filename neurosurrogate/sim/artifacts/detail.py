@@ -1,48 +1,32 @@
 """**1 ペアの詳細成果物**: 入力電流プレビューと、原系/置換系の比較。
 
 どのペアを描くかは呼び出し側が選び、ここは Dataset だけを受ける (結果型
-`SeriesResults` を知らない)。成果物列への編成は
-`artifact.bundle.detail_artifacts` が受け持つ。marimo 非依存。
+`SeriesResults` を知らない)。**1 ペアから何を出すかはここが持つ** =
+`detail_artifacts` が集合ごと返し、合流点はそれを受け取って段へ書くだけ。
+marimo 非依存。
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 from matplotlib import rcParams
 
-from ..artifact.model import Artifact
-from ..artifact.plotting import (
+from ...artifact.model import Artifact
+from ...artifact.plotting import (
     PanelSpec,
     TraceSpec,
     draw_engine,
     new_figure,
     place_legend,
 )
-from ..core import access
-from ..core.access import POTENTIAL_VAR
+from ...core import access
+from ...core.access import POTENTIAL_VAR
+from ..waveform import DynamicMetrics, n_spikes, spike_shape_corr, waveform_summary
 from ._tables import spike_features_df, waveform_summary_df
-from .dynamics import DynamicMetrics, n_spikes, spike_shape_corr, waveform_summary
-
-if TYPE_CHECKING:
-    from ..sim.spec import SimSpec
-
-
-def current_preview_artifact(spec: SimSpec) -> Artifact:
-    """電流波形プレビュー。marimo 非依存。"""
-    i_ext = spec.current()
-    t = np.arange(len(i_ext)) * spec.dt
-    fig = new_figure(figsize=(6, 2))
-    ax = fig.subplots()
-    ax.plot(t, i_ext, lw=0.8)
-    ax.set_xlabel("t [ms]")
-    ax.set_ylabel("I_ext [μA/cm²]")
-    ax.set_title(f"{spec.current_type} preview")
-    return Artifact("current", fig)
 
 
 def diff_artifact(

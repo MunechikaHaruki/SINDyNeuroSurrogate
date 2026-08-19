@@ -5,9 +5,9 @@
 - **run 横断** (`summary_artifact` / `traces_artifact` / `metric_artifact`) …
   中身が「今 何本を比べているか」
   で変わる = レポート run に属する。**「点軸 × run 軸に開いた並び」を図/表に落とすのは
-  ここだけ** — 波形ドメイン (`neurosurrogate.waveform`) は 1 ペア (原系, 置換系) しか
+  ここだけ** — 波形の指標 (`sim.waveform`) は 1 ペア (原系, 置換系) しか
   知らず軸の話を持たない。並び自体は `SeriesResults` が既に持つので図の側で組み直さない
-- **波形 1 本で決まる図**は `waveform.artifacts` が受け持つ
+- **波形 1 本で決まる図**は `detail.py` が受け持つ
 
 **学習 run 1 本の自己記述図はここに無い** (置換シミュの結果が要らない =
 `surrogate.artifacts`)。成果物列への編成は `artifact.bundle` が受け持つ。
@@ -18,22 +18,24 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
-from ..artifact.model import Artifact
-from ..artifact.plotting import new_figure, place_legend
-from ..core import access
-from ..core.diverge import diverged
-from ..surrogate.model import Surrogate
-from ..surrogate.runs import SurrogateRuns
-from ..waveform.dynamics import DynamicMetrics, extract_metric
-from .catalog import currents
-from .result import SeriesResults
+from ...artifact.model import Artifact
+from ...artifact.plotting import new_figure, place_legend
+from ...core import access
+from ...core.diverge import diverged
+from ...surrogate.model import Surrogate
+from ...surrogate.runs import SurrogateRuns
+from ..catalog import currents
+from ..result import SeriesResults
+from ..waveform import DynamicMetrics, extract_metric
 
 if TYPE_CHECKING:
-    import numpy as np
     import xarray as xr
     from matplotlib.axes import Axes
+
+    from ..spec import SimSpec
 
 
 # --- 点軸に沿った指標 -----------------------------------------------------------
@@ -59,6 +61,19 @@ def _metrics_df(
                 row["original"] = orig_value  # run に依らない = 同じ値の上書き
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def current_preview_artifact(spec: SimSpec) -> Artifact:
+    """電流波形プレビュー。marimo 非依存。"""
+    i_ext = spec.current()
+    t = np.arange(len(i_ext)) * spec.dt
+    fig = new_figure(figsize=(6, 2))
+    ax = fig.subplots()
+    ax.plot(t, i_ext, lw=0.8)
+    ax.set_xlabel("t [ms]")
+    ax.set_ylabel("I_ext [μA/cm²]")
+    ax.set_title(f"{spec.current_type} preview")
+    return Artifact("current", fig)
 
 
 def metric_artifact(

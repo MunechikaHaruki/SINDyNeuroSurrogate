@@ -2,7 +2,7 @@
 marimo/mlflow 非依存。
 
 **DataFrame 化 (表として並べる/どの列名にするか) はここの関心でない**: それは
-「結果をどう見せるか」= 描画層の仕事 (`waveform/_tables.py`)。ここは
+「結果をどう見せるか」= 描画層の仕事 (`sim/artifacts/_tables.py`)。ここは
 `DynamicMetrics` を引数に取り、スカラーや (orig, surr) のタプル/dict を返す
 純粋関数群だけを持つ。発散判定 (`diverged`) は `eval.py` の発散ログからも
 呼ばれる共通述語なので `core/diverge.py` に置く。
@@ -174,7 +174,7 @@ def spike_feature_values(
     spike_surr: int = 0,
 ) -> dict[str, tuple[float, float]]:
     """指定 AP の eFEL 特徴量ごとの (orig, surr)。並べ方 (DataFrame 化) は
-    呼び出し側 (`waveform/_tables.py`) の関心。"""
+    呼び出し側 (`sim/artifacts/_tables.py`) の関心。"""
     orig_feat, surr_feat = dm.efel
     return {
         feat: (
@@ -219,7 +219,7 @@ def _isi_stat(dm: DynamicMetrics, fn) -> tuple[float, float]:
 
 def waveform_summary_rows(dm: DynamicMetrics) -> dict[str, tuple[float, float]]:
     """spike_count / latency / mean_isi / std_isi の (orig, surr)。並べ方
-    (DataFrame 化) は呼び出し側 (`waveform/_tables.py`) の関心。"""
+    (DataFrame 化) は呼び出し側 (`sim/artifacts/_tables.py`) の関心。"""
     o_n, s_n = n_spikes(dm)
     return {
         "spike_count": (float(o_n), float(s_n)),
