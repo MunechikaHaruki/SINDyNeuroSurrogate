@@ -5,13 +5,14 @@ CLAUDE.md から分離した詳細目録。ディレクトリの中身・設定�
 ## Directory
 
 ```
-neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← sim.{catalog,spec,result} ← surrogate ← sim.{run,artifacts} ← artifact.bundle (waveform は core と sim.spec だけを見る枝で、合流点が artifact.bundle) で、**core は他ディレクトリを一切 import しない**。層の所属と許可は `tests/test_conventions.py` の `_GROUP_OF`/`_LAYERS` が実行可能な形で持つ (ここの記述はその要約。新しいディレクトリを足したらあの表への追記が要る)。中身の無い `__init__.py` は置かない (再 export だけの層も作らない = 各実体を submodule から直接 import。そのため setuptools は `namespaces = true`)。**`_` 始まりのファイル名 = そのパッケージの外から import しない** (実測で内部専用のものだけが `_` を持つ)
+neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← sim.{catalog,spec,result,waveform} ← surrogate ← sim.{run,artifacts} ← artifact.bundle で、**core は他ディレクトリを一切 import しない**。層の所属と許可は `tests/test_conventions.py` の `_GROUP_OF`/`_LAYERS` が実行可能な形で持つ (ここの記述はその要約。新しいディレクトリを足したらあの表への追記が要る)。中身の無い `__init__.py` は置かない (再 export だけの層も作らない = 各実体を submodule から直接 import。そのため setuptools は `namespaces = true`)。**`_` 始まりのファイル名 = そのパッケージの外から import しない** (実測で内部専用のものだけが `_` を持つ)
   __init__.py                    # jax_enable_x64 を強制 ON
   core/  network.py              # Compartment/CompartmentType/NeuronGraph + DatasetConfig (**実体化済みの実行入力** = dt/net/current の 3 つだけ。名前の解決も JSON 往復も持たない)
          simulator.py            # unified_simulator (JAX Euler + lax.scan)
          coords.py               # xarray 座標の write 側 + transform_gate
          access.py               # 同スキーマの read 規約 (生 sel はここ以外で使わない)
          opcost.py               # OpCost 代数 (演算コスト集計)
+         diverge.py              # 置換系の数値的破綻判定 (diverged / log_divergence)。eval と metrics の両方から呼ばれる共通述語なのでどちらにも属させない
   neurons/  generate.py          # **作り方だけ** (chain / build_traub19)。組んだ結果のカタログは持たない
             traub19.py           # 19-comp モデルの per-comp 定数 + ヘルパ (traub.c 代数的等価)
             compartments/        # hh.py / traub.py / _common.py + COMPARTMENT_TEMPLATES
@@ -21,22 +22,23 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
         spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない** — hash は保存の単位だけが持つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+param+values の 1 掃引 = **保存の単位でもある**。points は派生、to_dict/from_dict/hash で往復)。**記述 2 段が result の 波形 / SeriesRun と 1 対 1**。surrogate より前の層 (SurrogateSpec.dataset がこれ)
         result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = mlflow_io.series の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。**答えるのは「どの列か・どの点か」だけ** (column/pair/run_ids) = 適用先も掃引軸も刻み幅も素通しせず、要るものは view.series から直接引く。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る
         run.py                   # **仕様 × surrogate を掛ける唯一の段** (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate (1 シミュ → 波形) / run_column (series + run_id + surrogate → **1 列** `SeriesRun`。系列 → 結果の唯一の入口。両方 None が原系)。**回す前に決まること (どの run が置換できるか) は持たない** → SurrogateRuns.replacing。表示名は出てこない (学習 run の id は列の標識として通るだけ)。surrogate の後の層
-        artifacts.py             # 結果 (`sim.result.SeriesResults`) → **単一 Artifact**。run 横断の summary/traces/metric を個別関数で生成。**点軸×run 軸の並びを成果物へ落とす唯一の場所**。成果物列の編成と詳細点の段付けは `artifact.bundle`
+        waveform.py              # 波形の指標: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)。DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)。依存は core.access だけ
+        artifacts/               # 結果 (`sim.result.SeriesResults`) → `Artifacts`。**成果物の集合 3 つ = 保存の 3 段**を `__init__.py` が持ち、合流点はそこだけを引く (`surrogate/artifacts/` と同じ形)
+          __init__.py            # report_artifacts (run 横断) / original_artifacts (原系の電流) / detail_artifacts (1 ペア。DynamicMetrics の組み立てもここ)
+          report.py              # summary/traces/metric + 電流プレビュー。**点軸×run 軸の並びを成果物へ落とす唯一の場所**
+          detail.py              # diff/simple/attractor/metrics。1 ペアの図と表 (点軸も run 軸も知らない)
+          _tables.py             # 指標の値を表に並べる (計算を増やさない)
   surrogate/  model.py           # config→SurrogateSpec の唯一の変換。SurrogateSpec が学習・適用範囲を、Surrogate が fit/load/save・学習済み成果物・Dataset への適用を答える
               runs.py            # 一意な名前と選択順を持つ SurrogateRuns。評価系列へ適用できる run 軸への絞り込み
               parts/  __init__.py # Surrogate が差し替える 3 構成要素の**契約を集約**: Closure / Preprocessor (+再構成統計) / Ansatz・TrainInputs。3 つは互いを参照する (Ansatz が両者を受け、型引数で Closure に束縛) ので契約は 1 モジュール = 抽象レベルのパッケージ間依存辺を持たない。実装は下の 3 パッケージが `from .. import` で引く。対等ではなく closure/preprocessor が leaf、ansatz が両者を合成
                 ansatz/          # sindy.py / hybrid.py / ude.py / _sindy_fit.py。hybrid.py が物理骨格と SINDy hybrid を集約
                 closure/         # ude.py / sindy/{__init__,roles,entry,_catalog}.py
                 preprocessor/    # pca.py / autoencoder.py
-              artifacts/         # surrogate の自己記述成果物を **単一 Artifact** ずつ返す。train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree + 表現の型で振り分ける closure_artifact / preprocessor_artifact (対応する図が無ければ None)
+              artifacts/         # surrogate の自己記述成果物 (置換シミュを回さず描ける = run をロードしただけで出る図)。`__init__.py` が集合ごと返す `surrogate_artifacts` を持ち、個々の Artifact は submodule が返す (再 export はしない)。train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree + 表現の型で振り分ける closure_artifact / preprocessor_artifact (対応する図が無ければ None)
   artifact/                      # `core` 同様に他ディレクトリを import しない基盤 (model.py / plotting.py)。bundle.py だけが合流点
              model.py            # Artifact (**自分を 1 つ書くだけ**の atomic な save。中身が拡張子を決める = 表 CSV / 図 PNG / dict JSON。置き場は知らない) / Artifacts (成果物の集合。save(path) で丸ごとその path へ)。**レポートを表す型は無い** = 段の構造は save_report が書く path そのもの
              plotting.py         # matplotlib 描画プリミティブと共通 style。ドメイン知識を持たない
-             bundle.py           # **成果物編成の唯一の seam**。sim/waveform/surrogate の単一 Artifact を Artifacts に束ね、渡された root 以下へ段ごとに書く (save_report = 直下 / models/<run名>/ / series/<run名>/ の 3 段。つまみも Artifact 1 件として直下へ = tuning.json)。**つまみ dict は必須の common / report / detail 3 階層**で、解くのは save_report だけ。**キーは全部必須 = Python 側に既定値も検証も置かない** (既定値は marimo の `mo.ui.dictionary` が持つ唯一の場所。欠ければ `KeyError` がそのまま出る方が、握って別の値で描くより分かる)。記録は解く前の姿のまま。描画失敗は変換せず呼び出し元へ伝播
-  waveform/                      # 波形ドメイン: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)
-            dynamics.py          # DynamicMetrics + eFEL/波形誤差の計算 (素の値のみ)
-            _tables.py           # その値を表に並べる (計算を増やさない)
-            artifacts.py         # current/diff/simple/attractor/metrics を単一 Artifact として返す
+             bundle.py           # **段割りの唯一の seam**。何を描くかは持たない (`Artifacts` は各ドメインの `artifacts/__init__.py` が自分で組む: `sim.artifacts`=run 横断・原系・1 ペア / `surrogate.artifacts`=学習 run 1 本。合流点が引くのはこの 2 つだけ)。ここが持つのはドメインを跨ぐ組み立て (原系ゲートの latent 射影) と、渡された root 以下へ段ごとに書くこと (save_report = 直下 / models/<run名>/ / series/<run名>/ の 3 段。つまみも Artifact 1 件として直下へ = tuning.json)。**つまみ dict は必須の common / report / detail 3 階層**で、解くのは save_report だけ。**キーは全部必須 = Python 側に既定値も検証も置かない** (既定値は marimo の `mo.ui.dictionary` が持つ唯一の場所。欠ければ `KeyError` がそのまま出る方が、握って別の値で描くより分かる)。記録は解く前の姿のまま。描画失敗は変換せず呼び出し元へ伝播
 scripts/  main.py                # Hydra エントリ
           catalog.py             # **何を回すか**の 1 枚カタログ: EVALS (素材 1 条件) / SERIES (掃引。置換器を持たない素の EvalSeries。回す側が SurrogateRuns.replacing で run 軸を張る) + comp_names (系列名 → その適用先の comp 名 = つまみの選択肢)。**描き方は持たない** (つまみは marimo の widget が全キーを持つ)
           mlflow_io/             # MLflow I/O = **experiment と run を知る唯一の場所**。experiment ごとに 1 module (学習だけ成果物 surrogate.py と選択肢 runs.py の 2 つ) で、どれも「experiment id を解く / 同一性の鍵を組む / 既存を探す / 書く」。公開名は run_* (確保) / load_* (読み) / find_* (回さない問い合わせ) で揃え、複数段を完遂する report.py だけ write_report 1 本へ畳む。**再 export しない** (呼ぶ側は from mlflow_io.report import ... と名乗る)
@@ -98,7 +100,7 @@ docs/     poster/ slide/         # typst
   **レポートの入力は学習 run 群 + 系列名 + つまみ dict だけ** (widget の dict がそのまま
   `write_report` から `artifact.bundle.save_report` まで届き、意味を解くのは後者 1 箇所
   = UI と保存の間に中間の型を挟まない)。描く側は「どう回したか」を再構成しない。指標の
-  選択肢は `waveform.dynamics.METRIC_KEYS` (取り出せるキーの単一源)。**何の図を出すかはどこにも
+  選択肢は `sim.waveform.METRIC_KEYS` (取り出せるキーの単一源)。**何の図を出すかはどこにも
   書かない**: モデル側は run 自身が描けるもの (`artifact.bundle.surrogate_artifacts` が
   bundle の型から解く = SINDy なら ξ heatmap、PCA なら scree、固有図を持たない表現は
   何も出さない)、評価側は結果の形 (点が 2 つ以上なら点軸の折れ線が出る) が決める。
