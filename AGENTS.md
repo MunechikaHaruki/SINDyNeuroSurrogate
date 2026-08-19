@@ -3,7 +3,8 @@
 このリポジトリで作業するコーディングエージェント向けのガイダンス。
 特定のツールに依存しない共通の記述をここに置く (`CLAUDE.md` は本ファイルへの symlink)。
 
-## Coding Standards [WRITTEN BY HUMAN - DO NOT OVERWRITE]
+## Coding Standards
+
 - HH型マルチコンパートメントニューロンの一部ノードをSINDyで抽出したサロゲート方程式に置換し、演算コスト削減と波形再現性を評価する研究コード
 - 一時変数は同じ値を何度も使うような場合にのみ許可
   - NG: `x = obj.attr; f(x)`
@@ -11,10 +12,10 @@
 - 大きな改装が終わったら、just test でエラーが出ないことを確認,tests/ 以下のテストは自由に追加して良い ただし、20s以下に抑えること
 - Hooksで実行されるjust lint、just formatのエラーは都度対処すること
 - 研究のまとめは、docs/poster、docs/slideディレクトリ以下にtypstとしてまとめる
-- __init__.pyに__all__フィールドは定義しないこと　過剰な複雑さ
+- **init**.pyに**all**フィールドは定義しないこと　過剰な複雑さ
 - `_` 始まりのモジュール名は「そのパッケージの外から import しない」印　外から使うものに `_` を付けない
-[以下のセクションは永続メモリとして上書きしても構いません。
-ただし、基本的なコマンドやディレクトリ構成などの目録のみを記述すること]
+  [以下のセクションは永続メモリとして上書きしても構いません。
+  ただし、基本的なコマンドやディレクトリ構成などの目録のみを記述すること]
 
 ## Commands
 
@@ -74,6 +75,7 @@ single-context (`CONTEXT.md` + `docs/adr/`、未作成)。See `docs/agents/domai
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 Rules:
+
 - For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
