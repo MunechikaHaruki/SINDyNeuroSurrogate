@@ -13,8 +13,8 @@ import xarray as xr
 from ....core import access
 from ....core.network import CompartmentType
 from ....core.opcost import OpCost
-from ....neurons.compartments.hh import HH_DV_COST, HHParams, hh_dv
-from ....neurons.compartments.traub import (
+from ....neurons.hh import HH_DV_COST, HHParams, hh_dv
+from ....neurons.traub import (
     TRAUB_CA_COST,
     TRAUB_DV_COST,
     TRAUB_EXTRA_GATE_NAMES,

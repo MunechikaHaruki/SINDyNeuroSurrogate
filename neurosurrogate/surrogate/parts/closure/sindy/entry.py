@@ -8,8 +8,8 @@ import sympy as sp
 from sympy.core.function import AppliedUndef
 
 from .....core.opcost import OpCost
-from .....neurons.compartments.hh import HH_RATE_COST_MAP
-from .....neurons.compartments.traub import TRAUB_RATE_COST_MAP
+from .....neurons.hh import HH_RATE_COST_MAP
+from .....neurons.traub import TRAUB_RATE_COST_MAP
 
 _RATE_COST_MAP = HH_RATE_COST_MAP | TRAUB_RATE_COST_MAP
 

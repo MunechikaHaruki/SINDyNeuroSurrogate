@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from neurosurrogate.neurons import MCMODELS
-from neurosurrogate.neurons.compartments.traub import (
+from neurosurrogate.neurons.traub import (
     TRAUB_STATE_NAMES,
     TraubParams,
     _traub_inf_v,

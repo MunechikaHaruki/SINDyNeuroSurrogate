@@ -13,10 +13,9 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
          access.py               # 同スキーマの read 規約 (生 sel はここ以外で使わない)
          opcost.py               # OpCost 代数 (演算コスト集計)
          diverge.py              # 置換系の数値的破綻判定 (diverged / log_divergence)。eval と metrics の両方から呼ばれる共通述語なのでどちらにも属させない
-  neurons/  __init__.py          # MCMODELS (`SimSpec.target` が引く適用先モデル)。**組み方も組んだ結果もニューロンの語彙**なので、使う側 (sim) でなくここが持つ
-            _generate.py         # 作り方 (build_traub19)。カタログを作るためだけの内部 module
+  neurons/  __init__.py          # NeuronGraph の語彙一式: COMPARTMENT_TYPES (型名 → CompartmentType) + _build_traub19 (組み方) + MCMODELS (`SimSpec.target` が引く適用先モデル)。**組み方も組んだ結果もニューロンの語彙**なので、使う側 (sim) でなくここが持つ
             traub19.py           # 19-comp モデルの per-comp 定数 + ヘルパ (traub.c 代数的等価)
-            compartments/        # hh.py / traub.py / _common.py + COMPARTMENT_TEMPLATES
+            hh.py / traub.py     # comp 型の実装 (kernel/コスト/初期値)。`_common.py` は共有のゲート形状
   sim/  _current_catalog.py      # **名前 → 実体の対応表だけ** (SimSpec.current_type が引く選択肢): 注入電流波形 + CURRENT_MAP。sim の内部専用 (適用先モデルの対応表は neurons が持つ)
         spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない** — hash は保存の単位だけが持つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+**replace_targets**+param+values の 1 掃引 = **保存の単位でもある**。どこを置換する実験かも記述の一部で、置換器は知らないまま対象を名前で挙げる。points は派生、to_dict/from_dict で往復。鍵は 2 本 — 原系 `hash` (置換範囲を含まない = 範囲だけ違う対照系列と原系 run を共有) と置換系 `replaced_hash` (含む))。**記述 2 段が result の 波形 / SeriesRun と 1 対 1**。surrogate より前の層 (SurrogateSpec.dataset がこれ)
         result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = mlflow_io.series の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。**答えるのは「どの列か・どの点か」だけ** (column/pair/run_ids) = 適用先も掃引軸も刻み幅も素通しせず、要るものは view.series から直接引く。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る

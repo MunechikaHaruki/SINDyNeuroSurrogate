@@ -25,7 +25,7 @@ from neurosurrogate.core.coords import transform_gate
 from neurosurrogate.core.network import Compartment, NeuronGraph
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.neurons.compartments.hh import (
+from neurosurrogate.neurons.hh import (
     HH_TYPE,
     HHParams,
     dhdt,
@@ -33,7 +33,7 @@ from neurosurrogate.neurons.compartments.hh import (
     dndt,
     hh_inits,
 )
-from neurosurrogate.neurons.compartments.traub import (
+from neurosurrogate.neurons.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )

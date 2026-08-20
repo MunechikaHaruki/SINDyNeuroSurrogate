@@ -1,6 +1,6 @@
 """Traub 1991 CA3 pyramidal cell (19 compartments) の per-compartment 定数。
 
-組み立ては `_generate.build_traub19`、変種のカタログは `__init__.py`。
+組み立て (`build_traub19`) とカタログは `__init__.py`。
 
 C reference: tmp/dataset_utils/traub/traub.c と代数的等価。
 
@@ -12,7 +12,7 @@ C reference: tmp/dataset_utils/traub/traub.c と代数的等価。
 
 import math
 
-from .compartments.traub import TraubParams
+from .traub import TraubParams
 
 # --- traub.c の per-compartment 定数 (19要素) ---
 

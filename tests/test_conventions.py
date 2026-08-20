@@ -32,8 +32,8 @@ _EXEMPT = {
 # レート関数は import されなくても**名前が API** (yaml の library_specs が文字列で
 # 引く)。
 _EXEMPT_MODULES = {
-    "neurosurrogate/neurons/compartments/hh.py",
-    "neurosurrogate/neurons/compartments/traub.py",
+    "neurosurrogate/neurons/hh.py",
+    "neurosurrogate/neurons/traub.py",
 }
 # 名前を文字列で受け取る呼び出し (monkeypatch など) の引数も参照とみなす。
 _BY_NAME = {"setattr", "getattr", "hasattr", "delattr"}

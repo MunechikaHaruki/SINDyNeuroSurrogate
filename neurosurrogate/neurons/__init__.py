@@ -1,7 +1,9 @@
-"""**組み上がったニューロンモデルのカタログ** (`SimSpec.target` が名前で引く)。
+"""**NeuronGraph の語彙一式**: comp 型の対応表・組み方・組み上がったモデルのカタログ
+(`SimSpec.target` が名前で引く)。
 
-作り方 (`_generate.py`) も per-comp 定数 (`traub19.py`) もこのディレクトリが持つので、
-組んだ結果もここに置く。使う側 (`sim.spec`) の語彙ではなくニューロンの語彙。
+per-comp 定数 (`traub19.py`) も comp 型の実装 (`hh.py`/`traub.py`) もこのディレクトリが
+持つので、それらを組んだ結果もここに置く。使う側 (`sim.spec`) の語彙ではなく
+ニューロンの語彙。
 
 **多 comp は traub19 系だけ**が生きている。以下にコメントアウトしてある chain 系
 (`php`/`hhp`/…) と手組みの `hh_multi`/`traub_multi`/`hh7` は動作確認用に適当な
@@ -11,10 +13,32 @@ coupling が無いので面積に依らず有効。復活させるなら per-com
 与えてからにする。
 """
 
-from ..core.network import Compartment, NeuronGraph
-from ._generate import build_traub19
-from .compartments.hh import HH_TYPE
-from .compartments.traub import TRAUB_TYPE
+from ..core.network import Compartment, Edge, NeuronGraph
+from .hh import HH_TYPE, PASSIVE_TYPE
+from .traub import TRAUB_TYPE
+from .traub19 import NC, g_axial, name_at, params_at
+
+# type 名文字列 → CompartmentType の dispatch table (from_dict 等で使用)
+COMPARTMENT_TYPES = {
+    "hh": HH_TYPE,
+    "passive": PASSIVE_TYPE,
+    "traub": TRAUB_TYPE,
+}
+
+
+def _build_traub19() -> NeuronGraph:
+    """19-comp Traub モデルを組む (per-comp 定数は `traub19.py`)。
+
+    全 comp 同一 traub 型。注入ノードは形態でなく `SimSpec.stim` が、置換範囲は
+    `EvalSeries.replace_targets` が決める = **形態はどちらも知らない**。
+    """
+    nodes = [
+        Compartment(name=name_at(i), type=TRAUB_TYPE, params=params_at(i))
+        for i in range(NC)
+    ]
+    edges = [Edge(name_at(i), name_at(i + 1), g_axial(i)) for i in range(NC - 1)]
+    return NeuronGraph(nodes=nodes, edges=edges)
+
 
 MCMODELS: dict[str, NeuronGraph] = {
     "hh": NeuronGraph(
@@ -28,7 +52,7 @@ MCMODELS: dict[str, NeuronGraph] = {
     # 全 comp 同一 traub 型 (元の traub.c と同じ soma 注入)。どこを置換するかは
     # 形態でなく実験の記述が決める (`EvalSeries.replace_targets`) ので、置換範囲を
     # 絞るためだけの双子モデルは持たない。
-    "traub19": build_traub19(),
+    "traub19": _build_traub19(),
 }
 
 # 過去モデル

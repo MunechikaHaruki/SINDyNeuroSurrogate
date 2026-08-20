@@ -44,7 +44,7 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 これらは全部 `tests/test_conventions.py` で**機械検査される** — 依存の向き (層の表 `_LAYERS` が
 そのまま実行される)、ドメイン層が marimo/MLflow/Hydra を import しないこと、`__all__` の不在、
 そして公開範囲の綴り: **名前も module 名も、外から参照されるものだけが `_` 無し**。動的に呼ばれる
-入口 (Hydra entry / marimo app / `vars()` ごと注入する `compartments/{hh,traub}.py`) はテスト側の
+入口 (Hydra entry / marimo app / `vars()` ごと注入する `neurons/{hh,traub}.py`) はテスト側の
 免除リストに明記する。落ちたらテストを緩めるのでなくコードを直す。
 
 各ディレクトリの責務・ファイル単位の役割・設定ファイル (`scripts/conf/`, `scripts/catalog.py`) の規約は

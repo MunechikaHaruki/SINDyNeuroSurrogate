@@ -25,7 +25,7 @@ import xarray as xr
 from ..core.network import Compartment, CompartmentType, DatasetConfig, NeuronGraph
 from ..core.opcost import OpCost
 from ..core.simulator import unified_simulator
-from ..neurons.compartments import COMPARTMENT_TYPES
+from ..neurons import COMPARTMENT_TYPES
 from ..sim.spec import EvalSeries, SimSpec
 from .parts import Ansatz, Closure, Preprocessor, TrainInputs
 from .parts.ansatz.hybrid import HybridSINDyAnsatz

@@ -14,7 +14,7 @@ import numpy as np
 from neurosurrogate.core import access
 from neurosurrogate.core.simulator import _areas, _graph_laplacian, unified_simulator
 from neurosurrogate.neurons import MCMODELS
-from neurosurrogate.neurons.compartments.traub import traub_dv
+from neurosurrogate.neurons.traub import traub_dv
 from neurosurrogate.neurons.traub19 import SOMA_IDX, params_at
 from neurosurrogate.sim.spec import SimSpec
 
