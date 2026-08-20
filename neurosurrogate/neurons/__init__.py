@@ -31,11 +31,41 @@ MCMODELS: dict[str, NeuronGraph] = {
     "traub19": build_traub19(),
 }
 
+# 過去モデル
+
+# def chain(node_types: list[str], weights: list[float]) -> NeuronGraph:
+#     """type 名リストから直鎖 NeuronGraph 構築。
+#
+#     ノード名は型の頭文字 + 0始まり連番。ただし最初の非 passive (=細胞体) は "soma"
+#     と命名し全モデル共通の soma 規約に揃える (train_comp_identifier 既定と一致)。
+#     例: ["passive","hh","passive"] → ["p0","soma","p1"]
+#     """
+#     expected = len(node_types) - 1
+#     assert len(weights) == expected, (
+#         f"weights の長さは len(node_types) - 1 = {expected} 必要"
+#     )
+#     soma_idx = next(
+#         (i for i, t in enumerate(node_types) if t != "passive"),
+#         None,
+#     )
+#     assert soma_idx is not None, "chain に非 passive (soma) ノードが必要"
+#     counters: Counter = Counter()
+#     nodes = []
+#     for i, t in enumerate(node_types):
+#         if i == soma_idx:
+#             name = "soma"
+#         else:
+#             name = f"{t[0]}{counters[t[0]]}"
+#             counters[t[0]] += 1
+#         nodes.append(Compartment(name=name, type=COMPARTMENT_TYPES[t]))
+#     return NeuronGraph(
+#         nodes=nodes,
+#         edges=[
+#             Edge(nodes[i].name, nodes[i + 1].name, w) for i, w in enumerate(weights)
+#         ],
+#     )
+
 # --- 面積・軸索 conductance が未考慮の暫定モデル群 (上の docstring 参照) ---
-# from ..core.network import Edge
-# from .compartments.hh import PASSIVE_TYPE, HHParams
-# from .compartments.traub import TraubParams
-# from ._generate import chain
 #
 # # per-compartment パラメータ例
 # # soma: デフォルト (高 G_NA)、dendrite: G_NA/G_K 低減で発火閾値↑
