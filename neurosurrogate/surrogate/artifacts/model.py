@@ -44,6 +44,7 @@ _FEATURE_FONTSCALE = (
 
 def neuron_graph_artifact(
     net: NeuronGraph,
+    stim: str,
     surrogate_nodes: set[str] | None = None,
     figsize: tuple[float, float] | None = None,
 ) -> Artifact:
@@ -63,7 +64,7 @@ def neuron_graph_artifact(
     # (spring_layout の blob を回避)。根は stim でなく端点 (stim から最遠ノード) に
     # 取る → chain で stim が中央でも層が片方向に伸び 1 ノード/列の直線になる
     # (traub19: soma stim が中央でも c00..soma..c18 が一列)。
-    from_stim = nx.single_source_shortest_path_length(G, net.stim)
+    from_stim = nx.single_source_shortest_path_length(G, stim)
     root = max(from_stim, key=lambda n: from_stim[n])
     depth = nx.single_source_shortest_path_length(G, root)
     for n in G.nodes:
@@ -85,8 +86,8 @@ def neuron_graph_artifact(
         for n in G.nodes
     ]
     edge_labels = {(e.src, e.dst): f"{e.weight:.2g}" for e in net.edges}
-    node_edge_colors = [_STIM_BORDER if n == net.stim else "white" for n in G.nodes]
-    node_linewidths = [_STIM_LINEWIDTH if n == net.stim else 1.0 for n in G.nodes]
+    node_edge_colors = [_STIM_BORDER if n == stim else "white" for n in G.nodes]
+    node_linewidths = [_STIM_LINEWIDTH if n == stim else 1.0 for n in G.nodes]
 
     fig = new_figure(figsize=figsize)
     ax = fig.subplots()

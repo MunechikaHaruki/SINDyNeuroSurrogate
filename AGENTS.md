@@ -36,7 +36,7 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 
 ## Architecture
 
-依存の向き: `core ← neurons ← sim.{catalog,spec,result} ← surrogate ← sim.{run,artifacts} ← artifact.bundle`
+依存の向き: `core ← neurons ← sim.{_current_catalog,spec,result} ← surrogate ← sim.{run,artifacts} ← artifact.bundle`
 (`core` は他ディレクトリを一切 import しない。詳細は `docs/architecture.md`)。
 `neurosurrogate/` = ドメイン層 (marimo/MLflow 非依存)、`scripts/` = Hydra/MLflow/marimo の入口、
 描画成果物も評価結果本体も MLflow (図はレポート run の artifact)。

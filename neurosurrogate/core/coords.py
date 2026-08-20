@@ -111,13 +111,20 @@ def transform_gate(codec: Any, ds: xr.Dataset, comp_id: int) -> xr.Dataset:
     )
 
 
-def set_i_internal(dataset, C_matrix, stim_idx, u, stim_area_scale: float = 1.0):
+def set_i_internal(
+    dataset: xr.Dataset,
+    C_matrix: np.ndarray,
+    areas: np.ndarray,
+    stim_idx: int,
+    u: np.ndarray,
+) -> None:
     N = C_matrix.shape[0]
     I_ext_2d = np.zeros((len(u), N), dtype=np.float64)
-    I_ext_2d[:, stim_idx] = u * stim_area_scale  # 密度→絶対変換 (traub19 等)
+    I_ext_2d[:, stim_idx] = u
 
     V_data = access.potential_matrix(dataset)  # 形状: (time, N)
-    I_internal_np = V_data @ C_matrix + I_ext_2d
+    # simulator の I_internal と同じ組立 (coupling を /area して密度へ揃える)
+    I_internal_np = V_data @ C_matrix / areas + I_ext_2d
     # xarray に格納
     dataset["I_internal"] = xr.DataArray(
         I_internal_np,  # (N, time) の形状にするため転置

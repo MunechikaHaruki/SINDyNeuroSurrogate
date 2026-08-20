@@ -1,13 +1,13 @@
 """Traub 1991 CA3 pyramidal cell (19 compartments) の per-compartment 定数。
 
-組み立ては `generate.build_traub19`、変種のカタログは `sim/catalog/targets.py`。
+組み立ては `_generate.build_traub19`、変種のカタログは `__init__.py`。
 
 C reference: tmp/dataset_utils/traub/traub.c と代数的等価。
 
 - 各 compartment に per-comp params (g_*, phi*area, area)
-- edge weight = 隣接軸 conductance g_axial [μS] (対称量) → graph_laplacian symmetric
-- kernel 側で u_t/area で密度化 → C の /area[i] を吸収
-- stim: soma (index=8) に絶対電流 [μA] 注入
+- edge weight = 隣接軸 conductance g_axial [μS] (対称量) → ラプラシアンも対称
+- simulator が coupling を /area[i] して密度化 → kernel は全型共通で電流密度
+  [μA/cm^2] を受ける (注入先は形態でなく `SimSpec.stim`。既定 soma=index 8)
 """
 
 import math
@@ -63,7 +63,3 @@ def g_axial(i: int) -> float:
 # dend 刺激版の注入先。soma (8) 隣の active な apical proximal dendrite で、
 # soma へ確実に電流が伝播する (g_Na=15)。
 DEND_STIM_IDX = 9
-
-
-def area_at(i: int) -> float:
-    return _AREA[i]

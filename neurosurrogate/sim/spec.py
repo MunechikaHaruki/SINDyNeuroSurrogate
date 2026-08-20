@@ -19,8 +19,8 @@ from typing import Self
 import numpy as np
 
 from ..core.network import DatasetConfig, NeuronGraph
-from .catalog.currents import CURRENT_MAP
-from .catalog.targets import MCMODELS
+from ..neurons import MCMODELS
+from ._current_catalog import CURRENT_MAP
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -38,6 +38,9 @@ class SimSpec:
     current_type: str
     dt: float
     current_params: dict = field(default_factory=dict)
+    # 注入ノード名。適用先の形態ではなく**実験の記述**なので、同じ target を部位だけ
+    # 変えて回せる。既定は全モデル共通の soma 規約 (`neurons` の命名規約)。
+    stim: str = "soma"
 
     def to_dict(self) -> dict:
         """永続化 (MLflow の学習 run / 評価 run) が仕様として持ち回る形へ。
@@ -48,6 +51,7 @@ class SimSpec:
             "current_type": self.current_type,
             "dt": self.dt,
             "current_params": self.current_params,
+            "stim": self.stim,
         }
 
     @classmethod
@@ -57,6 +61,7 @@ class SimSpec:
             current_type=str(d["current_type"]),
             dt=float(d["dt"]),
             current_params=dict(d.get("current_params") or {}),
+            stim=str(d["stim"]),
         )
 
     @property
@@ -71,8 +76,17 @@ class SimSpec:
 
     def materialize(self) -> DatasetConfig:
         """仕様 → 実行入力 (原系)。置換系は `Surrogate.apply` が
-        この実行入力から非破壊で作る。"""
-        return DatasetConfig(dt=self.dt, net=self.net, current=self.current())
+        この実行入力から非破壊で作る。
+
+        **注入先の名前をここで index へ解く** = simulator には「どのノードへ
+        いくら注入されるか」だけを見せる (電流は全モデル共通の密度 [μA/cm^2]
+        規約なので換算は要らない)。"""
+        return DatasetConfig(
+            dt=self.dt,
+            net=self.net,
+            stim_idx=self.net.name_to_idx(self.stim),
+            current=self.current(),
+        )
 
 
 @dataclass(frozen=True)

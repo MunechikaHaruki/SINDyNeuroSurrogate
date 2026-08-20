@@ -27,7 +27,7 @@ from ...core import access
 from ...core.diverge import diverged
 from ...surrogate.model import Surrogate
 from ...surrogate.runs import SurrogateRuns
-from ..catalog import currents
+from .. import _current_catalog
 from ..result import SeriesResults
 from ..waveform import DynamicMetrics, extract_metric
 
@@ -72,7 +72,7 @@ def current_preview_artifact(spec: SimSpec) -> Artifact:
     ax.plot(t, i_ext, lw=0.8)
     ax.set_xlabel("t [ms]")
     ax.set_ylabel("I_ext [μA/cm²]")
-    ax.set_title(f"{spec.current_type} preview")
+    ax.set_title(f"{spec.current_type} → {spec.stim} preview")
     return Artifact("current", fig)
 
 
@@ -167,7 +167,7 @@ def traces_artifact(
     fig = new_figure(figsize=(2.6 * n_col + 2.6, 1.8 * n_row + 0.9))
     axes = fig.subplots(n_row, n_col, squeeze=False, sharex=True)
     ylim = _shared_ylim([access.potential(ds, comp_id) for ds in view.original_waves])
-    unit = currents.PARAM_UNITS.get(view.series.param or "", "")
+    unit = _current_catalog.PARAM_UNITS.get(view.series.param or "", "")
 
     for c, value in enumerate(view.series.axis_values):
         if value is not None and view.series.param:

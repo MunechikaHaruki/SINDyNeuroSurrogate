@@ -5,7 +5,7 @@ CLAUDE.md から分離した詳細目録。ディレクトリの中身・設定�
 ## Directory
 
 ```
-neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← sim.{catalog,spec,result,waveform} ← surrogate ← sim.{run,artifacts} ← artifact.bundle で、**core は他ディレクトリを一切 import しない**。層の所属と許可は `tests/test_conventions.py` の `_GROUP_OF`/`_LAYERS` が実行可能な形で持つ (ここの記述はその要約。新しいディレクトリを足したらあの表への追記が要る)。中身の無い `__init__.py` は置かない (再 export だけの層も作らない = 各実体を submodule から直接 import。そのため setuptools は `namespaces = true`)。**`_` 始まりのファイル名 = そのパッケージの外から import しない** (実測で内部専用のものだけが `_` を持つ)
+neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。依存の向きは core ← neurons ← sim.{_current_catalog,spec,result,waveform} ← surrogate ← sim.{run,artifacts} ← artifact.bundle で、**core は他ディレクトリを一切 import しない**。層の所属と許可は `tests/test_conventions.py` の `_GROUP_OF`/`_LAYERS` が実行可能な形で持つ (ここの記述はその要約。新しいディレクトリを足したらあの表への追記が要る)。中身の無い `__init__.py` は置かない (再 export だけの層も作らない = 各実体を submodule から直接 import。そのため setuptools は `namespaces = true`)。**`_` 始まりのファイル名 = そのパッケージの外から import しない** (実測で内部専用のものだけが `_` を持つ)
   __init__.py                    # jax_enable_x64 を強制 ON
   core/  network.py              # Compartment/CompartmentType/NeuronGraph + DatasetConfig (**実体化済みの実行入力** = dt/net/current の 3 つだけ。名前の解決も JSON 往復も持たない)
          simulator.py            # unified_simulator (JAX Euler + lax.scan)
@@ -13,12 +13,11 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
          access.py               # 同スキーマの read 規約 (生 sel はここ以外で使わない)
          opcost.py               # OpCost 代数 (演算コスト集計)
          diverge.py              # 置換系の数値的破綻判定 (diverged / log_divergence)。eval と metrics の両方から呼ばれる共通述語なのでどちらにも属させない
-  neurons/  generate.py          # **作り方だけ** (chain / build_traub19)。組んだ結果のカタログは持たない
+  neurons/  __init__.py          # MCMODELS (`SimSpec.target` が引く適用先モデル)。**組み方も組んだ結果もニューロンの語彙**なので、使う側 (sim) でなくここが持つ
+            _generate.py         # 作り方 (build_traub19)。カタログを作るためだけの内部 module
             traub19.py           # 19-comp モデルの per-comp 定数 + ヘルパ (traub.c 代数的等価)
             compartments/        # hh.py / traub.py / _common.py + COMPARTMENT_TEMPLATES
-  sim/  catalog/                 # **名前 → 実体の対応表だけ** (SimSpec のフィールドが引く選択肢。作り方は持たない)
-          targets.py             # MCMODELS (SimSpec.target が引く適用先モデル)
-          currents.py            # 注入電流波形 + CURRENT_MAP
+  sim/  _current_catalog.py      # **名前 → 実体の対応表だけ** (SimSpec.current_type が引く選択肢): 注入電流波形 + CURRENT_MAP。sim の内部専用 (適用先モデルの対応表は neurons が持つ)
         spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない** — hash は保存の単位だけが持つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+param+values の 1 掃引 = **保存の単位でもある**。points は派生、to_dict/from_dict/hash で往復)。**記述 2 段が result の 波形 / SeriesRun と 1 対 1**。surrogate より前の層 (SurrogateSpec.dataset がこれ)
         result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = mlflow_io.series の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。**答えるのは「どの列か・どの点か」だけ** (column/pair/run_ids) = 適用先も掃引軸も刻み幅も素通しせず、要るものは view.series から直接引く。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。**系列名も評価 run の id も持たない** = 描画層はこれだけ見る
         run.py                   # **仕様 × surrogate を掛ける唯一の段** (marimo/mlflow 非依存。**何を**回すかは scripts/catalog.py): simulate (1 シミュ → 波形) / run_column (series + run_id + surrogate → **1 列** `SeriesRun`。系列 → 結果の唯一の入口。両方 None が原系)。**回す前に決まること (どの run が置換できるか) は持たない** → SurrogateRuns.replacing。表示名は出てこない (学習 run の id は列の標識として通るだけ)。surrogate の後の層

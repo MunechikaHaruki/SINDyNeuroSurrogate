@@ -77,6 +77,26 @@ def _make_group_spec(bucket: list[tuple[int, Compartment]]) -> _GroupSpec:
     )
 
 
+def _graph_laplacian(net: NeuronGraph) -> np.ndarray:
+    """形態 (edge の軸索 conductance [μS]) → `V @ L` が各ノードへの流入電流 [μA]
+    になる対称ラプラシアン。**ネットを解く行列に畳むのはソルバの関心**なので、
+    形態を持つ `NeuronGraph` でなくここに置く。"""
+    N = len(net.nodes)
+    G_matrix = np.zeros((N, N), dtype=np.float64)
+    for e in net.edges:
+        i, j = net.name_to_idx(e.src), net.name_to_idx(e.dst)
+        G_matrix[i, j] = G_matrix[j, i] = e.weight
+    return G_matrix - np.diag(
+        np.sum(G_matrix, axis=1)
+    )  # 流入を正とするグラフラプラシアンの符号反転
+
+
+def _areas(net: NeuronGraph) -> np.ndarray:
+    """ノード順の膜面積 [cm^2]。絶対量で来る coupling を kernel の規約
+    (電流密度 [μA/cm^2]) へ直す除数。"""
+    return np.array([c.area for c in net.nodes])
+
+
 def _build_model_state(net: NeuronGraph) -> dict:
     """NeuronGraph → シミュレータが必要とする全状態を構築。
     返却: {gate_offsets, init, coords, groups}"""
@@ -93,18 +113,20 @@ def _build_model_state(net: NeuronGraph) -> dict:
 
 @dataclass(frozen=True)
 class _ModelArgs:
-    C_matrix: np.ndarray  # shape (N, N)       グラフラプラシアン
+    C_matrix: np.ndarray  # shape (N, N)       グラフラプラシアン [μS]
+    areas: np.ndarray  # shape (N,)          膜面積 [cm^2] (coupling の密度化)
     stim_idx: int
     gate_offsets: np.ndarray  # shape (N,)      dtype=int32
     groups: dict[str, _GroupSpec]  # type_name -> _GroupSpec
-    stim_area_scale: float = 1.0  # u_ext を coupling と同スケールに揃える乗数
 
 
 def _calc_universal_deriv(curr_x, u_t, ma):
     """全 _GroupSpec に自身を apply させるだけ。type別分岐なし。"""
     N = ma.C_matrix.shape[0]
     v_vec = curr_x[:N]
-    I_internal = (v_vec @ ma.C_matrix).at[ma.stim_idx].add(u_t * ma.stim_area_scale)
+    # kernel は電流密度 [μA/cm^2] を受ける規約 → 絶対量で来る coupling をノードの
+    # 面積で割ってから、既に密度の外部注入を足す (面積を持たない型は 1.0)。
+    I_internal = (v_vec @ ma.C_matrix / ma.areas).at[ma.stim_idx].add(u_t)
 
     dvar = jnp.zeros_like(curr_x)
     for spec in ma.groups.values():
@@ -128,24 +150,24 @@ def unified_simulator(cfg: DatasetConfig) -> xr.Dataset:
     dt = cfg.dt
     u = cfg.current
     state = _build_model_state(net)
+    C_matrix = _graph_laplacian(net)
+    node_areas = _areas(net)
     dataset = set_coords(
         _generic_euler_solver(
             state["init"],
             u,
             dt,
             _ModelArgs(
-                C_matrix=net.graph_laplacian,
-                stim_idx=net.stim_node_idx,
+                C_matrix=C_matrix,
+                areas=node_areas,
+                stim_idx=cfg.stim_idx,
                 gate_offsets=state["gate_offsets"],
                 groups=state["groups"],
-                stim_area_scale=net.stim_area_scale,
             ),
         ),
         u,
         state["coords"],
         dt,
     )
-    set_i_internal(
-        dataset, net.graph_laplacian, net.stim_node_idx, u, net.stim_area_scale
-    )
+    set_i_internal(dataset, C_matrix, node_areas, cfg.stim_idx, u)
     return dataset

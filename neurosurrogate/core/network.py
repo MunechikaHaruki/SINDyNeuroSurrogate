@@ -64,6 +64,14 @@ class Compartment:
         """
         return self.type.inits(self.resolved_params)
 
+    @property
+    def area(self) -> float:
+        """膜面積 [cm^2]。**全 kernel が電流を密度 [μA/cm^2] で受ける**規約なので、
+        絶対量 [μA] で来る流入 (軸索 coupling) をこれで割って密度へ揃える
+        (割るのは simulator)。面積を持たない型 (hh 等) は既に密度規約 = 1.0。
+        `init` と同じく自身の params からの導出量。"""
+        return getattr(self.resolved_params, "area", 1.0)
+
 
 @dataclass
 class Edge:
@@ -74,13 +82,14 @@ class Edge:
 
 @dataclass(frozen=False)
 class NeuronGraph:
+    """**形態だけ**: どんな comp がどう繋がっているか。
+
+    どこへ電流を注入するかは持たない — それは実験の記述 (`spec.SimSpec.stim`) で、
+    同じ形態を注入部位だけ変えて回せる (`materialize` が名前を index へ解く)。
+    """
+
     nodes: list[Compartment]
     edges: list[Edge]
-    stim: str  # node name
-    # 外部電流 u_ext を stim ノードに注入する前に乗じるスケール。
-    # 密度 [μA/cm^2] スケールの u_ext を絶対 [μA] に変換する用途 (traub19 等)。
-    # default 1.0 → 既存モデル (単位規約: 密度) 不変。
-    stim_area_scale: float = 1.0
 
     @cached_property
     def _name_to_idx(self) -> dict[str, int]:
@@ -93,43 +102,19 @@ class NeuronGraph:
     def name_to_idx(self, name: str) -> int:
         return self._name_to_idx[name]
 
-    @property
-    def connections(self):
-        return [
-            (self.name_to_idx(e.src), self.name_to_idx(e.dst), e.weight)
-            for e in self.edges
-        ]
-
-    @property
-    def stim_node_idx(self) -> int:
-        return self.name_to_idx(self.stim)
-
-    @property
-    def graph_laplacian(self):
-        connections = self.connections
-        N = len(self.nodes)
-        G_matrix = np.zeros((N, N), dtype=np.float64)
-        if N == 1 or connections is None:
-            pass
-        else:
-            for i, j, g in connections:
-                G_matrix[i, j] = G_matrix[j, i] = g
-        return G_matrix - np.diag(
-            np.sum(G_matrix, axis=1)
-        )  # 流入を正とするグラフラプラシアンの符号反転
-
 
 @dataclass
 class DatasetConfig:
-    """**実体化済みのシミュレーション入力**: 解いたネットと確定した電流波形。
+    """**実体化済みのシミュレーション入力**: 解いたネットと、注入先・実注入電流。
     `unified_simulator` はこれだけを受け取る。
 
-    仕様 (適用先の名前・電流の種類とパラメータ) は持たない — それは `spec.SimSpec`
-    で、`SimSpec.materialize()` がここへ落とす。**名前 → 実体の解決を core に
-    持ち込まない**ための分割で、おかげでこの層は他のディレクトリを一切 import
-    しない (置換は `Surrogate.apply` が net を差し替えた複製を作る)。
+    仕様 (適用先の名前・注入ノード名・電流の種類とパラメータ) は持たない — それは
+    `spec.SimSpec` で、`SimSpec.materialize()` がここへ落とす。**名前 → 実体の解決を
+    core に持ち込まない**ための分割で、おかげでこの層は他のディレクトリを一切
+    import しない (置換は `Surrogate.apply` が net を差し替えた複製を作る)。
     """
 
     dt: float
     net: NeuronGraph
-    current: np.ndarray
+    stim_idx: int  # 注入ノードの index (名前は解決済み)
+    current: np.ndarray  # 注入電流密度 [μA/cm^2]

@@ -21,6 +21,7 @@ marimo の widget 1 箇所 (`SimSpec.net` が解いた comp 名から選択肢�
 
 import numpy as np
 
+from neurosurrogate.neurons.traub19 import DEND_STIM_IDX, name_at
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
 
 # 掃引つき評価の共通電流パラメータ (刺激前の静穏 + 本体長)。掃引軸の値は入らない
@@ -44,7 +45,8 @@ _EVALS: dict[str, SimSpec] = {
         current_params=_STIM,
     ),
     "traub19_dendstim": SimSpec(
-        target="traub19_soma_dendstim",
+        target="traub19_soma",
+        stim=name_at(DEND_STIM_IDX),
         current_type="lin&steady",
         dt=_DT,
         current_params=_STIM,

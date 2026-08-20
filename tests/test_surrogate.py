@@ -29,6 +29,7 @@ from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
+from neurosurrogate.neurons.traub19 import DEND_STIM_IDX, name_at
 from neurosurrogate.sim.artifacts import (
     detail_artifacts,
     original_artifacts,
@@ -601,12 +602,14 @@ def test_traub19_soma_dendstim_injects_into_dendrite() -> None:
     dendrite。刺激点が soma でないこと + 置換シミュが有限に走ることを確認。"""
     surrogate = fit_surrogate("_test_traub_hybrid")
     ds = SimSpec(
-        target="traub19_soma_dendstim",
+        target="traub19_soma",
+        stim=name_at(DEND_STIM_IDX),
         current_type="train",
         dt=0.01,
         current_params={"duration": 180},
     )
-    assert ds.net.stim != "soma"  # 注入先は dendrite
+    assert ds.stim != "soma"  # 注入先は dendrite
+    assert ds.materialize().stim_idx == DEND_STIM_IDX
     assert surrogate.spec.replacement_targets(ds.net) == {"soma"}
 
     v = access.potential(

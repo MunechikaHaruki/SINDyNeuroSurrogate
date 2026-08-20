@@ -139,8 +139,8 @@ class TraubParams(NamedTuple):
     g_K_AHP: float = 0.8
     g_K_C: float = 10.0
     phi_area: float = 17402.0 * 3.320e-5  # phi * area
-    # 表面積 [cm^2]。u_t (絶対電流 [μA]) を密度 [μA/cm^2] に変換する除数。
-    # default 1.0 → 単一 comp 用 (u_t を密度スケールで渡す既存挙動維持)
+    # 表面積 [cm^2]。軸索 coupling (絶対 [μA]) の密度化に使う (simulator が割る)。
+    # default 1.0 → 単一 comp 用 (coupling 無し = 面積に依らない)
     area: float = 1.0
 
 
@@ -155,8 +155,8 @@ def traub_dv(p: TraubParams, u_t, v, states):
     i_kahp = p.g_K_AHP * Q * (v - p.V_K)
     i_kc = p.g_K_C * C * jnp.minimum(1.0, XI / 250.0) * (v - p.V_K)
     i_ion = i_leak + i_na + i_ca + i_kdr + i_ka + i_kahp + i_kc
-    # u_t は絶対電流 [μA] スケール (coupling: g_axial · dV, ext: μA)。密度化に /area。
-    return (-i_ion + u_t / p.area) / p.Cm
+    # u_t は電流密度 [μA/cm^2] (coupling も外部注入も density で入る)
+    return (-i_ion + u_t) / p.Cm
 
 
 def calc_traub_channel(p: TraubParams, u_t, v, states):
@@ -317,7 +317,7 @@ TRAUB_DV_COST = (
     + OpCost(pm=1, mul=2)  # i_kahp
     + OpCost(pm=1, mul=3, div=1)  # i_kc (min は無視)
     + OpCost(pm=6)  # i_ion 総和
-    + OpCost(pm=1, div=2)  # dv = (-i_ion + u_t/area) / Cm
+    + OpCost(pm=1, div=1)  # dv = (-i_ion + u_t) / Cm
 )
 
 
