@@ -23,6 +23,13 @@ from ..neurons import MCMODELS
 from ._current_catalog import CURRENT_MAP
 
 
+def _digest(key: dict) -> str:
+    """dict → 短縮ハッシュ。鍵の作り方 (整列・既定の str 化) を 1 箇所に置く。"""
+    return hashlib.sha1(
+        json.dumps(key, sort_keys=True, default=str).encode()
+    ).hexdigest()[:8]
+
+
 @dataclass(frozen=True, kw_only=True)
 class SimSpec:
     """1 回のシミュレーションの仕様 = **純粋な計算入力**: 適用先 target × 電流
@@ -91,20 +98,24 @@ class SimSpec:
 
 @dataclass(frozen=True)
 class EvalSeries:
-    """**1 回の掃引実験の記述**: 何を (`spec`)・どの電流パラメータで振るか
-    (`param`/`values`)。`param` を渡さなければ単発 (点 1 つ) で、以降は掃引と同じ
-    経路を通る。
+    """**1 回の掃引実験の記述**: 何を (`spec`)・どこを置換して (`replace_targets`)・
+    どの電流パラメータで振るか (`param`/`values`)。`param` を渡さなければ単発
+    (点 1 つ) で、以降は掃引と同じ経路を通る。
 
     **どの surrogate で回すかも run 軸も持たない**: 置換器を掛けるのは `run`、
     run 軸に開いた結果を持つのは `result.SeriesResults` で、どちらもこの型の外に居る。
-    掃引の記述が置換器から独立している = 原系の再利用が hash 1 本で効く。
+    掃引の記述が置換器から独立している = 原系の再利用が `hash` 1 本で効く。
 
     **保存の単位でもある**: 1 系列 = 1 評価 run (点列を丸ごと 1 artifact に持つ)
-    なので、「同じ掃引を既に回したか」を引く鍵 (`hash`) と往復の形 (`to_dict` /
-    `from_dict`) をこの型が持つ。
+    なので、「同じ掃引を既に回したか」を引く鍵 (原系は `hash`、置換系は
+    `replaced_hash`) と往復の形 (`to_dict` / `from_dict`) をこの型が持つ。
     """
 
     spec: SimSpec
+    # 置換するノード名 (**明示指定**)。置換器そのものは知らないまま「適用先のどこを
+    # 置換する実験か」だけを書く = 適用先の形態が変わっても置換範囲は動かない。
+    # 互換かどうかは surrogate 側が名前ごとに検証する (`SurrogateSpec.applicable`)。
+    replace_targets: tuple[str, ...]
     param: str | None = None  # 掃引する電流パラメータ名 (None=単発)。図の x 軸
     values: Sequence[float] = ()  # 掃引点の値列 (等間隔でなくてもよい)
 
@@ -112,6 +123,7 @@ class EvalSeries:
         """永続化 (評価 run の param) が持ち回る形 = 掃引の定義そのもの。"""
         return {
             "spec": self.spec.to_dict(),
+            "replace_targets": list(self.replace_targets),
             "param": self.param,
             "values": [float(v) for v in self.values],
         }
@@ -120,17 +132,30 @@ class EvalSeries:
     def from_dict(cls, d: dict) -> Self:
         return cls(
             spec=SimSpec.from_dict(d["spec"]),
+            replace_targets=tuple(d["replace_targets"]),
             param=d["param"] or None,
             values=[float(v) for v in d["values"]],
         )
 
     def hash(self) -> str:
-        """**同じ掃引を既に回したか**の鍵 (置換器は記述に含まれない = 原系の再利用が
-        これ 1 本で効く)。置換系は呼び出し側がここに run_id を組む。
+        """**原系の波形を既に回したか**の鍵。原系を決めるもの (適用先 × 電流 × 点列)
+        だけで作り、**置換範囲も置換器も含まない** → 置換範囲だけが違う対照系列
+        どうしでも原系 run を 1 本共有できる (原系は置換に依らないので正しい)。
+
+        置換に効く要素を足したらここから外さない限り原系の共有が切れるので、
+        除外は `replace_targets` を名指しで 1 箇所だけ書く。
 
         完全な仕様は波形 run 側が別に持つので、短縮ハッシュで足りる。"""
-        key = json.dumps(self.to_dict(), sort_keys=True, default=str)
-        return hashlib.sha1(key.encode()).hexdigest()[:8]
+        return _digest(
+            {k: v for k, v in self.to_dict().items() if k != "replace_targets"}
+        )
+
+    def replaced_hash(self) -> str:
+        """**置換系の波形を既に回したか**の鍵 = 原系の鍵 + 置換範囲。置換器 (学習 run)
+        だけは含まない — それは呼び出し側がここに組む (`mlflow_io.series`)。"""
+        return _digest(
+            {"original": self.hash(), "replace_targets": list(self.replace_targets)}
+        )
 
     @property
     def points(self) -> list[SimSpec]:

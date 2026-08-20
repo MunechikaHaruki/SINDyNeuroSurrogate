@@ -37,7 +37,7 @@ def _preprocessed_latent(
     xr (詳細図用)。置換対象外 (学習ドメイン外) は latent 比較不可。
     """
     comp = net.nodes[comp_id]
-    if not surrogate.spec.replaceable(comp):
+    if not surrogate.spec.in_train_domain(comp):
         raise ValueError(
             f"comp {comp.name!r} is outside the trained domain -> latent comparison "
             f"not possible (trained type {surrogate.spec.comp_type.name!r})"

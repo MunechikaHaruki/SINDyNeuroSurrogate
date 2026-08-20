@@ -25,11 +25,10 @@ MCMODELS: dict[str, NeuronGraph] = {
         nodes=[Compartment(name="soma", type=TRAUB_TYPE)],
         edges=[],
     ),
-    # 全 comp 同一 traub 型 → 全ノード置換対象 (元の traub.c と同じ soma 注入)。
+    # 全 comp 同一 traub 型 (元の traub.c と同じ soma 注入)。どこを置換するかは
+    # 形態でなく実験の記述が決める (`EvalSeries.replace_targets`) ので、置換範囲を
+    # 絞るためだけの双子モデルは持たない。
     "traub19": build_traub19(),
-    # soma だけ traub 型に残し dendrite をダミー型 traub_ に。comp_type=traub の学習を
-    # そのまま適用すると soma 1 ノードだけ置換される (適用先で範囲を絞る→preset 不変)。
-    "traub19_soma": build_traub19(soma_only=True),
 }
 
 # --- 面積・軸索 conductance が未考慮の暫定モデル群 (上の docstring 参照) ---

@@ -140,7 +140,7 @@ class Ansatz(ABC, Generic[C]):
         """学習ノードの回路 params で同定したものを、params が `node` のノードへ
         適用してよいか。**定式化そのものの性質** (回路 params を入力として受ける
         形なら不変、係数へ焼き込む形なら一致が要る) なので契約に載せる。
-        `SurrogateSpec.replaceable` が適用範囲の判定に使う。"""
+        `SurrogateSpec.in_train_domain` が学習ドメインの判定に使う。"""
         ...
 
     @abstractmethod

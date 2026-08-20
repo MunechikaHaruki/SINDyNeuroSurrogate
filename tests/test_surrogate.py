@@ -22,9 +22,17 @@ import neurosurrogate.surrogate.artifacts as surrogate_artifact_pkg
 from neurosurrogate.artifact.bundle import save_report
 from neurosurrogate.core import access
 from neurosurrogate.core.coords import transform_gate
+from neurosurrogate.core.network import Compartment, NeuronGraph
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.neurons.compartments.hh import HHParams, dhdt, dmdt, dndt, hh_inits
+from neurosurrogate.neurons.compartments.hh import (
+    HH_TYPE,
+    HHParams,
+    dhdt,
+    dmdt,
+    dndt,
+    hh_inits,
+)
 from neurosurrogate.neurons.compartments.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
@@ -132,7 +140,7 @@ def _simulate_view(series: EvalSeries, runs: SurrogateRuns) -> SeriesResults:
 
 def _run_view(runs: SurrogateRuns, spec: SimSpec) -> SeriesResults:
     """spec をsurrogate run全部と原系で並走シミュした1系列。"""
-    return _simulate_view(EvalSeries(spec=spec), runs)
+    return _simulate_view(EvalSeries(spec=spec, replace_targets=("soma",)), runs)
 
 
 @pytest.fixture(scope="module")
@@ -200,9 +208,15 @@ def test_catalog_is_self_consistent() -> None:
         assert series.spec.net.names
         for spec in series.points:
             assert len(spec.current()) > 0
+        # 置換対象は適用先で解ける名前 (空 = どの run も適用不可になる宣言ミス)
+        assert series.replace_targets
+        assert set(series.replace_targets) <= set(series.spec.net.names)
     # 点軸: 単発は点 1 つ、掃引は宣言した点数だけ
     assert len(SERIES["traub_soma_dc"].points) == 1
     assert len(SERIES["traub19_somastim"].points) == 5
+    # soma 1 点置換と全 comp 置換は**置換範囲だけ**が違う対照ペア
+    assert SERIES["traub19_somastim_allcomp"].spec is SERIES["traub19_somastim"].spec
+    assert len(SERIES["traub19_somastim_allcomp"].replace_targets) == 19
 
 
 def _sweep_series(values: list[float]) -> EvalSeries:
@@ -214,6 +228,7 @@ def _sweep_series(values: list[float]) -> EvalSeries:
             dt=0.05,
             current_params={"duration": 30.0, "silence_duration": 0.0},
         ),
+        replace_targets=("soma",),
         param="value",
         values=values,
     )
@@ -474,8 +489,8 @@ def test_train_inputs_match_identified_columns(sindy: Surrogate) -> None:
     assert len(inputs.u) == len(inputs.x) == len(sindy.spec.train_comp_ids())
 
 
-def test_hybrid_training_scope_covers_all_replaceable_comps() -> None:
-    """hybrid は置換対象 comp 全部の軌道で学習し、
+def test_hybrid_training_scope_covers_the_whole_train_domain() -> None:
+    """hybrid は学習ネット内の学習ドメイン comp 全部の軌道で学習し、
     学習ゲートは physics 分離後の先頭 n_learned 本に限られる。"""
     surrogate = fit_surrogate("_test_traub_hybrid")
     assert surrogate.spec.train_comp_ids() == [
@@ -562,47 +577,45 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments(
     assert surrogate.surr_comp_type.gate_names[-len(extra_names) :] == extra_names
 
     traub19 = SimSpec(target="traub19", current_type="train", dt=0.01)
-    # phi_area/g_Ca が異なる 19 comp すべてが置換対象。pre-B は soma のみ一致で
-    # ValueError だった (Ca params が latent に焼込まれ params 一致必須だったため)。
-    assert surrogate.spec.replacement_targets(traub19.net) == set(traub19.net.names)
+    # phi_area/g_Ca が異なる 19 comp すべてを**明示指定**して置換できる。pre-B は
+    # soma のみ一致で ValueError だった (Ca params が latent に焼込まれていたため)。
+    assert surrogate.spec.rejected_targets(traub19.net, traub19.net.names) == []
 
     # 置換シミュ (XI/Q を各ノード params で physics 積分) が有限に走る。
     v = access.potential(
-        unified_simulator(surrogate.apply(surrogate.spec.dataset.materialize())),
+        unified_simulator(
+            surrogate.apply(surrogate.spec.dataset.materialize(), ["soma"])
+        ),
         _train_comp(surrogate),
     )
     assert np.isfinite(v).all()
 
 
-def test_traub19_soma_model_replaces_only_soma() -> None:
-    """適用先モデル traub19_soma は soma だけ traub 型に残し dendrite をダミー型に
-    する → comp_type=traub の学習を **preset 変更なし** で soma 1 ノードだけへ適用
-    できる (置換範囲を絞る新軸を spec へ足さず、適用先モデル側で絞る)。dendrite 18 個
-    は置換対象外のまま残り、置換シミュが有限に走る。"""
+def test_replacing_one_node_of_traub19_runs_finitely() -> None:
+    """19 comp 中 soma 1 つだけを置換して有限に走る。単体 traub 教師の学習を
+    **preset 変更なし**で多 comp の一部へ適用する経路 (置換範囲は適用側が名前で
+    決めるので、適用先モデルを双子で用意して型で絞る必要はない)。"""
     surrogate = fit_surrogate("_test_traub_hybrid")  # comp_type=traub, 単体 traub 教師
     ds = SimSpec(
-        target="traub19_soma",
+        target="traub19",
         current_type="train",
         dt=0.01,
         current_params={"duration": 180},  # smoke: 配線確認のみ (本番は長時間)
     )
-    assert surrogate.spec.replacement_targets(ds.net) == {"soma"}
-    # soma だけ traub 型、dendrite はダミー型 traub_ (置換対象外)
-    assert {n.name for n in ds.net.nodes if n.type.name == "traub"} == {"soma"}
+    replaced = surrogate.apply(ds.materialize(), ["soma"])
+    # 残り 18 comp は原系のまま = 混在ネットが積分される
+    assert [n.type.name for n in replaced.net.nodes].count("traub") == 18
 
-    v = access.potential(
-        unified_simulator(surrogate.apply(ds.materialize())),
-        ds.net.name_to_idx("soma"),
-    )
+    v = access.potential(unified_simulator(replaced), ds.net.name_to_idx("soma"))
     assert np.isfinite(v).all()
 
 
-def test_traub19_soma_dendstim_injects_into_dendrite() -> None:
-    """dend 刺激版も soma だけ置換対象 (traub 型 = soma のみ) だが、電流注入先は
-    dendrite。刺激点が soma でないこと + 置換シミュが有限に走ることを確認。"""
+def test_dendstim_injects_into_dendrite_while_replacing_soma() -> None:
+    """注入先 (`SimSpec.stim`) と置換対象 (`replace_targets`) は独立した軸。
+    dendrite へ注入しつつ soma を置換しても有限に走る。"""
     surrogate = fit_surrogate("_test_traub_hybrid")
     ds = SimSpec(
-        target="traub19_soma",
+        target="traub19",
         stim=name_at(DEND_STIM_IDX),
         current_type="train",
         dt=0.01,
@@ -610,12 +623,100 @@ def test_traub19_soma_dendstim_injects_into_dendrite() -> None:
     )
     assert ds.stim != "soma"  # 注入先は dendrite
     assert ds.materialize().stim_idx == DEND_STIM_IDX
-    assert surrogate.spec.replacement_targets(ds.net) == {"soma"}
 
     v = access.potential(
-        unified_simulator(surrogate.apply(ds.materialize())),
+        unified_simulator(surrogate.apply(ds.materialize(), ["soma"])),
         ds.net.name_to_idx("soma"),
     )
+    assert np.isfinite(v).all()
+
+
+def test_apply_replaces_only_the_named_targets() -> None:
+    """**置換対象は明示指定**で、互換なノードが他に在っても勝手に増えない。
+    指定が不在/種類違い/params 非両立なら部分適用せず ValueError (fail first)。"""
+    surrogate = fit_surrogate("_test_traub_hybrid")  # traub 型を置換できる
+    ds = SimSpec(target="traub19", current_type="train", dt=0.01).materialize()
+
+    # 19 comp 全部が互換だが、名指しした 2 つだけが surr 型に変わる
+    surr_name = surrogate.surr_comp_type.name
+    replaced = surrogate.apply(ds, ["soma", "c00"])
+    assert {n.name for n in replaced.net.nodes if n.type.name == surr_name} == {
+        "soma",
+        "c00",
+    }
+
+    with pytest.raises(ValueError, match="存在しない"):
+        surrogate.apply(ds, ["soma", "nonexistent"])
+    with pytest.raises(ValueError, match="明示指定"):
+        surrogate.apply(ds, [])
+
+
+def test_applicable_requires_every_named_target() -> None:
+    """系列の適用可否は「指定した対象が全部置換できるか」 — 1 つでも欠ければ不可。
+    「1 つでも互換なら適用可」だと適用先の形態次第で置換範囲が黙って縮む。"""
+    surrogate = fit_surrogate("_test_traub_hybrid")
+    spec = SimSpec(target="traub19", current_type="train", dt=0.01)
+    assert surrogate.spec.applicable(
+        EvalSeries(spec=spec, replace_targets=("soma", "c00"))
+    )
+    assert not surrogate.spec.applicable(
+        EvalSeries(spec=spec, replace_targets=("soma", "nonexistent"))
+    )
+    assert not surrogate.spec.applicable(EvalSeries(spec=spec, replace_targets=()))
+
+
+def test_rejection_names_the_reason_per_target(sindy: Surrogate) -> None:
+    """置換できない理由は名前ごとに言える: 種類違い / params 非両立 / 不在。
+    sindy は params を係数へ焼き込むので、同じ hh 型でも params が違えば拒否される。"""
+    net = NeuronGraph(
+        nodes=[
+            Compartment(name="soma", type=HH_TYPE),
+            Compartment(name="d1", type=HH_TYPE, params=HHParams(G_NA=60.0)),
+        ],
+        edges=[],
+    )
+    assert sindy.spec.rejected_targets(net, ["soma"]) == []
+    (reason,) = sindy.spec.rejected_targets(net, ["d1"])
+    assert "params 非両立" in reason
+    (reason,) = sindy.spec.rejected_targets(net, ["nope"])
+    assert "存在しない" in reason
+    # 種類違い (traub 型ノードへ hh の学習を当てる)
+    (reason,) = sindy.spec.rejected_targets(
+        SimSpec(target="traub", current_type="train", dt=0.01).net, ["soma"]
+    )
+    assert "種類" in reason
+
+
+def test_original_key_is_shared_across_replacement_scopes() -> None:
+    """原系の鍵 (`hash`) は置換範囲を含まない = 置換範囲だけが違う対照系列は原系 run
+    を 1 本共有する (原系の波形は置換に依らないので正しい)。置換系の鍵
+    (`replaced_hash`) は含む = 範囲違いを同じ run に潰さない。"""
+    soma, allcomp = SERIES["traub19_somastim"], SERIES["traub19_somastim_allcomp"]
+    assert soma.replace_targets != allcomp.replace_targets
+    assert soma.hash() == allcomp.hash()
+    assert soma.replaced_hash() != allcomp.replaced_hash()
+
+
+def test_multi_target_series_runs_through_run_column() -> None:
+    """複数対象の系列が記述 → 実行まで通る: `run_column` が `replace_targets` を
+    `apply` へ渡し、19 comp 全部を置換した列が有限に走る。カタログの全置換系列が
+    実サロゲートで適用可能であることも併せて見る (適用不可なら UI に出ない)。"""
+    surrogate = fit_surrogate("_test_traub_hybrid")
+    assert surrogate.spec.applicable(SERIES["traub19_somastim_allcomp"])
+
+    series = EvalSeries(
+        spec=SimSpec(
+            target="traub19",
+            # smoke: 配線が通ることだけ見るので、カタログと同じ電流種を最短で
+            current_type="lin&steady",
+            dt=0.01,
+            current_params={"silence_duration": 5.0, "duration": 40.0, "value": 3.0},
+        ),
+        replace_targets=SERIES["traub19_somastim_allcomp"].replace_targets,
+    )
+    column = run_column(series, "r0", surrogate)
+    assert len(column.waves) == 1
+    v = access.potential(column.waves[0], series.spec.net.name_to_idx("soma"))
     assert np.isfinite(v).all()
 
 
@@ -649,10 +750,15 @@ def test_ude_traub_transplants_across_heterogeneous_compartments() -> None:
         TRAUB_EXTRA_GATE_NAMES
     )
     traub19 = SimSpec(target="traub19", current_type="train", dt=0.01)
-    assert surrogate.spec.replacement_targets(traub19.net) == set(traub19.net.names)
+    assert surrogate.spec.rejected_targets(traub19.net, traub19.net.names) == []
 
     v = access.potential(
-        unified_simulator(surrogate.apply(surrogate.spec.dataset.materialize())),
+        unified_simulator(
+            surrogate.apply(
+                surrogate.spec.dataset.materialize(),
+                surrogate.spec.dataset.net.names,
+            )
+        ),
         _train_comp(surrogate),
     )
     assert np.isfinite(v).all()

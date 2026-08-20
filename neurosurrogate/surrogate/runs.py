@@ -33,7 +33,7 @@ class SurrogateRuns:
         return tuple(name for name, _ in self.runs)
 
     def replacing(self, series: EvalSeries) -> "SurrogateRuns":
-        """この掃引を置換できる run だけに絞る。"""
+        """この掃引が指定した置換対象を**全部**置換できる run だけに絞る。"""
         return SurrogateRuns(
             tuple(
                 (name, surrogate)

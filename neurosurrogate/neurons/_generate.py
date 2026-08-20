@@ -1,8 +1,8 @@
 """NeuronGraph の生成関数。組んだ結果のカタログは `__init__.py`。"""
 
 from ..core.network import Compartment, Edge, NeuronGraph
-from .compartments.traub import TRAUB_DUMMY_TYPE, TRAUB_TYPE
-from .traub19 import NC, SOMA_IDX, g_axial, name_at, params_at
+from .compartments.traub import TRAUB_TYPE
+from .traub19 import NC, g_axial, name_at, params_at
 
 # 直鎖モデルの組立。edge weight を呼び出し側が手で決める = 軸索 conductance も
 # comp の面積も実測値でない暫定モデル専用だったので、それらのカタログ登録
@@ -43,19 +43,14 @@ from .traub19 import NC, SOMA_IDX, g_axial, name_at, params_at
 #     )
 
 
-def build_traub19(soma_only: bool = False) -> NeuronGraph:
-    """19-comp Traub モデルを組む (per-comp 定数は `traub19.py`、変種は `__init__.py`)。
+def build_traub19() -> NeuronGraph:
+    """19-comp Traub モデルを組む (per-comp 定数は `traub19.py`)。
 
-    soma_only=False (既定) は全 comp 同一 traub 型。True にすると soma だけ traub 型に
-    残り dendrite はダミー型 (別型 = 置換対象外) になる → comp_type=traub の学習が soma
-    1 ノードだけへ適用される。注入ノードは形態でなく `SimSpec.stim` が決める。
+    全 comp 同一 traub 型。注入ノードは形態でなく `SimSpec.stim` が、置換範囲は
+    `EvalSeries.replace_targets` が決める = **形態はどちらも知らない**。
     """
     nodes = [
-        Compartment(
-            name=name_at(i),
-            type=TRAUB_DUMMY_TYPE if soma_only and i != SOMA_IDX else TRAUB_TYPE,
-            params=params_at(i),
-        )
+        Compartment(name=name_at(i), type=TRAUB_TYPE, params=params_at(i))
         for i in range(NC)
     ]
     edges = [Edge(name_at(i), name_at(i + 1), g_axial(i)) for i in range(NC - 1)]

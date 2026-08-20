@@ -43,7 +43,7 @@ def surrogate_artifacts(
             neuron_graph_artifact(
                 net,
                 surrogate.spec.dataset.stim,
-                {node.name for node in net.nodes if surrogate.spec.replaceable(node)},
+                {n.name for n in net.nodes if surrogate.spec.in_train_domain(n)},
             ),
             train_raw_artifact(surrogate, comps),
             train_preprocessed_artifact(surrogate, comps),

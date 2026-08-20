@@ -68,8 +68,10 @@ class SeriesResults:
     def __post_init__(self) -> None:
         # 束ねてよいのは**同じ掃引を回した列だけ** (点軸が揃わない列を図の側で
         # 検出させない)。列ごとの点数は `SeriesRun` が既に見ている。
-        key = self.series.hash()
-        if any(column.series.hash() != key for column in self.surrs):
+        # 置換範囲まで込みの鍵 (`replaced_hash`) で見る — 原系の鍵だけだと置換範囲
+        # の違う対照系列を 1 つの図に混ぜられてしまう。
+        key = self.series.replaced_hash()
+        if any(column.series.replaced_hash() != key for column in self.surrs):
             raise ValueError("記述の違う列は 1 つの束にできない")
         if self.original.run_id is not None:
             raise ValueError(f"原系の列に run_id {self.original.run_id}")

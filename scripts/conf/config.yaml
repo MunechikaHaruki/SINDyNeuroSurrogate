@@ -11,7 +11,7 @@ surrogate:
   spec:
     datasets:
       dt: 0.01
-    # 学習を 1 ノードへ絞る指定 (省略/null = 置換対象ノード全部で学習)。
+    # 学習を 1 ノードへ絞る指定 (省略/null = 学習ネット内の学習ドメイン全部)。
     train_comp_identifier: null
     # 学習/physics 分割の変種 (hybrid の HYBRID_PHYSICS キー。null = comp_type 名)。
     physics_type: null

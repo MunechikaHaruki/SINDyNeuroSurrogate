@@ -155,7 +155,12 @@ def _evals(bundle: Surrogate) -> EvalSeries:
     """学習と同じ入力を**さらに短く**した評価仕様 (2 点の掃引)。ここで見たいのは
     保存/読込の往復であって波形の質ではないので、シミュ長は最小で足りる。掃引に
     してあるのは、点の並びが `EvalSeries.points` から復元されることを見るため。"""
-    return EvalSeries(spec=bundle.spec.dataset, param="duration", values=[170.0, 190.0])
+    return EvalSeries(
+        spec=bundle.spec.dataset,
+        replace_targets=("soma",),
+        param="duration",
+        values=[170.0, 190.0],
+    )
 
 
 def test_eval_runs_round_trip_without_resimulating(
@@ -176,7 +181,7 @@ def test_eval_runs_round_trip_without_resimulating(
     view = _view(report_id)
     assert view.run_ids == [train_id]
     # 掃引の記述は結果から作り直せる (記述と結果が同じ対で往復する)
-    assert view.series.hash() == series.hash()
+    assert view.series.replaced_hash() == series.replaced_hash()
     original_eval, surr_eval = _source_runs(report_id)
     # 点は宣言した掃引値の順で戻る (点ごとの識別子を保存していない)
     assert (view.series.param, view.series.axis_values) == ("duration", [170.0, 190.0])
@@ -192,7 +197,7 @@ def test_eval_runs_round_trip_without_resimulating(
     # (原系は surrogate 非依存なので回し直しても一致する)
     np.testing.assert_allclose(
         access.potential(orig, 0),
-        access.potential(simulate(series.points[1], None), 0),
+        access.potential(simulate(series.points[1], None, ()), 0),
         rtol=1e-5,
     )
     assert not np.allclose(access.potential(surr, 0), access.potential(orig, 0))

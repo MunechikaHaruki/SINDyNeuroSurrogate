@@ -32,9 +32,12 @@ _KIND_SURROGATE = "surrogate"
 
 
 def _series_hash(series: EvalSeries, run_id: str | None) -> str:
-    """「この掃引をこの surrogate で既に回したか」の鍵。`EvalSeries.hash` は掃引の内容
-    だけなので run_id はここで組む = 原系は鍵が掃引だけになり全レポートで共有される。"""
-    return series.hash() if run_id is None else f"{series.hash()}-{run_id}"
+    """「この掃引をこの surrogate で既に回したか」の鍵。置換器 (学習 run_id) を組むのは
+    ここだけで、掃引側の鍵は記述が持つ: 原系は `hash` (置換範囲を含まない = 置換範囲
+    だけが違う対照系列と共有される)、置換系は `replaced_hash` (置換範囲を含む)。"""
+    if run_id is None:
+        return series.hash()
+    return f"{series.replaced_hash()}-{run_id}"
 
 
 def _tags(series: EvalSeries, run_id: str | None) -> dict[str, str]:

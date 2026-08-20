@@ -11,6 +11,7 @@ lazy に再現する (`training_data`)。load 後でも触れ、参照しなけ�
 """
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 from functools import cached_property
@@ -63,7 +64,7 @@ class SurrogateSpec:
 
     def ansatz(self) -> Ansatz[Any]:
         """定式化ストラテジ。**dispatch キーを解くのはここだけ** (状態なしなので
-        毎回作ってよい)。適用範囲の判定 (`replaceable`) も学習も同じ実体に問う。"""
+        毎回作ってよい)。`in_train_domain` の判定も学習も同じ実体に問う。"""
         return _SURR_CLS[self.surrogate_type]()
 
     def surr_type_name(self) -> str:
@@ -82,51 +83,71 @@ class SurrogateSpec:
         """置換前 CompartmentType の 1 ステップのコスト。"""
         return self.comp_type.opcost
 
-    def replaceable(self, comp: Compartment) -> bool:
-        """comp が適用範囲にあるか (種類一致かつ params 両立)。"""
+    def in_train_domain(self, comp: Compartment) -> bool:
+        """comp が学習ドメインに属すか (種類一致かつ params 両立)。
+
+        **置換してよいかの判定はこれ 1 つ**。何を置換するかの選定はここでは決まらない
+        — 対象は適用側が名前で明示し (`EvalSeries.replace_targets` /
+        `Surrogate.apply` の targets)、この述語はその 1 つ 1 つが通るかを答えるだけ。
+        """
         if comp.type != self.comp_type:
             return False
         return self.ansatz().params_match(
             self.train_comp().resolved_params, comp.resolved_params
         )
 
+    def rejected_targets(self, net: NeuronGraph, targets: Sequence[str]) -> list[str]:
+        """明示指定のうち net 上で置換できないものの理由文 (空なら全部置換可)。
+
+        通るかどうかは `in_train_domain` が答え、ここはそれが偽だった理由 (不在 /
+        種類違い / params 非両立) を名前ごとに文にするだけ = **どの名前がなぜ通らな
+        かったかを必ず名指しできる** (「何個か落ちた」で終わらせない)。
+
+        理由が人の目に出るのは `Surrogate.apply` の ValueError 経由。run 選択
+        (`SurrogateRuns.replacing`) は真偽だけを見て絞るので、そこで落ちた run の
+        理由は表示されない — 表示したくなったらこの返り値を UI まで運ぶ。
+        """
+        reasons = []
+        for name in targets:
+            if name not in net.names:
+                reasons.append(f"{name!r}: 適用先 {net.names} に存在しない")
+                continue
+            comp = net.nodes[net.name_to_idx(name)]
+            if self.in_train_domain(comp):
+                continue
+            if comp.type != self.comp_type:
+                reasons.append(
+                    f"{name!r}: 種類 {comp.type.name!r} ≠ 学習した種類 "
+                    f"{self.comp_type.name!r}"
+                )
+            else:
+                train = self.train_comp()
+                reasons.append(
+                    f"{name!r}: params 非両立 = 学習ドメイン外\n"
+                    f"    train({train.name}): {train.resolved_params}\n"
+                    f"    node({name}): {comp.resolved_params}"
+                )
+        return reasons
+
     def applicable(self, series: EvalSeries) -> bool:
-        """系列の適用先に置換可能なノードが 1 つでもあるか。"""
-        return any(self.replaceable(node) for node in series.spec.net.nodes)
+        """系列が置換対象に挙げたノードを**全部**置換できるか。
+
+        部分一致は不可 = 「指定したうち通ったものだけ静かに置換」を作らない。
+        """
+        return bool(series.replace_targets) and not self.rejected_targets(
+            series.spec.net, series.replace_targets
+        )
 
     def train_comp_ids(self) -> list[int]:
-        """学習軌道を取る comp id 列。既定は適用範囲全部、明示時だけ 1 ノード。"""
+        """学習軌道を取る comp id 列。既定は学習ネット内の学習ドメイン全部、明示時
+        だけ 1 ノード。"""
         if self.train_comp_id is not None:
             return [self.train_comp_id]
         return [
-            i for i, comp in enumerate(self.dataset.net.nodes) if self.replaceable(comp)
+            i
+            for i, comp in enumerate(self.dataset.net.nodes)
+            if self.in_train_domain(comp)
         ]
-
-    def replacement_targets(self, net: NeuronGraph) -> set[str]:
-        """net 内の置換対象ノード名 (不整合・対象ゼロは fail first)。"""
-        targets = {node.name for node in net.nodes if self.replaceable(node)}
-        mismatched = [
-            node
-            for node in net.nodes
-            if node.type == self.comp_type and node.name not in targets
-        ]
-        if mismatched:
-            train = self.train_comp()
-            raise ValueError(
-                f"種類 {self.comp_type.name!r} 一致だが params 非両立のノード "
-                f"{[node.name for node in mismatched]}: 学習ドメイン外。\n"
-                f"  train({train.name}): {train.resolved_params}\n"
-                + "\n".join(
-                    f"  node({node.name}): {node.resolved_params}"
-                    for node in mismatched
-                )
-            )
-        if not targets:
-            raise ValueError(
-                f"種類 {self.comp_type.name!r} のノードが {net.names} に存在しない "
-                "→ 置換対象ゼロ。適用不可"
-            )
-        return targets
 
 
 def _build_spec(config: dict) -> SurrogateSpec:
@@ -282,16 +303,28 @@ class Surrogate:
         """置換後の CompartmentType。"""
         return self._ansatz.surr_comp_type(self.spec, self.preprocessor, self.closure)
 
-    def apply(self, dataset: DatasetConfig) -> DatasetConfig:
-        """学習ドメインに属す全ノードを surrogate に置換する。"""
-        targets = self.spec.replacement_targets(dataset.net)
+    def apply(self, dataset: DatasetConfig, targets: Sequence[str]) -> DatasetConfig:
+        """**明示指定された** targets を surrogate へ置換する。
+
+        「互換なノードを全部」置換しない = 適用先の形態が変わっても置換範囲は動かない。
+        1 つでも置換できなければ何も置換せず ValueError (部分適用を作らない)。
+        """
+        if not targets:
+            raise ValueError("置換対象が空: 置換するノード名を明示指定すること")
+        rejected = self.spec.rejected_targets(dataset.net, targets)
+        if rejected:
+            raise ValueError(
+                f"{self.spec.surr_type_name()} で置換できない対象:\n  "
+                + "\n  ".join(rejected)
+            )
+        names = set(targets)
         return dc_replace(
             dataset,
             net=dc_replace(
                 dataset.net,
                 nodes=[
                     dc_replace(node, type=self.surr_comp_type)
-                    if node.name in targets
+                    if node.name in names
                     else node
                     for node in dataset.net.nodes
                 ],

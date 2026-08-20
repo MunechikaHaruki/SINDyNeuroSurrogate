@@ -1,5 +1,6 @@
 # @package _global_
-# 教師データ = 19-comp MC の全 comp 軌道 (置換対象 = traub 型 comp 全部)。
+# 教師データ = 19-comp MC の全 comp 軌道 (どこを置換するかは preset でなく
+# 評価系列が決める: `EvalSeries.replace_targets`)。
 surrogate:
   spec:
     comp_type: traub  # 置換対象のコンパートメント種類

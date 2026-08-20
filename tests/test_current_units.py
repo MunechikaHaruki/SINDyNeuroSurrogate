@@ -34,7 +34,7 @@ def test_replaced_nodes_keep_their_area():
     params を落とした複製を作ると黙って 1.0 = 密度化が消え、その comp への流入だけ
     桁が変わる。`Surrogate.apply` が type だけ差し替えるのはこのため。
     """
-    net = MCMODELS["traub19_soma"]
+    net = MCMODELS["traub19"]
     surr_type = dc_replace(_SOMA.type, name="surr", param_cls=None)
     replaced = dc_replace(net, nodes=[dc_replace(c, type=surr_type) for c in net.nodes])
     assert np.allclose(_areas(replaced), _areas(net))
