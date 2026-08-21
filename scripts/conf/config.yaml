@@ -6,7 +6,7 @@ defaults:
 # surrogate 直下は spec + **parts/ の 3 構成要素と同名のブロック**。
 # 何を学習するか (spec) と、差し替え可能な 3 者それぞれの hyperparams が 1 対 1 に
 # 対応し、各ブロックはその層の入口へそのまま展開される:
-#   preprocessor -> Preprocessor.fit
+#   preprocessor -> fit_pca / fit_ae
 #   ansatz       -> 方程式の骨格の選択 (HybridAnsatz.split)
 #   closure      -> 閉包項の同定入口 (sindy: library_specs/optimizer、ude: joint 学習)
 # 学習構造 (surrogate_type / preprocessor_type / n_components) は spec が単一源で、
