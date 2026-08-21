@@ -5,8 +5,9 @@
 問い (学習ゲート・列構造・置換後の型) は `surrogate.ansatz` へ直接問う —
 **この型は転送メソッドを持たない**。
 
-**組み方はここに無い** (`fit.py`)。ここが持つのは学習済みのものを「保存する・読む・
-適用する」だけで、設定ツリーの形を知らない = 設定の変更がこのモジュールへ届かない。
+**組み立ては `Surrogate` のメソッドでない** — 型が答えるのは持つ・保存する・読む・
+適用するの 4 つだけで、設定ツリーから組む手順はモジュール関数 `fit_surrogate` に置く。
+設定の形を解くのは `SurrogateSpec.from_config` 1 箇所。
 学習データは保存せず spec から lazy に再現する (`training_data`)。load 後でも触れ、
 参照しなければ simulate は走らない。
 """
@@ -61,6 +62,11 @@ class SurrogateSpec:
     comp_type: CompartmentType
     train_comp_id: int | None
     physics_type: str | None
+    # 種別固有 / 定式化固有の hyperparams。**共通のつまみ (n_components) だけは上の
+    # field へ昇格**していて、ここには実装ごとにしか意味を持たないものが残る。
+    # 学習中しか読まれないが、仕様は学習後も由来として残るものなので spec が持つ。
+    preprocessor_config: dict
+    ansatz_config: dict
 
     # --- 構築・直列化 -------------------------------------------------------
     # 素通しでないのは dataset (入れ子の構造) と comp_type (名前 ↔ 実体) の 2 つだけ
@@ -69,22 +75,28 @@ class SurrogateSpec:
 
     @classmethod
     def from_config(cls, config: dict) -> "SurrogateSpec":
-        """Hydra の spec ブロックから。**学習ノードは config では名前で書き**、
-        ここで index へ解く (以降 spec は index だけを持つ)。"""
-        dataset = SimSpec(**config["datasets"])
-        train_comp_identifier = config.get("train_comp_identifier")
+        """Hydra の surrogate ブロックから。**3 ブロックはそのまま仕様の一部**で、
+        ここが設定ツリーの形を知る唯一の場所 (以降 fit は spec しか見ない)。
+
+        学習ノードは config では名前で書き、ここで index へ解く。
+        """
+        spec = config["spec"]
+        dataset = SimSpec(**spec["datasets"])
+        train_comp_identifier = spec.get("train_comp_identifier")
         return cls(
-            surrogate_type=config["surrogate_type"],
-            preprocessor_type=config["preprocessor_type"],
-            n_components=config["n_components"],
+            surrogate_type=spec["surrogate_type"],
+            preprocessor_type=spec["preprocessor_type"],
+            n_components=spec["n_components"],
             dataset=dataset,
-            comp_type=COMPARTMENT_TYPES[config["comp_type"]],
+            comp_type=COMPARTMENT_TYPES[spec["comp_type"]],
             train_comp_id=(
                 None
                 if train_comp_identifier is None
                 else dataset.net.name_to_idx(train_comp_identifier)
             ),
-            physics_type=config.get("physics_type"),
+            physics_type=spec.get("physics_type"),
+            preprocessor_config=config["preprocessor"],
+            ansatz_config=config["ansatz"],
         )
 
     def to_dict(self) -> dict:
@@ -284,3 +296,18 @@ class Surrogate:
                 ],
             ),
         )
+
+
+def fit_surrogate(cfg: dict) -> Surrogate:
+    """設定ツリーから学習済み surrogate を組む唯一の入口。
+
+    **メソッドでなくモジュール関数**なのは、組み立てが `Surrogate` の関心でないから
+    (この型が答えるのは持つ・保存する・読む・適用するの 4 つだけ)。設定の形を解くのは
+    `SurrogateSpec.from_config` で、ここは simulate して学習させて組む手順だけを持つ。
+    """
+    spec = SurrogateSpec.from_config(cfg)
+    ansatz = spec.ansatz()
+    # 学習データは spec から決定的に再現できる (`Surrogate.training_data` と同じ式)
+    # ので、学習済みモデルへ持ち回さず捨てる。
+    preprocessor, closure = ansatz.fit(unified_simulator(spec.dataset.materialize()))
+    return Surrogate(spec, ansatz, preprocessor, closure)

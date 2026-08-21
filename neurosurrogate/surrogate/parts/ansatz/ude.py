@@ -58,13 +58,14 @@ class UDEAnsatz(HybridAnsatz[UDEClosure]):
     """
 
     def fit_closure(
-        self, training_data: xr.Dataset, preprocessor: Preprocessor, config: dict
+        self, training_data: xr.Dataset, preprocessor: Preprocessor
     ) -> UDEClosure:
         if not isinstance(preprocessor, AEPreprocessor):
             raise ValueError(
                 "ude は encoder/decoder を学習変数として更新するため "
                 f"preprocessor_type=ae が要る (指定: {type(preprocessor).__name__})"
             )
+        config = self.spec.ansatz_config
         epochs = int(config.get("epochs", 3000))
         lr = float(config.get("lr", 3e-3))
         window = int(config.get("window", 100))

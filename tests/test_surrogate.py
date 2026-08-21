@@ -67,8 +67,7 @@ from neurosurrogate.surrogate.artifacts.train import (
     train_recon_artifact,
     train_v_coverage_artifact,
 )
-from neurosurrogate.surrogate.fit import fit_surrogate
-from neurosurrogate.surrogate.model import Surrogate
+from neurosurrogate.surrogate.model import Surrogate, fit_surrogate
 from neurosurrogate.surrogate.parts import Closure, Preprocessor
 from neurosurrogate.surrogate.parts.ansatz.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.parts.ansatz.ude import UDEAnsatz
@@ -776,8 +775,8 @@ def test_ude_rejects_non_learnable_preprocessor() -> None:
     渡されたら黙って前処理固定に退化せず、その場で落ちる。"""
     pca_based = fit_preset("_test_traub_hybrid")  # preprocessor_type=pca の preset
     with pytest.raises(ValueError, match="preprocessor_type=ae"):
-        UDEAnsatz(pca_based.spec).fit_closure(
-            pca_based.training_data, pca_based.preprocessor, {"epochs": 1}
+        UDEAnsatz(dc_replace(pca_based.spec, ansatz_config={"epochs": 1})).fit_closure(
+            pca_based.training_data, pca_based.preprocessor
         )
 
 
@@ -795,7 +794,7 @@ class _IdentityPreprocessor(Preprocessor):
 
     @classmethod
     def fit(
-        cls, train_gate: np.ndarray, n_components: int, spec: dict
+        cls, train_gate: np.ndarray, n_components: int, config: dict
     ) -> "Preprocessor":
         raise NotImplementedError("恒等 preprocessor は手組み専用")
 
@@ -846,7 +845,7 @@ def test_original_dynamics_injected_reproduces_potential_exactly() -> None:
         )
 
     class ExactHybridAnsatz(HybridAnsatz[_NullClosure]):
-        def fit_closure(self, training_data, preprocessor, config):
+        def fit_closure(self, training_data, preprocessor):
             raise NotImplementedError
 
         def dlatent(self, preprocessor, closure):

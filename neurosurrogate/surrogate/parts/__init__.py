@@ -62,8 +62,10 @@ class Preprocessor(ABC):
 
     @classmethod
     @abstractmethod
-    def fit(cls, train_gate: np.ndarray, n_components: int, spec: dict) -> Preprocessor:
-        """潜在次元 n_components (全種共通) と spec (種別固有 hyperparams) で学習。"""
+    def fit(
+        cls, train_gate: np.ndarray, n_components: int, config: dict
+    ) -> Preprocessor:
+        """潜在次元 n_components (全種共通) と config (種別固有 hyperparams) で学習。"""
         ...
 
     @abstractmethod
@@ -169,34 +171,28 @@ class Ansatz(ABC, Generic[C]):
         """同定器へ渡す直前の (x, u) を組む。fit が流し view が描く。"""
         ...
 
-    def fit(
-        self,
-        training_data: xr.Dataset,
-        preprocessor_config: dict,
-        ansatz_config: dict,
-    ) -> tuple[Preprocessor, C]:
+    def fit(self, training_data: xr.Dataset) -> tuple[Preprocessor, C]:
         """座標変換を学習してから閉包項を同定し、成果物 2 点を返す。
 
         **この順序は定式化に依らない** (閉包項は潜在座標の上に立つので前処理が先) →
         ここで確定させ、定式化ごとに違う後半だけを `fit_closure` に開ける。
         preprocessor を引数で受けず自分で作るのは、学習ゲートの選び方
         (`training_gates`) が定式化の性質だから = 作り手と選び手を割らない。
+
+        hyperparams は spec が持つ (`preprocessor_config` / `ansatz_config`) ので
+        引数は食わせるデータ 1 つだけ = **spec に無い設定は学習に効かない**。
         """
         preprocessor = self.spec.preprocessor_cls().fit(
             np.concatenate(self.training_gates(training_data), axis=0),
             self.spec.n_components,
-            preprocessor_config,
+            self.spec.preprocessor_config,
         )
-        return preprocessor, self.fit_closure(
-            training_data, preprocessor, ansatz_config
-        )
+        return preprocessor, self.fit_closure(training_data, preprocessor)
 
     @abstractmethod
-    def fit_closure(
-        self, training_data: xr.Dataset, preprocessor: Preprocessor, config: dict
-    ) -> C:
-        """閉包項を同定する。config = 定式化固有の hyperparams のみ (共通の潜在次元は
-        spec 側)。preprocessor を書き換える実装もある (UDE の joint 学習)。"""
+    def fit_closure(self, training_data: xr.Dataset, preprocessor: Preprocessor) -> C:
+        """閉包項を同定する (hyperparams は `spec.ansatz_config`)。preprocessor を
+        書き換える実装もある (UDE の joint 学習)。"""
         ...
 
     @abstractmethod

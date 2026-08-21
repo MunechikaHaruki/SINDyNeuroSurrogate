@@ -12,7 +12,7 @@ from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 from mlflow_io.surrogate import log_surrogate_model
 from omegaconf import DictConfig, OmegaConf
 
-from neurosurrogate.surrogate.fit import fit_surrogate
+from neurosurrogate.surrogate.model import fit_surrogate
 
 _logger = logging.getLogger(__name__)
 

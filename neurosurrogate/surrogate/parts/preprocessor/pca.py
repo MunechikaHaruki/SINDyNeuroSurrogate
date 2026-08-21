@@ -27,7 +27,7 @@ class PCAPreprocessor(Preprocessor):
 
     @classmethod
     def fit(
-        cls, train_gate: np.ndarray, n_components: int, spec: dict
+        cls, train_gate: np.ndarray, n_components: int, config: dict
     ) -> "PCAPreprocessor":
         # 全成分で 1 度 fit し上位 n を採る (2 度 fit を避ける)。full_* は捨てた
         # 成分の寄与率も含み、保持成分は先頭 n_components を切り出す。

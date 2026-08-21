@@ -42,7 +42,7 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
         )
 
     def fit_closure(
-        self, training_data: xr.Dataset, preprocessor: Preprocessor, config: dict
+        self, training_data: xr.Dataset, preprocessor: Preprocessor
     ) -> SINDyBundle:
         n = self.spec.n_components
         # 列構造: [V, z1..zN, u]。V=0, gate 群, 末尾に外部電流。
@@ -50,7 +50,7 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
             self.train_inputs(training_data, preprocessor),
             access.time(training_data),
             Roles(V=0, g=list(range(1, 1 + n)), u=1 + n),
-            config,
+            self.spec.ansatz_config,
         )
 
     def surr_comp_type(

@@ -26,8 +26,7 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
           report.py              # summary/traces/metric + 電流プレビュー。**点軸×run 軸の並びを成果物へ落とす唯一の場所**
           detail.py              # diff/simple/attractor/metrics。1 ペアの図と表 (点軸も run 軸も知らない)
           _tables.py             # 指標の値を表に並べる (計算を増やさない)
-  surrogate/  fit.py             # **宣言から実体を組み立てる一式**: 設定ツリー → 学習済み Surrogate (fit_surrogate / _build_spec)、名前 → 実装の対応表、仕様から実体を解く関数 (ansatz_cls / ansatz / preprocessor_cls)。**ドメイン層でここだけが「設定に何と書いたら何が組まれるか」を知る**。model.py / parts/ は spec を引数にこれらを呼ぶが、fit.py が両者を import する向きなので**呼ぶ側が関数内で import する** (import 時の循環を作らない)
-              model.py           # SurrogateSpec (宣言 + JSON との相互変換 + **学習ドメイン判定** in_train_domain / rejected_targets / applicable) と Surrogate。**組み方も名前の解決も持たない** (fit.py)。Surrogate は**学習済みのもの**を持つだけで組み方を知らず、load/save (1 つの保存形式契約の両半分) と**名指しされた対象への適用** (apply(dataset, targets) = 全数検証、1 つでも通らなければ部分適用せず ValueError) を答える
+  surrogate/  model.py           # SurrogateSpec (宣言 + hyperparams + JSON 往復 + **設定ツリー (3 ブロック) を解く唯一の場所** from_config + 名前 → 実装の解決 ansatz_cls / ansatz / preprocessor_cls + **学習ドメイン判定** in_train_domain / rejected_targets / applicable) と Surrogate (**学習済みのもの**を持ち、load/save (1 つの保存形式契約の両半分) と**名指しされた対象への適用** (apply(dataset, targets) = 全数検証、1 つでも通らなければ部分適用せず ValueError) を答える)。**組み立ては型のメソッドでなくモジュール関数** fit_surrogate — hyperparams まで spec が持つので Ansatz.fit の引数は学習データ 1 つ
               runs.py            # 一意な名前と選択順を持つ SurrogateRuns。評価系列が挙げた置換対象を**全部**置換できる run だけへの絞り込み (部分一致は不可)
               parts/  __init__.py # Surrogate が差し替える 3 構成要素の**契約を集約**: Closure / Preprocessor (+再構成統計) / Ansatz・TrainInputs。3 つは互いを参照する (Ansatz が両者を受け、型引数で Closure に束縛) ので契約は 1 モジュール = 抽象レベルのパッケージ間依存辺を持たない。実装は下の 3 パッケージが `from .. import` で引く。対等ではなく closure/preprocessor が leaf、ansatz が両者を合成
                 ansatz/          # sindy.py / hybrid.py / ude.py。hybrid.py が物理骨格と SINDy hybrid を集約

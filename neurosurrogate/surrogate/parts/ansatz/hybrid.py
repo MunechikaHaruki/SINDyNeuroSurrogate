@@ -109,14 +109,14 @@ class HybridSINDyAnsatz(HybridAnsatz[SINDyBundle]):
     """Hybrid の潜在方程式を SINDy で同定する。"""
 
     def fit_closure(
-        self, training_data: xr.Dataset, preprocessor: Preprocessor, config: dict
+        self, training_data: xr.Dataset, preprocessor: Preprocessor
     ) -> SINDyBundle:
         n = self.spec.n_components
         return SINDyBundle.from_sindy(
             self.train_inputs(training_data, preprocessor),
             access.time(training_data),
             Roles(V=n, g=list(range(n))),
-            config,
+            self.spec.ansatz_config,
         )
 
     def dlatent(self, preprocessor: Preprocessor, closure: SINDyBundle) -> _DLatent:
