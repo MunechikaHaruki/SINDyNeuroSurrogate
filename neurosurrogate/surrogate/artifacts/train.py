@@ -1,7 +1,7 @@
 """学習データ成果物: 閉包項に「何を食わせたか」を描く。
 
 学習データの実体は保存されていない — `SurrogateSpec` (dataset/電流/dt) と
-`scope.train_comp_ids` と ansatz の学習ゲート規則から `surrogate.training_data` を
+`spec.train_comp_ids` と ansatz の学習ゲート規則から `surrogate.training_data` を
 再生成し、そこから図を組む。→ MLflow から load した run でも同じ図が出る。
 
 evaluate 後の比較図 (sim.py) と違い、**surrogate 単体にしか依存しない** ので
@@ -61,7 +61,7 @@ def _latents(surrogate: Surrogate, comp_ids: Sequence[int]) -> list[np.ndarray]:
 def _training_gate(surrogate: Surrogate, comp_id: int) -> np.ndarray:
     """comp_id のうち ansatz が学習するゲート列。"""
     return access.gate_matrix(surrogate.training_data, comp_id)[
-        :, : surrogate.n_training_gates
+        :, : surrogate.ansatz.n_train_gate()
     ]
 
 
@@ -105,7 +105,7 @@ def train_raw_artifact(
                     )
                     for k, name in enumerate(
                         surrogate.spec.comp_type.gate_names[
-                            : surrogate.n_training_gates
+                            : surrogate.ansatz.n_train_gate()
                         ]
                     )
                 ],
@@ -123,7 +123,9 @@ def train_preprocessed_artifact(
     対象でない (hybrid では入力 u、sindy では x の 1 列として素通し) ので、圧縮後の図
     には出さない。
     """
-    inputs = surrogate.training_inputs()
+    inputs = surrogate.ansatz.train_inputs(
+        surrogate.training_data, surrogate.preprocessor
+    )
     shown = _shown(surrogate, comps)
     panels = [
         PanelSpec(

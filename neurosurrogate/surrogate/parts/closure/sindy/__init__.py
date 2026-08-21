@@ -1,8 +1,12 @@
 """SINDy 同定層。
 
 同定結果 (`SINDyBundle`: xi/feature 展開/compute_theta/opcost) をここに、項ライブラリ
-を entry.py (ロジック) / _catalog.py (データ) に置く。ansatz/ は方程式の列構造を決め、
-この層は「その列構造で何を同定するか」だけを担う。
+を entry.py (ロジック) / _catalog.py (データ) に置く。ansatz/ は方程式の列構造 (roles)
+を決め、この層は「その列構造で何を同定するか」だけを担う。
+
+入口 `from_sindy` は ansatz が組んだ `TrainInputs` をそのまま受ける (契約は
+`parts/__init__.py` にあり、`Closure` と同じく上から引ける) — 素データへ開く変換を
+ansatz 側の adapter に置くと、列名と軌道の対応が両者に分かれて崩せるようになる。
 """
 
 from dataclasses import dataclass
@@ -15,7 +19,7 @@ import pysindy as ps
 import sympy as sp
 
 from .....core.opcost import OpCost
-from ... import Closure
+from ... import Closure, TrainInputs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -74,28 +78,35 @@ class SINDyBundle(Closure):
     @classmethod
     def from_sindy(
         cls,
-        library_specs: list[dict],
-        optimizer_spec: dict,
-        # list を渡すと pysindy が複数軌道として扱う (軌道跨ぎの微分を取らない)。
-        x: np.ndarray | list[np.ndarray],
-        u: np.ndarray | list[np.ndarray],
-        t: np.ndarray | list[np.ndarray],
-        targets: list[sp.Symbol],
-        inputs: list[sp.Symbol],
+        inputs: TrainInputs,
+        t: np.ndarray,
         roles: "Roles",
+        config: dict,
     ) -> "SINDyBundle":
+        """同定器へ渡す入力一式から ξ を疎回帰で同定する。
+
+        `TrainInputs` をそのまま受ける: 列名 → Symbol も、comp ごとの軌道を pysindy の
+        複数軌道形式へ並べるのも**この入口の仕事**。列構造そのもの (roles) だけは
+        定式化ごとに違うので ansatz が組んで渡す。
+        """
         bundle = cls(
             xi=np.empty(0),
-            targets=targets,
-            inputs=inputs,
-            library_specs=library_specs,
+            targets=inputs.target_symbols(),
+            inputs=inputs.input_symbols(),
+            library_specs=config["library_specs"],
             roles=roles,
         )
         sindy = ps.SINDy(
             feature_library=bundle.feature_library.library,
-            optimizer=_instantiate(optimizer_spec, _OPTIMIZER_CLS),
+            optimizer=_instantiate(config["optimizer"], _OPTIMIZER_CLS),
         )
-        sindy.fit(x, u=u, t=t, feature_names=[str(s) for s in bundle.columns])
+        # list で渡すと pysindy が複数軌道として扱う (軌道跨ぎの微分を取らない)。
+        sindy.fit(
+            inputs.x,
+            u=inputs.u,
+            t=[t] * len(inputs.x),
+            feature_names=[str(s) for s in bundle.columns],
+        )
         bundle.xi = sindy.coefficients()
         # xi の列は pysindy が並べたもの、feature_exprs は自前展開。両者が同順・同表記
         # であることが opcost/compute_theta/描画すべての前提 → fit 時に照合する。

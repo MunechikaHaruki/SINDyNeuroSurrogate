@@ -17,7 +17,6 @@ from neurosurrogate.surrogate.model import (
     SPEC_FILE,
     Surrogate,
     SurrogateSpec,
-    read_spec,
 )
 from neurosurrogate.surrogate.runs import SurrogateRuns
 
@@ -56,7 +55,7 @@ def load_spec(run_id: str) -> SurrogateSpec:
                 f"runs:/{run_id}/{_SURR_ARTIFACT_DIR}/{SPEC_FILE}", dst_path=tmp_str
             )
         )
-        return read_spec(local)
+        return SurrogateSpec.read(local)
 
 
 def _load_run_names(run_ids: list[str]) -> tuple[str, ...]:

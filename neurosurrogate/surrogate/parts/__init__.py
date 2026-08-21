@@ -105,7 +105,7 @@ C = TypeVar("C", bound=Closure)
 class TrainInputs:
     """同定器へ渡す直前の入力一式 (列順 = ansatz が組んだ列構造)。fit が作って流し、
     view が同じものを描く。軌道は comp ごとに分けたまま持つ (縦連結は偽微分)。時間軸と
-    出所 comp は持たない (training_data / scope.train_comp_ids が源)。
+    出所 comp は持たない (training_data / spec.train_comp_ids が源)。
 
     x_names/u_names : 列の表示名 (状態列 / 入力列)。
     """
@@ -127,66 +127,80 @@ class TrainInputs:
 class Ansatz(ABC, Generic[C]):
     """方程式の定式化 (列構造・kernel・演算コストの組み方)。
 
-    状態を持たないストラテジ。設定も成果物も Surrogate が持ち、ansatz は
-    spec / training_data / preprocessor / closure を引数で受けて計算するだけ
-    (Surrogate 自身は受けない = オーケストレーターへ依存を張り返さない)。
+    **学習仕様 (spec) に束縛して作る**。spec は構築から破棄まで変わらないので、
+    全メソッドが第一引数で受け取り直すのをやめて属性に持つ。束縛しないのは
+    training_data (食わせるデータ) と preprocessor / closure (学習の成果物) —
+    前者は引数で受け、後者はこの型自身が `fit` で作って返す。
 
     型引数 C = 同定する閉包項の具体型。ξ の行割り / NN 呼びなど型固有の引き出しは
     `Closure` 契約に載らないので、ここで具体型に束縛する。
     """
 
+    def __init__(self, spec: SurrogateSpec) -> None:
+        self.spec = spec
+
+    @classmethod
     @abstractmethod
-    def params_match(self, train: tuple | None, node: tuple | None) -> bool:
+    def params_match(cls, train: tuple | None, node: tuple | None) -> bool:
         """学習ノードの回路 params で同定したものを、params が `node` のノードへ
         適用してよいか。**定式化そのものの性質** (回路 params を入力として受ける
-        形なら不変、係数へ焼き込む形なら一致が要る) なので契約に載せる。
-        `SurrogateSpec.in_train_domain` が学習ドメインの判定に使う。"""
+        形なら不変、係数へ焼き込む形なら一致が要る) なので契約に載せ、spec にも
+        学習結果にも依らない = classmethod。`SurrogateSpec.in_train_domain` が
+        学習ドメインの判定に使う (学習前・spec だけの状態でも答えられる)。"""
         ...
 
     @abstractmethod
-    def n_train_gate(self, spec: SurrogateSpec) -> int:
+    def n_train_gate(self) -> int:
         """先頭から学習するゲート本数 (残りは physics)。定式化ごとに違う唯一の学習範囲
-        — comp 選択は定式化に依らず `scope.train_comp_ids` が共通で組む。"""
+        — comp 選択は定式化に依らず `spec.train_comp_ids` が共通で組む。"""
         ...
 
-    def training_gates(
-        self, spec: SurrogateSpec, training_data: xr.Dataset
-    ) -> list[np.ndarray]:
+    def training_gates(self, training_data: xr.Dataset) -> list[np.ndarray]:
         """学習 comp ごとの学習対象ゲート。軌道は分けたまま返す。"""
         return [
-            gate[:, : self.n_train_gate(spec)]
-            for gate in access.gate_matrices(training_data, spec.train_comp_ids())
+            gate[:, : self.n_train_gate()]
+            for gate in access.gate_matrices(training_data, self.spec.train_comp_ids())
         ]
 
     @abstractmethod
     def train_inputs(
-        self,
-        spec: SurrogateSpec,
-        training_data: xr.Dataset,
-        preprocessor: Preprocessor,
+        self, training_data: xr.Dataset, preprocessor: Preprocessor
     ) -> TrainInputs:
         """同定器へ渡す直前の (x, u) を組む。fit が流し view が描く。"""
         ...
 
-    @abstractmethod
     def fit(
         self,
-        spec: SurrogateSpec,
         training_data: xr.Dataset,
-        preprocessor: Preprocessor,
-        config: dict,
+        preprocessor_config: dict,
+        ansatz_config: dict,
+    ) -> tuple[Preprocessor, C]:
+        """座標変換を学習してから閉包項を同定し、成果物 2 点を返す。
+
+        **この順序は定式化に依らない** (閉包項は潜在座標の上に立つので前処理が先) →
+        ここで確定させ、定式化ごとに違う後半だけを `fit_closure` に開ける。
+        preprocessor を引数で受けず自分で作るのは、学習ゲートの選び方
+        (`training_gates`) が定式化の性質だから = 作り手と選び手を割らない。
+        """
+        preprocessor = self.spec.preprocessor_cls().fit(
+            np.concatenate(self.training_gates(training_data), axis=0),
+            self.spec.n_components,
+            preprocessor_config,
+        )
+        return preprocessor, self.fit_closure(
+            training_data, preprocessor, ansatz_config
+        )
+
+    @abstractmethod
+    def fit_closure(
+        self, training_data: xr.Dataset, preprocessor: Preprocessor, config: dict
     ) -> C:
         """閉包項を同定する。config = 定式化固有の hyperparams のみ (共通の潜在次元は
-        spec 側)。"""
+        spec 側)。preprocessor を書き換える実装もある (UDE の joint 学習)。"""
         ...
 
     @abstractmethod
-    def surr_comp_type(
-        self,
-        spec: SurrogateSpec,
-        preprocessor: Preprocessor,
-        closure: C,
-    ) -> CompartmentType:
+    def surr_comp_type(self, preprocessor: Preprocessor, closure: C) -> CompartmentType:
         """置換後の CompartmentType (学習結果から構築)。演算コストは元コンパートメント
         と同じく `opcost` フィールドへ焼き込む (surr だけ別経路を持たせない)。"""
         ...

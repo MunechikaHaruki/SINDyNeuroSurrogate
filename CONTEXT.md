@@ -16,3 +16,8 @@ _Avoid_: Surrogate metadata
 **Surrogate**:
 学習仕様と学習済みの座標変換・閉包項を一体として扱うサロゲートモデル。
 _Avoid_: Surrogate bundle
+
+**Hybrid split**:
+hybrid 定式化で、どの状態までを学習し、どこからを物理式で解き続けるかの分割。
+分割位置も残す物理もニューロンモデルの性質なので `neurons` が持つ。
+_Avoid_: Hybrid physics, physics config

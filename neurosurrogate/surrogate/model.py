@@ -1,25 +1,25 @@
-"""サロゲートの主体。
+"""サロゲートの主体と学習仕様。
 
-`Surrogate` が学習仕様 (spec) と成果物 (preprocessor / closure) を
-保持し、定式化 (ansatz/) を差し替えながら学習・保存を駆動するオーケストレーター。
-ansatz は状態を持たないストラテジで、**Surrogate 自身ではなく spec / preprocessor /
-closure を受け取る** (オーケストレーターへ依存を張り返さない)。
+`Surrogate` が学習仕様 (spec) と、それに束縛した定式化 (ansatz) と、成果物
+(preprocessor / closure) を保持する。ansatz は spec を属性に持つので、定式化に依る
+問い (学習ゲート・列構造・置換後の型) は `surrogate.ansatz` へ直接問う —
+**この型は転送メソッドを持たない**。
 
-学習 (`fit`: simulate → preprocessor build → 閉包項の同定) と `load` が別経路
-なので、load は保存された 3 点を戻すだけで済む。学習データは保存せず spec から
-lazy に再現する (`training_data`)。load 後でも触れ、参照しなければ simulate は走らない。
+**組み方はここに無い** (`fit.py`)。ここが持つのは学習済みのものを「保存する・読む・
+適用する」だけで、設定ツリーの形を知らない = 設定の変更がこのモジュールへ届かない。
+学習データは保存せず spec から lazy に再現する (`training_data`)。load 後でも触れ、
+参照しなければ simulate は走らない。
 """
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from dataclasses import replace as dc_replace
 from functools import cached_property
 from pathlib import Path
 from typing import Any
 
 import joblib
-import numpy as np
 import xarray as xr
 
 from ..core.network import Compartment, CompartmentType, DatasetConfig, NeuronGraph
@@ -27,7 +27,7 @@ from ..core.opcost import OpCost
 from ..core.simulator import unified_simulator
 from ..neurons import COMPARTMENT_TYPES
 from ..sim.spec import EvalSeries, SimSpec
-from .parts import Ansatz, Closure, Preprocessor, TrainInputs
+from .parts import Ansatz, Closure, Preprocessor
 from .parts.ansatz.hybrid import HybridSINDyAnsatz
 from .parts.ansatz.sindy import SINDyAnsatz
 from .parts.ansatz.ude import UDEAnsatz
@@ -62,10 +62,70 @@ class SurrogateSpec:
     train_comp_id: int | None
     physics_type: str | None
 
+    # --- 構築・直列化 -------------------------------------------------------
+    # 素通しでないのは dataset (入れ子の構造) と comp_type (名前 ↔ 実体) の 2 つだけ
+    # なので、その 2 つだけ明示して残りは field 走査に任せる = 仕様に項目を足すとき
+    # 触るのは上の宣言 1 箇所。
+
+    @classmethod
+    def from_config(cls, config: dict) -> "SurrogateSpec":
+        """Hydra の spec ブロックから。**学習ノードは config では名前で書き**、
+        ここで index へ解く (以降 spec は index だけを持つ)。"""
+        dataset = SimSpec(**config["datasets"])
+        train_comp_identifier = config.get("train_comp_identifier")
+        return cls(
+            surrogate_type=config["surrogate_type"],
+            preprocessor_type=config["preprocessor_type"],
+            n_components=config["n_components"],
+            dataset=dataset,
+            comp_type=COMPARTMENT_TYPES[config["comp_type"]],
+            train_comp_id=(
+                None
+                if train_comp_identifier is None
+                else dataset.net.name_to_idx(train_comp_identifier)
+            ),
+            physics_type=config.get("physics_type"),
+        )
+
+    def to_dict(self) -> dict:
+        """保存用の JSON 構造 (クラス定義に縛られない形で残す)。"""
+        return {
+            **{f.name: getattr(self, f.name) for f in fields(self)},
+            "dataset": self.dataset.to_dict(),
+            "comp_type": self.comp_type.name,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SurrogateSpec":
+        """`to_dict` の逆。項目の過不足はそのまま TypeError (黙って既定で埋めない)。"""
+        return cls(
+            **{
+                **data,
+                "dataset": SimSpec.from_dict(data["dataset"]),
+                "comp_type": COMPARTMENT_TYPES[data["comp_type"]],
+            }
+        )
+
+    @classmethod
+    def read(cls, path: Path | str) -> "SurrogateSpec":
+        """保存済み JSON から学習仕様だけを読む (run 一覧はこれだけ読む)。"""
+        return cls.from_dict(json.loads(Path(path).read_text()))
+
+    # --- 実装の解決 ---------------------------------------------------------
+
+    def ansatz_cls(self) -> type[Ansatz[Any]]:
+        """定式化の実装クラス。**dispatch キーを解くのはここだけ**。学習前でも解けるので
+        `in_train_domain` は束縛前のこれに `params_match` を問う。"""
+        return _SURR_CLS[self.surrogate_type]
+
     def ansatz(self) -> Ansatz[Any]:
-        """定式化ストラテジ。**dispatch キーを解くのはここだけ** (状態なしなので
-        毎回作ってよい)。`in_train_domain` の判定も学習も同じ実体に問う。"""
-        return _SURR_CLS[self.surrogate_type]()
+        """この仕様に束縛した定式化ストラテジ。"""
+        return self.ansatz_cls()(self)
+
+    def preprocessor_cls(self) -> type[Preprocessor]:
+        """座標変換の実装クラス。ansatz と同じく dispatch キーはここでだけ解く
+        (実際に呼ぶのは `Ansatz.fit`)。"""
+        return _PREPROCESSOR_CLS[self.preprocessor_type]
 
     def surr_type_name(self) -> str:
         """置換後 CompartmentType の衝突しない名前。"""
@@ -92,7 +152,7 @@ class SurrogateSpec:
         """
         if comp.type != self.comp_type:
             return False
-        return self.ansatz().params_match(
+        return self.ansatz_cls().params_match(
             self.train_comp().resolved_params, comp.resolved_params
         )
 
@@ -150,62 +210,20 @@ class SurrogateSpec:
         ]
 
 
-def _build_spec(config: dict) -> SurrogateSpec:
-    dataset = SimSpec(**config["datasets"])
-    train_comp_identifier = config.get("train_comp_identifier")
-    return SurrogateSpec(
-        surrogate_type=config["surrogate_type"],
-        preprocessor_type=config["preprocessor_type"],
-        n_components=config["n_components"],
-        dataset=dataset,
-        comp_type=COMPARTMENT_TYPES[config["comp_type"]],
-        train_comp_id=(
-            None
-            if train_comp_identifier is None
-            else dataset.net.name_to_idx(train_comp_identifier)
-        ),
-        physics_type=config.get("physics_type"),
-    )
-
-
-def _spec_to_dict(spec: SurrogateSpec) -> dict:
-    return {
-        "surrogate_type": spec.surrogate_type,
-        "preprocessor_type": spec.preprocessor_type,
-        "n_components": spec.n_components,
-        "dataset": spec.dataset.to_dict(),
-        "comp_type": spec.comp_type.name,
-        "train_comp_id": spec.train_comp_id,
-        "physics_type": spec.physics_type,
-    }
-
-
-def _spec_from_dict(data: dict) -> SurrogateSpec:
-    return SurrogateSpec(
-        surrogate_type=data["surrogate_type"],
-        preprocessor_type=data["preprocessor_type"],
-        n_components=data["n_components"],
-        dataset=SimSpec.from_dict(data["dataset"]),
-        comp_type=COMPARTMENT_TYPES[data["comp_type"]],
-        train_comp_id=data["train_comp_id"],
-        physics_type=data["physics_type"],
-    )
-
-
-def read_spec(path: Path | str) -> SurrogateSpec:
-    """保存済み JSON から学習仕様だけを読む。"""
-    return _spec_from_dict(json.loads(Path(path).read_text()))
-
-
+@dataclass(eq=False)
 class Surrogate:
-    """サロゲート本体。spec / preprocessor / closure を持ち ansatz へ委譲する。
+    """**学習済み**サロゲート。spec / ansatz / preprocessor / closure の 4 点を持つ。
 
-    属性は 3 つとも fit / load が代入して埋める (`__init__` 引数は取らない —
-    埋まる時点が違うだけで spec も他と同格)。未設定のまま参照すれば AttributeError
-    で早期に気付く。
+    どう学習されたかはここの関心ではない (組むのは `fit.py`) — この型は
+    「持つ・保存する・読む・適用する」だけを担い、**設定ツリーを一切知らない**。
+    `ansatz` は spec に束縛済みなので、定式化に依る問い (学習ゲート・列構造・置換後の
+    型) は**この型を素通しせず ansatz へ直接問う**。
+
+    `eq=False` = 同一性で比べる。中身は numpy を抱えるので値比較は意味を持たない。
     """
 
     spec: SurrogateSpec
+    ansatz: Ansatz[Any]
     preprocessor: Preprocessor
     closure: Closure
 
@@ -216,92 +234,27 @@ class Surrogate:
         に学習範囲の規則を合わせて学習入力を組み直して描ける。"""
         return unified_simulator(self.spec.dataset.materialize())
 
-    @cached_property
-    def _ansatz(self) -> Ansatz[Any]:
-        """定式化ストラテジ (spec が解決する。状態なし → 保存不要)。"""
-        return self.spec.ansatz()
-
-    @cached_property
-    def _preprocessor_cls(self) -> type[Preprocessor]:
-        """preprocessor 実装。ansatz と同じく spec の dispatch キーから解決する
-        (解決だけが cached_property、学習済みインスタンスは属性 `preprocessor`)。"""
-        return _PREPROCESSOR_CLS[self.spec.preprocessor_type]
-
-    # --- 構築 ---------------------------------------------------------------
-
-    @classmethod
-    def fit(cls, cfg: dict) -> "Surrogate":
-        """設定ツリーから学習済み surrogate を組む唯一の入口。
-
-        cfg の 3 ブロックは各構成要素の構築引数そのもので、surrogate は宛先へ振り分け
-        学習順に走らせるだけ (設定を組み替えない = 構造への暗黙依存を持たない):
-          spec         → `_build_spec` (学習構造 = 実装の dispatch キー)
-          preprocessor → `preprocessor_cls.fit` (種別固有 hyperparams のみ)
-          ansatz       → `ansatz.fit`           (定式化固有 hyperparams のみ)
-        """
-        surrogate = cls()
-        surrogate.spec = _build_spec(cfg["spec"])
-        surrogate.preprocessor = surrogate._preprocessor_cls.fit(
-            np.concatenate(
-                surrogate._ansatz.training_gates(
-                    surrogate.spec, surrogate.training_data
-                ),
-                axis=0,
-            ),
-            surrogate.spec.n_components,
-            cfg["preprocessor"],
-        )
-        surrogate.closure = surrogate._ansatz.fit(
-            surrogate.spec,
-            surrogate.training_data,
-            surrogate.preprocessor,
-            cfg["ansatz"],
-        )
-        return surrogate
+    # --- 保存形式 (save/load は 1 つの契約の両半分) --------------------------
 
     @classmethod
     def load(cls, dir: Path | str) -> "Surrogate":
-        # spec は JSON 別ファイル (構造で保存)、学習成果物は pickle。run 一覧が spec
-        # だけ読む経路は mlflow_io が artifact の spec.json を直読みする (surrogate を
-        # 経由しない) → ここは load 内でまとめて読めば足りる。
+        # spec は JSON 別ファイル (構造で保存)、学習成果物は pickle。ansatz は状態を
+        # 持たず spec から解けるので保存しない。run 一覧が spec だけ読む経路は
+        # mlflow_io が artifact の spec.json を直読みする (surrogate を経由しない)
+        # → ここは load 内でまとめて読めば足りる。
         data = joblib.load(Path(dir) / _BUNDLE_FILE)
-        surrogate = cls()
-        surrogate.spec = read_spec(Path(dir) / SPEC_FILE)
-        surrogate.preprocessor = data["preprocessor"]
-        surrogate.closure = data["closure"]
-        return surrogate
+        spec = SurrogateSpec.read(Path(dir) / SPEC_FILE)
+        return cls(spec, spec.ansatz(), data["preprocessor"], data["closure"])
 
     def save(self, dir: Path | str) -> None:
         """spec は JSON (構造で残す → クラス定義に縛られない)、学習成果物は pickle。"""
         (Path(dir) / SPEC_FILE).write_text(
-            json.dumps(_spec_to_dict(self.spec), indent=2, ensure_ascii=False)
+            json.dumps(self.spec.to_dict(), indent=2, ensure_ascii=False)
         )
         joblib.dump(
             {"closure": self.closure, "preprocessor": self.preprocessor},
             Path(dir) / _BUNDLE_FILE,
         )
-
-    # --- ansatz 委譲 --------------------------------------------------------
-
-    @property
-    def n_training_gates(self) -> int:
-        """先頭から学習するゲート本数。"""
-        return self._ansatz.n_train_gate(self.spec)
-
-    def training_gates(self) -> list[np.ndarray]:
-        """学習 comp ごとの学習対象ゲート。"""
-        return self._ansatz.training_gates(self.spec, self.training_data)
-
-    def training_inputs(self) -> TrainInputs:
-        """同定器へ渡した列名と軌道。"""
-        return self._ansatz.train_inputs(
-            self.spec, self.training_data, self.preprocessor
-        )
-
-    @property
-    def surr_comp_type(self) -> CompartmentType:
-        """置換後の CompartmentType。"""
-        return self._ansatz.surr_comp_type(self.spec, self.preprocessor, self.closure)
 
     def apply(self, dataset: DatasetConfig, targets: Sequence[str]) -> DatasetConfig:
         """**明示指定された** targets を surrogate へ置換する。
@@ -318,12 +271,13 @@ class Surrogate:
                 + "\n  ".join(rejected)
             )
         names = set(targets)
+        surr_comp_type = self.ansatz.surr_comp_type(self.preprocessor, self.closure)
         return dc_replace(
             dataset,
             net=dc_replace(
                 dataset.net,
                 nodes=[
-                    dc_replace(node, type=self.surr_comp_type)
+                    dc_replace(node, type=surr_comp_type)
                     if node.name in names
                     else node
                     for node in dataset.net.nodes

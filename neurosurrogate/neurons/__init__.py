@@ -1,9 +1,11 @@
 """**NeuronGraph の語彙一式**: comp 型の対応表・組み方・組み上がったモデルのカタログ
-(`SimSpec.target` が名前で引く)。
+(`SimSpec.target` が名前で引く)、および hybrid サロゲートの学習/physics 分割
+(`HYBRID_SPLITS`)。
 
 per-comp 定数 (`traub19.py`) も comp 型の実装 (`hh.py`/`traub.py`) もこのディレクトリが
-持つので、それらを組んだ結果もここに置く。使う側 (`sim.spec`) の語彙ではなく
-ニューロンの語彙。
+持つので、それらを組んだ結果もここに置く。使う側 (`sim.spec` / `surrogate`) の語彙では
+なくニューロンの語彙 — どのゲートが純電位依存でどれが Ca サブ系か、物理 dV/dt が何か
+は、置換の定式化でなくモデルそのものが決める。
 
 **多 comp は traub19 系だけ**が生きている。以下にコメントアウトしてある chain 系
 (`php`/`hhp`/…) と手組みの `hh_multi`/`traub_multi`/`hh7` は動作確認用に適当な
@@ -13,9 +15,29 @@ coupling が無いので面積に依らず有効。復活させるなら per-com
 与えてからにする。
 """
 
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
 from ..core.network import Compartment, Edge, NeuronGraph
-from .hh import HH_TYPE, PASSIVE_TYPE
-from .traub import TRAUB_TYPE
+from ..core.opcost import OpCost
+from .hh import HH_DV_COST, HH_TYPE, PASSIVE_TYPE, HHParams, hh_dv
+from .traub import (
+    TRAUB_CA_COST,
+    TRAUB_DV_COST,
+    TRAUB_EXTRA_GATE_NAMES,
+    TRAUB_LEARNED_GATE_NAMES,
+    TRAUB_SR_CA_COST,
+    TRAUB_SR_EXTRA_GATE_NAMES,
+    TRAUB_SR_LEARNED_GATE_NAMES,
+    TRAUB_TYPE,
+    TraubParams,
+    traub_calcium_step,
+    traub_dv,
+    traub_extra_inits,
+    traub_sr_calcium_step,
+    traub_sr_extra_inits,
+)
 from .traub19 import NC, g_axial, name_at, params_at
 
 # type 名文字列 → CompartmentType の dispatch table (from_dict 等で使用)
@@ -23,6 +45,73 @@ COMPARTMENT_TYPES = {
     "hh": HH_TYPE,
     "passive": PASSIVE_TYPE,
     "traub": TRAUB_TYPE,
+}
+
+
+@dataclass(frozen=True)
+class _ExtraPhysics:
+    """hybrid で学習 latent から外し、physics で解き続ける追加状態。"""
+
+    names: list[str]
+    step: Callable
+    inits: Callable[[Any], list[float]]
+    cost: OpCost
+
+
+@dataclass(frozen=True)
+class HybridSplit:
+    """hybrid サロゲートの「どこまでを学習し、どこからを物理式で解くか」。
+
+    分割位置 (`n_learned`) も残す物理 (`dv` / `extra`) も**ニューロンモデルの性質**
+    (状態の並び順とイオン電流の構造で決まる) なので、定式化側でなくここが持つ。
+    サロゲートはこれを読んで kernel を組むだけで、どのゲートが何かを知らない。
+    """
+
+    param_cls: type
+    dv: Callable
+    dv_cost: OpCost
+    v_init: Callable[[Any], float]
+    n_learned: int
+    extra: _ExtraPhysics | None
+
+
+# キー = spec.physics_type (既定は comp_type 名)。同じ comp 型に対して分割位置の違う
+# 版を並べられる = preset が選ぶ。
+HYBRID_SPLITS: dict[str, HybridSplit] = {
+    "hh": HybridSplit(
+        param_cls=HHParams,
+        dv=hh_dv,
+        dv_cost=HH_DV_COST,
+        v_init=lambda p: p.E_REST,
+        n_learned=3,
+        extra=None,
+    ),
+    "traub": HybridSplit(
+        param_cls=TraubParams,
+        dv=traub_dv,
+        dv_cost=TRAUB_DV_COST,
+        v_init=lambda p: p.V_LEAK,
+        n_learned=len(TRAUB_LEARNED_GATE_NAMES),
+        extra=_ExtraPhysics(
+            names=TRAUB_EXTRA_GATE_NAMES,
+            step=traub_calcium_step,
+            inits=traub_extra_inits,
+            cost=TRAUB_CA_COST,
+        ),
+    ),
+    "traub_sr_physics": HybridSplit(
+        param_cls=TraubParams,
+        dv=traub_dv,
+        dv_cost=TRAUB_DV_COST,
+        v_init=lambda p: p.V_LEAK,
+        n_learned=len(TRAUB_SR_LEARNED_GATE_NAMES),
+        extra=_ExtraPhysics(
+            names=TRAUB_SR_EXTRA_GATE_NAMES,
+            step=traub_sr_calcium_step,
+            inits=traub_sr_extra_inits,
+            cost=TRAUB_SR_CA_COST,
+        ),
+    ),
 }
 
 

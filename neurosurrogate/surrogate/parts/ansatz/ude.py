@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -27,9 +27,6 @@ from .. import Preprocessor
 from ..closure.ude import UDEClosure, latent_deriv
 from ..preprocessor.autoencoder import AEPreprocessor, decoder, encoder
 from .hybrid import HybridAnsatz
-
-if TYPE_CHECKING:
-    from ...model import SurrogateSpec
 
 _logger = logging.getLogger(__name__)
 
@@ -60,12 +57,8 @@ class UDEAnsatz(HybridAnsatz[UDEClosure]):
     評価 (NN) だけを担う。
     """
 
-    def fit(
-        self,
-        spec: SurrogateSpec,
-        training_data: xr.Dataset,
-        preprocessor: Preprocessor,
-        config: dict,
+    def fit_closure(
+        self, training_data: xr.Dataset, preprocessor: Preprocessor, config: dict
     ) -> UDEClosure:
         if not isinstance(preprocessor, AEPreprocessor):
             raise ValueError(
@@ -83,12 +76,12 @@ class UDEAnsatz(HybridAnsatz[UDEClosure]):
         # 知らない力で軌道を曲げる)。
         pull = float(config.get("pull", 20.0))
 
-        comp_ids = spec.train_comp_ids()
         # (n_comp, T, n_gate) / (n_comp, T)。窓は comp を跨がせない (別軌道)。
-        training_gates = self.training_gates(spec, training_data)
+        training_gates = self.training_gates(training_data)
         gate = jnp.asarray(np.stack(training_gates), dtype=jnp.float32)
         volt = jnp.asarray(
-            np.stack(access.potentials(training_data, comp_ids)), dtype=jnp.float32
+            np.stack(access.potentials(training_data, self.spec.train_comp_ids())),
+            dtype=jnp.float32,
         )
         n_comp, n_time, _ = gate.shape
         if n_time <= window:
@@ -101,13 +94,15 @@ class UDEAnsatz(HybridAnsatz[UDEClosure]):
         )
         v_mean, v_std = float(volt.mean()), float(volt.std() + 1e-8)
         v_norm = (volt - v_mean) / v_std
-        dt = float(spec.dataset.dt)
+        dt = float(self.spec.dataset.dt)
 
         params: dict[str, Any] = {
             "enc": {k: jnp.asarray(v) for k, v in preprocessor.enc_params.items()},
             "dec": {k: jnp.asarray(v) for k, v in preprocessor.dec_params.items()},
             "nn": _init_mlp(
-                [spec.n_components + 1] + [hidden] * depth + [spec.n_components],
+                [self.spec.n_components + 1]
+                + [hidden] * depth
+                + [self.spec.n_components],
                 jax.random.PRNGKey(0),
             ),
         }
@@ -178,9 +173,6 @@ class UDEAnsatz(HybridAnsatz[UDEClosure]):
         )
 
     def dlatent(
-        self,
-        spec: SurrogateSpec,
-        preprocessor: Preprocessor,
-        closure: UDEClosure,
+        self, preprocessor: Preprocessor, closure: UDEClosure
     ) -> Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]:
         return closure.apply()

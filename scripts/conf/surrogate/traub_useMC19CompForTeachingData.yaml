@@ -10,7 +10,7 @@ surrogate:
     datasets:
       target: traub19
       current_type: train
-      # 19 comp 全部が学習軌道になる (`scope.train_comp_ids`) → 1 軌道を
+      # 19 comp 全部が学習軌道になる (`spec.train_comp_ids`) → 1 軌道を
       # 短くして総サンプル数を単体モデル (duration=9000) と同程度に揃える。
       current_params:
         duration: 1000

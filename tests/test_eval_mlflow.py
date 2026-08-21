@@ -21,7 +21,7 @@ import pandas as pd
 import pytest
 from mlflow.entities import Run
 from mlflow_io.surrogate import log_surrogate_model
-from test_surrogate import fit_surrogate
+from test_surrogate import fit_preset
 
 from neurosurrogate.core import access
 from neurosurrogate.sim.result import SeriesResults
@@ -134,7 +134,7 @@ def _train_run(name: str, bundle: Surrogate) -> str:
 
 @pytest.fixture(scope="module")
 def sindy() -> Surrogate:
-    return fit_surrogate("_test_hh_sindy")
+    return fit_preset("_test_hh_sindy")
 
 
 @pytest.fixture

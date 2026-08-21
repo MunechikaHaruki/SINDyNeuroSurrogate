@@ -13,7 +13,7 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
          access.py               # 同スキーマの read 規約 (生 sel はここ以外で使わない)
          opcost.py               # OpCost 代数 (演算コスト集計)
          diverge.py              # 置換系の数値的破綻判定 (diverged / log_divergence)。eval と metrics の両方から呼ばれる共通述語なのでどちらにも属させない
-  neurons/  __init__.py          # NeuronGraph の語彙一式: COMPARTMENT_TYPES (型名 → CompartmentType) + _build_traub19 (組み方) + MCMODELS (`SimSpec.target` が引く適用先モデル)。**組み方も組んだ結果もニューロンの語彙**なので、使う側 (sim) でなくここが持つ
+  neurons/  __init__.py          # NeuronGraph の語彙一式: COMPARTMENT_TYPES (型名 → CompartmentType) + _build_traub19 (組み方) + MCMODELS (`SimSpec.target` が引く適用先モデル) + HYBRID_SPLITS (hybrid サロゲートの学習/physics 分割 — 分割位置も残す物理もモデルの性質)。**組み方も組んだ結果もニューロンの語彙**なので、使う側 (sim/surrogate) でなくここが持つ
             traub19.py           # 19-comp モデルの per-comp 定数 + ヘルパ (traub.c 代数的等価)
             hh.py / traub.py     # comp 型の実装 (kernel/コスト/初期値)。`_common.py` は共有のゲート形状
   sim/  _current_catalog.py      # **名前 → 実体の対応表だけ** (SimSpec.current_type が引く選択肢): 注入電流波形 + CURRENT_MAP。sim の内部専用 (適用先モデルの対応表は neurons が持つ)
@@ -26,10 +26,11 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
           report.py              # summary/traces/metric + 電流プレビュー。**点軸×run 軸の並びを成果物へ落とす唯一の場所**
           detail.py              # diff/simple/attractor/metrics。1 ペアの図と表 (点軸も run 軸も知らない)
           _tables.py             # 指標の値を表に並べる (計算を増やさない)
-  surrogate/  model.py           # config→SurrogateSpec の唯一の変換。SurrogateSpec が学習と**学習ドメイン判定** (in_train_domain / rejected_targets / applicable) を、Surrogate が fit/load/save・学習済み成果物・**名指しされた対象への適用** (apply(dataset, targets) = 全数検証、1 つでも通らなければ部分適用せず ValueError) を答える
+  surrogate/  fit.py             # **宣言から実体を組み立てる一式**: 設定ツリー → 学習済み Surrogate (fit_surrogate / _build_spec)、名前 → 実装の対応表、仕様から実体を解く関数 (ansatz_cls / ansatz / preprocessor_cls)。**ドメイン層でここだけが「設定に何と書いたら何が組まれるか」を知る**。model.py / parts/ は spec を引数にこれらを呼ぶが、fit.py が両者を import する向きなので**呼ぶ側が関数内で import する** (import 時の循環を作らない)
+              model.py           # SurrogateSpec (宣言 + JSON との相互変換 + **学習ドメイン判定** in_train_domain / rejected_targets / applicable) と Surrogate。**組み方も名前の解決も持たない** (fit.py)。Surrogate は**学習済みのもの**を持つだけで組み方を知らず、load/save (1 つの保存形式契約の両半分) と**名指しされた対象への適用** (apply(dataset, targets) = 全数検証、1 つでも通らなければ部分適用せず ValueError) を答える
               runs.py            # 一意な名前と選択順を持つ SurrogateRuns。評価系列が挙げた置換対象を**全部**置換できる run だけへの絞り込み (部分一致は不可)
               parts/  __init__.py # Surrogate が差し替える 3 構成要素の**契約を集約**: Closure / Preprocessor (+再構成統計) / Ansatz・TrainInputs。3 つは互いを参照する (Ansatz が両者を受け、型引数で Closure に束縛) ので契約は 1 モジュール = 抽象レベルのパッケージ間依存辺を持たない。実装は下の 3 パッケージが `from .. import` で引く。対等ではなく closure/preprocessor が leaf、ansatz が両者を合成
-                ansatz/          # sindy.py / hybrid.py / ude.py / _sindy_fit.py。hybrid.py が物理骨格と SINDy hybrid を集約
+                ansatz/          # sindy.py / hybrid.py / ude.py。hybrid.py が物理骨格と SINDy hybrid を集約
                 closure/         # ude.py / sindy/{__init__,roles,entry,_catalog}.py
                 preprocessor/    # pca.py / autoencoder.py
               artifacts/         # surrogate の自己記述成果物 (置換シミュを回さず描ける = run をロードしただけで出る図)。`__init__.py` が集合ごと返す `surrogate_artifacts` を持ち、個々の Artifact は submodule が返す (再 export はしない)。train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree + 表現の型で振り分ける closure_artifact / preprocessor_artifact (対応する図が無ければ None)
