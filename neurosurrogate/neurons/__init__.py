@@ -75,8 +75,8 @@ class HybridSplit:
     extra: _ExtraPhysics | None
 
 
-# キー = spec.physics_type (既定は comp_type 名)。同じ comp 型に対して分割位置の違う
-# 版を並べられる = preset が選ぶ。
+# キー = preset の ansatz.physics_type (必須・既定なし)。同じ comp 型に対して
+# 分割位置の違う版を並べられる = preset が必ず名指しする。
 HYBRID_SPLITS: dict[str, HybridSplit] = {
     "hh": HybridSplit(
         param_cls=HHParams,

@@ -15,7 +15,7 @@ surrogate:
       current_type: train
       current_params:
         duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮
-  ansatz:
+  closure:
     library_specs:
       - type: hh_gate_forward
       - type: hh_gate_backward

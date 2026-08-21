@@ -24,7 +24,8 @@ surrogate:
   spec:
     n_components: 6  # = 学習ゲート数。これ以上は増やせない (圧縮率 1.0)
     preprocessor_type: pca  # 8→8 PCA のみが完全可逆 (AE は tanh/隠れ層で損失が出る)
-    physics_type: traub_sr_physics
     datasets:
       current_params:
         duration: 1000
+  ansatz:
+    physics_type: traub_sr_physics

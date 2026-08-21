@@ -15,6 +15,8 @@ surrogate:
   preprocessor:
     epochs: 20 # 収束は見ない
   ansatz:
+    physics_type: hh
+  closure:
     library_specs:
       - type: hh_gate_forward
       - type: hh_gate_backward

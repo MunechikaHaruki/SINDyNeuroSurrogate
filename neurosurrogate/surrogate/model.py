@@ -1,8 +1,8 @@
 """サロゲートの主体と学習仕様。
 
-`Surrogate` が学習仕様 (spec) と、それに束縛した定式化 (ansatz) と、成果物
-(preprocessor / closure) を保持する。ansatz は spec を属性に持つので、定式化に依る
-問い (学習ゲート・列構造・置換後の型) は `surrogate.ansatz` へ直接問う —
+`Surrogate` が学習仕様 (spec) と成果物 (preprocessor / closure) を保持する。定式化
+(ansatz) は spec しか状態を持たないので field でなく派生 — 定式化に依る問い
+(学習ゲート・列構造・置換後の型) は `surrogate.ansatz` へ直接問う。
 **この型は転送メソッドを持たない**。
 
 **組み立ては `Surrogate` のメソッドでない** — 型が答えるのは持つ・保存する・読む・
@@ -13,7 +13,7 @@
 """
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, fields
 from dataclasses import replace as dc_replace
 from functools import cached_property
@@ -32,8 +32,8 @@ from .parts import Ansatz, Closure, Preprocessor
 from .parts.ansatz.hybrid import HybridSINDyAnsatz
 from .parts.ansatz.sindy import SINDyAnsatz
 from .parts.ansatz.ude import UDEAnsatz
-from .parts.preprocessor.autoencoder import AEPreprocessor
-from .parts.preprocessor.pca import PCAPreprocessor
+from .parts.preprocessor.autoencoder import fit_ae
+from .parts.preprocessor.pca import fit_pca
 
 _BUNDLE_FILE = "surrogate.joblib"  # 学習成果物 (closure/preprocessor)
 SPEC_FILE = "spec.json"  # 同定情報。一覧はこれだけ読む
@@ -45,9 +45,13 @@ _SURR_CLS: dict[str, type[Ansatz[Any]]] = {
     "hybrid": HybridSINDyAnsatz,
     "ude": UDEAnsatz,
 }
-_PREPROCESSOR_CLS: dict[str, type[Preprocessor]] = {
-    "pca": PCAPreprocessor,
-    "ae": AEPreprocessor,
+# 前処理は**型でなく学習関数**を引く: 種別ごとに hyperparams が違うので、名前で解いた
+# 先に config をそのまま展開して渡せる形 (`Callable[..., Preprocessor]`) にする。
+# 引数が静的に検査されないのは ansatz と同じ = 実行時の文字列で選ぶ以上そこに知識が
+# 無いというだけで、受理するキーと既定値は各関数の署名が持つ。
+_PREPROCESSOR_FIT: dict[str, Callable[..., Preprocessor]] = {
+    "pca": fit_pca,
+    "ae": fit_ae,
 }
 
 
@@ -61,12 +65,15 @@ class SurrogateSpec:
     dataset: SimSpec
     comp_type: CompartmentType
     train_comp_id: int | None
-    physics_type: str | None
-    # 種別固有 / 定式化固有の hyperparams。**共通のつまみ (n_components) だけは上の
-    # field へ昇格**していて、ここには実装ごとにしか意味を持たないものが残る。
+    # `parts/` の 3 構成要素と 1 対 1 の hyperparams。**共通のつまみ (n_components)
+    # だけは上の field へ昇格**していて、ここには**その層の入口 1 つの署名へそのまま
+    # 展開されるもの**だけが残る (preprocessor→`fit_pca`/`fit_ae`、
+    # ansatz→`HybridAnsatz.split`、closure→閉包項の同定入口)。層をまたいで持たない =
+    # ある層の実装を替えても他の層の値は動かない。
     # 学習中しか読まれないが、仕様は学習後も由来として残るものなので spec が持つ。
     preprocessor_config: dict
     ansatz_config: dict
+    closure_config: dict
 
     # --- 構築・直列化 -------------------------------------------------------
     # 素通しでないのは dataset (入れ子の構造) と comp_type (名前 ↔ 実体) の 2 つだけ
@@ -75,7 +82,7 @@ class SurrogateSpec:
 
     @classmethod
     def from_config(cls, config: dict) -> "SurrogateSpec":
-        """Hydra の surrogate ブロックから。**3 ブロックはそのまま仕様の一部**で、
+        """Hydra の surrogate ブロックから。**4 ブロックはそのまま仕様の一部**で、
         ここが設定ツリーの形を知る唯一の場所 (以降 fit は spec しか見ない)。
 
         学習ノードは config では名前で書き、ここで index へ解く。
@@ -94,9 +101,9 @@ class SurrogateSpec:
                 if train_comp_identifier is None
                 else dataset.net.name_to_idx(train_comp_identifier)
             ),
-            physics_type=spec.get("physics_type"),
             preprocessor_config=config["preprocessor"],
             ansatz_config=config["ansatz"],
+            closure_config=config["closure"],
         )
 
     def to_dict(self) -> dict:
@@ -125,19 +132,16 @@ class SurrogateSpec:
 
     # --- 実装の解決 ---------------------------------------------------------
 
-    def ansatz_cls(self) -> type[Ansatz[Any]]:
-        """定式化の実装クラス。**dispatch キーを解くのはここだけ**。学習前でも解けるので
-        `in_train_domain` は束縛前のこれに `params_match` を問う。"""
+    def ansatz(self) -> type[Ansatz[Any]]:
+        """定式化の実装。**dispatch キーを解くのはここだけ**で、返すのはインスタンス
+        でなく型 — `Ansatz` は状態を持たず全メソッドが spec を引数で受けるので、
+        学習前 (`in_train_domain` の `params_match`) も学習後も入口はこれ 1 つ。"""
         return _SURR_CLS[self.surrogate_type]
 
-    def ansatz(self) -> Ansatz[Any]:
-        """この仕様に束縛した定式化ストラテジ。"""
-        return self.ansatz_cls()(self)
-
-    def preprocessor_cls(self) -> type[Preprocessor]:
-        """座標変換の実装クラス。ansatz と同じく dispatch キーはここでだけ解く
-        (実際に呼ぶのは `Ansatz.fit`)。"""
-        return _PREPROCESSOR_CLS[self.preprocessor_type]
+    def preprocessor_fit(self) -> Callable[..., Preprocessor]:
+        """座標変換の学習関数。ansatz と同じく dispatch キーはここでだけ解く
+        (実際に呼ぶのは `fit_surrogate`)。"""
+        return _PREPROCESSOR_FIT[self.preprocessor_type]
 
     def surr_type_name(self) -> str:
         """置換後 CompartmentType の衝突しない名前。"""
@@ -164,7 +168,7 @@ class SurrogateSpec:
         """
         if comp.type != self.comp_type:
             return False
-        return self.ansatz_cls().params_match(
+        return self.ansatz().params_match(
             self.train_comp().resolved_params, comp.resolved_params
         )
 
@@ -224,20 +228,25 @@ class SurrogateSpec:
 
 @dataclass(eq=False)
 class Surrogate:
-    """**学習済み**サロゲート。spec / ansatz / preprocessor / closure の 4 点を持つ。
+    """**学習済み**サロゲート。spec / preprocessor / closure の 3 点を持つ。
 
-    どう学習されたかはここの関心ではない (組むのは `fit.py`) — この型は
+    どう学習されたかはここの関心ではない (組むのは `fit_surrogate`) — この型は
     「持つ・保存する・読む・適用する」だけを担い、**設定ツリーを一切知らない**。
-    `ansatz` は spec に束縛済みなので、定式化に依る問い (学習ゲート・列構造・置換後の
-    型) は**この型を素通しせず ansatz へ直接問う**。
+    持つ 3 点は**保存する 3 点そのもの** (spec.json + pickle 2 点)。
 
     `eq=False` = 同一性で比べる。中身は numpy を抱えるので値比較は意味を持たない。
     """
 
     spec: SurrogateSpec
-    ansatz: Ansatz[Any]
     preprocessor: Preprocessor
     closure: Closure
+
+    @property
+    def ansatz(self) -> type[Ansatz[Any]]:
+        """定式化 (型そのもの。`Ansatz` は状態を持たない)。定式化に依る問い
+        (学習ゲート・列構造・置換後の型) は**この型を素通しせず**
+        `surrogate.ansatz.f(surrogate.spec, ...)` と直接問う。"""
+        return self.spec.ansatz()
 
     @cached_property
     def training_data(self) -> xr.Dataset:
@@ -255,8 +264,11 @@ class Surrogate:
         # mlflow_io が artifact の spec.json を直読みする (surrogate を経由しない)
         # → ここは load 内でまとめて読めば足りる。
         data = joblib.load(Path(dir) / _BUNDLE_FILE)
-        spec = SurrogateSpec.read(Path(dir) / SPEC_FILE)
-        return cls(spec, spec.ansatz(), data["preprocessor"], data["closure"])
+        return cls(
+            SurrogateSpec.read(Path(dir) / SPEC_FILE),
+            data["preprocessor"],
+            data["closure"],
+        )
 
     def save(self, dir: Path | str) -> None:
         """spec は JSON (構造で残す → クラス定義に縛られない)、学習成果物は pickle。"""
@@ -283,7 +295,9 @@ class Surrogate:
                 + "\n  ".join(rejected)
             )
         names = set(targets)
-        surr_comp_type = self.ansatz.surr_comp_type(self.preprocessor, self.closure)
+        surr_comp_type = self.ansatz.surr_comp_type(
+            self.spec, self.preprocessor, self.closure
+        )
         return dc_replace(
             dataset,
             net=dc_replace(
@@ -304,10 +318,21 @@ def fit_surrogate(cfg: dict) -> Surrogate:
     **メソッドでなくモジュール関数**なのは、組み立てが `Surrogate` の関心でないから
     (この型が答えるのは持つ・保存する・読む・適用するの 4 つだけ)。設定の形を解くのは
     `SurrogateSpec.from_config` で、ここは simulate して学習させて組む手順だけを持つ。
+
+    **座標変換 → 閉包項の順は定式化に依らない** (閉包項は潜在座標の上に立つ) ので、
+    ansatz の既定実装でなくここで確定させる。ansatz へ問うのは定式化ごとに違う 2 点
+    だけ — 何を学習ゲートとするか (`training_gates`) と、その座標で何を同定するか
+    (`fit_closure`)。hyperparams は全部 spec が持つ = **spec に無い設定は効かない**。
     """
     spec = SurrogateSpec.from_config(cfg)
     ansatz = spec.ansatz()
     # 学習データは spec から決定的に再現できる (`Surrogate.training_data` と同じ式)
     # ので、学習済みモデルへ持ち回さず捨てる。
-    preprocessor, closure = ansatz.fit(unified_simulator(spec.dataset.materialize()))
-    return Surrogate(spec, ansatz, preprocessor, closure)
+    training_data = unified_simulator(spec.dataset.materialize())
+    preprocessor = spec.preprocessor_fit()(
+        ansatz.training_gates(spec, training_data),
+        spec.n_components,
+        **spec.preprocessor_config,
+    )
+    closure = ansatz.fit_closure(spec, training_data, preprocessor)
+    return Surrogate(spec, preprocessor, closure)

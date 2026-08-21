@@ -183,7 +183,7 @@ def calc_traub_channel(p: TraubParams, u_t, v, states):
 # (TrainSource.gate) なので、学習するものを先頭へ並べる = この順序が分割位置を決める。
 TRAUB_STATE_NAMES = ["M", "N", "C", "A", "H", "B", "S", "R", "Q", "XI"]
 
-# hybrid での学習/physics 分割は 2 通りあり、preset (spec.physics_type) が選ぶ。
+# hybrid での学習/physics 分割は 2 通りあり、preset の ansatz.physics_type が選ぶ。
 # どちらも「学習ゲート = 先頭 n 本、残りが extra」という TrainSource の規約に乗る
 # ので、状態順序が分割位置をそのまま決める。
 #

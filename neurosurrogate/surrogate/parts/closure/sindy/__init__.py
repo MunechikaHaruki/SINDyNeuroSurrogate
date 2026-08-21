@@ -4,9 +4,9 @@
 を entry.py (ロジック) / _catalog.py (データ) に置く。ansatz/ は方程式の列構造 (roles)
 を決め、この層は「その列構造で何を同定するか」だけを担う。
 
-入口 `from_sindy` は ansatz が組んだ `TrainInputs` をそのまま受ける (契約は
-`parts/__init__.py` にあり、`Closure` と同じく上から引ける) — 素データへ開く変換を
-ansatz 側の adapter に置くと、列名と軌道の対応が両者に分かれて崩せるようになる。
+入口 `from_sindy` は ansatz が組んだ `TrainInputs` をそのまま受ける (定義は
+`parts/train_inputs.py` にあり、`Closure` 契約と同じく上から引ける) — 素データへ開く
+変換を ansatz 側の adapter に置くと、列名と軌道の対応が両者に分かれて崩せるようになる。
 """
 
 from dataclasses import dataclass
@@ -19,7 +19,8 @@ import pysindy as ps
 import sympy as sp
 
 from .....core.opcost import OpCost
-from ... import Closure, TrainInputs
+from ... import Closure
+from ...train_inputs import TrainInputs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -31,11 +32,18 @@ _OPTIMIZER_CLS: dict[str, type] = {
     "stlsq": ps.optimizers.STLSQ,
     "sr3": ps.optimizers.SR3,
 }
+# 疎回帰の既定。**yaml でなくここが単一源** (preset が黙って継承する場所に置くと、
+# 別の定式化へも流れる)。preset が optimizer を書けば丸ごとこれに代わる。
+_DEFAULT_OPTIMIZER = {
+    "type": "stlsq",
+    "threshold": 0.01,
+    "normalize_columns": False,
+    "alpha": 2.0,
+}
 
 
 def _instantiate(spec: dict, registry: dict[str, type]):
-    # None は「その optimizer では使わない hyperparam」= yaml で明示 null にして
-    # 落とす (STLSQ 固有 alpha を config.yaml から継承する SR3 preset 等)。
+    # None は「その optimizer では使わない hyperparam」= yaml で明示 null にして落とす。
     spec = {k: v for k, v in spec.items() if v is not None}
     return registry[spec.pop("type")](**spec)
 
@@ -81,24 +89,29 @@ class SINDyBundle(Closure):
         inputs: TrainInputs,
         t: np.ndarray,
         roles: "Roles",
-        config: dict,
+        *,
+        library_specs: list[dict],
+        optimizer: dict = _DEFAULT_OPTIMIZER,
     ) -> "SINDyBundle":
         """同定器へ渡す入力一式から ξ を疎回帰で同定する。
 
         `TrainInputs` をそのまま受ける: 列名 → Symbol も、comp ごとの軌道を pysindy の
         複数軌道形式へ並べるのも**この入口の仕事**。列構造そのもの (roles) だけは
         定式化ごとに違うので ansatz が組んで渡す。
+
+        hyperparams は ansatz が `**spec.closure_config` で展開して渡す = 既定値は
+        この署名 1 箇所、綴り違いは黙って既定へ落ちずに TypeError になる。
         """
         bundle = cls(
             xi=np.empty(0),
             targets=inputs.target_symbols(),
             inputs=inputs.input_symbols(),
-            library_specs=config["library_specs"],
+            library_specs=library_specs,
             roles=roles,
         )
         sindy = ps.SINDy(
             feature_library=bundle.feature_library.library,
-            optimizer=_instantiate(config["optimizer"], _OPTIMIZER_CLS),
+            optimizer=_instantiate(optimizer, _OPTIMIZER_CLS),
         )
         # list で渡すと pysindy が複数軌道として扱う (軌道跨ぎの微分を取らない)。
         sindy.fit(

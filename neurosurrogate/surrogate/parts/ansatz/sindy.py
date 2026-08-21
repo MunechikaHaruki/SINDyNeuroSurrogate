@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import jax.numpy as jnp
+import numpy as np
 import xarray as xr
 
 from ....core import access
 from ....core.coords import transform_gate
 from ....core.network import CompartmentType
-from .. import Ansatz, Preprocessor, TrainInputs
+from .. import Ansatz, Preprocessor
 from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
+from ..train_inputs import TrainInputs
+
+if TYPE_CHECKING:
+    from ...model import SurrogateSpec
 
 
 class SINDyAnsatz(Ansatz[SINDyBundle]):
@@ -18,21 +25,33 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
         ので、回路 params が ξ に焼き込まれている。"""
         return train == node
 
-    def n_train_gate(self) -> int:
+    @classmethod
+    def n_train_gate(cls, spec: SurrogateSpec) -> int:
         """全ゲートを学習 (V+gate を丸ごと同定 → physics へ分離する列が無い)。"""
-        return len(self.spec.comp_type.gate_names)
+        return len(spec.comp_type.gate_names)
 
+    @classmethod
+    def training_gates(
+        cls, spec: SurrogateSpec, training_data: xr.Dataset
+    ) -> list[np.ndarray]:
+        """全ゲートをそのまま (切り出す先が無い)。"""
+        return access.gate_matrices(training_data, spec.train_comp_ids())
+
+    @classmethod
     def train_inputs(
-        self, training_data: xr.Dataset, preprocessor: Preprocessor
+        cls,
+        spec: SurrogateSpec,
+        training_data: xr.Dataset,
+        preprocessor: Preprocessor,
     ) -> TrainInputs:
         # 状態 [V, z1..zN] 丸ごと、入力は流入電流 (transform_gate が I_internal を u
         # 列へ)。comp ごとに 1 軌道 (縦連結は偽微分)。
-        comp_ids = self.spec.train_comp_ids()
+        comp_ids = spec.train_comp_ids()
         preprocessed = [
             transform_gate(preprocessor, training_data, comp_id=i) for i in comp_ids
         ]
         return TrainInputs(
-            x_names=[access.POTENTIAL_VAR, *access.latent_vars(self.spec.n_components)],
+            x_names=[access.POTENTIAL_VAR, *access.latent_vars(spec.n_components)],
             u_names=["u"],
             x=[
                 access.comp_matrix(pre, i)
@@ -41,24 +60,29 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
             u=[access.i_ext_values(pre)[:, None] for pre in preprocessed],
         )
 
+    @classmethod
     def fit_closure(
-        self, training_data: xr.Dataset, preprocessor: Preprocessor
+        cls,
+        spec: SurrogateSpec,
+        training_data: xr.Dataset,
+        preprocessor: Preprocessor,
     ) -> SINDyBundle:
-        n = self.spec.n_components
+        n = spec.n_components
         # 列構造: [V, z1..zN, u]。V=0, gate 群, 末尾に外部電流。
         return SINDyBundle.from_sindy(
-            self.train_inputs(training_data, preprocessor),
+            cls.train_inputs(spec, training_data, preprocessor),
             access.time(training_data),
             Roles(V=0, g=list(range(1, 1 + n)), u=1 + n),
-            self.spec.ansatz_config,
+            **spec.closure_config,
         )
 
+    @classmethod
     def surr_comp_type(
-        self, preprocessor: Preprocessor, closure: SINDyBundle
+        cls, spec: SurrogateSpec, preprocessor: Preprocessor, closure: SINDyBundle
     ) -> CompartmentType:
         xi = jnp.asarray(closure.xi)
         compute_theta = closure.compute_theta()
-        n_latent = self.spec.n_components
+        n_latent = spec.n_components
 
         def surr_kernel(params, i_t, v, state):
             # 束縛順 [V, z1..zN, u]、xi の行も同順 (0=V, 1..=latent)。
@@ -66,12 +90,12 @@ class SINDyAnsatz(Ansatz[SINDyBundle]):
             return xi[0] @ theta, xi[1:] @ theta
 
         return CompartmentType(
-            name=self.spec.surr_type_name(),
+            name=spec.surr_type_name(),
             kernel=surr_kernel,
             param_cls=None,
             gate_names=access.latent_vars(n_latent),
             # param_cls=None → 学習元ノードの初期状態を引き継ぐ (置換は params 完全一致
             # のノードのみ)。
-            inits=lambda _: [self.spec.train_comp().init[0]] + preprocessor.gate_inits,
+            inits=lambda _: [spec.train_comp().init[0]] + preprocessor.gate_inits,
             opcost=closure.opcost(),  # 丸ごと同定 → コスト = 閉包項の評価
         )

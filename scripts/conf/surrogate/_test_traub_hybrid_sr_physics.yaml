@@ -8,13 +8,14 @@ surrogate:
     surrogate_type: hybrid
     preprocessor_type: pca
     n_components: 5
-    physics_type: traub_sr_physics
     datasets:
       target: traub
       current_type: train
       current_params:
         duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮
   ansatz:
+    physics_type: traub_sr_physics
+  closure:
     library_specs:
       - type: traub_gate_forward
       - type: traub_gate_backward

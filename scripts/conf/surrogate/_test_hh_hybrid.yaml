@@ -13,6 +13,8 @@ surrogate:
       current_params:
         duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮
   ansatz:
+    physics_type: hh
+  closure:
     library_specs:
       - type: hh_gate_forward
       - type: hh_gate_backward

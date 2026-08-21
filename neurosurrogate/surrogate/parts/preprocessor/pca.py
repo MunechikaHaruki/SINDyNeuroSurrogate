@@ -6,9 +6,14 @@ from sklearn.decomposition import PCA
 
 from ....core.opcost import OpCost
 from .. import Preprocessor
+from .fit_artifacts import fit_artifacts
 
 
 class PCAPreprocessor(Preprocessor):
+    # gate_inits と並んで fit 末尾で埋まる。契約に載らない (metrics でしか読まない)
+    # ので実装側で宣言する。
+    reconstruction: dict[str, float]
+
     def __init__(
         self,
         components: np.ndarray,
@@ -24,25 +29,6 @@ class PCAPreprocessor(Preprocessor):
         # 全 (捨てた分も含む) 成分の寄与率。scree 図で n_components 選択の妥当性
         # (どこで累積が飽和するか) を見るために保持する。
         self.full_explained_variance_ratio = full_explained_variance_ratio
-
-    @classmethod
-    def fit(
-        cls, train_gate: np.ndarray, n_components: int, config: dict
-    ) -> "PCAPreprocessor":
-        # 全成分で 1 度 fit し上位 n を採る (2 度 fit を避ける)。full_* は捨てた
-        # 成分の寄与率も含み、保持成分は先頭 n_components を切り出す。
-        pca = PCA().fit(train_gate)
-        inst = cls(
-            components=np.asarray(pca.components_[:n_components]),
-            mean=np.asarray(pca.mean_),
-            explained_variance=np.asarray(pca.explained_variance_[:n_components]),
-            explained_variance_ratio=np.asarray(
-                pca.explained_variance_ratio_[:n_components]
-            ),
-            full_explained_variance_ratio=np.asarray(pca.explained_variance_ratio_),
-        )
-        inst._set_fit_artifacts(train_gate)
-        return inst
 
     @property
     def n_features(self) -> int:
@@ -64,11 +50,34 @@ class PCAPreprocessor(Preprocessor):
             "pca/cumulative_explained_variance_ratio": float(
                 self.explained_variance_ratio.sum()
             ),
-            "pca/reconstruction_mse": self.reconstruction_mse,
-            "pca/reconstruction_mse_ratio": self.reconstruction_mse_ratio,
+            **{f"pca/{k}": v for k, v in self.reconstruction.items()},
         }
 
     def opcost(self) -> OpCost:
         # decode: gate ごとに latent 数の積 + (latent-1 加算 + mean 1 加算)。
         n_latent, n_gates = self.components.shape
         return OpCost(mul=n_latent * n_gates, pm=n_latent * n_gates)
+
+
+def fit_pca(train_gates: list[np.ndarray], n_components: int) -> PCAPreprocessor:
+    """comp ごとの学習ゲート軌道から線形圧縮を学習する (**preprocessor 側の入口**)。
+
+    軌道を跨いで縦連結するのはここ: 時間の並びが意味を持つのは微分を取る同定側で、
+    座標変換にとっては点の集合でしかない。hyperparams は無いので引数もこれだけ =
+    preprocessor ブロックに何か書けば TypeError (黙って無視しない)。
+    """
+    train_gate = np.concatenate(train_gates, axis=0)
+    # 全成分で 1 度 fit し上位 n を採る (2 度 fit を避ける)。full_* は捨てた
+    # 成分の寄与率も含み、保持成分は先頭 n_components を切り出す。
+    pca = PCA().fit(train_gate)
+    inst = PCAPreprocessor(
+        components=np.asarray(pca.components_[:n_components]),
+        mean=np.asarray(pca.mean_),
+        explained_variance=np.asarray(pca.explained_variance_[:n_components]),
+        explained_variance_ratio=np.asarray(
+            pca.explained_variance_ratio_[:n_components]
+        ),
+        full_explained_variance_ratio=np.asarray(pca.explained_variance_ratio_),
+    )
+    inst.gate_inits, inst.reconstruction = fit_artifacts(inst, train_gate)
+    return inst

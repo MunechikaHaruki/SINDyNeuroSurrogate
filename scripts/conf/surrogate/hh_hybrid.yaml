@@ -9,6 +9,8 @@ surrogate:
       target: hh
       current_type: train
   ansatz:
+    physics_type: hh
+  closure:
     library_specs:
       - type: hh_gate_forward
       - type: hh_gate_backward

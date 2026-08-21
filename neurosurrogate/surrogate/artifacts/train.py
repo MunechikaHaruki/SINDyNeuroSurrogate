@@ -61,7 +61,7 @@ def _latents(surrogate: Surrogate, comp_ids: Sequence[int]) -> list[np.ndarray]:
 def _training_gate(surrogate: Surrogate, comp_id: int) -> np.ndarray:
     """comp_id のうち ansatz が学習するゲート列。"""
     return access.gate_matrix(surrogate.training_data, comp_id)[
-        :, : surrogate.ansatz.n_train_gate()
+        :, : surrogate.ansatz.n_train_gate(surrogate.spec)
     ]
 
 
@@ -105,7 +105,7 @@ def train_raw_artifact(
                     )
                     for k, name in enumerate(
                         surrogate.spec.comp_type.gate_names[
-                            : surrogate.ansatz.n_train_gate()
+                            : surrogate.ansatz.n_train_gate(surrogate.spec)
                         ]
                     )
                 ],
@@ -124,7 +124,7 @@ def train_preprocessed_artifact(
     には出さない。
     """
     inputs = surrogate.ansatz.train_inputs(
-        surrogate.training_data, surrogate.preprocessor
+        surrogate.spec, surrogate.training_data, surrogate.preprocessor
     )
     shown = _shown(surrogate, comps)
     panels = [

@@ -3,8 +3,12 @@ defaults:
   - surrogate: hh_sindy
 
 
-# surrogate 直下の 3 ブロックは fit_surrogate の宛先そのもの
-# (spec は model._build_spec、残りは preprocessor / ansatz の各設定)。
+# surrogate 直下は spec + **parts/ の 3 構成要素と同名のブロック**。
+# 何を学習するか (spec) と、差し替え可能な 3 者それぞれの hyperparams が 1 対 1 に
+# 対応し、各ブロックはその層の入口へそのまま展開される:
+#   preprocessor -> Preprocessor.fit
+#   ansatz       -> 方程式の骨格の選択 (HybridAnsatz.split)
+#   closure      -> 閉包項の同定入口 (sindy: library_specs/optimizer、ude: joint 学習)
 # 学習構造 (surrogate_type / preprocessor_type / n_components) は spec が単一源で、
 # 値は各 preset が保持する。
 surrogate:
@@ -13,15 +17,15 @@ surrogate:
       dt: 0.01
     # 学習を 1 ノードへ絞る指定 (省略/null = 学習ネット内の学習ドメイン全部)。
     train_comp_identifier: null
-    # 学習/physics 分割の変種 (neurons の HYBRID_SPLITS キー。null = comp_type 名)。
-    physics_type: null
-  preprocessor: {} # 種別固有 hyperparams のみ (ae: epochs/lr)。既定値は実装側
-  ansatz:
-    optimizer:
-      type: stlsq
-      threshold: 0.01
-      normalize_columns: false
-      alpha: 2.0
+  # 3 ブロックとも**既定値は実装側の署名**が単一源 (ここに既定を書くと、その層の
+  # 実装が違う preset へも黙って継承される)。書くのは preset が動かす値だけ。
+  preprocessor: {} # 種別固有 (ae: epochs/lr。pca は無し)
+  # 定式化固有 (hybrid 系: physics_type = 学習/physics 分割の名前 = neurons の
+  # HYBRID_SPLITS キー。**必須で既定値を持たない** — comp_type 名で代替すると分割を
+  # 決める源が 2 つになる。sindy は分割そのものが無いので空)
+  ansatz: {}
+  # 閉包項の同定固有 (sindy: library_specs/optimizer。ude: joint 学習の epochs/window…)
+  closure: {}
 
 hydra:
   run:

@@ -4,21 +4,38 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import jax.numpy as jnp
+import numpy as np
 import xarray as xr
 
 from ....core import access
 from ....core.network import CompartmentType
 from ....core.opcost import OpCost
 from ....neurons import HYBRID_SPLITS, HybridSplit
-from .. import Ansatz, Closure, Preprocessor, TrainInputs
+from .. import Ansatz, Closure, Preprocessor
 from ..closure.sindy import SINDyBundle
 from ..closure.sindy.roles import Roles
+from ..train_inputs import TrainInputs
+
+if TYPE_CHECKING:
+    from ...model import SurrogateSpec
 
 C = TypeVar("C", bound=Closure)
 _DLatent = Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
+
+
+def _hybrid_split(*, physics_type: str) -> HybridSplit:
+    """学習/physics 分割を選ぶ。**ansatz ブロックの唯一の宛先**で、他のキーを書けば
+    TypeError。
+
+    **既定値を持たない** = hybrid 系 preset は分割を必ず名指しする。comp_type 名で
+    代替しない: `HYBRID_SPLITS` のキーは**分割**の名前で、comp 型の名前と一致して
+    いるのは偶然にすぎず (同じ comp 型に分割が複数ある)、暗黙に落ちると分割を
+    決める源が spec と ansatz の 2 つになる。
+    """
+    return HYBRID_SPLITS[physics_type]
 
 
 class HybridAnsatz(Ansatz[C]):
@@ -34,39 +51,59 @@ class HybridAnsatz(Ansatz[C]):
         閉包項は潜在ゲートの形だけを担うので係数に params が焼き込まれない。"""
         return True
 
-    @property
-    def _split(self) -> HybridSplit:
-        """この仕様の学習/physics 分割 (spec が名前で選ぶ。中身は neurons が持つ)。"""
-        return HYBRID_SPLITS[self.spec.physics_type or self.spec.comp_type.name]
+    @classmethod
+    def split(cls, spec: SurrogateSpec) -> HybridSplit:
+        """この仕様の学習/physics 分割 (ansatz ブロックが名指しする。中身は neurons が
+        持つ)。学習ゲート数も kernel の physics 側もここから出る。"""
+        return _hybrid_split(**spec.ansatz_config)
 
-    def n_train_gate(self) -> int:
+    @classmethod
+    def n_train_gate(cls, spec: SurrogateSpec) -> int:
         """純電位依存ゲートのみ学習し、Ca サブ系は physics へ分離する。"""
-        return self._split.n_learned
+        return cls.split(spec).n_learned
 
+    @classmethod
+    def training_gates(
+        cls, spec: SurrogateSpec, training_data: xr.Dataset
+    ) -> list[np.ndarray]:
+        """先頭 n_train_gate 本だけ切り出す (残りは physics 側が持つ)。"""
+        return [
+            gate[:, : cls.n_train_gate(spec)]
+            for gate in access.gate_matrices(training_data, spec.train_comp_ids())
+        ]
+
+    @classmethod
     def train_inputs(
-        self, training_data: xr.Dataset, preprocessor: Preprocessor
+        cls,
+        spec: SurrogateSpec,
+        training_data: xr.Dataset,
+        preprocessor: Preprocessor,
     ) -> TrainInputs:
         return TrainInputs(
-            x_names=access.latent_vars(self.spec.n_components),
+            x_names=access.latent_vars(spec.n_components),
             u_names=[access.POTENTIAL_VAR],
-            x=[preprocessor.encode(g) for g in self.training_gates(training_data)],
+            x=[preprocessor.encode(g) for g in cls.training_gates(spec, training_data)],
             u=[
                 v[:, None]
-                for v in access.potentials(training_data, self.spec.train_comp_ids())
+                for v in access.potentials(training_data, spec.train_comp_ids())
             ],
         )
 
+    @classmethod
     @abstractmethod
-    def dlatent(self, preprocessor: Preprocessor, closure: C) -> _DLatent:
+    def dlatent(cls, spec: SurrogateSpec, closure: C) -> _DLatent:
         """学習済み閉包項から ``(latent, V) -> dlatent/dt`` を作る。"""
         ...
 
-    def surr_comp_type(self, preprocessor: Preprocessor, closure: C) -> CompartmentType:
-        split = self._split
+    @classmethod
+    def surr_comp_type(
+        cls, spec: SurrogateSpec, preprocessor: Preprocessor, closure: C
+    ) -> CompartmentType:
+        split = cls.split(spec)
         extra = split.extra
         decode = preprocessor.decode
-        dlatent = self.dlatent(preprocessor, closure)
-        n_latent = self.spec.n_components
+        dlatent = cls.dlatent(spec, closure)
+        n_latent = spec.n_components
         opcost = (
             preprocessor.opcost()
             + (OpCost() if extra is None else extra.cost)
@@ -95,7 +132,7 @@ class HybridAnsatz(Ansatz[C]):
             )
 
         return CompartmentType(
-            name=self.spec.surr_type_name(),
+            name=spec.surr_type_name(),
             kernel=kernel,
             param_cls=split.param_cls,
             gate_names=access.latent_vars(n_latent)
@@ -108,18 +145,23 @@ class HybridAnsatz(Ansatz[C]):
 class HybridSINDyAnsatz(HybridAnsatz[SINDyBundle]):
     """Hybrid の潜在方程式を SINDy で同定する。"""
 
+    @classmethod
     def fit_closure(
-        self, training_data: xr.Dataset, preprocessor: Preprocessor
+        cls,
+        spec: SurrogateSpec,
+        training_data: xr.Dataset,
+        preprocessor: Preprocessor,
     ) -> SINDyBundle:
-        n = self.spec.n_components
+        n = spec.n_components
         return SINDyBundle.from_sindy(
-            self.train_inputs(training_data, preprocessor),
+            cls.train_inputs(spec, training_data, preprocessor),
             access.time(training_data),
             Roles(V=n, g=list(range(n))),
-            self.spec.ansatz_config,
+            **spec.closure_config,
         )
 
-    def dlatent(self, preprocessor: Preprocessor, closure: SINDyBundle) -> _DLatent:
+    @classmethod
+    def dlatent(cls, spec: SurrogateSpec, closure: SINDyBundle) -> _DLatent:
         xi = jnp.asarray(closure.xi)
         compute_theta = closure.compute_theta()
         return lambda latent, v: xi @ compute_theta(*latent, v)

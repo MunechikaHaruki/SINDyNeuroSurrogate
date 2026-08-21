@@ -195,7 +195,7 @@ def _surrogate_metrics(surrogate: Surrogate) -> dict:
     cost: dict[str, int] = {}
     if orig is not None:
         surr = surrogate.ansatz.surr_comp_type(
-            surrogate.preprocessor, surrogate.closure
+            surrogate.spec, surrogate.preprocessor, surrogate.closure
         ).opcost
         assert surr is not None  # surr_comp_type は必ず opcost を焼き込む
         surr_d = surr.to_dict()

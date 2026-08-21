@@ -26,12 +26,13 @@ neurosurrogate/                  # ドメイン層 (marimo/MLflow 非依存)。�
           report.py              # summary/traces/metric + 電流プレビュー。**点軸×run 軸の並びを成果物へ落とす唯一の場所**
           detail.py              # diff/simple/attractor/metrics。1 ペアの図と表 (点軸も run 軸も知らない)
           _tables.py             # 指標の値を表に並べる (計算を増やさない)
-  surrogate/  model.py           # SurrogateSpec (宣言 + hyperparams + JSON 往復 + **設定ツリー (3 ブロック) を解く唯一の場所** from_config + 名前 → 実装の解決 ansatz_cls / ansatz / preprocessor_cls + **学習ドメイン判定** in_train_domain / rejected_targets / applicable) と Surrogate (**学習済みのもの**を持ち、load/save (1 つの保存形式契約の両半分) と**名指しされた対象への適用** (apply(dataset, targets) = 全数検証、1 つでも通らなければ部分適用せず ValueError) を答える)。**組み立ては型のメソッドでなくモジュール関数** fit_surrogate — hyperparams まで spec が持つので Ansatz.fit の引数は学習データ 1 つ
+  surrogate/  model.py           # SurrogateSpec (宣言 + hyperparams + JSON 往復 + **設定ツリー (spec + parts 3 ブロック) を解く唯一の場所** from_config + 名前 → 実装の解決 ansatz / preprocessor_cls (どちらも**型を返す**) + **学習ドメイン判定** in_train_domain / rejected_targets / applicable) と Surrogate (**学習済みのもの** = 保存する 3 点 spec/preprocessor/closure だけを持ち (ansatz は spec しか状態を持たないので派生)、load/save (1 つの保存形式契約の両半分) と**名指しされた対象への適用** (apply(dataset, targets) = 全数検証、1 つでも通らなければ部分適用せず ValueError) を答える)。**組み立ては型のメソッドでなくモジュール関数** fit_surrogate — hyperparams まで spec が持つので引数は設定ツリー 1 つ。**preprocessor → closure の学習順もここが持つ** (定式化に依らないので Ansatz の既定実装にしない)
               runs.py            # 一意な名前と選択順を持つ SurrogateRuns。評価系列が挙げた置換対象を**全部**置換できる run だけへの絞り込み (部分一致は不可)
-              parts/  __init__.py # Surrogate が差し替える 3 構成要素の**契約を集約**: Closure / Preprocessor (+再構成統計) / Ansatz・TrainInputs。3 つは互いを参照する (Ansatz が両者を受け、型引数で Closure に束縛) ので契約は 1 モジュール = 抽象レベルのパッケージ間依存辺を持たない。実装は下の 3 パッケージが `from .. import` で引く。対等ではなく closure/preprocessor が leaf、ansatz が両者を合成
-                ansatz/          # sindy.py / hybrid.py / ude.py。hybrid.py が物理骨格と SINDy hybrid を集約
+              parts/  __init__.py # Surrogate が差し替える 3 構成要素の**契約を集約**: Closure / Preprocessor / Ansatz。3 つは互いを参照する (Ansatz が両者を受け、型引数で Closure に束縛) ので契約は 1 モジュール = 抽象レベルのパッケージ間依存辺を持たない。実装は下の 3 パッケージが `from .. import` で引く。対等ではなく closure/preprocessor が leaf、ansatz が両者を合成。**抽象メソッドしか置かない** — 既定実装も受け渡しの型も持たない
+                      train_inputs.py # TrainInputs (ansatz が組み closure の同定入口が受ける受け渡しの型)。契約でないので __init__.py に置かず、両側がここを引く
+                ansatz/          # sindy.py / hybrid.py / ude.py。hybrid.py が物理骨格と SINDy hybrid を集約。**インスタンスを作らない** = 定式化は規則であって状態でないので全メソッドが classmethod で spec を引数に取る (`surrogate.ansatz.f(surrogate.spec, ...)`)
                 closure/         # ude.py / sindy/{__init__,roles,entry,_catalog}.py
-                preprocessor/    # pca.py / autoencoder.py
+                preprocessor/    # pca.py / autoencoder.py / fit_artifacts.py (fit 後に埋まる派生量 = 再構成統計と初期潜在。埋め方は全実装共通なので契約でなくここ)
               artifacts/         # surrogate の自己記述成果物 (置換シミュを回さず描ける = run をロードしただけで出る図)。`__init__.py` が集合ごと返す `surrogate_artifacts` を持ち、個々の Artifact は submodule が返す (再 export はしない)。train.py=学習データ / model.py=neurograph・SINDy 係数・PCA scree + 表現の型で振り分ける closure_artifact / preprocessor_artifact (対応する図が無ければ None)
   artifact/                      # `core` 同様に他ディレクトリを import しない基盤 (model.py / plotting.py)。bundle.py だけが合流点
              model.py            # Artifact (**自分を 1 つ書くだけ**の atomic な save。中身が拡張子を決める = 表 CSV / 図 PNG / dict JSON。置き場は知らない) / Artifacts (成果物の集合。save(path) で丸ごとその path へ)。**レポートを表す型は無い** = 段の構造は save_report が書く path そのもの
@@ -80,7 +81,13 @@ docs/     poster/ slide/         # typst
 ## 設定ファイル
 
 - `scripts/conf/config.yaml` + `surrogate/<preset>.yaml` — 学習設定。`surrogate` 直下は
-  `spec` / `preprocessor` / `ansatz` の 3 ブロックで `Surrogate.fit` の宛先と 1 対 1
+  `spec` (何を学習するか) + **`parts/` の 3 構成要素と同名のブロック**
+  `preprocessor` / `ansatz` / `closure` で、**それぞれその層の入口 1 つの署名へ `**` で
+  展開される** (`Preprocessor.fit` / `HybridAnsatz.split` = physics 分割の選択。
+  hybrid 系は `physics_type` 必須で既定を持たない (comp_type 名で代替しない) /
+  閉包項の同定入口 = SINDy の `from_sindy`・UDE の joint 学習)。1 ブロック = 1 宛先
+  なので、受理するキーと既定値はその署名だけが決め、綴り違いや層違いは TypeError。**既定値は yaml でなく実装側の署名**が単一源 —
+  共通ブロックに既定を書くと、その層の実装が違う preset へも黙って継承されるため。
   (`spec.datasets` は `SimSpec` のフィールドそのもの = target/current_type/dt/current_params)。
   `_test_*.yaml` はテスト専用 preset (tests は preset 名を指すだけ)。
 - 評価条件は設定ファイルを持たない → `scripts/catalog.py` に型のまま並ぶ

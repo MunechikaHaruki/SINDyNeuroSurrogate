@@ -7,6 +7,7 @@ import optax
 
 from ....core.opcost import OpCost
 from .. import Preprocessor
+from .fit_artifacts import fit_artifacts
 
 _logger = logging.getLogger(__name__)
 
@@ -65,9 +66,12 @@ def _init_params(input_dim: int, n_components: int, key) -> dict:
 
 
 def _train_autoencoder(
-    X: np.ndarray, n_components: int, epochs: int, lr: float
+    X: np.ndarray, n_components: int, *, epochs: int = 1000, lr: float = 3e-2
 ) -> tuple[dict, np.ndarray, np.ndarray]:
-    """AutoEncoder を学習し (params, x_mean, x_std) を返す。標準化込み。"""
+    """AutoEncoder を学習し (params, x_mean, x_std) を返す。標準化込み。
+
+    hyperparams の**既定値はこの署名 1 箇所** (`fit` が config を展開して渡す)。
+    """
     X = np.asarray(X, dtype=np.float32)
     mean = X.mean(axis=0)
     std = X.std(axis=0) + 1e-8
@@ -91,41 +95,23 @@ def _train_autoencoder(
 
 
 class AEPreprocessor(Preprocessor):
+    # gate_inits と並んで fit 末尾で埋まる (UDE の joint 学習後は上書きされる)。
+    # 契約に載らない (metrics でしか読まない) ので実装側で宣言する。
+    reconstruction: dict[str, float]
+
     def __init__(
         self,
-        epochs: int,
-        lr: float,
         enc_params: dict[str, np.ndarray],
         dec_params: dict[str, np.ndarray],
         x_mean: np.ndarray,
         x_std: np.ndarray,
     ):
-        self.epochs = epochs
-        self.lr = lr
+        # hyperparams (epochs/lr) は保持しない — 由来は spec.json の
+        # preprocessor_config が持ち、学習後の振る舞いには効かない。
         self.enc_params = enc_params
         self.dec_params = dec_params
         self.x_mean = x_mean
         self.x_std = x_std
-
-    @classmethod
-    def fit(
-        cls, train_gate: np.ndarray, n_components: int, config: dict
-    ) -> "AEPreprocessor":
-        epochs = int(config.get("epochs", 1000))
-        lr = float(config.get("lr", 3e-2))
-        params, mean, std = _train_autoencoder(
-            train_gate, n_components=n_components, epochs=epochs, lr=lr
-        )
-        inst = cls(
-            epochs=epochs,
-            lr=lr,
-            enc_params={k: np.asarray(v) for k, v in params["enc"].items()},
-            dec_params={k: np.asarray(v) for k, v in params["dec"].items()},
-            x_mean=np.asarray(mean),
-            x_std=np.asarray(std),
-        )
-        inst._set_fit_artifacts(train_gate)
-        return inst
 
     @property
     def n_features(self) -> int:
@@ -144,10 +130,7 @@ class AEPreprocessor(Preprocessor):
         return jnp.asarray(x_hat * jnp.asarray(self.x_std) + jnp.asarray(self.x_mean))
 
     def metrics(self) -> dict:
-        return {
-            "ae/reconstruction_mse": self.reconstruction_mse,
-            "ae/reconstruction_mse_ratio": self.reconstruction_mse_ratio,
-        }
+        return {f"ae/{k}": v for k, v in self.reconstruction.items()}
 
     def opcost(self) -> OpCost:
         n_latent, hidden = self.dec_params["W1"].shape
@@ -158,3 +141,30 @@ class AEPreprocessor(Preprocessor):
             + OpCost(mul=hidden * n_gates, pm=hidden * n_gates)  # h @ W2 + b2
             + OpCost(mul=n_gates, pm=n_gates)  # 標準化の逆変換 (* std + mean)
         )
+
+
+def fit_ae(
+    train_gates: list[np.ndarray],
+    n_components: int,
+    *,
+    epochs: int = 1000,
+    lr: float = 3e-2,
+) -> AEPreprocessor:
+    """comp ごとの学習ゲート軌道から AutoEncoder を学習する (**この層の入口**)。
+
+    軌道を跨いで縦連結するのは `fit_pca` と同じ理由 (座標変換にとっては点の集合)。
+    hyperparams の**既定値はこの署名 1 箇所**で、綴り違いは黙って既定へ落ちずに
+    TypeError になる。
+    """
+    train_gate = np.concatenate(train_gates, axis=0)
+    params, mean, std = _train_autoencoder(
+        train_gate, n_components, epochs=epochs, lr=lr
+    )
+    inst = AEPreprocessor(
+        enc_params={k: np.asarray(v) for k, v in params["enc"].items()},
+        dec_params={k: np.asarray(v) for k, v in params["dec"].items()},
+        x_mean=np.asarray(mean),
+        x_std=np.asarray(std),
+    )
+    inst.gate_inits, inst.reconstruction = fit_artifacts(inst, train_gate)
+    return inst

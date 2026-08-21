@@ -1,7 +1,8 @@
 # @package _global_
 # テスト専用プリセット (自己完結)。UDE = encoder/decoder + 潜在方程式を同じロスで
-# 同時学習 → Ca physics 分離 → 置換までの経路を踏む。19-comp 教師、library_specs は
-# 持たない (潜在方程式が NN なので項ライブラリの語彙が要らない)。本番 preset は
+# 同時学習 → Ca physics 分離 → 置換までの経路を踏む。19-comp 教師。closure ブロックは
+# joint 学習のつまみ (library_specs は持たない = 潜在方程式が NN なので項ライブラリの
+# 語彙が要らない)。本番 preset は
 # results/test_later へ退避したので defaults 継承しない。
 # smoke なので epochs/window/batch を切り詰める (回って有限値が出ることだけ見る)。
 surrogate:
@@ -18,6 +19,8 @@ surrogate:
   preprocessor:
     epochs: 20 # AE は UDE の初期値でしかない (joint 学習が続きを担う)
   ansatz:
+    physics_type: traub
+  closure:
     epochs: 20 # smoke は「回って有限値が出る」ことだけ見る
     lr: 3.0e-3
     window: 20 # 短縮電流でも窓が取れる長さ

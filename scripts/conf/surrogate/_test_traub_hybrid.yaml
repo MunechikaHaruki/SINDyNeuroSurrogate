@@ -14,6 +14,8 @@ surrogate:
       current_params:
         duration: 180 # 本番は 9000。smoke は shape/有限性のみ見るので短縮
   ansatz:
+    physics_type: traub
+  closure:
     library_specs:
       - type: traub_gate_forward
       - type: traub_gate_backward
