@@ -15,10 +15,10 @@ from neurosurrogate.core import access
 from neurosurrogate.core.simulator import _areas, _graph_laplacian, unified_simulator
 from neurosurrogate.neurons import MCMODELS
 from neurosurrogate.neurons.traub import traub_dv
-from neurosurrogate.neurons.traub19 import SOMA_IDX, params_at
+from neurosurrogate.neurons.traub19 import _SOMA_IDX, params_at
 from neurosurrogate.sim.spec import SimSpec
 
-_SOMA = MCMODELS["traub19"].nodes[SOMA_IDX]
+_SOMA = MCMODELS["traub19"].nodes[_SOMA_IDX]
 _SPEC = SimSpec(
     target="traub19",
     current_type="lin&steady",

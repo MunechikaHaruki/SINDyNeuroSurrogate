@@ -1,4 +1,4 @@
-"""波形 experiment (`EVAL_EXP`): **1 run = 1 `sim.result.SeriesRun`** = 1 列の波形を
+"""波形 experiment (`_EVAL_EXP`): **1 run = 1 `sim.result.SeriesRun`** = 1 列の波形を
 まとめた 1 artifact。kind=original (原系、`series_hash` で共有) と kind=surrogate が
 平坦に並び、置換系は `original_hash` で原系を名指す。点は run の中の並び順そのもの。
 **どの列をまとめて 1 回の評価とみなすか**はこの層の関心でない (`report` module)。
@@ -23,8 +23,8 @@ from neurosurrogate.surrogate.model import Surrogate
 from . import logger
 from ._query import exp_id, latest_by_tag
 
-EVAL_EXP = os.environ.get("MLFLOW_EVAL_EXPERIMENT", "eval_series")
-WAVES_FILE = "waves.joblib"  # 点の順に並べた波形列 (1 run = 1 系列 = 1 ファイル)
+_EVAL_EXP = os.environ.get("MLFLOW_EVAL_EXPERIMENT", "eval_series")
+_WAVES_FILE = "waves.joblib"  # 点の順に並べた波形列 (1 run = 1 系列 = 1 ファイル)
 _WAVE_DTYPE = "float32"  # 保存精度 (表示にも指標にも十分で容量は半分)
 _HASH_TAG = "series_hash"  # 同一性 = 掃引 (+ 置換系なら学習 run_id)
 _KIND_ORIGINAL = "original"
@@ -60,14 +60,14 @@ def run_series(
     `run_id`/`surrogate` が両方 `None` なら原系。**探索と保存は分けない** — 対で
     成り立つ不変条件なので割らない。"""
     # 同じ掃引を同じ surrogate で回した run があるか (決定的なシミュ = 回し直さない)。
-    found = latest_by_tag(EVAL_EXP, _HASH_TAG, _series_hash(series, run_id))
+    found = latest_by_tag(_EVAL_EXP, _HASH_TAG, _series_hash(series, run_id))
     if found is not None:
         return found.info.run_id
 
     column = run_column(series, run_id, surrogate)
     kind = _KIND_ORIGINAL if run_id is None else f"{_KIND_SURROGATE}:{run_id[:8]}"
     with mlflow.start_run(
-        experiment_id=exp_id(EVAL_EXP), run_name=f"{name} [{kind}]"
+        experiment_id=exp_id(_EVAL_EXP), run_name=f"{name} [{kind}]"
     ) as run:
         mlflow.log_params(
             {
@@ -79,7 +79,7 @@ def run_series(
         )
         mlflow.set_tags(_tags(series, run_id))
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / WAVES_FILE
+            path = Path(tmp) / _WAVES_FILE
             joblib.dump(
                 [
                     ds.map(lambda v: v.astype(_WAVE_DTYPE), keep_attrs=True)
@@ -99,7 +99,7 @@ def load_column(eval_run_id: str) -> SeriesRun:
     params = mlflow.get_run(eval_run_id).data.params
     with tempfile.TemporaryDirectory() as tmp:
         local = mlflow.artifacts.download_artifacts(
-            f"runs:/{eval_run_id}/{WAVES_FILE}", dst_path=tmp
+            f"runs:/{eval_run_id}/{_WAVES_FILE}", dst_path=tmp
         )
         return SeriesRun(
             EvalSeries.from_dict(json.loads(params["series"])),

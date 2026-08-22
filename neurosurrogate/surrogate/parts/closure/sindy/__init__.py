@@ -1,7 +1,7 @@
 """SINDy 同定層。
 
 同定結果 (`SINDyBundle`: xi/feature 展開/compute_theta/opcost) をここに、項ライブラリ
-を entry.py (ロジック) / _catalog.py (データ) に置く。ansatz/ は方程式の列構造 (roles)
+を _entry.py (ロジック) / _catalog.py (データ) に置く。ansatz/ は方程式の列構造 (roles)
 を決め、この層は「その列構造で何を同定するか」だけを担う。
 
 入口 `from_sindy` は ansatz が組んだ `TrainInputs` をそのまま受ける (定義は
@@ -25,7 +25,7 @@ from ...train_inputs import TrainInputs
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .entry import FeatureLibrary
+    from ._entry import FeatureLibrary
     from .roles import Roles
 
 _OPTIMIZER_CLS: dict[str, type] = {
@@ -74,7 +74,7 @@ class SINDyBundle(Closure):
     def feature_library(self) -> "FeatureLibrary":
         """役割束縛済み FeatureLibrary (compute_theta/opcost 共用)。lambdify 関数は
         pickle 不能 → field でなく cache 化し、__getstate__ で保存対象から除外する。"""
-        from .entry import FeatureLibrary
+        from ._entry import FeatureLibrary
 
         return FeatureLibrary.build(self.library_specs, self.roles)
 
@@ -148,7 +148,7 @@ class SINDyBundle(Closure):
 
     def opcost(self) -> OpCost:
         """ξ の積和コスト + 生き残った feature 式の評価コスト (式木から直接算出)。"""
-        from .entry import op_cost
+        from ._entry import op_cost
 
         nnz = np.count_nonzero(self.xi).item()
         return sum(

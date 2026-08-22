@@ -16,7 +16,7 @@ from .. import Preprocessor
 
 def fit_artifacts(
     preprocessor: Preprocessor, train_gate: np.ndarray
-) -> tuple[list, dict[str, float]]:
+) -> tuple[list[float], dict[str, float]]:
     """(学習データ先頭の潜在, 再構成統計) を返す。
 
     統計のキーは前置きなし — MLflow へ出すときの `pca/` `ae/` は実装が付ける

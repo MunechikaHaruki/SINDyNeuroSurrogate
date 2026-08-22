@@ -3,7 +3,7 @@
 3 つの集合が、そのまま保存の 3 段に対応する: run 横断 (`report_artifacts`) /
 原系だけで決まるもの (`original_artifacts`) / 1 ペアの詳細 (`detail_artifacts`)。
 **何を出すかはここが持ち**、合流点 (`artifact.bundle`) はどの段へ書くかだけを決める。
-個々の Artifact は `report.py` (点軸 × run 軸) と `detail.py` (1 ペア) が返す。
+個々の Artifact は `_report.py` (点軸 × run 軸) と `_detail.py` (1 ペア) が返す。
 再 export はしない。
 """
 
@@ -17,14 +17,14 @@ from ...artifact.model import Artifacts
 from ...surrogate.runs import SurrogateRuns
 from ..result import SeriesResults
 from ..waveform import DynamicMetrics
-from .detail import (
+from ._detail import (
     attractor_artifact,
     diff_artifact,
     metrics_artifact,
     metrics_scalar_artifact,
     simple_artifact,
 )
-from .report import (
+from ._report import (
     current_preview_artifact,
     metric_artifact,
     summary_artifact,

@@ -7,7 +7,7 @@ import jax.numpy as jnp
 
 from ..core.network import CompartmentType
 from ..core.opcost import OpCost
-from ._common import _gate_ode, _inf_ode, lin_exp_form
+from ._common import gate_ode, inf_ode, lin_exp_form
 
 TRAUB_V_LEAK = -60.0
 
@@ -111,12 +111,12 @@ _TRAUB_RATE_V = {
 
 # 公式 (steady-state a/(a+b)・gate ODE a(1-x)-bx) は common に一元化し、ここは
 # (α, β) ペアから閉包を導出するだけ (hh.py が m_inf/dmdt を組むのと同じ流儀)。
-_TRAUB_INF_V = {name: _inf_ode(a, b) for name, (a, b) in _TRAUB_RATE_V.items()}
-_TRAUB_DSTATE_V = {name: _gate_ode(a, b) for name, (a, b) in _TRAUB_RATE_V.items()}
+_TRAUB_INF_V = {name: inf_ode(a, b) for name, (a, b) in _TRAUB_RATE_V.items()}
+_TRAUB_DSTATE_V = {name: gate_ode(a, b) for name, (a, b) in _TRAUB_RATE_V.items()}
 
 # Ca 濃度 XI で駆動される AHP ゲート Q (引数が v でなく xi なだけで同じ形)。
-_traub_inf_q = _inf_ode(alpha_q_traub, beta_q_traub)
-_traub_dq = _gate_ode(alpha_q_traub, beta_q_traub)
+_traub_inf_q = inf_ode(alpha_q_traub, beta_q_traub)
+_traub_dq = gate_ode(alpha_q_traub, beta_q_traub)
 
 
 def _traub_inf_v(name, v):

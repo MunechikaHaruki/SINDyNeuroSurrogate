@@ -1,4 +1,4 @@
-"""レポート experiment (`REPORT_EXP`): **1 評価 = 1 run**。
+"""レポート experiment (`_REPORT_EXP`): **1 評価 = 1 run**。
 
 持つのは波形 run の id 2 tag だけで、波形もカタログ由来の値も持たない。**同じ選択で
 回し直したら新しい run が立つ** = 一度書いた run を後から書き換えない (同一性の鍵を
@@ -23,10 +23,10 @@ from neurosurrogate.sim.result import SeriesResults
 
 from . import logger
 from ._query import exp_id
-from .series import load_column, run_series
+from ._series import load_column, run_series
 from .surrogate import load_surrogate_runs
 
-REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
+_REPORT_EXP = os.environ.get("MLFLOW_REPORT_EXPERIMENT", "eval_report")
 _ORIGINAL_TAG = "original_series_id"
 _SURROGATE_TAG = "surrogate_series_ids"  # 波形 run id の列 (与えた順 = 凡例の並び)
 
@@ -61,7 +61,7 @@ def write_report(run_ids: tuple[str, ...], name: str, tuning: dict[str, Any]) ->
         )
         client = mlflow.MlflowClient()
         report_run_id = client.create_run(
-            exp_id(REPORT_EXP),
+            exp_id(_REPORT_EXP),
             tags={
                 _ORIGINAL_TAG: original_id,
                 # **与えた順を保つ** (sort しない): 選択順が凡例/行見出しの並びとして

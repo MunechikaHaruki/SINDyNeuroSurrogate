@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from ..sim.spec import EvalSeries
 from .model import Surrogate
+from .replace import applicable
 
 
 @dataclass(frozen=True)
@@ -38,7 +39,7 @@ class SurrogateRuns:
             tuple(
                 (name, surrogate)
                 for name, surrogate in self
-                if surrogate.spec.applicable(series)
+                if applicable(surrogate.spec, series)
             )
         )
 

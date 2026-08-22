@@ -10,14 +10,14 @@ def lin_exp_form(x):
     )
 
 
-def _inf_ode(alpha, beta):
+def inf_ode(alpha, beta):
     def inf(v):
         return alpha(v) / (alpha(v) + beta(v))
 
     return inf
 
 
-def _gate_ode(alpha, beta):
+def gate_ode(alpha, beta):
     def dxdt(v, x):
         return alpha(v) * (1.0 - x) - beta(v) * x
 

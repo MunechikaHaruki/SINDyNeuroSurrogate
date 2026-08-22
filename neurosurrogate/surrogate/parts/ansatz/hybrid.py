@@ -26,18 +26,6 @@ C = TypeVar("C", bound=Closure)
 _DLatent = Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
 
 
-def _hybrid_split(*, physics_type: str) -> HybridSplit:
-    """学習/physics 分割を選ぶ。**ansatz ブロックの唯一の宛先**で、他のキーを書けば
-    TypeError。
-
-    **既定値を持たない** = hybrid 系 preset は分割を必ず名指しする。comp_type 名で
-    代替しない: `HYBRID_SPLITS` のキーは**分割**の名前で、comp 型の名前と一致して
-    いるのは偶然にすぎず (同じ comp 型に分割が複数ある)、暗黙に落ちると分割を
-    決める源が spec と ansatz の 2 つになる。
-    """
-    return HYBRID_SPLITS[physics_type]
-
-
 class HybridAnsatz(Ansatz[C]):
     """Hybrid 共通骨格。
 
@@ -52,15 +40,23 @@ class HybridAnsatz(Ansatz[C]):
         return True
 
     @classmethod
-    def split(cls, spec: SurrogateSpec) -> HybridSplit:
-        """この仕様の学習/physics 分割 (ansatz ブロックが名指しする。中身は neurons が
-        持つ)。学習ゲート数も kernel の physics 側もここから出る。"""
-        return _hybrid_split(**spec.ansatz_config)
+    def split(cls, *, physics_type: str) -> HybridSplit:
+        """学習/physics 分割を選ぶ (中身は neurons が持つ)。学習ゲート数も kernel の
+        physics 側もここから出る。
+
+        **spec を受けず `**spec.ansatz_config` を展開して呼ぶ** = ansatz ブロックの
+        唯一の宛先がこの署名で、他のキーを書けば TypeError。**既定値を持たない** =
+        hybrid 系 preset は分割を必ず名指しする。comp_type 名で代替しない:
+        `HYBRID_SPLITS` のキーは**分割**の名前で、comp 型の名前と一致しているのは
+        偶然にすぎず (同じ comp 型に分割が複数ある)、暗黙に落ちると分割を決める源が
+        spec と ansatz の 2 つになる。
+        """
+        return HYBRID_SPLITS[physics_type]
 
     @classmethod
     def n_train_gate(cls, spec: SurrogateSpec) -> int:
         """純電位依存ゲートのみ学習し、Ca サブ系は physics へ分離する。"""
-        return cls.split(spec).n_learned
+        return cls.split(**spec.ansatz_config).n_learned
 
     @classmethod
     def training_gates(
@@ -99,7 +95,7 @@ class HybridAnsatz(Ansatz[C]):
     def surr_comp_type(
         cls, spec: SurrogateSpec, preprocessor: Preprocessor, closure: C
     ) -> CompartmentType:
-        split = cls.split(spec)
+        split = cls.split(**spec.ansatz_config)
         extra = split.extra
         decode = preprocessor.decode
         dlatent = cls.dlatent(spec, closure)

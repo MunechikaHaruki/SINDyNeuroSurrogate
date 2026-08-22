@@ -16,11 +16,12 @@ import xarray as xr
 from ..core.diverge import log_divergence
 from ..core.simulator import unified_simulator
 from ..surrogate.model import Surrogate
+from ..surrogate.replace import replace
 from .result import SeriesRun
 from .spec import EvalSeries, SimSpec
 
 
-def simulate(
+def _simulate(
     spec: SimSpec, surrogate: Surrogate | None, targets: Sequence[str]
 ) -> xr.Dataset:
     """1 シミュ → 波形。`surrogate=None` なら原系 (`targets` は使わない)、あれば
@@ -29,7 +30,7 @@ def simulate(
     dset = spec.materialize()
     if surrogate is None:
         return unified_simulator(dset)
-    surr_ds = unified_simulator(surrogate.apply(dset, targets))
+    surr_ds = unified_simulator(replace(surrogate, dset, targets))
     # 系列名は spec が持たない (カタログのキーが単一源) → 入力そのもので名乗る。
     where = f"{spec.target}/{spec.current_type} / {surrogate.spec.surr_type_name()}"
     log_divergence(spec.net, surr_ds, where)
@@ -49,6 +50,6 @@ def run_column(
     if (run_id is None) != (surrogate is None):
         raise ValueError(f"run_id と置換器が対でない (run {run_id})")
     waves = [
-        simulate(spec, surrogate, series.replace_targets) for spec in series.points
+        _simulate(spec, surrogate, series.replace_targets) for spec in series.points
     ]
     return SeriesRun(series, run_id, waves)

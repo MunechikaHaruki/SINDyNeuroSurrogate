@@ -111,7 +111,7 @@ class DatasetConfig:
     仕様 (適用先の名前・注入ノード名・電流の種類とパラメータ) は持たない — それは
     `spec.SimSpec` で、`SimSpec.materialize()` がここへ落とす。**名前 → 実体の解決を
     core に持ち込まない**ための分割で、おかげでこの層は他のディレクトリを一切
-    import しない (置換は `Surrogate.apply` が net を差し替えた複製を作る)。
+    import しない (置換は `surrogate.replace.replace` が net を差し替えた複製を作る)。
     """
 
     dt: float

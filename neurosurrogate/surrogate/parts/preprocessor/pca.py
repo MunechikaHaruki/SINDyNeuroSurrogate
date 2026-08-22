@@ -40,7 +40,7 @@ class PCAPreprocessor(Preprocessor):
     def decode(self, state: jnp.ndarray) -> jnp.ndarray:
         return state @ jnp.asarray(self.components) + jnp.asarray(self.mean)
 
-    def metrics(self) -> dict:
+    def metrics(self) -> dict[str, float]:
         # 保持成分ごとの寄与率 (連番) + 累積 (= n_components でどれだけ説明できたか)。
         return {
             **{

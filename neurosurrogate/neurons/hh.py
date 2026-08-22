@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 from ..core.network import CompartmentType
 from ..core.opcost import OpCost
-from ._common import _gate_ode, _inf_ode, lin_exp_form
+from ._common import gate_ode, inf_ode, lin_exp_form
 
 
 def alpha_m_hh(v):
@@ -31,12 +31,12 @@ def beta_n_hh(v):
     return 0.125 * jnp.exp(-v / 80.0)
 
 
-m_inf = _inf_ode(alpha_m_hh, beta_m_hh)
-h_inf = _inf_ode(alpha_h_hh, beta_h_hh)
-n_inf = _inf_ode(alpha_n_hh, beta_n_hh)
-dmdt = _gate_ode(alpha_m_hh, beta_m_hh)
-dhdt = _gate_ode(alpha_h_hh, beta_h_hh)
-dndt = _gate_ode(alpha_n_hh, beta_n_hh)
+m_inf = inf_ode(alpha_m_hh, beta_m_hh)
+h_inf = inf_ode(alpha_h_hh, beta_h_hh)
+n_inf = inf_ode(alpha_n_hh, beta_n_hh)
+dmdt = gate_ode(alpha_m_hh, beta_m_hh)
+dhdt = gate_ode(alpha_h_hh, beta_h_hh)
+dndt = gate_ode(alpha_n_hh, beta_n_hh)
 
 
 # --- Params クラス (データのみ、NamedTuple) ---

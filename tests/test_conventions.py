@@ -20,7 +20,12 @@ import pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # 検査対象 (ドメイン層 + 入口)。tests/ は「消費者」側としてだけ読む。
 SRC_DIRS = ("neurosurrogate", "scripts")
-CONSUMER_DIRS = (*SRC_DIRS, "tests")
+# **参照元として数えるのは production だけ** — テストが import しているのは
+# 「外から使われている」ではなく「中を検査している」なので、これに数えると
+# テストを書くだけで公開名・公開 module を作れてしまう (`_` が公開範囲の印で
+# なくなる)。裏返しに、**テストが内部を掴むことは咎めない** = 規約が縛るのは
+# production の依存の向きだけ (ruff の PLC2701 も同じ理由で `tests/*` は無効)。
+PUBLIC_REF_DIRS = SRC_DIRS
 
 # 動的に解決される入口 = 静的解析からは参照が見えない。
 _EXEMPT = {
@@ -183,7 +188,7 @@ def _imported_elsewhere() -> set[tuple[pathlib.Path, str]]:
     """
     used: set[tuple[pathlib.Path, str]] = set()
     attrs: set[str] = set()
-    for path in _py_files(CONSUMER_DIRS):
+    for path in _py_files(PUBLIC_REF_DIRS):
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
@@ -257,7 +262,7 @@ def test_public_modules_are_imported_from_outside() -> None:
     module 名に当てる。落ちたら 2 択: **外から使わないなら `_`**、使うなら使う側を足す。
     """
     outside: set[pathlib.Path] = set()
-    for path in _py_files(CONSUMER_DIRS):
+    for path in _py_files(PUBLIC_REF_DIRS):
         for node in _import_nodes(path):
             outside |= {
                 src
@@ -326,11 +331,35 @@ def test_no_dunder_all() -> None:
     assert not bad, "`__all__` は定義しない (AGENTS.md):\n" + "\n".join(bad)
 
 
+def test_private_names_are_not_imported_from_other_modules() -> None:
+    """`_` 始まりの名前は、それを定義した module の外から import しない。
+
+    ruff の `PLC2701` が同じことを見るが、あれが咎めるのは**絶対 import だけ** —
+    `from neurosurrogate.x import _y` は落ちるのに `from .x import _y` は通る。
+    `neurosurrogate/` 内はほぼ全部が相対 import なので、それだけでは規約の大半が
+    素通りになる。ここが相対も含めて閉じる。
+    """
+    bad = []
+    for path in _py_files(PUBLIC_REF_DIRS):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            src = _module_path(node.module or "", path, node.level)
+            if src is None or src == path:  # 自 module からは引かない (= 定義側)
+                continue
+            bad += [
+                f"{path.relative_to(ROOT)}:{node.lineno} {node.module}.{a.name}"
+                for a in node.names
+                if a.name.startswith("_") and not a.name.startswith("__")
+            ]
+    assert not bad, "他 module の `_` 付きの名前を import:\n" + "\n".join(bad)
+
+
 def test_private_modules_are_not_imported_from_outside() -> None:
     """`_` 始まりの module は、そのパッケージの外から import しない
     (AGENTS.md の規約)。"""
     bad = []
-    for path in _py_files(CONSUMER_DIRS):
+    for path in _py_files(PUBLIC_REF_DIRS):
         for node in ast.walk(ast.parse(path.read_text())):
             if not isinstance(node, ast.ImportFrom):
                 continue

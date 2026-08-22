@@ -138,12 +138,12 @@ def _latex(e: sp.Basic) -> str:
     return re.sub(r"_\{(\w+) (\w+)\}", r"_{\1(\2)}", sp.latex(e))
 
 
-def tex(e: sp.Basic) -> str:
+def _tex(e: sp.Basic) -> str:
     """sympy 式 → インライン数式 (matplotlib mathtext / marimo の md 共通記法)。"""
     return f"${_latex(e)}$"
 
 
-def feature_tex(e: sp.Basic) -> str:
+def _feature_tex(e: sp.Basic) -> str:
     """library 特徴量ラベル用。1 図中の項は全て同じモデル由来 → 下付きの model 名
     (α_{m(hh)} の (hh)) は冗長なので落とす。"""
     stripped = re.sub(r"_\{(\w+) \w+\}", r"_{\1}", sp.latex(e))
@@ -236,13 +236,13 @@ def _sindy_coef_artifact(result: SINDyBundle, figsize=(15, 3)) -> Artifact:
 
     if len(result.targets) == xi_matrix.shape[0]:
         ax.set_yticks(np.arange(len(result.targets)) + 0.5)
-        ax.set_yticklabels([tex(s) for s in result.targets], rotation=0)
+        ax.set_yticklabels([_tex(s) for s in result.targets], rotation=0)
         ax.set_ylabel("Target Variables")
 
     if len(result.feature_exprs) == xi_matrix.shape[1]:
         ax.set_xticks(np.arange(xi_matrix.shape[1]) + 0.5)
         ax.set_xticklabels(
-            [feature_tex(e) for e in result.feature_exprs],
+            [_feature_tex(e) for e in result.feature_exprs],
             rotation=90,
             ha="center",
             fontsize=plt.rcParams["font.size"] * _FEATURE_FONTSCALE,

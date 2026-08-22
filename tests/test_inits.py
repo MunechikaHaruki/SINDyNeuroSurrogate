@@ -14,7 +14,7 @@ from neurosurrogate.neurons.traub import (
     TraubParams,
     _traub_inf_v,
 )
-from neurosurrogate.neurons.traub19 import SOMA_IDX
+from neurosurrogate.neurons.traub19 import _SOMA_IDX
 
 XI_IDX = 1 + TRAUB_STATE_NAMES.index("XI")  # init は [V, *gates]
 Q_IDX = 1 + TRAUB_STATE_NAMES.index("Q")
@@ -50,4 +50,4 @@ def test_xi_init_varies_across_compartments():
     """全 comp が soma 値を共有していた退行を直接検出する。"""
     xis = np.array([n.init[XI_IDX] for n in TRAUB19_NODES])
     assert len(np.unique(xis)) > 1
-    assert not np.allclose(xis, TRAUB19_NODES[SOMA_IDX].init[XI_IDX])
+    assert not np.allclose(xis, TRAUB19_NODES[_SOMA_IDX].init[XI_IDX])

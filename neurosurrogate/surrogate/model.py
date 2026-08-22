@@ -5,17 +5,20 @@
 (学習ゲート・列構造・置換後の型) は `surrogate.ansatz` へ直接問う。
 **この型は転送メソッドを持たない**。
 
-**組み立ては `Surrogate` のメソッドでない** — 型が答えるのは持つ・保存する・読む・
-適用するの 4 つだけで、設定ツリーから組む手順はモジュール関数 `fit_surrogate` に置く。
+**組み立ては `Surrogate` のメソッドでない** — 型が答えるのは持つ・保存する・読むの
+3 つだけで、設定ツリーから組む手順はモジュール関数 `fit_surrogate` に置く。
 設定の形を解くのは `SurrogateSpec.from_config` 1 箇所。
+**置換 (どこへ当てられるか・当てる) は `replace.py`** — 学習済みのものを持つことと、
+それを別のネットへ当てることは別の概念で、後者だけが適用先 (`NeuronGraph`) を知る。
+`in_train_domain` / `train_comp_ids` がここに残るのは、それが学習ドメインという
+**spec 自身の性質**で、置換の可否と学習 comp の選定の両方から引かれるから。
 学習データは保存せず spec から lazy に再現する (`training_data`)。load 後でも触れ、
 参照しなければ simulate は走らない。
 """
 
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, fields
-from dataclasses import replace as dc_replace
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -23,11 +26,11 @@ from typing import Any
 import joblib
 import xarray as xr
 
-from ..core.network import Compartment, CompartmentType, DatasetConfig, NeuronGraph
+from ..core.network import Compartment, CompartmentType
 from ..core.opcost import OpCost
 from ..core.simulator import unified_simulator
 from ..neurons import COMPARTMENT_TYPES
-from ..sim.spec import EvalSeries, SimSpec
+from ..sim.spec import SimSpec
 from .parts import Ansatz, Closure, Preprocessor
 from .parts.ansatz.hybrid import HybridSINDyAnsatz
 from .parts.ansatz.sindy import SINDyAnsatz
@@ -163,55 +166,14 @@ class SurrogateSpec:
         """comp が学習ドメインに属すか (種類一致かつ params 両立)。
 
         **置換してよいかの判定はこれ 1 つ**。何を置換するかの選定はここでは決まらない
-        — 対象は適用側が名前で明示し (`EvalSeries.replace_targets` /
-        `Surrogate.apply` の targets)、この述語はその 1 つ 1 つが通るかを答えるだけ。
+        — 対象は適用側が名前で明示し (`EvalSeries.replace_targets` / `replace.replace`
+        の targets)、この述語はその 1 つ 1 つが通るかを答えるだけ。学習 comp の選定
+        (`train_comp_ids`) も同じ述語を引く = 置換専用でないのでここに置く。
         """
         if comp.type != self.comp_type:
             return False
         return self.ansatz().params_match(
             self.train_comp().resolved_params, comp.resolved_params
-        )
-
-    def rejected_targets(self, net: NeuronGraph, targets: Sequence[str]) -> list[str]:
-        """明示指定のうち net 上で置換できないものの理由文 (空なら全部置換可)。
-
-        通るかどうかは `in_train_domain` が答え、ここはそれが偽だった理由 (不在 /
-        種類違い / params 非両立) を名前ごとに文にするだけ = **どの名前がなぜ通らな
-        かったかを必ず名指しできる** (「何個か落ちた」で終わらせない)。
-
-        理由が人の目に出るのは `Surrogate.apply` の ValueError 経由。run 選択
-        (`SurrogateRuns.replacing`) は真偽だけを見て絞るので、そこで落ちた run の
-        理由は表示されない — 表示したくなったらこの返り値を UI まで運ぶ。
-        """
-        reasons = []
-        for name in targets:
-            if name not in net.names:
-                reasons.append(f"{name!r}: 適用先 {net.names} に存在しない")
-                continue
-            comp = net.nodes[net.name_to_idx(name)]
-            if self.in_train_domain(comp):
-                continue
-            if comp.type != self.comp_type:
-                reasons.append(
-                    f"{name!r}: 種類 {comp.type.name!r} ≠ 学習した種類 "
-                    f"{self.comp_type.name!r}"
-                )
-            else:
-                train = self.train_comp()
-                reasons.append(
-                    f"{name!r}: params 非両立 = 学習ドメイン外\n"
-                    f"    train({train.name}): {train.resolved_params}\n"
-                    f"    node({name}): {comp.resolved_params}"
-                )
-        return reasons
-
-    def applicable(self, series: EvalSeries) -> bool:
-        """系列が置換対象に挙げたノードを**全部**置換できるか。
-
-        部分一致は不可 = 「指定したうち通ったものだけ静かに置換」を作らない。
-        """
-        return bool(series.replace_targets) and not self.rejected_targets(
-            series.spec.net, series.replace_targets
         )
 
     def train_comp_ids(self) -> list[int]:
@@ -230,8 +192,9 @@ class SurrogateSpec:
 class Surrogate:
     """**学習済み**サロゲート。spec / preprocessor / closure の 3 点を持つ。
 
-    どう学習されたかはここの関心ではない (組むのは `fit_surrogate`) — この型は
-    「持つ・保存する・読む・適用する」だけを担い、**設定ツリーを一切知らない**。
+    どう学習されたかはここの関心ではない (組むのは `fit_surrogate`)、どこへ当てるかも
+    ここの関心ではない (置換するのは `replace.replace`) — この型は「持つ・保存する・
+    読む」だけを担い、**設定ツリーも適用先も一切知らない**。
     持つ 3 点は**保存する 3 点そのもの** (spec.json + pickle 2 点)。
 
     `eq=False` = 同一性で比べる。中身は numpy を抱えるので値比較は意味を持たない。
@@ -278,37 +241,6 @@ class Surrogate:
         joblib.dump(
             {"closure": self.closure, "preprocessor": self.preprocessor},
             Path(dir) / _BUNDLE_FILE,
-        )
-
-    def apply(self, dataset: DatasetConfig, targets: Sequence[str]) -> DatasetConfig:
-        """**明示指定された** targets を surrogate へ置換する。
-
-        「互換なノードを全部」置換しない = 適用先の形態が変わっても置換範囲は動かない。
-        1 つでも置換できなければ何も置換せず ValueError (部分適用を作らない)。
-        """
-        if not targets:
-            raise ValueError("置換対象が空: 置換するノード名を明示指定すること")
-        rejected = self.spec.rejected_targets(dataset.net, targets)
-        if rejected:
-            raise ValueError(
-                f"{self.spec.surr_type_name()} で置換できない対象:\n  "
-                + "\n  ".join(rejected)
-            )
-        names = set(targets)
-        surr_comp_type = self.ansatz.surr_comp_type(
-            self.spec, self.preprocessor, self.closure
-        )
-        return dc_replace(
-            dataset,
-            net=dc_replace(
-                dataset.net,
-                nodes=[
-                    dc_replace(node, type=surr_comp_type)
-                    if node.name in names
-                    else node
-                    for node in dataset.net.nodes
-                ],
-            ),
         )
 
 

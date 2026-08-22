@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import Any, cast
 
 import mlflow
+import mlflow_io._series as series_io  # noqa: E402
 
 # `scripts/` は conftest が import path へ入れている。
 import mlflow_io.report as report_io  # noqa: E402
 import mlflow_io.runs as runs_io  # noqa: E402
-import mlflow_io.series as series_io  # noqa: E402
 import numpy as np
 import pandas as pd
 import pytest
@@ -25,7 +25,7 @@ from test_surrogate import fit_preset
 
 from neurosurrogate.core import access
 from neurosurrogate.sim.result import SeriesResults
-from neurosurrogate.sim.run import simulate
+from neurosurrogate.sim.run import _simulate
 from neurosurrogate.sim.spec import EvalSeries
 from neurosurrogate.surrogate.model import Surrogate
 
@@ -60,7 +60,7 @@ def _view(report_run_id: str) -> SeriesResults:
 
 def _report_ids() -> set[str]:
     """副作用だけの `write_report` が保存した report run の集合。"""
-    exp = mlflow.get_experiment_by_name(report_io.REPORT_EXP)
+    exp = mlflow.get_experiment_by_name(report_io._REPORT_EXP)
     if exp is None:
         return set()
     return _ids(
@@ -145,8 +145,8 @@ def eval_store(
     カタログも差し替える — `write_report` は系列を**名前から引く**ので、テスト用の
     短い掃引 (`_evals`) をその名前に載せて渡す。"""
     mlflow.set_tracking_uri(f"sqlite:///{tmp_path}/mlflow.db")
-    monkeypatch.setattr(series_io, "EVAL_EXP", "test_eval")
-    monkeypatch.setattr(report_io, "REPORT_EXP", "test_report")
+    monkeypatch.setattr(series_io, "_EVAL_EXP", "test_eval")
+    monkeypatch.setattr(report_io, "_REPORT_EXP", "test_report")
     monkeypatch.setattr(report_io, "SERIES", {"hh_dc": _evals(sindy)})
     return "test_eval"
 
@@ -197,7 +197,7 @@ def test_eval_runs_round_trip_without_resimulating(
     # (原系は surrogate 非依存なので回し直しても一致する)
     np.testing.assert_allclose(
         access.potential(orig, 0),
-        access.potential(simulate(series.points[1], None, ()), 0),
+        access.potential(_simulate(series.points[1], None, ()), 0),
         rtol=1e-5,
     )
     assert not np.allclose(access.potential(surr, 0), access.potential(orig, 0))
@@ -294,7 +294,7 @@ def test_everything_drawn_lands_in_the_one_report_run(
     client = mlflow.MlflowClient()
     assert {a.path for a in client.list_artifacts(report_id)} >= {"models", "series"}
     for rid in _source_runs(report_id):
-        assert [a.path for a in client.list_artifacts(rid)] == [series_io.WAVES_FILE]
+        assert [a.path for a in client.list_artifacts(rid)] == [series_io._WAVES_FILE]
     # 描いたときの表示設定は 1 枚だけ添える (成果物ごとの由来は run が既に指している)
     assert "tuning.json" in {a.path for a in client.list_artifacts(report_id)}
 
@@ -321,7 +321,7 @@ def _of_kind(kind: str) -> list[Run]:
     return cast(
         list[Run],
         mlflow.search_runs(
-            experiment_ids=[_exp_id(series_io.EVAL_EXP)],
+            experiment_ids=[_exp_id(series_io._EVAL_EXP)],
             filter_string=f"tags.kind = '{kind}'",
             output_format="list",
         ),

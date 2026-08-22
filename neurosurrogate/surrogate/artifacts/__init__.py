@@ -1,7 +1,7 @@
 """学習 run 1 本が**自己記述できる**成果物の集合。
 
 置換シミュを回さずに描けるものだけ = run をロードしただけで出る図 (中身は
-`model.py` = 静的な構造と係数 / `train.py` = 学習データ)。何を出すかはここが持ち、
+`_model.py` = 静的な構造と係数 / `train.py` = 学習データ)。何を出すかはここが持ち、
 合流点 (`artifact.bundle`) はどの段へ書くかだけを決める。再 export はしない
 (個々の Artifact は submodule から直接引く)。
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from ...artifact.model import Artifacts
 from ..model import Surrogate
-from .model import closure_artifact, neuron_graph_artifact, preprocessor_artifact
+from ._model import closure_artifact, neuron_graph_artifact, preprocessor_artifact
 from .train import (
     train_manifold_artifact,
     train_preprocessed_artifact,

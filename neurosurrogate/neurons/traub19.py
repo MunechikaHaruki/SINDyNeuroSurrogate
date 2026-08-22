@@ -30,13 +30,13 @@ _AREA = [2.188e-5] * 8 + [3.320e-5] + [1.673e-5] * 10
 _RI = 0.1  # KΩ·cm
 
 NC = 19
-SOMA_IDX = 8
-_SOMA_NAME = "soma"  # 細胞体は全モデル共通で "soma" と命名 (SOMA_IDX の comp)
+_SOMA_IDX = 8
+_SOMA_NAME = "soma"  # 細胞体は全モデル共通で "soma" と命名 (_SOMA_IDX の comp)
 
 
 def name_at(i: int) -> str:
-    """細胞体 (SOMA_IDX) は "soma"、他は c00..c18。"""
-    return _SOMA_NAME if i == SOMA_IDX else f"c{i:02d}"
+    """細胞体 (_SOMA_IDX) は "soma"、他は c00..c18。"""
+    return _SOMA_NAME if i == _SOMA_IDX else f"c{i:02d}"
 
 
 def params_at(i: int) -> TraubParams:

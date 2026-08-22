@@ -287,7 +287,7 @@ def _traub_soma_dc(value: float = 1e-4 / 3.320e-5):
     """traub.c の soma DC 注入を再現。C は i_inj[soma]=1e-4[μA]/area[soma] を全時刻
     一定注入 (silence 無し, T=200ms)。MC 規約では注入も密度 [μA/cm²] なので
     builder 値がそのまま流入する。
-    既定値=1e-4/area[soma] (area[soma]=3.320e-5 [cm²], traub19 SOMA_IDX)。"""
+    既定値=1e-4/area[soma] (area[soma]=3.320e-5 [cm²], traub19 _SOMA_IDX)。"""
     return _generate_steady(value, silence_duration=0, duration=200)
 
 

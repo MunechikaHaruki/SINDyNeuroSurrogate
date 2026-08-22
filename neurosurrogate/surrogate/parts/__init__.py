@@ -48,11 +48,16 @@ class Closure(ABC):
 class Preprocessor(ABC):
     """ゲート ↔ 潜在の可逆変換。学習結果を np で保持し直列化可能。"""
 
-    # 学習データ先頭の潜在 = 置換シミュの初期ゲート値。__init__ 引数ではなく fit 末尾
-    # で埋まる (encode 確定後にしか出せない)。**外から読まれる唯一の学習結果**なので
-    # 契約に載せる (kernel の初期状態を組む ansatz が引く)。再構成統計の方は各実装の
-    # `metrics()` の中でしか読まれない = 契約でなく実装の持ち物。
-    gate_inits: list
+    # 学習データ先頭の潜在 = 置換シミュの初期ゲート値。**外から読まれる唯一の学習
+    # 結果**なので契約に載せる (kernel の初期状態を組む ansatz が引く)。再構成統計の
+    # 方は各実装の `metrics()` の中でしか読まれない = 契約でなく実装の持ち物。
+    #
+    # `n_features` と違って abstract property でなく注釈だけの宣言なのは、これが
+    # 導出値でなく**構築後に埋まる状態**だから — encode が確定した後にしか出せず
+    # (`fit_artifacts`)、UDE の joint 学習では学習後に上書きされる。ABC は構築後の
+    # 代入を強制できないので、契約が言えるのは「この名前で `list[float]` が読める」
+    # までで、埋めるのは各 `fit` の末尾の責任。
+    gate_inits: list[float]
 
     # **学習の入口は契約に載せない** (`fit` classmethod を持たない)。種別ごとに
     # hyperparams が違うので署名が揃わず、無理に揃えると dict を受けて実装で解く形に
@@ -71,7 +76,10 @@ class Preprocessor(ABC):
         ...
 
     @abstractmethod
-    def metrics(self) -> dict: ...
+    def metrics(self) -> dict[str, float]:
+        """MLflow へ流す前処理の指標 (`Closure.metrics` と同じ問い方・同じ形 —
+        合流点の `sim.artifacts._report` が両者を 1 つの dict へ畳む)。"""
+        ...
 
     @abstractmethod
     def opcost(self) -> OpCost:

@@ -36,7 +36,7 @@ class SimSpec:
     (掃引点は `current_params` に確定済み)。これだけで波形が決まる。
 
     **識別は一切持たない** — 系列名はカタログのキー、どの surrogate で回すかは
-    `run.simulate` の引数、掃引の中の位置は `EvalSeries` 側。同一性 (`hash`) も
+    `run.run_column` の引数、掃引の中の位置は `EvalSeries` 側。同一性 (`hash`) も
     持たない: 「既に回したか」を引くのは保存の単位 (`EvalSeries`) で、この型は
     `to_dict` でその中身として運ばれる。
     """
@@ -82,7 +82,7 @@ class SimSpec:
         return CURRENT_MAP[self.current_type](**self.current_params)(self.dt)
 
     def materialize(self) -> DatasetConfig:
-        """仕様 → 実行入力 (原系)。置換系は `Surrogate.apply` が
+        """仕様 → 実行入力 (原系)。置換系は `surrogate.replace.replace` が
         この実行入力から非破壊で作る。
 
         **注入先の名前をここで index へ解く** = simulator には「どのノードへ
@@ -114,7 +114,7 @@ class EvalSeries:
     spec: SimSpec
     # 置換するノード名 (**明示指定**)。置換器そのものは知らないまま「適用先のどこを
     # 置換する実験か」だけを書く = 適用先の形態が変わっても置換範囲は動かない。
-    # 互換かどうかは surrogate 側が名前ごとに検証する (`SurrogateSpec.applicable`)。
+    # 互換かどうかは surrogate 側が名前ごとに検証する (`surrogate.replace.applicable`)。
     replace_targets: tuple[str, ...]
     param: str | None = None  # 掃引する電流パラメータ名 (None=単発)。図の x 軸
     values: Sequence[float] = ()  # 掃引点の値列 (等間隔でなくてもよい)
@@ -152,7 +152,7 @@ class EvalSeries:
 
     def replaced_hash(self) -> str:
         """**置換系の波形を既に回したか**の鍵 = 原系の鍵 + 置換範囲。置換器 (学習 run)
-        だけは含まない — それは呼び出し側がここに組む (`mlflow_io.series`)。"""
+        だけは含まない — それは呼び出し側がここに組む (`mlflow_io._series`)。"""
         return _digest(
             {"original": self.hash(), "replace_targets": list(self.replace_targets)}
         )

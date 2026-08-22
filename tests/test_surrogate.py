@@ -43,21 +43,21 @@ from neurosurrogate.sim.artifacts import (
     original_artifacts,
     report_artifacts,
 )
-from neurosurrogate.sim.artifacts.detail import (
+from neurosurrogate.sim.artifacts._detail import (
     attractor_artifact,
     diff_artifact,
     simple_artifact,
 )
-from neurosurrogate.sim.artifacts.report import summary_artifact, traces_artifact
+from neurosurrogate.sim.artifacts._report import summary_artifact, traces_artifact
 from neurosurrogate.sim.result import SeriesResults, SeriesRun
 from neurosurrogate.sim.run import run_column
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
 from neurosurrogate.sim.waveform import METRIC_KEYS, DynamicMetrics, extract_metric
 from neurosurrogate.surrogate.artifacts import surrogate_artifacts
-from neurosurrogate.surrogate.artifacts.model import (
-    feature_tex,
+from neurosurrogate.surrogate.artifacts._model import (
+    _feature_tex,
+    _tex,
     preprocessor_artifact,
-    tex,
 )
 from neurosurrogate.surrogate.artifacts.train import (
     train_manifold_artifact,
@@ -71,13 +71,22 @@ from neurosurrogate.surrogate.parts import Closure, Preprocessor
 from neurosurrogate.surrogate.parts.ansatz.hybrid import HybridAnsatz
 from neurosurrogate.surrogate.parts.ansatz.ude import UDEAnsatz
 from neurosurrogate.surrogate.parts.closure.sindy import SINDyBundle
-from neurosurrogate.surrogate.parts.closure.sindy.entry import FeatureLibrary
+from neurosurrogate.surrogate.parts.closure.sindy._entry import FeatureLibrary
 from neurosurrogate.surrogate.parts.closure.ude import UDEClosure
 from neurosurrogate.surrogate.parts.preprocessor.autoencoder import (
     AEPreprocessor,
     fit_ae,
 )
 from neurosurrogate.surrogate.parts.preprocessor.pca import PCAPreprocessor
+from neurosurrogate.surrogate.replace import (
+    _Absent,
+    _NotReplaceable,
+    _ParamsMismatch,
+    _rejected_targets,
+    _TypeMismatch,
+    applicable,
+    replace,
+)
 from neurosurrogate.surrogate.runs import SurrogateRuns
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
@@ -140,7 +149,7 @@ def _simulate_view(series: EvalSeries, runs: SurrogateRuns) -> SeriesResults:
         tuple(
             run_column(series, rid, bundle)
             for rid, bundle in runs
-            if bundle.spec.applicable(series)
+            if applicable(bundle.spec, series)
         ),
     )
 
@@ -560,12 +569,12 @@ def test_duplicate_library_types_are_rejected(sindy_closure: SINDyBundle) -> Non
 
 def test_feature_tex_drops_model_suffix(sindy_closure: SINDyBundle) -> None:
     """レート関数は未定義 Function → sympy が自動でギリシャ文字化。model は下付きへ
-    回すが、heatmap の軸ラベルでは冗長 → 落とす (tex は括弧へ整形して残す)。"""
-    texs = [feature_tex(e) for e in sindy_closure.feature_exprs]
+    回すが、heatmap の軸ラベルでは冗長 → 落とす (_tex は括弧へ整形して残す)。"""
+    texs = [_feature_tex(e) for e in sindy_closure.feature_exprs]
     assert all(t.startswith("$") and t.endswith("$") for t in texs)
     assert any(r"\alpha_{m}{\left(V \right)}" in t for t in texs)
     assert not any("(hh)" in t for t in texs)
-    full = [tex(e) for e in sindy_closure.feature_exprs]
+    full = [_tex(e) for e in sindy_closure.feature_exprs]
     assert any(r"\alpha_{m(hh)}{\left(V \right)}" in t for t in full)
 
 
@@ -591,12 +600,12 @@ def test_hybrid_traub_transplants_across_heterogeneous_compartments(
     traub19 = SimSpec(target="traub19", current_type="train", dt=0.01)
     # phi_area/g_Ca が異なる 19 comp すべてを**明示指定**して置換できる。pre-B は
     # soma のみ一致で ValueError だった (Ca params が latent に焼込まれていたため)。
-    assert surrogate.spec.rejected_targets(traub19.net, traub19.net.names) == []
+    assert _rejected_targets(surrogate.spec, traub19.net, traub19.net.names) == []
 
     # 置換シミュ (XI/Q を各ノード params で physics 積分) が有限に走る。
     v = access.potential(
         unified_simulator(
-            surrogate.apply(surrogate.spec.dataset.materialize(), ["soma"])
+            replace(surrogate, surrogate.spec.dataset.materialize(), ["soma"])
         ),
         _train_comp(surrogate),
     )
@@ -614,7 +623,7 @@ def test_replacing_one_node_of_traub19_runs_finitely() -> None:
         dt=0.01,
         current_params={"duration": 180},  # smoke: 配線確認のみ (本番は長時間)
     )
-    replaced = surrogate.apply(ds.materialize(), ["soma"])
+    replaced = replace(surrogate, ds.materialize(), ["soma"])
     # 残り 18 comp は原系のまま = 混在ネットが積分される
     assert [n.type.name for n in replaced.net.nodes].count("traub") == 18
 
@@ -637,7 +646,7 @@ def test_dendstim_injects_into_dendrite_while_replacing_soma() -> None:
     assert ds.materialize().stim_idx == DEND_STIM_IDX
 
     v = access.potential(
-        unified_simulator(surrogate.apply(ds.materialize(), ["soma"])),
+        unified_simulator(replace(surrogate, ds.materialize(), ["soma"])),
         ds.net.name_to_idx("soma"),
     )
     assert np.isfinite(v).all()
@@ -651,16 +660,16 @@ def test_apply_replaces_only_the_named_targets() -> None:
 
     # 19 comp 全部が互換だが、名指しした 2 つだけが surr 型に変わる
     surr_name = _surr_type(surrogate).name
-    replaced = surrogate.apply(ds, ["soma", "c00"])
+    replaced = replace(surrogate, ds, ["soma", "c00"])
     assert {n.name for n in replaced.net.nodes if n.type.name == surr_name} == {
         "soma",
         "c00",
     }
 
     with pytest.raises(ValueError, match="存在しない"):
-        surrogate.apply(ds, ["soma", "nonexistent"])
+        replace(surrogate, ds, ["soma", "nonexistent"])
     with pytest.raises(ValueError, match="明示指定"):
-        surrogate.apply(ds, [])
+        replace(surrogate, ds, [])
 
 
 def test_applicable_requires_every_named_target() -> None:
@@ -668,13 +677,13 @@ def test_applicable_requires_every_named_target() -> None:
     「1 つでも互換なら適用可」だと適用先の形態次第で置換範囲が黙って縮む。"""
     surrogate = fit_preset("_test_traub_hybrid")
     spec = SimSpec(target="traub19", current_type="train", dt=0.01)
-    assert surrogate.spec.applicable(
-        EvalSeries(spec=spec, replace_targets=("soma", "c00"))
+    assert applicable(
+        surrogate.spec, EvalSeries(spec=spec, replace_targets=("soma", "c00"))
     )
-    assert not surrogate.spec.applicable(
-        EvalSeries(spec=spec, replace_targets=("soma", "nonexistent"))
+    assert not applicable(
+        surrogate.spec, EvalSeries(spec=spec, replace_targets=("soma", "nonexistent"))
     )
-    assert not surrogate.spec.applicable(EvalSeries(spec=spec, replace_targets=()))
+    assert not applicable(surrogate.spec, EvalSeries(spec=spec, replace_targets=()))
 
 
 def test_rejection_names_the_reason_per_target(sindy: Surrogate) -> None:
@@ -687,16 +696,31 @@ def test_rejection_names_the_reason_per_target(sindy: Surrogate) -> None:
         ],
         edges=[],
     )
-    assert sindy.spec.rejected_targets(net, ["soma"]) == []
-    (reason,) = sindy.spec.rejected_targets(net, ["d1"])
-    assert "params 非両立" in reason
-    (reason,) = sindy.spec.rejected_targets(net, ["nope"])
-    assert "存在しない" in reason
+    assert _rejected_targets(sindy.spec, net, ["soma"]) == []
+    (reason,) = _rejected_targets(sindy.spec, net, ["d1"])
+    assert isinstance(reason, _ParamsMismatch) and reason.name == "d1"
+    assert reason.node_params != reason.train_params
+    (reason,) = _rejected_targets(sindy.spec, net, ["nope"])
+    assert isinstance(reason, _Absent) and reason.available == tuple(net.names)
     # 種類違い (traub 型ノードへ hh の学習を当てる)
-    (reason,) = sindy.spec.rejected_targets(
-        SimSpec(target="traub", current_type="train", dt=0.01).net, ["soma"]
+    (reason,) = _rejected_targets(
+        sindy.spec, SimSpec(target="traub", current_type="train", dt=0.01).net, ["soma"]
     )
-    assert "種類" in reason
+    assert isinstance(reason, _TypeMismatch)
+    assert reason.train_type == sindy.spec.comp_type.name
+
+
+def test_rejection_is_worded_only_when_shown(sindy: Surrogate) -> None:
+    """理由の文言を持つのは例外の提示だけ = 仕様が返すのは事実、`apply` が送出する
+    `_NotReplaceable` が名前ごとに文へ落とす (理由は構造のままでも読める)。"""
+    with pytest.raises(_NotReplaceable) as excinfo:
+        replace(
+            sindy,
+            SimSpec(target="traub", current_type="train", dt=0.01).materialize(),
+            ["soma", "nope"],
+        )
+    assert [type(r) for r in excinfo.value.rejections] == [_TypeMismatch, _Absent]
+    assert "'nope'" in str(excinfo.value) and "'soma'" in str(excinfo.value)
 
 
 def test_original_key_is_shared_across_replacement_scopes() -> None:
@@ -714,7 +738,7 @@ def test_multi_target_series_runs_through_run_column() -> None:
     `apply` へ渡し、19 comp 全部を置換した列が有限に走る。カタログの全置換系列が
     実サロゲートで適用可能であることも併せて見る (適用不可なら UI に出ない)。"""
     surrogate = fit_preset("_test_traub_hybrid")
-    assert surrogate.spec.applicable(SERIES["traub19_somastim_allcomp"])
+    assert applicable(surrogate.spec, SERIES["traub19_somastim_allcomp"])
 
     series = EvalSeries(
         spec=SimSpec(
@@ -762,11 +786,12 @@ def test_ude_traub_transplants_across_heterogeneous_compartments() -> None:
         TRAUB_EXTRA_GATE_NAMES
     )
     traub19 = SimSpec(target="traub19", current_type="train", dt=0.01)
-    assert surrogate.spec.rejected_targets(traub19.net, traub19.net.names) == []
+    assert _rejected_targets(surrogate.spec, traub19.net, traub19.net.names) == []
 
     v = access.potential(
         unified_simulator(
-            surrogate.apply(
+            replace(
+                surrogate,
                 surrogate.spec.dataset.materialize(),
                 surrogate.spec.dataset.net.names,
             )
@@ -887,6 +912,6 @@ def test_hybrid_opcost_includes_decode() -> None:
     assert (decode_cost.mul, decode_cost.pm) == (9, 9)
     assert _surr_type(surrogate).opcost == (
         decode_cost
-        + HybridAnsatz.split(surrogate.spec).dv_cost
+        + HybridAnsatz.split(**surrogate.spec.ansatz_config).dv_cost
         + surrogate.closure.opcost()
     )

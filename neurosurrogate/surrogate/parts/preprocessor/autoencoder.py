@@ -129,7 +129,7 @@ class AEPreprocessor(Preprocessor):
         x_hat = decoder(params, state)
         return jnp.asarray(x_hat * jnp.asarray(self.x_std) + jnp.asarray(self.x_mean))
 
-    def metrics(self) -> dict:
+    def metrics(self) -> dict[str, float]:
         return {f"ae/{k}": v for k, v in self.reconstruction.items()}
 
     def opcost(self) -> OpCost:

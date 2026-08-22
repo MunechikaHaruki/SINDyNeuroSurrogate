@@ -14,6 +14,7 @@ from catalog import SERIES
 from tqdm import tqdm
 
 from neurosurrogate.surrogate.model import SurrogateSpec
+from neurosurrogate.surrogate.replace import applicable
 
 from . import TARGET_EXP, logger
 from .surrogate import load_spec
@@ -36,7 +37,7 @@ def find_selectable_runs(
 ) -> pd.DataFrame:
     """run 表に出す行 = 選んだ系列を**実際に置換できる** run を preset で絞ったもの。
     系列は名前から引く (呼ぶ側はカタログを触らない)。置換可否の判定は
-    `SurrogateSpec.applicable` (ドメイン側) が持ち、spec だけで決まる = **学習
+    `surrogate.replace.applicable` (ドメイン側) が持ち、spec だけで決まる = **学習
     成果を読まずに絞れる**。系列が挙げた置換対象を全部置換できる run だけが出る。
     `preset=None` で preset は絞らない。
 
@@ -45,7 +46,7 @@ def find_selectable_runs(
     if not series_name:
         return runs_df.iloc[:0][_RUN_COLUMNS]
     return runs_df[
-        runs_df["spec"].map(lambda spec: spec.applicable(SERIES[series_name]))
+        runs_df["spec"].map(lambda spec: applicable(spec, SERIES[series_name]))
         & ((preset is None) | (runs_df["preset"] == preset))
     ][_RUN_COLUMNS]
 
