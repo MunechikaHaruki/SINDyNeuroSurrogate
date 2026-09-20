@@ -28,17 +28,15 @@
 
 ## Coding Standards
 
-- HH型マルチコンパートメントニューロンの一部ノードをSINDyで抽出したサロゲート方程式に置換し、演算コスト削減と波形再現性を評価する研究コード
-- 一時変数は同じ値を何度も使うような場合にのみ許可
-  - NG: `x = obj.attr; f(x)`
-  - OK: `f(obj.attr)`
-- 大きな改装が終わったら、just test でエラーが出ないことを確認,tests/ 以下のテストは自由に追加して良い ただし、20s以下に抑えること
-- Hooksで実行されるjust lint、just formatのエラーは都度対処すること
-- 研究のまとめは、docs/poster、docs/slideディレクトリ以下にtypstとしてまとめる
-- **init**.pyに**all**フィールドは定義しないこと　過剰な複雑さ
-- `_` 始まりのモジュール名は「そのパッケージの外から import しない」印　外から使うものに `_` を付けない
-  [以下のセクションは永続メモリとして上書きしても構いません。
-  ただし、基本的なコマンドやディレクトリ構成などの目録のみを記述すること]
+HH 型マルチコンパートメントニューロンの一部ノードを SINDy で抽出したサロゲート方程式に
+置換し、演算コスト削減と波形再現性を評価する研究コードである。
+
+- 一時変数は同じ値を何度も使うときだけ許す（NG: `x = obj.attr; f(x)` / OK: `f(obj.attr)`）
+- `__init__.py` に `__all__` を定義しない。過剰な複雑さになる
+- `_` 始まりのモジュール名は「そのパッケージの外から import しない」印。外から使うものに付けない
+- 大きな改装のあとは `just test` が通ることを確認する。テストは自由に足してよいが 20s 以下に抑える
+- Hooks で走る `just lint`、`just format` のエラーは都度対処する
+- 研究のまとめは `docs/poster/`、`docs/slide/` に Typst で置く
 
 ## Commands
 
@@ -81,17 +79,9 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 
 ## Agent skills
 
-### Issue tracker
-
-GitHub Issues (`gh` CLI)。See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-デフォルト5ラベル (`needs-triage`/`needs-info`/`ready-for-agent`/`ready-for-human`/`wontfix`)。See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-single-context (`CONTEXT.md` + `docs/adr/`、未作成)。See `docs/agents/domain.md`.
+- Issue tracker: GitHub Issues (`gh` CLI)。`docs/agents/issue-tracker.md`
+- Triage labels: 5 ラベル (`needs-triage`/`needs-info`/`ready-for-agent`/`ready-for-human`/`wontfix`)。`docs/agents/triage-labels.md`
+- Domain docs: single-context (`CONTEXT.md` + `docs/adr/`、未作成)。`docs/agents/domain.md`
 
 ## graphify
 
