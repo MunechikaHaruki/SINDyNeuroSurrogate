@@ -12,7 +12,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 実験の結果と図 | MLflow (`just mlflow`) |
 | 研究のまとめ、ポスター、スライド | `docs/poster/`、`docs/slide/` |
 | この領域の用語 | `CONTEXT.md` |
-| 設計の詳細と判断基準 | `docs/architecture.md`、`docs/agents/` |
+| 設計の詳細と判断基準 | `docs/architecture.md`、`docs/agents/`、`docs/adr/` |
 
 ## 持たないもの
 
@@ -63,7 +63,7 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 
 - Issue tracker: GitHub Issues (`gh` CLI)。`docs/agents/issue-tracker.md`
 - Triage labels: 5 ラベル (`needs-triage`/`needs-info`/`ready-for-agent`/`ready-for-human`/`wontfix`)。`docs/agents/triage-labels.md`
-- Domain docs: single-context (`CONTEXT.md` + `docs/adr/`、未作成)。`docs/agents/domain.md`
+- Domain docs: single-context (`CONTEXT.md` + `docs/adr/`)。`docs/agents/domain.md`
 
 ## graphify
 
