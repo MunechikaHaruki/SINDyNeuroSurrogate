@@ -35,10 +35,10 @@ clean-test:
     {{ VIRTUAL_ENV }} python -c "import mlflow; mlflow.set_tracking_uri('{{ MLFLOW_URI }}'); c = mlflow.MlflowClient(); e = c.get_experiment_by_name('{{ SMOKE_EXP }}'); [c.delete_run(r.info.run_id) for r in c.search_runs(e.experiment_id, run_view_type=1)] if e else None; c.delete_experiment(e.experiment_id) if e else None"
     {{ VIRTUAL_ENV }} python -m mlflow gc --backend-store-uri {{ MLFLOW_URI }} --tracking-uri {{ MLFLOW_URI }}
 
-# Format source code with ruff
+# Format source code with ruff (the version pinned by dotfiles, same as the edit hook)
 format:
-    {{ VIRTUAL_ENV }} ruff check --fix
-    {{ VIRTUAL_ENV }} ruff format
+    ruff check --fix
+    ruff format
 
 #################################################################################
 # static measurement about code                                                 #
@@ -46,8 +46,8 @@ format:
 
 # Lint using ruff
 lint:
-    {{ VIRTUAL_ENV }} ruff format --check
-    {{ VIRTUAL_ENV }} ruff check
+    ruff format --check
+    ruff check
     {{ VIRTUAL_ENV }} mypy .
 
 # Count lines of code
