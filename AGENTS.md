@@ -10,13 +10,13 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | Hydra / MLflow / marimo の入口 | `scripts/` |
 | 実験の結果と図 | MLflow (`just mlflow`) |
-| 研究のまとめ、ポスター、スライド | `docs/poster/`、`docs/slide/` |
 | この領域の用語 | `CONTEXT.md` |
 | 設計の詳細と判断基準 | `docs/architecture.md`、`docs/agents/`、`docs/adr/` |
 
 ## 持たないもの
 
 - 概念の説明や教材。この領域からは参照しない。
+- ポスター、スライド、論文の原稿
 - 修論の計画、期日、週次の進捗、受けた指摘
 - 本人の事実と、進路の判断基準
 
@@ -29,7 +29,6 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 - `_` 始まりの名前とモジュール名は「外から参照しない」印。外から使うものに付けない
 - 大きな改装のあとは `just test` が通ることを確認する。テストは自由に足してよいが 20s 以下に抑える
 - Hooks で走る `just lint`、`just format` のエラーは都度対処する
-- 研究のまとめは `docs/poster/`、`docs/slide/` に Typst で置く
 
 ## Commands
 

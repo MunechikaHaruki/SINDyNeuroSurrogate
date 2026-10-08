@@ -15,8 +15,6 @@ scripts/conf/surrogate/__*
 # marimo の出力先 (研究成果物、conf 外へ退避)
 results/
 
-docs/slide/result/_*
-docs/slide/main.pdf
 
 graphify-out/
 
