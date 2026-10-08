@@ -41,7 +41,7 @@ uv run scripts/main.py surrogate=_hh_informed  # Hydra プリセット切替
 uv run scripts/main.py --multirun            # preset の hydra.sweeper.params 直積 sweep
 just test                  # pytest + main.py
 just format && just lint   # ruff / ruff + mypy (strict、scripts/ 除外)
-just mlflow                # MLflow UI (port 5100)
+just mlflow                # MLflow server (port 5100)。Mac ではログイン時に常駐する
 just marimo                # marimo notebook (port 2700。CLI は持たず二重管理を避ける)
 just marimo-mcp            # Claude Code MCP 連携 (port 2701)
 just traub                 # traub_* preset を順に --multirun

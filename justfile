@@ -82,10 +82,13 @@ traub:
         {{ VIRTUAL_ENV }} python scripts/main.py --multirun surrogate="$preset"
     done
 
-# activate logging server
+# activate logging server。Mac ではログイン時の常駐（dotfiles の launchd）が叩くので、手で打たなくてよい。
+# 既に上がっていれば何もしない（常駐と手打ちが殺し合わないように）。
 mlflow:
-    @lsof -t -i:{{ MLFLOW_PORT }} | xargs kill -9 || true
-    {{ VIRTUAL_ENV }} python -m mlflow ui --port {{ MLFLOW_PORT }} --backend-store-uri {{ MLFLOW_URI }}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if nc -z 127.0.0.1 {{ MLFLOW_PORT }} 2>/dev/null; then echo "MLflow は既に http://127.0.0.1:{{ MLFLOW_PORT }} で上がっている"; exit 0; fi
+    exec {{ VIRTUAL_ENV }} python -m mlflow server --host 127.0.0.1 --port {{ MLFLOW_PORT }} --backend-store-uri {{ MLFLOW_URI }}
 
 marimo:
     {{ VIRTUAL_ENV }} marimo edit --watch --no-token --port 2700 scripts/marimo.py
