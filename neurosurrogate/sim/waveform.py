@@ -1,11 +1,8 @@
-"""波形/スパイクの指標計算 (DynamicMetrics の計算 + 純粋関数、素の値のみ返す)。
-marimo/mlflow 非依存。
+"""波形/スパイクの指標計算。MLflow 非依存。
 
-**DataFrame 化 (表として並べる/どの列名にするか) はここの関心でない**: それは
-「結果をどう見せるか」= 描画層の仕事 (`sim/artifacts/_tables.py`)。ここは
-`DynamicMetrics` を引数に取り、スカラーや (orig, surr) のタプル/dict を返す
-純粋関数群だけを持つ。発散判定 (`diverged`) は `eval.py` の発散ログからも
-呼ばれる共通述語なので `core/diverge.py` に置く。
+外へ出すのは `compare` 1 つ = 1 ペア (原系, 置換系) の全指標を素の値の dict で返す。
+並べ方と描き方は持たない (図は live-textbook の冊が JSON を読んで描く)。発散判定
+(`diverged`) は発散ログからも呼ばれる共通述語なので `core/diverge.py` に置く。
 """
 
 from __future__ import annotations
@@ -21,6 +18,7 @@ import numpy as np
 import xarray as xr
 
 from ..core import access
+from ..core.diverge import diverged
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -60,7 +58,7 @@ _NAN = float("nan")
 
 
 @dataclass
-class DynamicMetrics:
+class _DynamicMetrics:
     """電圧・eFEL特徴量を計算するデータ層。下記の純粋関数群から参照される
     (計算そのものはここで完結し、指標側は cached の値を読むだけ)。"""
 
@@ -122,9 +120,8 @@ def _at_or_nan(arr, idx: int) -> float:
     return float(arr[idx])
 
 
-def diff_or_nan(o: float, s: float) -> float:
-    """o - s。ただし片方でも nan なら nan を返す（差分計算の nan 伝播）。
-    表の組立 (`_tables.py` の `orig-surr` 列) からも使う公開関数。"""
+def _diff_or_nan(o: float, s: float) -> float:
+    """o - s。ただし片方でも nan なら nan を返す（差分計算の nan 伝播）。"""
     return o - s if not (np.isnan(o) or np.isnan(s)) else _NAN
 
 
@@ -141,16 +138,16 @@ def _pair(fn: Callable[[T], R], pair: tuple[T, T]) -> tuple[R, R]:
 
 
 # ---------------------------------------------------------------------------
-# スパイク指標（純粋関数群、DynamicMetrics を引数で受ける）
+# スパイク指標（純粋関数群、_DynamicMetrics を引数で受ける）
 # ---------------------------------------------------------------------------
 
 
-def n_spikes(dm: DynamicMetrics) -> tuple[int, int]:
+def _n_spikes(dm: _DynamicMetrics) -> tuple[int, int]:
     """(n_orig, n_surr): 各信号のスパイク数。"""
     return _pair(len, dm.peaks)
 
 
-def spike_shape_corr(dm: DynamicMetrics) -> dict:
+def _spike_shape_corr(dm: _DynamicMetrics) -> dict:
     """平均スパイクテンプレート間の Pearson 相関（1に近いほど形状が一致）。"""
     half_win = int(2.0 / dm.dt)
 
@@ -168,19 +165,16 @@ def spike_shape_corr(dm: DynamicMetrics) -> dict:
     return {"spike_shape_corr": _corr_or_nan(orig_tmpl, surr_tmpl)}
 
 
-def spike_feature_values(
-    dm: DynamicMetrics,
-    spike_orig: int = 0,
-    spike_surr: int = 0,
-) -> dict[str, tuple[float, float]]:
-    """指定 AP の eFEL 特徴量ごとの (orig, surr)。並べ方 (DataFrame 化) は
-    呼び出し側 (`sim/artifacts/_tables.py`) の関心。"""
+def _spike_features(dm: _DynamicMetrics) -> dict[str, tuple[list, list]]:
+    """eFEL 特徴量ごとの (orig, surr) の全 AP 分。比べる AP は読む側が選ぶ。"""
+
+    def values(features: dict, feat: str) -> list:
+        found = features.get(feat)
+        return [] if found is None else [float(x) for x in found]
+
     orig_feat, surr_feat = dm.efel
     return {
-        feat: (
-            _at_or_nan(orig_feat.get(feat), spike_orig),
-            _at_or_nan(surr_feat.get(feat), spike_surr),
-        )
+        feat: (values(orig_feat, feat), values(surr_feat, feat))
         for feat in _MEDIAN_FEATURES
     }
 
@@ -189,17 +183,8 @@ def spike_feature_values(
 # 波形・発火パターン指標（純粋関数群）
 # ---------------------------------------------------------------------------
 
-# waveform_summary_df の row 名（原系/置換系の両方が定義される指標）
-_ROW_METRICS: list[str] = ["spike_count", "latency", "mean_isi", "std_isi"]
-# waveform_summary + spike_shape_corr のキー（両者の比較なので置換系側だけの指標）
-_SCALAR_METRICS: list[str] = ["rmse", "mae", "periodicity_gap", "spike_shape_corr"]
-# 点軸メトリクス図で選べる metric の**単一源**。UI の選択肢も `extract_metric` の
-# 受理集合もここから引く (別々に並べると、生成されないキーを選べてしまい黙って
-# nan 図が出る)。
-METRIC_KEYS: list[str] = _ROW_METRICS + _SCALAR_METRICS
 
-
-def _waveform_error(dm: DynamicMetrics) -> dict:
+def _waveform_error(dm: _DynamicMetrics) -> dict:
     """RMSE/MAE の波形誤差スカラー。"""
     orig_v, surr_v = dm.voltages
     return {
@@ -208,39 +193,38 @@ def _waveform_error(dm: DynamicMetrics) -> dict:
     }
 
 
-def _latency(dm: DynamicMetrics) -> tuple[float, float]:
+def _latency(dm: _DynamicMetrics) -> tuple[float, float]:
     return _pair(lambda f: _at_or_nan(f.get("time_to_first_spike"), 0), dm.efel)
 
 
-def _isi_stat(dm: DynamicMetrics, fn) -> tuple[float, float]:
+def _isi_stat(dm: _DynamicMetrics, fn) -> tuple[float, float]:
     isi = _pair(lambda f: f.get("ISI_values"), dm.efel)
     return _pair(lambda a: _or_nan(fn, a), isi)
 
 
-def waveform_summary_rows(dm: DynamicMetrics) -> dict[str, tuple[float, float]]:
-    """spike_count / latency / mean_isi / std_isi の (orig, surr)。並べ方
-    (DataFrame 化) は呼び出し側 (`sim/artifacts/_tables.py`) の関心。"""
-    o_n, s_n = n_spikes(dm)
+def compare(
+    original: xr.Dataset, surrogate: xr.Dataset, comp_id: int, dt: float
+) -> dict:
+    """1 ペアの comp `comp_id` の全指標。
+
+    `rows` は原系と置換系の両方にある指標の (orig, surr)、`scalars` は両者の比較で
+    決まる指標、`spikes` は AP ごとの特徴量。値は nan を含む素の float。`diverged` は
+    置換系の電位が破綻したか (波形の図はそのとき置換系を描かない)。"""
+    dm = _DynamicMetrics(original, surrogate, comp_id, dt)
+    o_n, s_n = _n_spikes(dm)
+    isi_mean = _isi_stat(dm, np.mean)
     return {
-        "spike_count": (float(o_n), float(s_n)),
-        "latency": _latency(dm),
-        "mean_isi": _isi_stat(dm, np.mean),
-        "std_isi": _isi_stat(dm, np.std),
+        "rows": {
+            "spike_count": (float(o_n), float(s_n)),
+            "latency": _latency(dm),
+            "mean_isi": isi_mean,
+            "std_isi": _isi_stat(dm, np.std),
+        },
+        "scalars": {
+            **_waveform_error(dm),
+            "periodicity_gap": abs(_diff_or_nan(*isi_mean)),
+            **_spike_shape_corr(dm),
+        },
+        "spikes": _spike_features(dm),
+        "diverged": diverged(dm.voltages[1]),
     }
-
-
-def waveform_summary(dm: DynamicMetrics) -> dict:
-    """波形誤差 (rmse/mae) + 発火周期のズレ (periodicity_gap)。"""
-    return {
-        **_waveform_error(dm),
-        "periodicity_gap": abs(diff_or_nan(*_isi_stat(dm, np.mean))),
-    }
-
-
-def extract_metric(dm: DynamicMetrics, metric_key: str) -> tuple[float | None, float]:
-    """指定 metric の (orig, surr)。両者の比較で決まるスカラー metric に原系の値は
-    無い → orig は None。未知キーは KeyError (選択肢は `METRIC_KEYS` が単一源で、
-    そこに載っていて取り出せないキーがあれば黙って nan を返さず落とす)。"""
-    if metric_key in _ROW_METRICS:
-        return waveform_summary_rows(dm)[metric_key]
-    return None, float({**waveform_summary(dm), **spike_shape_corr(dm)}[metric_key])

@@ -7,10 +7,10 @@
    印として信用できる状態を保つ (import 元を grep しないと公開範囲が分からない、を防ぐ)
 2. **依存の向き** — `neurosurrogate/` 内の import が `_LAYERS` の許可を超えない
    (`docs/architecture.md` の層の宣言をそのまま実行可能にしたもの)
-3. **ドメイン層の独立** — `neurosurrogate/` が marimo/MLflow/Hydra を import しない
+3. **ドメイン層の独立** — `neurosurrogate/` が MLflow/Hydra を import しない
 
 判定は import 文と属性アクセスの静的解析。動的にしか呼ばれない入口 (Hydra の
-`_target_`、marimo の app、コンソールスクリプト) は `_EXEMPT` で明示的に免除する
+`_target_`、`just eval` の入口、コンソールスクリプト) は `_EXEMPT` で明示的に免除する
 = **免除もコードに書いてあるものだけ**。
 """
 
@@ -30,7 +30,7 @@ PUBLIC_REF_DIRS = SRC_DIRS
 # 動的に解決される入口 = 静的解析からは参照が見えない。
 _EXEMPT = {
     ("scripts/main.py", "main"),  # Hydra の @hydra.main エントリ
-    ("scripts/marimo.py", "app"),  # marimo が module 属性として拾う
+    ("scripts/evaluate.py", "main"),  # `just eval` が直接起動する
 }
 # **名前空間ごと**外へ渡す module = 公開範囲が「module 直下の全部」。
 # `sindy._catalog` が `vars(hh) | vars(traub)` を lambdify の名前空間に注入するので、
@@ -43,8 +43,8 @@ _EXEMPT_MODULES = {
 # 名前を文字列で受け取る呼び出し (monkeypatch など) の引数も参照とみなす。
 _BY_NAME = {"setattr", "getattr", "hasattr", "delattr"}
 
-# `_` 無しの module 名でも、外から import されない入口 (Hydra/marimo が直接起動する)。
-_EXEMPT_ENTRY_MODULES = {"scripts/main.py", "scripts/marimo.py"}
+# `_` 無しの module 名でも、外から import されない入口 (Hydra/just が直接起動する)。
+_EXEMPT_ENTRY_MODULES = {"scripts/main.py", "scripts/evaluate.py"}
 
 # --- 依存の向き (docs/architecture.md の宣言) ---------------------------------
 # 場所 → 層 (module path の前方一致。長い方が勝つ = ファイル単位で層を割れる)。
@@ -54,10 +54,8 @@ _GROUP_OF = {
     "neurosurrogate/core/": "base",
     "neurosurrogate/artifact/model": "base",
     "neurosurrogate/artifact/plotting": "base",
-    "neurosurrogate/artifact/bundle": "bundle",
     "neurosurrogate/neurons/": "neurons",
     "neurosurrogate/sim/run": "sim_exec",
-    "neurosurrogate/sim/artifacts": "sim_exec",
     "neurosurrogate/sim/": "sim_desc",
     "neurosurrogate/surrogate/": "surrogate",
 }
@@ -69,12 +67,10 @@ _LAYERS = {
     "sim_desc": frozenset({"base", "neurons"}),
     "surrogate": frozenset({"base", "neurons", "sim_desc"}),
     "sim_exec": frozenset({"base", "neurons", "sim_desc", "surrogate"}),
-    # 合流点。全部見てよいのはここだけ
-    "bundle": frozenset({"base", "neurons", "sim_desc", "surrogate", "sim_exec"}),
 }
 
 # ドメイン層が触ってはいけない基盤 (実行/記録の入口は scripts/ だけが知る)。
-_INFRA_ROOTS = {"marimo", "mlflow", "hydra", "omegaconf"}
+_INFRA_ROOTS = {"mlflow", "hydra", "omegaconf"}
 
 
 def _py_files(dirs: tuple[str, ...]) -> list[pathlib.Path]:
@@ -88,8 +84,8 @@ def _py_files(dirs: tuple[str, ...]) -> list[pathlib.Path]:
 
 def _module_path(mod: str, base: pathlib.Path, level: int) -> pathlib.Path | None:
     """import 文の module 指定 → ファイル。相対 import は `base` から遡り、
-    絶対 import は import root (repo 直下と `scripts/`。後者は marimo/Hydra の
-    入口が sys.path に持つ) から引く。"""
+    絶対 import は import root (repo 直下と `scripts/`。後者は Hydra や
+    `just eval` の入口が sys.path に持つ) から引く。"""
     if level:
         pkg = base.parent
         for _ in range(level - 1):
@@ -309,7 +305,7 @@ def test_import_direction_follows_layers() -> None:
 
 
 def test_domain_layer_does_not_import_infra() -> None:
-    """`neurosurrogate/` は marimo/MLflow/Hydra を知らない (入口は `scripts/`)。"""
+    """`neurosurrogate/` は MLflow/Hydra を知らない (入口は `scripts/`)。"""
     bad = []
     for path in _py_files(("neurosurrogate",)):
         for node in _import_nodes(path):

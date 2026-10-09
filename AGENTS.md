@@ -8,8 +8,8 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 中身 | 場所 |
 | --- | --- |
 | 研究コード（ドメイン層） | `neurosurrogate/` |
-| Hydra / MLflow / marimo の入口 | `scripts/` |
-| 実験の結果と図 | MLflow (`just mlflow`) |
+| 学習（Hydra）と評価（`just eval`）の入口、MLflow の読み書き | `scripts/` |
+| 実験の結果 | MLflow (`just mlflow`)。図は親の live-textbook の `research/sindy-surrogate-evaluation` が描く |
 | この領域の用語 | `CONTEXT.md` |
 | 設計の詳細と判断基準 | `docs/architecture.md`、`docs/agents/`、`docs/adr/` |
 
@@ -40,10 +40,9 @@ uv run scripts/main.py                       # fit + MLflow log のみ (kernel �
 uv run scripts/main.py surrogate=_hh_informed  # Hydra プリセット切替
 uv run scripts/main.py --multirun            # preset の hydra.sweeper.params 直積 sweep
 just test                  # pytest + main.py
-just format && just lint   # ruff / ruff + mypy (strict、scripts/ 除外)
+just format && just lint   # ruff / ruff + mypy (scripts/ も含む)
 just mlflow                # MLflow server (port 5100)。Mac ではログイン時に常駐する
-just marimo                # marimo notebook (port 2700。CLI は持たず二重管理を避ける)
-just marimo-mcp            # Claude Code MCP 連携 (port 2701)
+just eval <系列> <学習 run>...  # 評価して波形 run を MLflow に置く (系列の一覧は just eval -h)
 just traub                 # traub_* preset を順に --multirun
 just clean-cache / clean-log
 just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment のみ削除
@@ -52,10 +51,10 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 ## Architecture
 
 - 依存の向き: `core ← neurons ← sim.{_current_catalog,spec,result} ← surrogate ← sim.{run,artifacts} ← artifact.bundle`
-- `neurosurrogate/` はドメイン層で、marimo/MLflow/Hydra を import しない。
-- 描画成果物も評価結果本体も MLflow に置く（図はレポート run の artifact）。
+- `neurosurrogate/` はドメイン層で、MLflow/Hydra を import しない。
+- 評価結果は MLflow の波形 run に置き、Python では図を描かない（学習 run が自分について描く図だけは学習のときに `figures/` へ）。形式は `docs/architecture.md`。
 - 依存の向き、ドメイン層の import、`__all__` の不在、`_` の綴りは `tests/test_conventions.py` が機械検査する。
-- 動的に呼ばれる入口（Hydra entry / marimo app / `neurons/{hh,traub}.py`）はテスト側の免除リストに明記する。
+- 動的に呼ばれる入口（Hydra entry / `just eval` の main / `neurons/{hh,traub}.py`）はテスト側の免除リストに明記する。
 - 検査が落ちたら、テストを緩めずコードを直す。
 - 各ディレクトリとファイルの責務、設定ファイルの規約は `docs/architecture.md` が持つ。
 - 設計に手を入れる前に `docs/agents/design-principles.md`（どちらへ倒すかの判断基準）を読む。

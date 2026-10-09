@@ -1,9 +1,10 @@
-"""学習 experiment (`TARGET_EXP`) の**成果物**: surrogate の pickle + spec.json。
+"""学習 experiment (`_TARGET_EXP`) の**成果物**: surrogate の pickle + spec.json と、
+学習 run 1 本が自分について描ける図 (`figures/`)。
 
 答えるのは「その run の surrogate」だけ (`load_surrogate_runs`)。**どの run が居るか・
-選べるかは知らない** (→ `runs` module。読込可否の判定に `load_spec` だけ貸す)。
-評価 (波形) も知らない。**選んだ run がそのまま run 軸**で、選択を広げも縮めもしない
-(hydra の親子は MLflow UI 上の grouping で、比較の単位ではない)。
+選べるかは知らない** (選ぶのは live-textbook の冊)。評価 (波形) も知らない。
+**選んだ run がそのまま run 軸**で、選択を広げも縮めもしない (hydra の親子は
+MLflow UI 上の grouping で、比較の単位ではない)。
 """
 
 import tempfile
@@ -13,16 +14,15 @@ from pathlib import Path
 import mlflow
 import mlflow.artifacts
 
-from neurosurrogate.surrogate.model import (
-    SPEC_FILE,
-    Surrogate,
-    SurrogateSpec,
-)
+from neurosurrogate.artifact.plotting import use_style
+from neurosurrogate.surrogate.artifacts import surrogate_artifacts
+from neurosurrogate.surrogate.model import Surrogate
 from neurosurrogate.surrogate.runs import SurrogateRuns
 
 from . import logger
 
 _SURR_ARTIFACT_DIR = "surrogate"
+_FIGURES_DIR = "figures"
 
 
 def log_surrogate_model(surrogate: Surrogate) -> None:
@@ -31,10 +31,19 @@ def log_surrogate_model(surrogate: Surrogate) -> None:
         mlflow.log_artifacts(tmp_str, artifact_path=_SURR_ARTIFACT_DIR)
 
 
+def log_surrogate_figures(surrogate: Surrogate) -> None:
+    """学習 run 1 本が自分について描ける図を、開いている run の `figures/` へ置く。
+    学習 run だけで決まる図なので、学習のときに一度だけ描けば足りる。"""
+    use_style()
+    with tempfile.TemporaryDirectory() as tmp_str:
+        surrogate_artifacts(surrogate).save(Path(tmp_str))
+        mlflow.log_artifacts(tmp_str, artifact_path=_FIGURES_DIR)
+
+
 @cache
 def _load_surrogate_model(run_id: str) -> Surrogate:
-    """run_id → surrogate。**run_id ごとに 1 回だけ** DL + unpickle (marimo のセル
-    再実行で何度も要求される)。artifact は run に対し不変なので使い回してよい。"""
+    """run_id → surrogate。**run_id ごとに 1 回だけ** DL + unpickle。artifact は run に
+    対し不変なので使い回してよい。"""
     logger.debug(f"Loading surrogate from run {run_id}")
     with tempfile.TemporaryDirectory() as tmp_str:
         local = Path(
@@ -43,19 +52,6 @@ def _load_surrogate_model(run_id: str) -> Surrogate:
             )
         )
         return Surrogate.load(local)
-
-
-@cache
-def load_spec(run_id: str) -> SurrogateSpec:
-    """run の同定情報だけを読む (spec.json のみ DL)。run 一覧は全 run 分これを呼ぶ
-    ので、学習成果物の pickle まで落とさない。失敗の握り潰しは呼ぶ側 (`runs`)。"""
-    with tempfile.TemporaryDirectory() as tmp_str:
-        local = Path(
-            mlflow.artifacts.download_artifacts(
-                f"runs:/{run_id}/{_SURR_ARTIFACT_DIR}/{SPEC_FILE}", dst_path=tmp_str
-            )
-        )
-        return SurrogateSpec.read(local)
 
 
 def _load_run_names(run_ids: list[str]) -> tuple[str, ...]:

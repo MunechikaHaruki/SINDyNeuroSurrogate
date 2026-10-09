@@ -20,7 +20,7 @@ from pathlib import Path
 
 import mlflow
 
-TARGET_EXP = "test_static_params"
+_TARGET_EXP = "test_static_params"
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def _setup_mlflow() -> None:
     mlflow.set_tracking_uri(f"sqlite:///{project_root}/mlflow.db")
     # smoke test は MLFLOW_EXPERIMENT=smoke_test で本番 experiment を汚さず隔離
     # (just clean-test が丸ごと削除)。既定は本番 experiment のまま。
-    mlflow.set_experiment(os.environ.get("MLFLOW_EXPERIMENT", TARGET_EXP))
+    mlflow.set_experiment(os.environ.get("MLFLOW_EXPERIMENT", _TARGET_EXP))
     # 全 run の spec 読込で artifact DL 進捗バーが大量出力 → 抑制
     os.environ["MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR"] = "false"
 

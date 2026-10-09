@@ -2,7 +2,7 @@
 (SINDy 係数 heatmap と方程式)・preprocessor の固有図 (PCA scree)。
 
 **置換シミュを回さずに描ける** = run をロードしただけで出る図。共通の図が無い表現
-(closure/preprocessor の型ごと) は型で振り分け、非対応なら None を返す。marimo 非依存。
+(closure/preprocessor の型ごと) は型で振り分け、非対応なら None を返す。
 """
 
 from __future__ import annotations
@@ -139,7 +139,7 @@ def _latex(e: sp.Basic) -> str:
 
 
 def _tex(e: sp.Basic) -> str:
-    """sympy 式 → インライン数式 (matplotlib mathtext / marimo の md 共通記法)。"""
+    """sympy 式 → インライン数式 (matplotlib mathtext)。"""
     return f"${_latex(e)}$"
 
 

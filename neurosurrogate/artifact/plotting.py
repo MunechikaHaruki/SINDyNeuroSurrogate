@@ -4,7 +4,7 @@
 **このリポジトリで唯一「機能で切った」層** — 図を出すドメイン (`waveform` /
 `surrogate.artifacts` / `sim.artifacts`) がどれも同じ matplotlib の作法を要るから。
 逆に言えばドメインの知識はここに一切入れない: `TraceSpec` は t/y を numpy で持ち
-Dataset も NeuronGraph も知らない。marimo 非依存。
+Dataset も NeuronGraph も知らない。
 """
 
 from __future__ import annotations

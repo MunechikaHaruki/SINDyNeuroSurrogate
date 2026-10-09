@@ -38,18 +38,6 @@ def comp_ids(ds: xr.Dataset) -> np.ndarray:
     return np.unique(ds.coords["comp_id"].values)
 
 
-def gate_variables(ds: xr.Dataset, comp_id: int) -> np.ndarray:
-    """comp_id のゲート/状態変数 (gate=True) 名を列挙。gate 無し comp は空。"""
-    sub = ds["vars"].sel(comp_id=comp_id)
-    mask = sub.coords["gate"].values
-    return np.unique(sub.coords["variable"].values[mask])
-
-
-def latent_variables(ds: xr.Dataset) -> list[str]:
-    """電位以外の変数名 (latent 系) を列挙。"""
-    return [v for v in ds.coords["variable"].values if v != POTENTIAL_VAR]
-
-
 # --- numpy accessor (計算層) ------------------------------------------------
 
 
@@ -96,10 +84,6 @@ def i_internal_values(ds: xr.Dataset, comp_id: int) -> np.ndarray:
     return ds["I_internal"].sel(node_id=comp_id).to_numpy()
 
 
-def has_i_internal(ds: xr.Dataset) -> bool:
-    return "I_internal" in ds
-
-
 # --- (t, y) accessor (描画層) -----------------------------------------------
 
 
@@ -109,7 +93,3 @@ def trace(ds: xr.Dataset, comp_id: int, variable: str) -> _Trace:
 
 def i_ext(ds: xr.Dataset) -> _Trace:
     return time(ds), i_ext_values(ds)
-
-
-def i_internal(ds: xr.Dataset, comp_id: int) -> _Trace:
-    return time(ds), i_internal_values(ds, comp_id)

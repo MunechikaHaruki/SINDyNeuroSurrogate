@@ -13,10 +13,11 @@
 ## setup
 ```bash
 uv sync
-just marimo
+uv run scripts/main.py surrogate=traub_useMC19CompForTeachingData   # 学習
+just eval traub19_somastim <学習 run の id>                           # 評価
 ```
 
-![marimo](docs/marimo.png)
+結果は MLflow（`just mlflow`）に入り、live-textbook の `research/sindy-surrogate-evaluation` が読んで描く。
 
 ## Usage
 ![Status](https://img.shields.io/badge/docs-writing-orange)

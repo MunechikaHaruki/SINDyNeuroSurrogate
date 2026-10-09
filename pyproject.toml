@@ -35,9 +35,6 @@ dev = [
     "radon>=6.0.1",
     "mypy>=1.17.1",
     "psutil>=7.0.0",
-    "marimo[mcp]>=0.21.0",
-    "pydantic-ai-slim>=1.70.0",
-    "google-genai>=1.68.0",
     "pynvml>=13.0.1",
     "pytest>=9.1.1",
     "pandas-stubs>=3.0.3.260530",
@@ -50,16 +47,10 @@ testpaths = ["tests"]
 strict = false
 warn_return_any = true
 warn_unused_ignores = true
-exclude = ["scripts/"]
+mypy_path = "scripts"
 
 [[tool.mypy.overrides]]
 module = ["sklearn.*", "pysindy", "sympy.*", "efel", "joblib", "optax", "networkx", "seaborn"]
-ignore_missing_imports = true
-
-# scripts/ は型検査の対象外 (exclude) だが、テストは MLflow I/O と回したい条件の
-# カタログをそこから読む。
-[[tool.mypy.overrides]]
-module = ["mlflow_io.*", "catalog"]
 ignore_missing_imports = true
 
 [tool.ruff]

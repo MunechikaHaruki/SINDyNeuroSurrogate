@@ -4,7 +4,6 @@
 neurosurrogate.egg-info/
 # cache
 **/__pycache__/**
-**/__marimo__/**
 # logged artifacts
 **/mlruns/**
 mlflow.db
@@ -12,8 +11,6 @@ mlflow.db
 **/hydra-outputs/**/
 
 scripts/conf/surrogate/__*
-# marimo の出力先 (研究成果物、conf 外へ退避)
-results/
 
 
 graphify-out/

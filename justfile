@@ -18,7 +18,6 @@ clean-cache:
     rm -rf ./.mypy_cache
     rm -rf ./.ruff_cache
     rm -rf ./.pytest_cache
-    rm -rf ./__marimo__
 
 clean-log:
     rm -rf ./hydra-multiruns
@@ -67,7 +66,7 @@ radon:
 # PROJECT RULES                                                                 #
 #################################################################################
 
-# Smoke test: pytest (ドメイン層) + Hydra entry + marimo notebook (cell error -> exit 1)
+# Smoke test: pytest (ドメイン層) + Hydra entry
 test:
     {{ VIRTUAL_ENV }} pytest -q
     MLFLOW_EXPERIMENT={{ SMOKE_EXP }} {{ VIRTUAL_ENV }} python scripts/main.py surrogate=_test_hh_sindy
@@ -90,9 +89,7 @@ mlflow:
     if nc -z 127.0.0.1 {{ MLFLOW_PORT }} 2>/dev/null; then echo "MLflow は既に http://127.0.0.1:{{ MLFLOW_PORT }} で上がっている"; exit 0; fi
     exec {{ VIRTUAL_ENV }} python -m mlflow server --host 127.0.0.1 --port {{ MLFLOW_PORT }} --backend-store-uri {{ MLFLOW_URI }}
 
-marimo:
-    {{ VIRTUAL_ENV }} marimo edit --watch --no-token --port 2700 scripts/marimo.py
-
-# Claude Code連携用（MCP + watchモード）
-marimo-mcp:
-    {{ VIRTUAL_ENV }} marimo edit --watch --mcp --no-token --port 2701 scripts/marimo.py
+# 評価: 系列を原系と学習 run で回し、MLflow の波形 experiment に置く。図は live-textbook の冊が読む
+#   just eval traub19_somastim <学習 run の id> ...   (系列の一覧は just eval -h)
+eval *args:
+    {{ VIRTUAL_ENV }} python scripts/evaluate.py {{ args }}

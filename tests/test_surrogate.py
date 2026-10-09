@@ -1,4 +1,4 @@
-"""サロゲート fit → 置換シミュ → 指標/描画の smoke (marimo/MLflow 非依存)。
+"""サロゲート fit → 置換シミュ → 指標/描画の smoke (MLflow 非依存)。
 
 Hydra プリセットを実設定源として読み、UI/実験ログを介さずドメイン層だけを通す。
 設定は `conf/surrogate/_test_*.yaml` (素体から library_specs を継承し、学習構造と
@@ -8,7 +8,6 @@ Hydra プリセットを実設定源として読み、UI/実験ログを介さ�
 from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
-from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -19,9 +18,7 @@ from matplotlib.figure import Figure
 from omegaconf import OmegaConf
 
 import neurosurrogate.surrogate.artifacts as surrogate_artifact_pkg
-from neurosurrogate.artifact.bundle import save_report
 from neurosurrogate.core import access
-from neurosurrogate.core.coords import transform_gate
 from neurosurrogate.core.network import Compartment, CompartmentType, NeuronGraph
 from neurosurrogate.core.opcost import OpCost
 from neurosurrogate.core.simulator import unified_simulator
@@ -38,21 +35,10 @@ from neurosurrogate.neurons.traub import (
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
 from neurosurrogate.neurons.traub19 import DEND_STIM_IDX, name_at
-from neurosurrogate.sim.artifacts import (
-    detail_artifacts,
-    original_artifacts,
-    report_artifacts,
-)
-from neurosurrogate.sim.artifacts._detail import (
-    attractor_artifact,
-    diff_artifact,
-    simple_artifact,
-)
-from neurosurrogate.sim.artifacts._report import summary_artifact, traces_artifact
 from neurosurrogate.sim.result import SeriesResults, SeriesRun
 from neurosurrogate.sim.run import run_column
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
-from neurosurrogate.sim.waveform import METRIC_KEYS, DynamicMetrics, extract_metric
+from neurosurrogate.sim.waveform import compare
 from neurosurrogate.surrogate.artifacts import surrogate_artifacts
 from neurosurrogate.surrogate.artifacts._model import (
     _feature_tex,
@@ -187,36 +173,30 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert np.isfinite(v[0])
 
 
-def test_sweep_metric_choices_are_all_extractable(sindy_view: SeriesResults) -> None:
-    """UI が出す掃引 metric 選択肢は全て取り出せる = 選んだのに生成されないキーで
-    黙って nan の図が出ることが無い (未知キーは extract_metric が KeyError)。"""
+def test_compare_reports_every_metric_for_one_pair(
+    sindy_view: SeriesResults,
+) -> None:
+    """1 ペアの指標は全部 1 つの dict で出る: 原系と置換系の両方にある指標は
+    (orig, surr)、比較で決まる指標はスカラー、AP の特徴量は全 AP 分の列。"""
     orig, surr = sindy_view.pair(0, sindy_view.column("r0"))
-    dm = DynamicMetrics(orig, surr, 0, sindy_view.series.spec.dt)
-    assert all(extract_metric(dm, key)[1] is not None for key in METRIC_KEYS)
-    with pytest.raises(KeyError):
-        extract_metric(dm, "latency_error")
-
-
-def test_sindy_draws_all_artifacts(sindy_view: SeriesResults, sindy: Surrogate) -> None:
-    """1 セル (点 × run) の詳細図。潜在射影は callable で遅延評価される。"""
-    orig, surr = sindy_view.pair(0, sindy_view.column("r0"))
-
-    latent = transform_gate(sindy.preprocessor, orig, 0)
-    artifacts = [
-        diff_artifact(orig, latent, surr, 0),
-        simple_artifact(orig),
-        attractor_artifact(latent, surr, 0),
-    ]
-    assert [artifact.name for artifact in artifacts] == [
-        "diff",
-        "simple",
-        "attractor",
-    ]
+    metrics = compare(orig, surr, 0, sindy_view.series.spec.dt)
+    assert set(metrics["rows"]) == {"spike_count", "latency", "mean_isi", "std_isi"}
+    assert all(len(pair) == 2 for pair in metrics["rows"].values())
+    assert set(metrics["scalars"]) == {
+        "rmse",
+        "mae",
+        "periodicity_gap",
+        "spike_shape_corr",
+    }
+    o_n, s_n = metrics["rows"]["spike_count"]
+    peaks = metrics["spikes"]["peak_voltage"]
+    assert (len(peaks[0]), len(peaks[1])) == (o_n, s_n)
+    assert metrics["diverged"] is False
 
 
 def test_catalog_is_self_consistent() -> None:
     """カタログ (`scripts/catalog.py`) が自己整合: `SERIES` の全系列の電流が掃引点
-    まで含めて構築でき、どの系列も comp 名を持つ (marimo の comp つまみは**選んだ
+    まで含めて構築でき、どの系列も comp 名を持つ (冊の comp つまみは**選んだ
     1 系列**の適用先から選択肢を作るので、ここが空だとその系列を選ぶと何も選べない)。
     条件が型になった今、綴り間違いは import 時に落ちるので、ここで見るのは名前の
     対応だけ。単発系列も「点 1 つ」として同じ経路を通る。"""
@@ -235,44 +215,12 @@ def test_catalog_is_self_consistent() -> None:
     assert len(SERIES["traub19_somastim_allcomp"].replace_targets) == 19
 
 
-def _sweep_series(values: list[float]) -> EvalSeries:
-    """1 系列分の掃引宣言。"""
-    return EvalSeries(
-        spec=SimSpec(
-            target="hh",
-            current_type="lin&steady",
-            dt=0.05,
-            current_params={"duration": 30.0, "silence_duration": 0.0},
-        ),
-        replace_targets=("soma",),
-        param="value",
-        values=values,
-    )
-
-
-def _sweep_view(runs: SurrogateRuns, values: list[float]) -> SeriesResults:
-    """1 系列分の掃引をシミュした結果。"""
-    return _simulate_view(_sweep_series(values), runs)
-
-
-def test_trace_grid_rows_are_one_per_model(sindy: Surrogate) -> None:
-    """波形格子の行 = 比べるモデル (run 軸)、列 = 点。1 レポートが並べるのは
-    **1 系列の電流たち × N モデル**なので、行が増える軸は run だけ。"""
-    runs = SurrogateRuns((("a", sindy), ("b", sindy)))
-    view = _sweep_view(runs, [5.0, 10.0])
-    artifact = traces_artifact(view, runs, "soma")
-    assert isinstance(artifact.obj, Figure)
-    assert len(artifact.obj.axes) == 2 * 2  # 2 モデル行 × 2 点列
-    # 行がどの run かは行見出し (左列の y ラベル) で読む。
-    assert [ax.get_ylabel() for ax in artifact.obj.axes] == ["a", "", "b", ""]
-
-
 def test_series_view_columns_must_line_up_across_runs(
     sindy_view: SeriesResults,
 ) -> None:
     """列は自分の点数を、束は**列が同じ掃引を回したものか**を構築時に保証する
     (揃わない列を図の側で検出させない)。**由来の id は持たない** = 評価 run の同一性は
-    ここに無く、描く中身だけの純粋なデータ (評価 run の id はレポート run の tag だけが
+    ここに無く、描く中身だけの純粋なデータ (評価 run の id は MLflow の tag だけが
     持つ)。"""
     series = sindy_view.series
     with pytest.raises(ValueError, match="点数"):
@@ -308,77 +256,6 @@ def test_surrogate_runs_rejects_names_unusable_as_path(
         SurrogateRuns(((name, sindy),))
 
 
-def test_report_draws_the_results_at_hand_not_the_declaration(
-    sindy_view: SeriesResults, sindy: Surrogate
-) -> None:
-    """描画は**手元の結果だけ**を見る (計算入力の設定と突き合わせない): 設定ファイル
-    に宣言の無い結果 — 別セッションで回して artifact から読んだもの — もそのまま図に
-    なる = 計算と描画が切れている。結果は系列名すら名乗らず (`SeriesResults` が持つのは
-    点と run 軸だけ)、どの run に属するか (= 保存段) は**どの関数を呼んだか**で決まる
-    (段を組むのは `scripts/mlflow_io`)。"""
-    view = SeriesResults(sindy_view.original, sindy_view.surrs)
-    assert [f.name for f in original_artifacts(view)] == ["current"]
-    runs = SurrogateRuns((("r0", sindy),))
-    assert "traces" in {
-        f.name for f in report_artifacts(view, runs, "soma", "spike_count", None)
-    }
-    comp_id = view.series.spec.net.name_to_idx("soma")
-    original, surrogate_wave = view.pair(0, view.column("r0"))
-    detail = detail_artifacts(
-        original,
-        transform_gate(sindy.preprocessor, original, comp_id),
-        surrogate_wave,
-        comp_id,
-        view.series.spec.dt,
-        None,
-        0,
-        0,
-    )
-    assert {artifact.name for artifact in detail} == {
-        "diff",
-        "simple",
-        "attractor",
-        "metrics",
-        "metrics_scalar",
-    }
-
-
-def test_save_report_resolves_the_knobs_without_filling_in_defaults(
-    sindy_view: SeriesResults, sindy: Surrogate, tmp_path: Path
-) -> None:
-    """つまみを解くのは `save_report` だけ = 誤った指定はここで落ちる。既定値で
-    埋めない (握って別の値で描くより、どのキーが来ていないかが分かる方がよい)。"""
-    view = SeriesResults(sindy_view.original, sindy_view.surrs)
-    runs = SurrogateRuns((("r0", sindy),))
-    # つまみは marimo の widget が作るのと同じ**全キー**。既定値は widget にしか無い。
-    tuning: dict[str, Any] = {
-        "common": {"eval_comp": "soma", "view_comps": []},
-        "report": {"metric": "spike_count", "yauto": True, "ymin": 0.0, "ymax": 1.0},
-        "detail": {"detail_point": 0, "spike_orig": 0, "spike_surr": 0},
-    }
-    # 手元の点数を超えた点 index は設定誤りとして落とす
-    # (端へ丸めると指定と違う点の図が同じ保存名で出る)。
-    for invalid_index in (-1, 99):
-        with pytest.raises(ValueError, match="点 index"):
-            save_report(
-                view,
-                runs,
-                tuning | {"detail": tuning["detail"] | {"detail_point": invalid_index}},
-                tmp_path,
-            )
-    # 適用先に無い comp は名前解決がそのまま KeyError (先回りして検証しない)
-    with pytest.raises(KeyError):
-        save_report(
-            view,
-            runs,
-            tuning | {"common": {"eval_comp": "nope", "view_comps": []}},
-            tmp_path,
-        )
-    # つまみのキーが欠けていれば、既定値で埋めずに KeyError
-    with pytest.raises(KeyError, match="detail_point"):
-        save_report(view, runs, tuning | {"detail": {}}, tmp_path)
-
-
 def test_surrogate_artifacts_come_from_the_run_itself_not_a_declaration(
     sindy: Surrogate,
 ) -> None:
@@ -389,7 +266,8 @@ def test_surrogate_artifacts_come_from_the_run_itself_not_a_declaration(
     # SINDy = ξ heatmap を持つ表現なので model 図が出る
     assert "model" in {artifact.name for artifact in artifacts}
     assert not any("summary" in artifact.name for artifact in artifacts)
-    assert summary_artifact(SurrogateRuns((("r0", sindy),))).name == "summary"
+    # 比べる表へ流す学習側の指標は図でなく値 (表は冊が組む)
+    assert {"nnz", "cost/surr-orig/mul"} <= set(sindy.summary())
 
 
 def test_artifact_failure_propagates(
@@ -414,10 +292,6 @@ def test_view_comps_limit_drawn_traces(
 
     **学習データ図にも効く** — 以前は `comps` が署名にあるだけで body が soma 固定
     (学会前のその場しのぎ) で、UI の選択が黙って無視されていた。"""
-    ds = sindy_view.original_waves[0]
-    limited, full = simple_artifact(ds, comps=[]).obj, simple_artifact(ds).obj
-    assert isinstance(limited, Figure) and isinstance(full, Figure)
-    assert len(limited.axes) < len(full.axes)
 
     def n_traces(fig: object) -> int:
         assert isinstance(fig, Figure)
@@ -468,7 +342,7 @@ def test_train_artifacts_render_from_reloaded_surrogate(
     sindy: Surrogate, tmp_path: Path
 ) -> None:
     """学習データ図は save/load を跨いで描ける: 軌道は保存されず spec +
-    spec / ansatz の規則から再生成される (marimo が run ロード毎に描く経路)。"""
+    spec / ansatz の規則から再生成される (学習のときに学習 run の図を描く経路)。"""
     sindy.save(tmp_path)
     reloaded = Surrogate.load(tmp_path)
     assert reloaded.spec == sindy.spec  # spec は JSON で round-trip

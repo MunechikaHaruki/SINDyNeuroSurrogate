@@ -20,7 +20,7 @@ import numpy as np
 
 from ..core.network import DatasetConfig, NeuronGraph
 from ..neurons import MCMODELS
-from ._current_catalog import CURRENT_MAP
+from ._current_catalog import CURRENT_MAP, PARAM_UNITS
 
 
 def _digest(key: dict) -> str:
@@ -178,3 +178,8 @@ class EvalSeries:
         if self.param is None:
             return [None]
         return [float(v) for v in self.values]
+
+    @property
+    def unit(self) -> str:
+        """掃引する電流パラメータの単位 (単発や単位の無いパラメータは空)。"""
+        return PARAM_UNITS.get(self.param or "", "")

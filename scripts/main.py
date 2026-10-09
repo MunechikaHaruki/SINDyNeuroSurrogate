@@ -9,7 +9,7 @@ from hydra import compose
 from hydra.core.hydra_config import HydraConfig
 from hydra.types import RunMode
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
-from mlflow_io.surrogate import log_surrogate_model
+from mlflow_io.surrogate import log_surrogate_figures, log_surrogate_model
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.surrogate.model import fit_surrogate
@@ -33,11 +33,13 @@ def _run_name(preset: str) -> str:
 
 
 def _fit_and_log(cfg: DictConfig) -> None:
-    """fit → 成果物を開いている run へ log (親/子で共有)。指標は marimo が
-    surrogate から直接計算するので MLflow へは残さない (依存最小)。"""
-    cfg_surr = OmegaConf.to_container(cfg, resolve=True)["surrogate"]
+    """fit → surrogate とその図を開いている run へ log (親/子で共有)。評価の指標は
+    `just eval` が波形 run に置くので、ここでは残さない。"""
+    cfg_surr = OmegaConf.to_container(cfg.surrogate, resolve=True)
     assert isinstance(cfg_surr, dict)
-    log_surrogate_model(fit_surrogate(cfg_surr))
+    surrogate = fit_surrogate(cfg_surr)
+    log_surrogate_model(surrogate)
+    log_surrogate_figures(surrogate)
 
 
 def _log_config(cfg: DictConfig) -> None:
@@ -59,14 +61,14 @@ def _ensure_sweep_parent(preset: str) -> str | None:
         filter_string=f"tags.sweep_id = '{sweep_id}'", output_format="list"
     )
     if hits:
-        return hits[0].info.run_id
+        return str(hits[0].info.run_id)
     parent_cfg = compose(config_name="config", overrides=[f"surrogate={preset}"])
     with mlflow.start_run(run_name=f"[parent]{preset}") as parent:
         mlflow.set_tag("sweep_id", sweep_id)
         mlflow.log_param("preset", preset)
         _log_config(parent_cfg)
         _fit_and_log(parent_cfg)
-        return parent.info.run_id
+        return str(parent.info.run_id)
 
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)

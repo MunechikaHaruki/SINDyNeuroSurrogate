@@ -39,7 +39,7 @@ from .parts.preprocessor.autoencoder import fit_ae
 from .parts.preprocessor.pca import fit_pca
 
 _BUNDLE_FILE = "surrogate.joblib"  # 学習成果物 (closure/preprocessor)
-SPEC_FILE = "spec.json"  # 同定情報。一覧はこれだけ読む
+_SPEC_FILE = "spec.json"  # 同定情報。一覧はこれだけ読む
 
 # spec の dispatch キー → 実装。**解決するのは Surrogate だけ**なので、実装側に type 名
 # を持たせず (自分がどう選ばれたかを知らない) ここに対応表を置く。
@@ -214,9 +214,26 @@ class Surrogate:
     @cached_property
     def training_data(self) -> xr.Dataset:
         """学習データ。実体は保存せず spec から決定的に再現する (dataset/電流/dt が
-        spec に揃っている)。→ load 経路でも参照でき、marimo は run をロードするたび
-        に学習範囲の規則を合わせて学習入力を組み直して描ける。"""
+        spec に揃っている)。→ load 経路でも参照でき、学習の図を後から組み直せる。"""
         return unified_simulator(self.spec.dataset.materialize())
+
+    def summary(self) -> dict[str, Any]:
+        """比べる表に並べる学習側の指標。closure/preprocessor 固有の指標と、
+        演算コスト (`cost/*`)。原系のコストが無ければ差分は出さない。"""
+        orig = self.spec.original_opcost()
+        cost: dict[str, int] = {}
+        if orig is not None:
+            surr = self.ansatz.surr_comp_type(
+                self.spec, self.preprocessor, self.closure
+            ).opcost
+            assert surr is not None  # surr_comp_type は必ず opcost を焼き込む
+            surr_d, orig_d = surr.to_dict(), orig.to_dict()
+            cost = {
+                **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
+                **{f"cost/original/{k}": v for k, v in orig_d.items()},
+                **{f"cost/surr-orig/{k}": surr_d[k] - orig_d[k] for k in orig_d},
+            }
+        return {**self.closure.metrics(), **self.preprocessor.metrics(), **cost}
 
     # --- 保存形式 (save/load は 1 つの契約の両半分) --------------------------
 
@@ -228,14 +245,14 @@ class Surrogate:
         # → ここは load 内でまとめて読めば足りる。
         data = joblib.load(Path(dir) / _BUNDLE_FILE)
         return cls(
-            SurrogateSpec.read(Path(dir) / SPEC_FILE),
+            SurrogateSpec.read(Path(dir) / _SPEC_FILE),
             data["preprocessor"],
             data["closure"],
         )
 
     def save(self, dir: Path | str) -> None:
         """spec は JSON (構造で残す → クラス定義に縛られない)、学習成果物は pickle。"""
-        (Path(dir) / SPEC_FILE).write_text(
+        (Path(dir) / _SPEC_FILE).write_text(
             json.dumps(self.spec.to_dict(), indent=2, ensure_ascii=False)
         )
         joblib.dump(

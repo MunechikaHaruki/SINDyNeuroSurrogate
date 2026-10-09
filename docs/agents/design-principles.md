@@ -101,10 +101,11 @@ pickle / artifact のスキーマを変えて過去の MLflow run がロード�
 
 ## 8. 実行経路を二重に持たない
 
-同じ操作に GUI と CLI の 2 経路を作らない。実行系の操作は marimo (`scripts/marimo.py`) の
-ボタンとして持たせ、`scripts/draw.py` のような CLI 入口を復活させない。
+同じ操作に 2 経路を作らない。重い計算 (学習と評価) は CLI (`scripts/main.py`、`just eval`) だけが
+持ち、結果は MLflow に置く。描くのは live-textbook の冊だけで、Python で図を描く入口
+(`scripts/draw.py` やレポート run) を復活させない。
 
-**発火条件**: 新しい実行系操作を足すとき → CLI 側へ逃がさず GUI に置く。
+**発火条件**: 新しい操作を足すとき → 計算なら CLI に、見せ方なら冊に置く。
 
 ## 9. リファクタの進め方
 
