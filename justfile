@@ -1,6 +1,8 @@
 ## execute with '''just [[command]]'''
 ## '''just --list''' shows how to use
 
+set shell := ["bash", "-cu"]
+
 PROJECT_NAME := "neurosurrogate"
 VIRTUAL_ENV := "uv run"
 
