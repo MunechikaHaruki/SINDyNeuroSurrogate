@@ -2,33 +2,19 @@
 kind=original (原系、`series_hash` で共有) と kind=surrogate が平坦に並び、置換系は
 `original_hash` で原系を名指す。点は run の中の並び順そのもの。
 
-波形は live-textbook の冊も読むので、TS で読める形で置く (`_write_waves`)。置換系の
-run には、原系と比べた指標 (`metrics.json`)、原系を潜在空間へ射影した軌道
+波形は live-textbook の冊も読むので、TS で読める形で置く (`_files.write_waves`)。
+置換系の run には、原系と比べた指標 (`metrics.json`)、原系を潜在空間へ射影した軌道
 (`projected/<comp>/`)、学習側の指標 (`summary.json`) も置く = 図に要るものは全部
 run の中にあり、どの列を並べて見るかは読む側が選ぶ。
-
-    waves/meta.json            t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]],
-                               I_internal の nodes, comp 名 → id (原系だけ)
-    waves/<点>/comp<id>.f32    その comp の変数 (features の並び順)。変数ごとに連続
-    waves/<点>/I_ext.f32
-    waves/<点>/I_internal.f32  node ごとに連続
-
-`.f32` は little-endian の float32 を並べただけのもの。
 """
 
 import json
-import math
 import os
 import tempfile
-from collections.abc import Hashable, Sequence
 from pathlib import Path
-from typing import Any
 
 import mlflow
 import mlflow.artifacts
-import numpy as np
-import pandas as pd
-import xarray as xr
 
 from neurosurrogate.core.coords import transform_gate
 from neurosurrogate.sim.result import SeriesResults, SeriesRun
@@ -38,6 +24,7 @@ from neurosurrogate.sim.waveform import compare
 from neurosurrogate.surrogate.model import Surrogate
 
 from . import logger
+from ._files import read_waves, write_json, write_waves
 from ._query import exp_id, latest_by_tag
 
 _EVAL_EXP = os.environ.get("MLFLOW_EVAL_EXPERIMENT", "eval_series")
@@ -66,101 +53,6 @@ def _tags(name: str, series: EvalSeries, run_id: str | None) -> dict[str, str]:
     }
 
 
-# --- 保存形式 ------------------------------------------------------------------
-
-
-def _write_f32(path: Path, array: np.ndarray) -> None:
-    path.write_bytes(np.ascontiguousarray(array, dtype="<f4").tobytes())
-
-
-def _read_f32(path: Path) -> np.ndarray:
-    return np.frombuffer(path.read_bytes(), dtype="<f4")
-
-
-def _comp_columns(features: Sequence[Sequence[Any]], comp_id: int) -> list[int]:
-    """features の中で comp `comp_id` の列 (並び順のまま)。"""
-    return [i for i, (comp, _, _) in enumerate(features) if comp == comp_id]
-
-
-def _write_waves(
-    root: Path, waves: list[xr.Dataset], names: dict[str, int] | None = None
-) -> None:
-    """点の並びの波形を `root` へ書く。全点が同じ features を持つ。"""
-    first = waves[0]
-    features = [(int(c), str(v), bool(g)) for c, v, g in first.indexes["features"]]
-    nodes = [int(i) for i in first["node_id"].values] if "I_internal" in first else None
-    time = first["time"].values
-    meta = {
-        "t0": float(time[0]),
-        "dt": float(time[1] - time[0]),
-        "n": [ds.sizes["time"] for ds in waves],
-        "features": features,
-        "nodes": nodes,
-        "names": names,
-    }
-    root.mkdir(parents=True)
-    (root / "meta.json").write_text(json.dumps(meta))
-    for index, ds in enumerate(waves):
-        point = root / str(index)
-        point.mkdir()
-        values = ds["vars"].to_numpy()
-        for comp in sorted({c for c, _, _ in features}):
-            columns = _comp_columns(features, comp)
-            _write_f32(point / f"comp{comp}.f32", values[:, columns].T)
-        _write_f32(point / "I_ext.f32", ds["I_ext"].to_numpy())
-        if nodes is not None:
-            _write_f32(point / "I_internal.f32", ds["I_internal"].to_numpy().T)
-
-
-def _read_waves(root: Path) -> list[xr.Dataset]:
-    """`_write_waves` の逆。"""
-    meta = json.loads((root / "meta.json").read_text())
-    features, nodes = meta["features"], meta["nodes"]
-    index = pd.MultiIndex.from_tuples(
-        [tuple(f) for f in features], names=("comp_id", "variable", "gate")
-    )
-    waves = []
-    for point_index, n in enumerate(meta["n"]):
-        point = root / str(point_index)
-        values = np.empty((n, len(features)), dtype=np.float32)
-        for comp in sorted({c for c, _, _ in features}):
-            columns = _comp_columns(features, comp)
-            raw = _read_f32(point / f"comp{comp}.f32")
-            values[:, columns] = raw.reshape(len(columns), n).T
-        data: dict[str, Any] = {
-            "vars": (("time", "features"), values),
-            "I_ext": (("time",), _read_f32(point / "I_ext.f32")),
-        }
-        coords: dict[Hashable, Any] = {
-            "time": meta["t0"] + np.arange(n) * meta["dt"],
-            **xr.Coordinates.from_pandas_multiindex(index, "features"),
-        }
-        if nodes is not None:
-            raw = _read_f32(point / "I_internal.f32")
-            data["I_internal"] = (("time", "node_id"), raw.reshape(len(nodes), n).T)
-            coords["node_id"] = nodes
-        waves.append(xr.Dataset(data, coords=coords))
-    return waves
-
-
-def _jsonable(value: Any) -> Any:
-    """JSON に書ける素の値へ。nan と inf は null にする (JSON に無い値なので)。"""
-    if isinstance(value, np.generic):
-        value = value.item()
-    if isinstance(value, float):
-        return value if math.isfinite(value) else None
-    if isinstance(value, dict):
-        return {str(k): _jsonable(v) for k, v in value.items()}
-    if isinstance(value, list | tuple):
-        return [_jsonable(v) for v in value]
-    return value
-
-
-def _write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_jsonable(value), ensure_ascii=False))
-
-
 def _write_comparison(root: Path, view: SeriesResults, surrogate: Surrogate) -> None:
     """置換系 1 列を原系と比べたものを書く。指標は全 comp・全点の分 (どの comp を
     見るかは読む側が選ぶ)、射影は置換した comp の分。"""
@@ -174,11 +66,11 @@ def _write_comparison(root: Path, view: SeriesResults, surrogate: Surrogate) -> 
         ]
         for comp in net.names
     }
-    _write_json(root / "metrics.json", metrics)
-    _write_json(root / "summary.json", surrogate.summary())
+    write_json(root / "metrics.json", metrics)
+    write_json(root / "summary.json", surrogate.summary())
     for comp in series.replace_targets:
         comp_id = net.name_to_idx(comp)
-        _write_waves(
+        write_waves(
             root / "projected" / comp,
             [
                 transform_gate(surrogate.preprocessor, ds, comp_id)
@@ -212,9 +104,9 @@ def run_series(
                 comp: series.spec.net.name_to_idx(comp)
                 for comp in series.spec.net.names
             }
-            _write_waves(root / _WAVES_DIR, column.waves, names)
+            write_waves(root / _WAVES_DIR, column.waves, names)
         else:
-            _write_waves(root / _WAVES_DIR, column.waves)
+            write_waves(root / _WAVES_DIR, column.waves)
             original = _load_column(run_series(name, series))
             _write_comparison(root, SeriesResults(original, (column,)), surrogate)
         kind = _KIND_ORIGINAL if run_id is None else f"{_KIND_SURROGATE}:{run_id[:8]}"
@@ -248,5 +140,5 @@ def _load_column(eval_run_id: str) -> SeriesRun:
             EvalSeries.from_dict(json.loads(params["series"])),
             # 空文字が「無し」の綴り (MLflow の param は文字列なので None を書けない)。
             params["run_id"] or None,
-            _read_waves(Path(local)),
+            read_waves(Path(local)),
         )

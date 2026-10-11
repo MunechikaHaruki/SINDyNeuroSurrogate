@@ -133,8 +133,15 @@ def test_surrogate_run_holds_what_the_figures_read(
 ) -> None:
     """冊が読むものは全部置換系の run の中にある: 素の float32 の波形、全 comp・全点の
     指標、置換した comp の射影、学習側の指標。JSON に nan は出さない (JS が読めない)。
+    中身 (`description/`) を持たずに学習した run には、評価のついでに書き足される。
     """
-    evaluation.evaluate("hh_dc", (_train_run("RID", sindy),))
+    train_id = _train_run("RID", sindy)
+    evaluation.evaluate("hh_dc", (train_id,))
+    train = mlflow.get_run(train_id)
+    model = json.loads(_artifact(train, "description/model.json").read_text())
+    n_time = json.loads(_artifact(train, "description/train/meta.json").read_text())
+    x = np.fromfile(_artifact(train, "description/fit/0/x.f32"), dtype="<f4")
+    assert x.size == len(model["x_names"]) * n_time["n"][0]
     (original,), (surrogate,) = _of_kind("original"), _of_kind("surrogate")
 
     meta = json.loads(_artifact(original, "waves/meta.json").read_text())

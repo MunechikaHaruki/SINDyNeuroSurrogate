@@ -6,7 +6,7 @@
    が `_` 無し。内側でしか使わないものは `_` を付ける = `_` が「外から呼ばれない」の
    印として信用できる状態を保つ (import 元を grep しないと公開範囲が分からない、を防ぐ)
 2. **依存の向き** — `neurosurrogate/` 内の import が `_LAYERS` の許可を超えない
-   (`docs/architecture.md` の層の宣言をそのまま実行可能にしたもの)
+   (`DESIGN.md` の層の宣言をそのまま実行可能にしたもの)
 3. **ドメイン層の独立** — `neurosurrogate/` が MLflow/Hydra を import しない
 
 判定は import 文と属性アクセスの静的解析。動的にしか呼ばれない入口 (Hydra の
@@ -31,6 +31,8 @@ PUBLIC_REF_DIRS = SRC_DIRS
 _EXEMPT = {
     ("scripts/main.py", "main"),  # Hydra の @hydra.main エントリ
     ("scripts/evaluate.py", "main"),  # `just eval` が直接起動する
+    # 学習 run の pickle がクラス名で引く (改名すると既存 run が読めない)。
+    ("neurosurrogate/surrogate/parts/preprocessor/pca.py", "PCAPreprocessor"),
 }
 # **名前空間ごと**外へ渡す module = 公開範囲が「module 直下の全部」。
 # `sindy._catalog` が `vars(hh) | vars(traub)` を lambdify の名前空間に注入するので、
@@ -46,14 +48,12 @@ _BY_NAME = {"setattr", "getattr", "hasattr", "delattr"}
 # `_` 無しの module 名でも、外から import されない入口 (Hydra/just が直接起動する)。
 _EXEMPT_ENTRY_MODULES = {"scripts/main.py", "scripts/evaluate.py"}
 
-# --- 依存の向き (docs/architecture.md の宣言) ---------------------------------
+# --- 依存の向き (DESIGN.md の宣言) -------------------------------------------
 # 場所 → 層 (module path の前方一致。長い方が勝つ = ファイル単位で層を割れる)。
 # 新しいディレクトリを足したらここに書く必要がある = **層の所属は必ず宣言される**。
 _GROUP_OF = {
     "neurosurrogate/__init__": "base",  # package import 時に jax_enable_x64 を張る入口
     "neurosurrogate/core/": "base",
-    "neurosurrogate/artifact/model": "base",
-    "neurosurrogate/artifact/plotting": "base",
     "neurosurrogate/neurons/": "neurons",
     "neurosurrogate/sim/run": "sim_exec",
     "neurosurrogate/sim/": "sim_desc",
@@ -70,7 +70,8 @@ _LAYERS = {
 }
 
 # ドメイン層が触ってはいけない基盤 (実行/記録の入口は scripts/ だけが知る)。
-_INFRA_ROOTS = {"mlflow", "hydra", "omegaconf"}
+# 描画も持たない (描くのは live-textbook の冊。ドメインは数値を出すだけ)。
+_INFRA_ROOTS = {"mlflow", "hydra", "omegaconf", "matplotlib"}
 
 
 def _py_files(dirs: tuple[str, ...]) -> list[pathlib.Path]:

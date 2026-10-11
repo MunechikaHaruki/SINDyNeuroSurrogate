@@ -9,7 +9,7 @@ from hydra import compose
 from hydra.core.hydra_config import HydraConfig
 from hydra.types import RunMode
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
-from mlflow_io.surrogate import log_surrogate_figures, log_surrogate_model
+from mlflow_io.surrogate import log_surrogate_description, log_surrogate_model
 from omegaconf import DictConfig, OmegaConf
 
 from neurosurrogate.surrogate.model import fit_surrogate
@@ -33,13 +33,13 @@ def _run_name(preset: str) -> str:
 
 
 def _fit_and_log(cfg: DictConfig) -> None:
-    """fit → surrogate とその図を開いている run へ log (親/子で共有)。評価の指標は
+    """fit → surrogate とその中身を開いている run へ log (親/子で共有)。評価の指標は
     `just eval` が波形 run に置くので、ここでは残さない。"""
     cfg_surr = OmegaConf.to_container(cfg.surrogate, resolve=True)
     assert isinstance(cfg_surr, dict)
     surrogate = fit_surrogate(cfg_surr)
     log_surrogate_model(surrogate)
-    log_surrogate_figures(surrogate)
+    log_surrogate_description(surrogate)
 
 
 def _log_config(cfg: DictConfig) -> None:

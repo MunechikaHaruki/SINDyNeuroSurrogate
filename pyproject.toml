@@ -9,7 +9,6 @@ authors = [
 requires-python = ">= 3.11.0"
 
 dependencies = [
-    "matplotlib>=3.10.3",
     "pysindy~=2.0.0",
     "mlflow>=3.3.2",
     "scikit-learn<1.6.0",
@@ -19,12 +18,10 @@ dependencies = [
     "scipy>=1.16.2",
     "tabulate>=0.10.0",
     "psutil>=7.0.0",
-    "seaborn>=0.13.2",
     "hydra-optuna-sweeper>=1.2.0",
     "jax>=0.10.0",
     "optax>=0.2.8",
     "efel>=5.7.23",
-    "networkx>=3.6.1",
     "setuptools>=83.0.0",
     "sympy>=1.14.0",
 ]
@@ -50,7 +47,7 @@ warn_unused_ignores = true
 mypy_path = "scripts"
 
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "pysindy", "sympy.*", "efel", "joblib", "optax", "networkx", "seaborn"]
+module = ["sklearn.*", "pysindy", "sympy.*", "efel", "joblib", "optax"]
 ignore_missing_imports = true
 
 [tool.ruff]

@@ -11,7 +11,7 @@
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -132,6 +132,16 @@ class SINDyBundle(Closure):
     def metrics(self) -> dict[str, float]:
         nnz = int((self.xi != 0).sum())
         return {"nnz": nnz, "nnz_ratio": nnz / self.xi.size}
+
+    def describe(self) -> dict[str, Any]:
+        # ξ の行 = targets、列 = feature 式。LaTeX は sympy の出力のまま渡し、
+        # 表示のための整形 (下付きの model 名など) は描く側が持つ。
+        return {
+            "kind": "sindy",
+            "targets": [sp.latex(t) for t in self.targets],
+            "features": [sp.latex(e) for e in self.feature_exprs],
+            "xi": np.asarray(self.xi).tolist(),
+        }
 
     def compute_theta(self) -> "Callable":
         subs = self.feature_library.sub_libraries

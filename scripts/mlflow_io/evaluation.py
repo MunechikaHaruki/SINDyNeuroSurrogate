@@ -2,13 +2,14 @@
 
 どの列を並べて見るかは MLflow に残さない (live-textbook の冊が波形 run から選ぶ)。
 重い波形は `_series` が内容で再利用するので、同じ評価を回し直しても増えない。
+学習 run の中身 (`description/`) が無ければ、ついでに書き足す。
 """
 
 from catalog import SERIES
 
 from . import logger
 from ._series import run_series
-from .surrogate import load_surrogate_runs
+from .surrogate import load_surrogate_runs, run_surrogate_description
 
 
 def evaluate(name: str, run_ids: tuple[str, ...]) -> None:
@@ -18,6 +19,8 @@ def evaluate(name: str, run_ids: tuple[str, ...]) -> None:
     surrs = runs.replacing(series)
     if not surrs:
         raise ValueError(f"{name}: 選択 run のどれでも置換できない (比較対象が無い)")
+    for run_id in run_ids:
+        run_surrogate_description(run_id)
     run_series(name, series)
     for run_id, (run_name, bundle) in zip(run_ids, runs, strict=True):
         if run_name in surrs.names:

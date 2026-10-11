@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import jax.numpy as jnp
 import numpy as np
@@ -42,6 +42,12 @@ class Closure(ABC):
     def opcost(self) -> OpCost:
         """閉包項 1 回の評価コスト。構成は表現ごとに違うが問い方は引数なしで同一 →
         全実装が持ち ansatz が一律に呼ぶので契約に載せる。"""
+        ...
+
+    @abstractmethod
+    def describe(self) -> dict[str, Any]:
+        """学習した中身を JSON にできる形で (`kind` で表現を見分ける)。図は描かず、
+        数値と式 (LaTeX) だけを渡す。"""
         ...
 
 
@@ -84,6 +90,11 @@ class Preprocessor(ABC):
     @abstractmethod
     def opcost(self) -> OpCost:
         """decode 1 回の演算コスト (hybrid kernel の decode 分)。"""
+        ...
+
+    @abstractmethod
+    def describe(self) -> dict[str, Any]:
+        """学習した中身を JSON にできる形で (`Closure.describe` と同じ問い方)。"""
         ...
 
     @property

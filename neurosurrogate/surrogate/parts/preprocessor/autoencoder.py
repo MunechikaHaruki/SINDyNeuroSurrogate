@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -131,6 +132,9 @@ class AEPreprocessor(Preprocessor):
 
     def metrics(self) -> dict[str, float]:
         return {f"ae/{k}": v for k, v in self.reconstruction.items()}
+
+    def describe(self) -> dict[str, Any]:
+        return {"kind": "ae", "hidden": int(self.dec_params["W1"].shape[1])}
 
     def opcost(self) -> OpCost:
         n_latent, hidden = self.dec_params["W1"].shape

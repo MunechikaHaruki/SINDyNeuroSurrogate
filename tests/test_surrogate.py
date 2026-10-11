@@ -1,10 +1,11 @@
-"""サロゲート fit → 置換シミュ → 指標/描画の smoke (MLflow 非依存)。
+"""サロゲート fit → 置換シミュ → 指標の smoke (MLflow 非依存)。
 
 Hydra プリセットを実設定源として読み、UI/実験ログを介さずドメイン層だけを通す。
 設定は `conf/surrogate/_test_*.yaml` (素体から library_specs を継承し、学習構造と
 短縮電流だけ固定したテスト専用プリセット) に置き、テスト側は override しない。
 """
 
+import json
 from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
@@ -14,10 +15,8 @@ import numpy as np
 import pytest
 from catalog import SERIES
 from hydra import compose, initialize_config_dir
-from matplotlib.figure import Figure
 from omegaconf import OmegaConf
 
-import neurosurrogate.surrogate.artifacts as surrogate_artifact_pkg
 from neurosurrogate.core import access
 from neurosurrogate.core.network import Compartment, CompartmentType, NeuronGraph
 from neurosurrogate.core.opcost import OpCost
@@ -39,19 +38,7 @@ from neurosurrogate.sim.result import SeriesResults, SeriesRun
 from neurosurrogate.sim.run import run_column
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
 from neurosurrogate.sim.waveform import compare
-from neurosurrogate.surrogate.artifacts import surrogate_artifacts
-from neurosurrogate.surrogate.artifacts._model import (
-    _feature_tex,
-    _tex,
-    preprocessor_artifact,
-)
-from neurosurrogate.surrogate.artifacts.train import (
-    train_manifold_artifact,
-    train_preprocessed_artifact,
-    train_raw_artifact,
-    train_recon_artifact,
-    train_v_coverage_artifact,
-)
+from neurosurrogate.surrogate.description import describe
 from neurosurrogate.surrogate.model import Surrogate, fit_surrogate
 from neurosurrogate.surrogate.parts import Closure, Preprocessor
 from neurosurrogate.surrogate.parts.ansatz.hybrid import HybridAnsatz
@@ -256,57 +243,44 @@ def test_surrogate_runs_rejects_names_unusable_as_path(
         SurrogateRuns(((name, sindy),))
 
 
-def test_surrogate_artifacts_come_from_the_run_itself_not_a_declaration(
-    sindy: Surrogate,
+def test_description_survives_reload_and_lines_up_with_the_model(
+    sindy: Surrogate, tmp_path: Path
 ) -> None:
-    """モデル側の図は**その run が自分について描けるもの**で決まる (何を描くかの
-    宣言を受け取らない)。描く対象は学習 run そのものなので、レポートを増やしても
-    同じ図が複製されない。run 横断のサマリ表はここに無い (選択した N 本の産物)。"""
-    artifacts = surrogate_artifacts(sindy, ())
-    # SINDy = ξ heatmap を持つ表現なので model 図が出る
-    assert "model" in {artifact.name for artifact in artifacts}
-    assert not any("summary" in artifact.name for artifact in artifacts)
-    # 比べる表へ流す学習側の指標は図でなく値 (表は冊が組む)
+    """学習 run の中身は save/load を跨いで出せ (学習データは spec から再現)、形が
+    学習したものと揃う: ξ は対象変数 × 特徴量、寄与率は捨てた成分を含んで合計 1 以下、
+    学習 comp の列は学習データと同じ長さ。時刻ごとの再構成 RMSE を二乗平均すると、
+    学習時に残した再構成 MSE に戻る (学習 comp が 1 つなら同じデータを見ている)。"""
+    sindy.save(tmp_path)
+    reloaded = Surrogate.load(tmp_path)
+    assert reloaded.spec == sindy.spec  # spec は JSON で round-trip
+    desc = describe(reloaded)
+    json.dumps(desc.model)  # 冊が読むので JSON にできる
+    closure, prep = desc.model["closure"], desc.model["preprocessor"]
+    assert closure["kind"] == "sindy"
+    assert np.shape(closure["xi"]) == (
+        len(closure["targets"]),
+        len(closure["features"]),
+    )
+    assert prep["kind"] == "pca"
+    assert len(prep["explained_variance_ratio"]) >= prep["n_components"]
+    assert sum(prep["explained_variance_ratio"]) <= 1.0 + 1e-9
+
+    comp_id = _train_comp(sindy)
+    assert list(desc.fits) == [comp_id]
+    assert desc.model["net"]["train"] == [desc.model["net"]["nodes"][comp_id]["name"]]
+    fit, n_time = desc.fits[comp_id], desc.training_data.sizes["time"]
+    assert fit.x.shape == (n_time, len(desc.model["x_names"]))
+    assert fit.latent.shape == (n_time, len(desc.model["latent_names"]))
+    assert fit.recon_rmse.shape == (n_time,)
+    assert isinstance(sindy.preprocessor, PCAPreprocessor)
+    assert float(np.mean(fit.recon_rmse**2)) == pytest.approx(
+        sindy.preprocessor.reconstruction["reconstruction_mse"]
+    )
+
+
+def test_summary_reports_closure_metrics_and_cost(sindy: Surrogate) -> None:
+    """比べる表へ流す学習側の指標は、閉包項の指標と演算コストの差を含む。"""
     assert {"nnz", "cost/surr-orig/mul"} <= set(sindy.summary())
-
-
-def test_artifact_failure_propagates(
-    monkeypatch: pytest.MonkeyPatch,
-    sindy: Surrogate,
-) -> None:
-    """描画失敗を正常な成果物へ変換せず、呼び出し元へ伝播させる。"""
-
-    def boom() -> Figure:
-        raise KeyError("missing var")
-
-    monkeypatch.setattr(surrogate_artifact_pkg, "train_raw_artifact", lambda *_: boom())
-    with pytest.raises(KeyError, match="missing var"):
-        surrogate_artifacts(sindy)
-
-
-def test_view_comps_limit_drawn_traces(
-    sindy_view: SeriesResults, sindy: Surrogate
-) -> None:
-    """表示 comp 制限 (UI の view_comps) が全 comp を並べる図に効く: 対象外だけを
-    指定するとパネル/trace が消える。
-
-    **学習データ図にも効く** — 以前は `comps` が署名にあるだけで body が soma 固定
-    (学会前のその場しのぎ) で、UI の選択が黙って無視されていた。"""
-
-    def n_traces(fig: object) -> int:
-        assert isinstance(fig, Figure)
-        return sum(len(ax.lines) for ax in fig.axes)
-
-    # 学習 comp を 1 つも含まない選択では comp 由来の trace が消える。
-    # train_raw は先頭 comp が要るゲート段ごと落ち、train_preprocessed は段は
-    # 潜在次元で決まるので段内の trace だけが消える → 数え方は trace で揃える。
-    for artifact in (train_raw_artifact, train_preprocessed_artifact):
-        assert n_traces(artifact(sindy, comps=[]).obj) < n_traces(artifact(sindy).obj)
-    assert len(train_raw_artifact(sindy, comps=[]).obj.axes) == 2  # type: ignore[union-attr]
-
-    # 学習 comp を名指しすれば全部描いたときと一致する (単体 hh は学習 comp 1 つ)
-    picked = train_raw_artifact(sindy, comps=[_train_comp(sindy)])
-    assert n_traces(picked.obj) == n_traces(train_raw_artifact(sindy).obj)
 
 
 def test_pca_metrics_report_per_component_and_cumulative_ratio(
@@ -325,49 +299,6 @@ def test_pca_metrics_report_per_component_and_cumulative_ratio(
     assert cumulative == pytest.approx(float(prep.explained_variance_ratio.sum()))
     assert 0.0 <= cumulative <= 1.0 + 1e-9
     assert len(prep.full_explained_variance_ratio) >= n_kept
-
-
-def test_preprocessor_artifact_scree_for_pca_none_for_ae(
-    sindy: Surrogate,
-) -> None:
-    """PCA は scree 成果物を返し、AE は固有成果物なし → None。"""
-    artifact = preprocessor_artifact(sindy.preprocessor)
-    assert artifact is not None and artifact.name == "pca_scree"
-    ae = fit_preset("_test_traub_hybrid")  # preprocessor_type=ae ではないので確認
-    if isinstance(ae.preprocessor, AEPreprocessor):
-        assert preprocessor_artifact(ae.preprocessor) is None
-
-
-def test_train_artifacts_render_from_reloaded_surrogate(
-    sindy: Surrogate, tmp_path: Path
-) -> None:
-    """学習データ図は save/load を跨いで描ける: 軌道は保存されず spec +
-    spec / ansatz の規則から再生成される (学習のときに学習 run の図を描く経路)。"""
-    sindy.save(tmp_path)
-    reloaded = Surrogate.load(tmp_path)
-    assert reloaded.spec == sindy.spec  # spec は JSON で round-trip
-    assert reloaded.spec.train_comp_ids() == [_train_comp(sindy)]
-    assert reloaded.ansatz.n_train_gate(reloaded.spec) == len(
-        sindy.spec.comp_type.gate_names
-    )
-
-    names = [
-        artifact.name
-        for artifact in (
-            train_raw_artifact(reloaded),
-            train_preprocessed_artifact(reloaded),
-            train_recon_artifact(reloaded),
-            train_v_coverage_artifact(reloaded),
-            train_manifold_artifact(reloaded),
-        )
-    ]
-    assert names == [
-        "train_raw",
-        "train_preprocessed",
-        "train_recon",
-        "train_v_coverage",
-        "train_manifold",
-    ]
 
 
 def test_train_inputs_match_identified_columns(sindy: Surrogate) -> None:
@@ -425,6 +356,7 @@ def test_ae_preprocessor_path_runs() -> None:
         gate.shape
     )
     assert len(surrogate.preprocessor.gate_inits) == 2
+    assert surrogate.preprocessor.describe()["kind"] == "ae"
 
 
 def test_feature_exprs_align_with_xi_columns(sindy_closure: SINDyBundle) -> None:
@@ -439,17 +371,6 @@ def test_duplicate_library_types_are_rejected(sindy_closure: SINDyBundle) -> Non
     )
     with pytest.raises(ValueError, match="feature 重複"):
         library.bound_exprs(sindy_closure.columns)
-
-
-def test_feature_tex_drops_model_suffix(sindy_closure: SINDyBundle) -> None:
-    """レート関数は未定義 Function → sympy が自動でギリシャ文字化。model は下付きへ
-    回すが、heatmap の軸ラベルでは冗長 → 落とす (_tex は括弧へ整形して残す)。"""
-    texs = [_feature_tex(e) for e in sindy_closure.feature_exprs]
-    assert all(t.startswith("$") and t.endswith("$") for t in texs)
-    assert any(r"\alpha_{m}{\left(V \right)}" in t for t in texs)
-    assert not any("(hh)" in t for t in texs)
-    full = [_tex(e) for e in sindy_closure.feature_exprs]
-    assert any(r"\alpha_{m(hh)}{\left(V \right)}" in t for t in full)
 
 
 @pytest.mark.parametrize(
@@ -706,6 +627,9 @@ class _IdentityPreprocessor(Preprocessor):
     def metrics(self) -> dict:
         return {}
 
+    def describe(self) -> dict:
+        return {}
+
     def opcost(self) -> OpCost:
         return OpCost()
 
@@ -718,6 +642,9 @@ class _NullClosure(Closure):
     """潜在方程式は自由関数 (dlatent_fn) 側で与える → opcost/metrics だけの殻。"""
 
     def metrics(self) -> dict[str, float]:
+        return {}
+
+    def describe(self) -> dict:
         return {}
 
     def opcost(self) -> OpCost:

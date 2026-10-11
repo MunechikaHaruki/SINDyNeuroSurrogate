@@ -1,5 +1,7 @@
 """PCA による gate ↔ latent 線形圧縮 preprocessor。"""
 
+from typing import Any
+
 import jax.numpy as jnp
 import numpy as np
 from sklearn.decomposition import PCA
@@ -51,6 +53,14 @@ class PCAPreprocessor(Preprocessor):
                 self.explained_variance_ratio.sum()
             ),
             **{f"pca/{k}": v for k, v in self.reconstruction.items()},
+        }
+
+    def describe(self) -> dict[str, Any]:
+        # 捨てた成分も含めた寄与率 → n_components が累積の飽和点に対し妥当かを見る。
+        return {
+            "kind": "pca",
+            "explained_variance_ratio": self.full_explained_variance_ratio.tolist(),
+            "n_components": len(self.explained_variance_ratio),
         }
 
     def opcost(self) -> OpCost:

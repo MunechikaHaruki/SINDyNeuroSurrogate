@@ -11,6 +11,7 @@ hybrid と同一で済む) → ここは潜在方程式の重みだけを持つ�
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -82,6 +83,10 @@ class UDEClosure(Closure):
 
     def metrics(self) -> dict[str, float]:
         return {f"ude/{k}": float(v) for k, v in self.losses.items()}
+
+    def describe(self) -> dict[str, Any]:
+        # 層ごとの (入力, 出力) 幅。重みそのものは数が多く、読んでも意味を持たない。
+        return {"kind": "ude", "layers": [list(ly["W"].shape) for ly in self.layers]}
 
     def opcost(self) -> OpCost:
         # V の正規化 (減算+除算) + 各層の行列積 + 中間層の tanh。

@@ -2,17 +2,14 @@
 
 Dataset の座標規約 (features=MultiIndex(comp_id, variable, gate) /
 gate=False→電位 / node_id→I_internal) を書くのが coords.py、読むのが本
-モジュール。描画・metrics・surrogate は生 sel を持たず本モジュール経由で
-のみ Dataset を掘る。値のみ要る計算層は numpy accessor、時間軸を要る描画層
-は (t, y) accessor を使う。
+モジュール。metrics・surrogate は生 sel を持たず本モジュール経由でのみ
+Dataset を掘る。
 """
 
 from __future__ import annotations
 
 import numpy as np
 import xarray as xr
-
-_Trace = tuple[np.ndarray, np.ndarray]  # (time, value)
 
 POTENTIAL_VAR = "V"
 
@@ -82,14 +79,3 @@ def i_ext_values(ds: xr.Dataset) -> np.ndarray:
 
 def i_internal_values(ds: xr.Dataset, comp_id: int) -> np.ndarray:
     return ds["I_internal"].sel(node_id=comp_id).to_numpy()
-
-
-# --- (t, y) accessor (描画層) -----------------------------------------------
-
-
-def trace(ds: xr.Dataset, comp_id: int, variable: str) -> _Trace:
-    return time(ds), _variable_values(ds, comp_id, variable)
-
-
-def i_ext(ds: xr.Dataset) -> _Trace:
-    return time(ds), i_ext_values(ds)

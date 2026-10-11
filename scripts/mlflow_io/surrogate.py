@@ -1,5 +1,11 @@
 """学習 experiment (`_TARGET_EXP`) の**成果物**: surrogate の pickle + spec.json と、
-学習 run 1 本が自分について描ける図 (`figures/`)。
+学習 run 1 本の中身を冊が読める形にしたもの (`description/`)。
+
+    description/model.json               閉包項と前処理の中身、ネット、列の名前
+    description/train/                   学習データ (`_files.write_waves`、点は 1 つ)
+    description/fit/<comp_id>/x.f32      同定器へ渡した状態列 (x_names の順に連続)
+    description/fit/<comp_id>/latent.f32 学習ゲートの潜在 (latent_names の順に連続)
+    description/fit/<comp_id>/recon_rmse.f32  ゲート → 潜在 → ゲートの RMSE
 
 答えるのは「その run の surrogate」だけ (`load_surrogate_runs`)。**どの run が居るか・
 選べるかは知らない** (選ぶのは live-textbook の冊)。評価 (波形) も知らない。
@@ -13,16 +19,17 @@ from pathlib import Path
 
 import mlflow
 import mlflow.artifacts
+from mlflow.tracking import MlflowClient
 
-from neurosurrogate.artifact.plotting import use_style
-from neurosurrogate.surrogate.artifacts import surrogate_artifacts
+from neurosurrogate.surrogate.description import describe
 from neurosurrogate.surrogate.model import Surrogate
 from neurosurrogate.surrogate.runs import SurrogateRuns
 
 from . import logger
+from ._files import write_f32, write_json, write_waves
 
 _SURR_ARTIFACT_DIR = "surrogate"
-_FIGURES_DIR = "figures"
+_DESCRIPTION_DIR = "description"
 
 
 def log_surrogate_model(surrogate: Surrogate) -> None:
@@ -31,13 +38,37 @@ def log_surrogate_model(surrogate: Surrogate) -> None:
         mlflow.log_artifacts(tmp_str, artifact_path=_SURR_ARTIFACT_DIR)
 
 
-def log_surrogate_figures(surrogate: Surrogate) -> None:
-    """学習 run 1 本が自分について描ける図を、開いている run の `figures/` へ置く。
-    学習 run だけで決まる図なので、学習のときに一度だけ描けば足りる。"""
-    use_style()
+def _write_description(root: Path, surrogate: Surrogate) -> None:
+    desc = describe(surrogate)
+    write_json(root / "model.json", desc.model)
+    net = surrogate.spec.dataset.net
+    names = {comp: net.name_to_idx(comp) for comp in net.names}
+    write_waves(root / "train", [desc.training_data], names)
+    for comp_id, fit in desc.fits.items():
+        folder = root / "fit" / str(comp_id)
+        folder.mkdir(parents=True)
+        write_f32(folder / "x.f32", fit.x.T)
+        write_f32(folder / "latent.f32", fit.latent.T)
+        write_f32(folder / "recon_rmse.f32", fit.recon_rmse)
+
+
+def log_surrogate_description(surrogate: Surrogate) -> None:
+    """学習 run 1 本の中身を、開いている run の `description/` へ置く。学習 run だけで
+    決まるので、学習のときに一度だけ書けば足りる。"""
     with tempfile.TemporaryDirectory() as tmp_str:
-        surrogate_artifacts(surrogate).save(Path(tmp_str))
-        mlflow.log_artifacts(tmp_str, artifact_path=_FIGURES_DIR)
+        _write_description(Path(tmp_str), surrogate)
+        mlflow.log_artifacts(tmp_str, artifact_path=_DESCRIPTION_DIR)
+
+
+def run_surrogate_description(run_id: str) -> None:
+    """`description/` を持たない学習 run (書く前に学習した run) に、後から書き足す。"""
+    client = MlflowClient()
+    if client.list_artifacts(run_id, _DESCRIPTION_DIR):
+        return
+    logger.info("学習 run %s に %s/ を書き足す", run_id, _DESCRIPTION_DIR)
+    with tempfile.TemporaryDirectory() as tmp_str:
+        _write_description(Path(tmp_str), _load_surrogate_model(run_id))
+        client.log_artifacts(run_id, tmp_str, _DESCRIPTION_DIR)
 
 
 @cache
