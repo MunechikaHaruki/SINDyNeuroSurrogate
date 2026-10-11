@@ -9,9 +9,8 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | 学習（Hydra）と評価（`just eval`）の入口、MLflow の読み書き | `scripts/` |
-| 実験の結果 | MLflow (`just mlflow`)。図は親の live-textbook の `research/sindy-surrogate-evaluation` が描く |
-| この領域の用語 | `CONTEXT.md` |
-| 設計の詳細と判断基準 | `docs/architecture.md`、`docs/agents/`、`docs/adr/` |
+| 実験の結果 | MLflow (`just mlflow`)。図は親の live-textbook の `research/sindy-surrogate-evaluation`（評価）と `research/sindy-surrogate-model`（学習 run）が描く |
+| 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 
 ## 持たないもの
 
@@ -50,20 +49,13 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 
 ## Architecture
 
-- 依存の向き: `core ← neurons ← sim.{_current_catalog,spec,result} ← surrogate ← sim.{run,artifacts} ← artifact.bundle`
+- 依存の向き: `core ← neurons ← sim.{_current_catalog,spec,result} ← surrogate ← sim.run`
 - `neurosurrogate/` はドメイン層で、MLflow/Hydra を import しない。
-- 評価結果は MLflow の波形 run に置き、Python では図を描かない（学習 run が自分について描く図だけは学習のときに `figures/` へ）。形式は `docs/architecture.md`。
+- 評価結果は波形 run に、学習 run の中身は学習 run の `description/` に置き、Python では図を描かない。形式は `DESIGN.md`。
 - 依存の向き、ドメイン層の import、`__all__` の不在、`_` の綴りは `tests/test_conventions.py` が機械検査する。
 - 動的に呼ばれる入口（Hydra entry / `just eval` の main / `neurons/{hh,traub}.py`）はテスト側の免除リストに明記する。
 - 検査が落ちたら、テストを緩めずコードを直す。
-- 各ディレクトリとファイルの責務、設定ファイルの規約は `docs/architecture.md` が持つ。
-- 設計に手を入れる前に `docs/agents/design-principles.md`（どちらへ倒すかの判断基準）を読む。
-
-## Agent skills
-
-- Issue tracker: GitHub Issues (`gh` CLI)。`docs/agents/issue-tracker.md`
-- Triage labels: 5 ラベル (`needs-triage`/`needs-info`/`ready-for-agent`/`ready-for-human`/`wontfix`)。`docs/agents/triage-labels.md`
-- Domain docs: single-context (`CONTEXT.md` + `docs/adr/`)。`docs/agents/domain.md`
+- 各ディレクトリとファイルの責務、設定ファイルの規約、どちらへ倒すかの判断基準は `DESIGN.md` が持つ。設計に手を入れる前に読む。
 
 ## RTK
 
