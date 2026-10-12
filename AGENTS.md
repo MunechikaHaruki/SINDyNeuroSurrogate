@@ -9,13 +9,13 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | 学習（Hydra）と評価（`just eval`）の入口、MLflow の読み書き | `scripts/` |
-| 実験の結果 | MLflow (`just mlflow`)。図は親の live-textbook の `research/sindy-surrogate-evaluation`（評価）と `research/sindy-surrogate-model`（学習 run）が描く |
+| 実験の結果 | MLflow (`just mlflow`)。図は live-textbook の `research/sindy-surrogate-evaluation`（評価）と `research/sindy-surrogate-model`（学習 run）が描く |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 
 ## 持たないもの
 
 - 概念の説明や教材。この repo からは参照しない。
-- 結果を解釈する図。親の live-textbook の `research/` の冊が持つ。
+- 結果を解釈する図。live-textbook の `research/` の冊が持つ。
 - ポスター、スライド、論文の原稿
 - 修論の計画、期日、週次の進捗、受けた指摘
 - 本人の事実と、進路の判断基準
