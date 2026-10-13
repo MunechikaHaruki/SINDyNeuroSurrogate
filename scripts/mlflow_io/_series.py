@@ -2,7 +2,7 @@
 kind=original (原系、`series_hash` で共有) と kind=surrogate が平坦に並び、置換系は
 `original_hash` で原系を名指す。点は run の中の並び順そのもの。
 
-波形は live-textbook の冊も読むので、TS で読める形で置く (`_files.write_waves`)。
+波形は figures/ の図も読むので、TS で読める形で置く (`_files.write_waves`)。
 置換系の run には、原系と比べた指標 (`metrics.json`)、原系を潜在空間へ射影した軌道
 (`projected/<comp>/`)、学習側の指標 (`summary.json`) も置く = 図に要るものは全部
 run の中にあり、どの列を並べて見るかは読む側が選ぶ。

@@ -9,19 +9,25 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | 学習（Hydra）と評価（`just eval`）の入口、MLflow の読み書き | `scripts/` |
-| 実験の結果 | MLflow (`just mlflow`)。図は live-textbook の `research/sindy-surrogate-evaluation`（評価）と `research/sindy-surrogate-model`（学習 run）が描く |
+| 実験の結果 | MLflow (`just mlflow`) |
+| 結果を解釈する図（ブラウザで動かす `.svelte`）と、図が使う計算（`.ts`）とテスト | `figures/`。`sindy-surrogate-evaluation`（評価）、`sindy-surrogate-model`（学習 run）、Traub のゲート縮約（`traub-apply-kam` → `gate-reduction-*`） |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 
 ## 持たないもの
 
-- 概念の説明や教材。この repo からは参照しない。
-- 結果を解釈する図。live-textbook の `research/` の冊が持つ。
+- 汎用の方法の説明や教材（HH、縮約法そのもの、統計など）。live-textbook が持ち、図からは前提としてリンクで引く。教材の側からは図を指さない。
 - ポスター、スライド、論文の原稿
 - 修論の計画、期日、週次の進捗、受けた指摘
 - 本人の事実と、進路の判断基準
 
-**冊とはコードを import し合わない。** 冊の図が読むのはデータだけ（設定 JSON と MLflow の run）。
-シミュレータは TS の冊にも二重にあってよく、ずれは共通の基準値のテストで見張る。
+**図と Python はコードを import し合わない。** 図が読むのはデータだけ（設定 JSON と MLflow の run）。
+シミュレータは TS の図にも二重にあってよく、ずれは共通の基準値のテストで見張る。
+
+## 図
+
+- 書き方（部品、宣言、見た目の規約）は live-textbook と同じで、スキル live-textbook-figure に従う。画面と部品はルートの `.web/` が持つ。
+- 図は `figures/<name>.svelte` に平らに置く。計算はテストで数値を固定できるよう隣の `<name>.ts` に切り出し、テストは `<name>.test.ts`、参照値は `<name>.reference.json`。
+- `just web` で開き、`just web-check` でテスト・ESLint・型を確かめる（どちらも `.web/` で走り、教材と一緒に見る）。
 
 ## Coding Standards
 

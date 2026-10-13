@@ -1,6 +1,6 @@
 """評価の入口: `just eval <系列> <学習 run の id>...`。系列はカタログの名前。
 
-結果は MLflow の波形 experiment に入り、live-textbook の research/ の冊が読んで描く。
+結果は MLflow の波形 experiment に入り、figures/ の図が読んで描く。
 """
 
 import argparse
