@@ -95,11 +95,3 @@ mlflow:
 #   just eval traub19_somastim <学習 run の id> ...   (系列の一覧は just eval -h)
 eval *args:
     {{ VIRTUAL_ENV }} python scripts/evaluate.py {{ args }}
-
-# 図（figures/）を開く開発サーバー。画面は context-router の .web/ が持ち、教材と一緒に http://127.0.0.1:4321/ に並ぶ。
-web port="4321":
-    cd "$(git rev-parse --show-superproject-working-tree)/.web" && bun run dev --port {{ port }} --strictPort
-
-# 図のテスト、ESLint、型検査。教材の分も一緒に見る。
-web-check:
-    cd "$(git rev-parse --show-superproject-working-tree)/.web" && bun run test && bun run lint && bun run check
