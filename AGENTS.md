@@ -25,7 +25,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ## 図
 
-- 書き方（部品、宣言、見た目の規約）は live-textbook と同じで、スキル live-textbook に従う。画面と部品はルートの `.web/` が持つ。
+- 書き方（部品、宣言、見た目の規約）は教材と同じで、スキル book に従う。画面と部品はルートの `.web/` が持つ。
 - 図は `figures/<name>.svelte` に平らに置く。計算はテストで数値を固定できるよう隣の `<name>.ts` に切り出し、テストは `<name>.test.ts`、参照値は `<name>.reference.json`。
 - 常駐の開発サーバー（`http://127.0.0.1:4321/`）で教材と一緒に開く。テスト・ESLint・型は context-router の `.web/` で `bun run web-check`。
 
