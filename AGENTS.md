@@ -25,7 +25,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ## 図
 
-- 書き方（部品、宣言、見た目の規約）は live-textbook と同じで、スキル live-textbook-figure に従う。画面と部品はルートの `.web/` が持つ。
+- 書き方（部品、宣言、見た目の規約）は live-textbook と同じで、スキル live-textbook に従う。画面と部品はルートの `.web/` が持つ。
 - 図は `figures/<name>.svelte` に平らに置く。計算はテストで数値を固定できるよう隣の `<name>.ts` に切り出し、テストは `<name>.test.ts`、参照値は `<name>.reference.json`。
 - 常駐の開発サーバー（`http://127.0.0.1:4321/`）で教材と一緒に開く。テスト・ESLint・型は context-router の `.web/` で `bun run web-check`。
 
@@ -35,7 +35,6 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 - `__init__.py` に `__all__` を定義しない。過剰な複雑さになる
 - `_` 始まりの名前とモジュール名は「外から参照しない」印。外から使うものに付けない
 - 大きな改装のあとは `just test` が通ることを確認する。テストは自由に足してよいが 20s 以下に抑える
-- 編集のたびにルートの hook が ruff で整形と検査をし、ターンの終わりに mypy を走らせる。返ってきた誤りはその場で直す
 
 ## Commands
 
@@ -58,11 +57,6 @@ just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment の�
 - 依存の向き: `core ← neurons ← sim.{_current_catalog,spec,result} ← surrogate ← sim.run`
 - `neurosurrogate/` はドメイン層で、MLflow/Hydra を import しない。
 - 評価結果は波形 run に、学習 run の中身は学習 run の `description/` に置き、Python では図を描かない。形式は `DESIGN.md`。
-- 依存の向き、ドメイン層の import、`__all__` の不在、`_` の綴りは `tests/test_conventions.py` が機械検査する。
 - 動的に呼ばれる入口（Hydra entry / `just eval` の main / `neurons/{hh,traub}.py`）はテスト側の免除リストに明記する。
-- 検査が落ちたら、テストを緩めずコードを直す。
+- `tests/test_conventions.py` が落ちたら、テストを緩めずコードを直す。
 - 各ディレクトリとファイルの責務、設定ファイルの規約、どちらへ倒すかの判断基準は `DESIGN.md` が持つ。設計に手を入れる前に読む。
-
-## RTK
-
-`rtk` 前置は出力を縮めるだけで、終了コードは素通しする。出力が変なときだけ `rtk proxy <cmd>` と比べる。
