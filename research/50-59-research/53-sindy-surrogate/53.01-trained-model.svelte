@@ -253,7 +253,7 @@
   }
 </script>
 
-<Dashboard title="SINDy サロゲート：学習 run の中身" summary="学習した 1 本の run について、閉包項の係数、前処理の寄与率、区画のつながりと、学習データから同定器へ渡したもの（圧縮した入力、再構成誤差、潜在の軌跡、電位の分布）を並べる。" complete={false}>
+<Dashboard title="SINDy サロゲート：学習 run の中身" summary="学習した 1 本の run について、閉包項の係数、前処理の寄与率、区画のつながりと、学習データから同定器へ渡したもの（圧縮した入力、再構成誤差、潜在の軌跡、電位の分布）を並べる。">
   {#snippet sidebar()}
     {#if error}<p class="note" aria-live="polite">停止：{error}</p>{/if}
     <section>

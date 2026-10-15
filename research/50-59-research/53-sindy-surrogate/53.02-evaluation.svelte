@@ -306,7 +306,7 @@
   });
 </script>
 
-<Dashboard title="SINDy サロゲート：評価の比較" summary="学習したサロゲートで Traub の区画を置き換え、同じ入力の掃引で原系と比べる。点ごとの膜電位、掃引値に沿った指標、1 組の詳細（潜在変数・相平面・スパイクの特徴量）と、学習側の指標を並べる。" complete={false}>
+<Dashboard title="SINDy サロゲート：評価の比較" summary="学習したサロゲートで Traub の区画を置き換え、同じ入力の掃引で原系と比べる。点ごとの膜電位、掃引値に沿った指標、1 組の詳細（潜在変数・相平面・スパイクの特徴量）と、学習側の指標を並べる。">
   {#snippet sidebar()}
     {#if error}<p class="note" aria-live="polite">停止：{error}</p>{/if}
     <section>

@@ -244,7 +244,7 @@
   const oneLine = { label: '1', tone: 'muted' as const, y: [1] };
 </script>
 
-<Dashboard title="Traub 単一区画：ゲートの組を選び、縮約と比べる" summary="元モデルの各変数と等価電位を並べてまとめる組を選び、その組を作れるか（等価電位と感度の符号）を元モデルの軌道の上で確かめる。最後に同じ入力で 11 状態と縮約した系を積分し、発火時刻・波形・Ca と AHP の履歴を比べる。" complete={true}>
+<Dashboard title="Traub 単一区画：ゲートの組を選び、縮約と比べる" summary="元モデルの各変数と等価電位を並べてまとめる組を選び、その組を作れるか（等価電位と感度の符号）を元モデルの軌道の上で確かめる。最後に同じ入力で 11 状態と縮約した系を積分し、発火時刻・波形・Ca と AHP の履歴を比べる。">
   {#snippet sidebar()}
     <p class="note">導出と記号は <a href="52.01-apply-kam">別冊「Traub 単一コンパートメントへの Kepler–Abbott–Marder 法の適用」</a> にある。</p>
     <section>

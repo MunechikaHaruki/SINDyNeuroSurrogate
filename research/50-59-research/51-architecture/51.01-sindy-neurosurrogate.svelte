@@ -28,7 +28,7 @@
   `;
 </script>
 
-<Page title="SINDyNeuroSurrogate の構成" summary="研究コードの層と依存の向き、学習と評価の入口から MLflow を経て図に届くまでの流れ。" complete={false}>
+<Page title="SINDyNeuroSurrogate の構成" summary="研究コードの層と依存の向き、学習と評価の入口から MLflow を経て図に届くまでの流れ。">
   <h2>層の依存</h2>
   <p>ドメイン層（<code>neurosurrogate/</code>）は 5 つの層に分かれ、矢印の向きにだけ import できる。左の層ほど基盤で、<code>base</code> は他の層を一切 import しない。許可は推移的にも明示してあり、図では直接の辺だけを描く。この向きは <code>tests/test_conventions.py</code> の <code>_LAYERS</code> が検査する。</p>
   <Mermaid label="ドメイン層の依存" code={layers} />
