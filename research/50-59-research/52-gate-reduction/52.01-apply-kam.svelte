@@ -129,7 +129,7 @@
 </script>
 
 <Page title="Traub 単一コンパートメントへの Kepler–Abbott–Marder 法の適用" summary="Traub の単一区画の 8 つのゲートを、Kepler–Abbott–Marder 法で群に分けて縮約する。等価電位と感度の符号で群を作れるゲートを絞り、近似のよさ（Kepler 式(10)・(11)）を膜電位の関数として判定し、縮約モデルで各時刻に計算する式を書く。" complete={true}>
-  <p><small>典拠：<a href="https://doi.org/10.1007/BF00197717">Kepler et al. (1992)</a>、<a href="https://doi.org/10.1152/jn.1991.66.2.635">Traub et al. (1991)</a>。前提：<a href="../../../../resources/textbook/42-neuron-models/42.08-kepler-abbott-marder">別冊「Kepler–Abbott–Marder のモデル縮約」</a>、<a href="../../../../resources/textbook/42-neuron-models/42.07-traub-model">別冊「Traub の CA3 ニューロンモデル」</a>。</small></p>
+  <p><small>典拠：<a href="https://doi.org/10.1007/BF00197717">Kepler et al. (1992)</a>、<a href="https://doi.org/10.1152/jn.1991.66.2.635">Traub et al. (1991)</a>。前提：<a href="../../../../../resources/textbook/40-49-neuroscience/42-neuron-models/42.08-kepler-abbott-marder">別冊「Kepler–Abbott–Marder のモデル縮約」</a>、<a href="../../../../../resources/textbook/40-49-neuroscience/42-neuron-models/42.07-traub-model">別冊「Traub の CA3 ニューロンモデル」</a>。</small></p>
 
   <h2>Traub の膜と 8 つのゲート</h2>
   <p>Traub の局所の膜方程式を細胞体のパラメータで使い、外部電流だけで駆動する一つの膜を扱う。状態は膜電位 {@html tex`V`}、電位で動く 8 つのゲート、Ca 系 {@html tex`\chi,q`} の 11 個である。</p>

@@ -17,7 +17,7 @@ uv run scripts/main.py surrogate=traub_useMC19CompForTeachingData   # 学習
 just eval traub19_somastim <学習 run の id>                           # 評価
 ```
 
-結果は MLflow（`just mlflow`）に入り、`research/53-sindy-surrogate/` の図（`53.01-trained-model` が学習 run、`53.02-evaluation` が評価）が読んで描く。図は context-router の開発サーバー（`http://127.0.0.1:4321/`）で開く。
+結果は MLflow（`just mlflow`）に入り、`research/50-59-research/53-sindy-surrogate/` の図（`53.01-trained-model` が学習 run、`53.02-evaluation` が評価）が読んで描く。図は context-router の開発サーバー（`http://127.0.0.1:4321/`）で開く。
 
 ## Usage
 ![Status](https://img.shields.io/badge/docs-writing-orange)
