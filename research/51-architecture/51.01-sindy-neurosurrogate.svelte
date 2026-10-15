@@ -24,7 +24,7 @@
     main --> io["scripts/mlflow_io/"]
     evaluate --> io
     io --> mlflow[("MLflow")]
-    mlflow -- REST --> figures["figures/<br/>図"]
+    mlflow -- REST --> research["research/<br/>図"]
   `;
 </script>
 

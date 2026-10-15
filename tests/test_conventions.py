@@ -70,7 +70,7 @@ _LAYERS = {
 }
 
 # ドメイン層が触ってはいけない基盤 (実行/記録の入口は scripts/ だけが知る)。
-# 描画も持たない (描くのは figures/ の図。ドメインは数値を出すだけ)。
+# 描画も持たない (描くのは research/ の図。ドメインは数値を出すだけ)。
 _INFRA_ROOTS = {"mlflow", "hydra", "omegaconf", "matplotlib"}
 
 

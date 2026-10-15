@@ -41,7 +41,7 @@ neurosurrogate/                  # ドメイン層 (MLflow 非依存)。依存�
         spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない** — hash は保存の単位だけが持つ) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+**replace_targets**+param+values の 1 掃引 = **保存の単位でもある**。どこを置換する実験かも記述の一部で、置換器は知らないまま対象を名前で挙げる。points は派生、to_dict/from_dict で往復。鍵は 2 本 — 原系 `hash` (置換範囲を含まない = 範囲だけ違う対照系列と原系 run を共有) と置換系 `replaced_hash` (含む))。**記述 2 段が result の 波形 / SeriesRun と 1 対 1**。surrogate より前の層 (SurrogateSpec.dataset がこれ)
         result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = mlflow_io._series の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。**答えるのは「どの列か・どの点か」だけ** (column/pair/run_ids) = 適用先も掃引軸も刻み幅も素通しせず、要るものは view.series から直接引く。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。**系列名も評価 run の id も持たない**
         run.py                   # **仕様 × surrogate を掛ける唯一の段** (mlflow 非依存。**何を**回すかは scripts/catalog.py): _simulate (1 シミュ + 置換対象名 → 波形) / run_column (series + run_id + surrogate → **1 列** `SeriesRun`。系列 → 結果の唯一の入口。両方 None が原系)。**回す前に決まること (どの run が置換できるか) は持たない** → SurrogateRuns.replacing。表示名は出てこない (学習 run の id は列の標識として通るだけ)。surrogate の後の層
-        waveform.py              # 波形の指標: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)。公開は compare 1 つ = 1 ペア 1 comp の全指標 (rows=(orig, surr) / scalars / spikes=全 AP の特徴量 / diverged) を素の値の dict で返す。並べ方と描き方は持たない (図は figures/)
+        waveform.py              # 波形の指標: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)。公開は compare 1 つ = 1 ペア 1 comp の全指標 (rows=(orig, surr) / scalars / spikes=全 AP の特徴量 / diverged) を素の値の dict で返す。並べ方と描き方は持たない (図は research/)
   surrogate/  model.py           # SurrogateSpec (宣言 + hyperparams + JSON 往復 + **設定ツリー (spec + parts 3 ブロック) を解く唯一の場所** from_config + 名前 → 実装の解決 ansatz (**型**) / preprocessor_fit (**fit_pca / fit_ae 関数**) + **学習ドメインの述語** in_train_domain (置換の可否と学習 comp の選定 train_comp_ids の両方が引く = 置換専用でないのでここ)) と Surrogate (**学習済みのもの** = 保存する 3 点 spec/preprocessor/closure だけを持ち (ansatz は spec しか状態を持たないので派生)、答えるのは持つ・保存する・読むと、比べる表に並べる学習側の指標 summary だけ = 適用先を知らない)。**組み立ては型のメソッドでなくモジュール関数** fit_surrogate — hyperparams まで spec が持つので引数は設定ツリー 1 つ。**preprocessor → closure の学習順もここが持つ** (定式化に依らないので Ansatz の既定実装にしない)
               replace.py         # **適用先 (NeuronGraph) を知る唯一の場所** = 置換の語彙一式。**公開は applicable / replace の 2 つだけ** (残りは `_` = 内部の綴り): どこへ当てられるか (applicable ← _rejected_targets) + 当てられない理由の**事実** (_Absent / _TypeMismatch / _ParamsMismatch の直和 = 理由の網羅が型で見える。**文言は持たない** — 文にするのは提示側 _NotReplaceable.__str__ だけ) + 当てること (replace(surrogate, dataset, targets) = 全数検証、1 つでも通らなければ部分適用せず _NotReplaceable)。**判定と適用を分けない** (replace が断る条件 = applicable が偽になる条件そのもの)。型のメソッドでなくモジュール関数 = 適用先はサロゲートの持ち物でない
               runs.py            # 一意な名前と選択順を持つ SurrogateRuns。評価系列が挙げた置換対象を**全部**置換できる run だけへの絞り込み (部分一致は不可)
@@ -53,7 +53,7 @@ neurosurrogate/                  # ドメイン層 (MLflow 非依存)。依存�
               description.py     # 学習済み surrogate の中身を図に依らないデータで出す (describe)。閉包項と前処理の中身 (各実装の describe)、ネット、学習データ、学習 comp ごとに同定器へ渡した列・潜在・再構成 RMSE。置換シミュは回さない
 scripts/  main.py                # Hydra エントリ (学習。surrogate とその中身 description/ を log)
           evaluate.py            # 評価の入口 `just eval <系列> <学習 run>...` (argparse)。mlflow_io.evaluation.evaluate を呼ぶだけ
-          catalog.py             # **何を回すか**の 1 枚カタログ: EVALS (素材 1 条件) / SERIES (掃引。置換器を持たない素の EvalSeries だが、**どこを置換するかは挙げる** = replace_targets。回す側が SurrogateRuns.replacing で、対象を全部置換できる run だけの run 軸を張る)。**描き方は持たない** (つまみは figures/ の図が持つ)
+          catalog.py             # **何を回すか**の 1 枚カタログ: EVALS (素材 1 条件) / SERIES (掃引。置換器を持たない素の EvalSeries だが、**どこを置換するかは挙げる** = replace_targets。回す側が SurrogateRuns.replacing で、対象を全部置換できる run だけの run 軸を張る)。**描き方は持たない** (つまみは research/ の図が持つ)
           mlflow_io/             # MLflow I/O = **experiment と run を知る唯一の場所**。experiment ごとに 1 module で、どれも「experiment id を解く / 同一性の鍵を組む / 既存を探す / 書く」。公開名は run_* (確保) / load_* (読み) / log_* (書き) で揃え、複数段を完遂する evaluation.py だけ evaluate 1 本へ畳む。**再 export しない** (呼ぶ側は from mlflow_io.evaluation import ... と名乗る)
             __init__.py          # tracking URI をリポジトリ直下へ固定 (import 時に実行 = どの module を通っても最初に張られる) + _TARGET_EXP
             _query.py            # experiment id の解決 (`exp_id`。**書く側だけが作る**) と同一性 tag での最新 run 引き (`latest_by_tag`。**読む経路は experiment を作らない**)。4 点セットのうち experiment ごとに違わない 2 つをここに 1 つ置く (パッケージ外からは import しない)
@@ -63,13 +63,13 @@ scripts/  main.py                # Hydra エントリ (学習。surrogate とそ
             evaluation.py        # 評価 = 1 系列を原系と選んだ学習 run で回す (evaluate)。系列を置換できない run は回さない。選んだ学習 run に中身が無ければ書き足す。どの列を並べて見るかは残さない (冊が選ぶ)
           conf/                  # 学習設定 (Hydra) のみ。下記「設定ファイル」参照
 tests/    conftest.py (scripts/ を import path へ) / test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py / test_inits.py / test_eval_mlflow.py (評価 run の保存/読込。tracking 先は tmp へ差し替え)
-figures/  <分類>/*.svelte, *.ts     # 結果を解釈する図 (TS + Svelte。画面と部品は context-router の .web/)。Python とは import し合わず、MLflow の REST と設定 JSON だけを読む。51-gate-reduction/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
+research/ <分類>/*.svelte, *.ts     # 結果を解釈する図 (TS + Svelte。画面と部品は context-router の .web/)。Python とは import し合わず、MLflow の REST と設定 JSON だけを読む。52-gate-reduction/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
 ```
 
 ### 成果物の置き場 (MLflow)
 
-図は Python で描かず、`figures/52-sindy-surrogate/52.02-evaluation` (評価) と
-`52.01-trained-model` (学習 run) が MLflow の REST から読んで描く。Python が置くのは
+図は Python で描かず、`research/53-sindy-surrogate/53.02-evaluation` (評価) と
+`53.01-trained-model` (学習 run) が MLflow の REST から読んで描く。Python が置くのは
 図に要るデータだけ:
 
 ```
@@ -114,7 +114,7 @@ waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
   変えたら別の実験 = コードに焼いて差分に出す方が正しい。
 - **描き方 (つまみ) はカタログに持たない** → 全キー (比較対象 comp・
   全 comp 図の表示制限・点軸の指標・詳細図の点・スパイク番号・折れ線の y レンジ)
-  を figures/ の図が持つ。どれも図を見て決め直すもので、カタログに置くと「何を
+  を research/ の図が持つ。どれも図を見て決め直すもので、カタログに置くと「何を
   回すか」と同じ寿命に見えてしまう。comp の選択肢は原系の `waves/meta.json` の names
   なので、適用先と噛み合わない comp を選べない。**何の図を出すかはどこにも書かない**:
   学習側は run の中身の `kind` (SINDy なら係数、PCA なら寄与率)、評価側は結果の形
@@ -202,7 +202,7 @@ sympy 式・Symbol などドメインの実体は**型のまま**持ち回り、
 ### 6. ドメインは数値を出し、冊は描くだけ
 
 ドメイン (`neurosurrogate/`) が出すのは数値と式 (LaTeX) だけで、表示のための加工 (係数の丸め、
-0 係数を落とす、下付きの整形、配置、色) は figures/ の図が持つ。逆に図はドメインの計算を
+0 係数を落とす、下付きの整形、配置、色) は research/ の図が持つ。逆に図はドメインの計算を
 しない。図に許すのは間引きや区間分けのような表示のための変換だけ。
 
 **発火条件**: ドメインに表示名・色・並べ方を書きそうになったとき → 冊へ回す。冊で指標や
@@ -220,7 +220,7 @@ pickle / artifact のスキーマを変えて過去の MLflow run がロード�
 ### 8. 実行経路を二重に持たない
 
 同じ操作に 2 経路を作らない。重い計算 (学習と評価) は CLI (`scripts/main.py`、`just eval`) だけが
-持ち、結果は MLflow に置く。描くのは figures/ の図だけで、Python で図を描く入口
+持ち、結果は MLflow に置く。描くのは research/ の図だけで、Python で図を描く入口
 (`scripts/draw.py` やレポート run) を復活させない。
 
 **発火条件**: 新しい操作を足すとき → 計算なら CLI に、見せ方なら冊に置く。

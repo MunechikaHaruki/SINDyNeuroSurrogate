@@ -91,7 +91,7 @@ mlflow:
     if nc -z 127.0.0.1 {{ MLFLOW_PORT }} 2>/dev/null; then echo "MLflow は既に http://127.0.0.1:{{ MLFLOW_PORT }} で上がっている"; exit 0; fi
     exec {{ VIRTUAL_ENV }} python -m mlflow server --host 127.0.0.1 --port {{ MLFLOW_PORT }} --backend-store-uri {{ MLFLOW_URI }}
 
-# 評価: 系列を原系と学習 run で回し、MLflow の波形 experiment に置く。図は figures/ が読む
+# 評価: 系列を原系と学習 run で回し、MLflow の波形 experiment に置く。図は research/ が読む
 #   just eval traub19_somastim <学習 run の id> ...   (系列の一覧は just eval -h)
 eval *args:
     {{ VIRTUAL_ENV }} python scripts/evaluate.py {{ args }}

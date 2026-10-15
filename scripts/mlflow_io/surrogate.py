@@ -8,7 +8,7 @@
     description/fit/<comp_id>/recon_rmse.f32  ゲート → 潜在 → ゲートの RMSE
 
 答えるのは「その run の surrogate」だけ (`load_surrogate_runs`)。**どの run が居るか・
-選べるかは知らない** (選ぶのは figures/ の図)。評価 (波形) も知らない。
+選べるかは知らない** (選ぶのは research/ の図)。評価 (波形) も知らない。
 **選んだ run がそのまま run 軸**で、選択を広げも縮めもしない (hydra の親子は
 MLflow UI 上の grouping で、比較の単位ではない)。
 """
