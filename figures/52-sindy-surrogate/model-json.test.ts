@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { cumulative, featureTex, histogram, placeNet, targetTex, type NetJson } from './sindy-surrogate-model.ts';
+import { cumulative, featureTex, histogram, placeNet, targetTex, type NetJson } from './model-json.ts';
 
 describe('式の表示', () => {
   // sympy の sp.latex の出力そのまま（この repo の smoke run の model.json から）。

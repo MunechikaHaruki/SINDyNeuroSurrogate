@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import fixture from './gate-reduction-model.reference.json';
-import * as model from './gate-reduction-model.ts';
+import fixture from './traub.reference.json';
+import * as model from './traub.ts';
 
 const recovery: model.Grouping = { phi: [], psi: [['h', 'n']] };
 const threeVariables: model.Grouping = {
@@ -89,7 +89,7 @@ test('invalid recovery weights stop the calculation instead of silently clipping
   expect(() => model.reducedDerivative(recovery, state, 0)).toThrow('正の重みの適用範囲外');
 });
 
-test('the general reduced right-hand side reproduces the h,n equation of traub-apply-kam', () => {
+test('the general reduced right-hand side reproduces the h,n equation of 51.01-apply-kam', () => {
   // 本文「h,n の 10 状態系」の dψ/dt = α_h f_h + α_n f_n を、解析的な傾きで別に組み立てて比べる。
   const y = model.initial(recovery);
   y[0] = -45;
@@ -158,7 +158,7 @@ test('equilibria are steady states of the full model at that constant current', 
   }
 });
 
-test('the steady I-V curve is N-shaped and gives the equilibria quoted in traub-apply-kam', () => {
+test('the steady I-V curve is N-shaped and gives the equilibria quoted in 51.01-apply-kam', () => {
   const roots = model.equilibria(0);
   expect(roots).toHaveLength(3);
   [-69, -58, -31].forEach((v, i) => expect(Math.abs(roots[i] - v)).toBeLessThan(0.5));
@@ -226,7 +226,7 @@ test('group conditions report a missing equivalent potential and a group with no
   expect(model.checkGroup(['c'], { ...state, chi: 0 }, false).verdict).toBe('noWeight');
 });
 
-test('steady-state curves are monotonic as traub-apply-kam states, except the flat ranges of r and c', () => {
+test('steady-state curves are monotonic as 51.01-apply-kam states, except the flat ranges of r and c', () => {
   // 本文 4 ページ目：m,n,a,s は増加関数、h,b は減少関数で、全電位で x̄' ≠ 0。
   for (let v = -100; v <= 60; v += 0.5) {
     for (const name of ['m', 'n', 'a', 's'] as const) expect(model.steadySlope(name, v)).toBeGreaterThan(0);

@@ -6,7 +6,7 @@
   import Choice from '$lib/Choice.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import LineChart from '$lib/LineChart.svelte';
-  import { MLFLOW, decimate, gatesOf, listColumns, listSeries, listTrainRuns, readComp, readCurrent, readInternal, readJson, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type TrainRun, type WaveMeta } from './sindy-surrogate-evaluation.ts';
+  import { MLFLOW, decimate, gatesOf, listColumns, listSeries, listTrainRuns, readComp, readCurrent, readInternal, readJson, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type TrainRun, type WaveMeta } from './mlflow.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
   /** 表示用に間引くときの区間の数。1 本あたり最大でこの 2 倍の点になる。 */

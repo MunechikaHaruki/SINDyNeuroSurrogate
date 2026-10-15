@@ -10,7 +10,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | 学習（Hydra）と評価（`just eval`）の入口、MLflow の読み書き | `scripts/` |
 | 実験の結果 | MLflow (`just mlflow`) |
-| 結果を解釈する図（ブラウザで動かす `.svelte`）と、図が使う計算（`.ts`）とテスト | `figures/`。`sindy-surrogate-evaluation`（評価）、`sindy-surrogate-model`（学習 run）、Traub のゲート縮約（`traub-apply-kam` → `gate-reduction-*`） |
+| 結果を解釈する図（ブラウザで動かす `.svelte`）と、図が使う計算（`.ts`）とテスト | `figures/`。コードの構成（`01-architecture/`）、Traub のゲート縮約（`51-gate-reduction/`）、SINDy サロゲートの学習 run と評価（`52-sindy-surrogate/`） |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 
 ## 持たないもの
@@ -26,7 +26,8 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 ## 図
 
 - 書き方（部品、宣言、見た目の規約）は教材と同じで、スキル book に従う。画面と部品はルートの `.web/` が持つ。
-- 図は `figures/<name>.svelte` に平らに置く。計算はテストで数値を固定できるよう隣の `<name>.ts` に切り出し、テストは `<name>.test.ts`、参照値は `<name>.reference.json`。
+- 図の番号は教材と同じ Johnny.Decimal の体系から取る（区域はルートの `AGENTS.md`）。図は `figures/<NN-分類>/<NN.MM-名前>.svelte`。
+  計算はテストで数値を固定できるよう同じ分類に番号なしの役割の名前（`traub.ts`、`mlflow.ts`）で切り出し、テストは `<名前>.test.ts`、参照値は `<名前>.reference.json`。
 - 常駐の開発サーバー（`http://127.0.0.1:4321/`）で教材と一緒に開く。テスト・ESLint・型は context-router の `.web/` で `bun run web-check`。
 
 ## Coding Standards

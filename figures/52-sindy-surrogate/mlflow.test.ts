@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { decimate, decodeComp, variablesOf, type WaveMeta } from './sindy-surrogate-evaluation.ts';
+import { decimate, decodeComp, variablesOf, type WaveMeta } from './mlflow.ts';
 
 const meta: WaveMeta = {
   t0: 0,

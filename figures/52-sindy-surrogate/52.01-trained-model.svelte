@@ -10,8 +10,8 @@
   import MatrixTable from '$lib/MatrixTable.svelte';
   import NetChart from '$lib/NetChart.svelte';
   import { tex } from '$lib/tex.ts';
-  import { MLFLOW, decimate, decodeComp, listArtifacts, listTrainRuns, readComp, readCurrent, readF32, readJson, type Point, type TrainRun, type WaveMeta } from './sindy-surrogate-evaluation.ts';
-  import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from './sindy-surrogate-model.ts';
+  import { MLFLOW, decimate, decodeComp, listArtifacts, listTrainRuns, readComp, readCurrent, readF32, readJson, type Point, type TrainRun, type WaveMeta } from './mlflow.ts';
+  import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from './model-json.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
   /** 学習 run の中身の置き場（scripts/mlflow_io/surrogate.py）。 */
