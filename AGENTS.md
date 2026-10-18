@@ -8,8 +8,9 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 中身 | 場所 |
 | --- | --- |
 | 研究コード（ドメイン層） | `neurosurrogate/` |
-| 学習（Hydra）と評価（`just eval`）の入口、MLflow の読み書き | `scripts/` |
-| 実験の結果 | MLflow (`just mlflow`) |
+| 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
+| 何を回すかの宣言と spec.json の形（`conf.ts`）、段取り（`orchestrate.ts`。bun で実行し、`just train`・`just eval` が呼ぶ） | `research/50-59-research/53-evaluation/` |
+| 実験の結果（1 run = spec 1 つ、ディレクトリ名は spec のハッシュ）と run の一覧 | `runs/`（Git の外） |
 | 結果を解釈する図（ブラウザで動かす `.svelte`）と、図が使う計算（`.ts`）とテスト | `research/50-59-research/`。コードの構成（`51-architecture/`）、モデルを式で書きそこから計算できる図（`52-theory/`）、回して元の系と比べるものと学習 run を読むもの（`53-evaluation/`）、まだ研究コードにないもの（`54-future-works/`） |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 
@@ -20,14 +21,14 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 - 修論の計画、期日、週次の進捗、受けた指摘
 - 本人の事実と、進路の判断基準
 
-**図と Python はコードを import し合わない。** 図が読むのはデータだけ（設定 JSON と MLflow の run）。
+**図と Python はコードを import し合わない。** 図が読むのはデータだけ（設定 JSON と `runs/` の run）。
 シミュレータは TS の図にも二重にあってよく、ずれは共通の基準値のテストで見張る。
 
 ## 図
 
 - 書き方（部品、宣言、見た目の規約）は教材と同じで、スキル book に従う。画面と部品はルートの `.web/` が持つ。
 - 図の番号は教材と同じ Johnny.Decimal の体系から取る（区域はルートの `AGENTS.md`）。図は `research/50-59-research/<NN-分類>/<NN.MM-名前>.svelte`。
-  計算はテストで数値を固定できるよう同じ分類に番号なしの役割の名前（`traub.ts`、`mlflow.ts`）で切り出し、テストは `<名前>.test.ts`、参照値は `<名前>.reference.json`。
+  計算はテストで数値を固定できるよう同じ分類に番号なしの役割の名前（`traub.ts`、`runs.ts`）で切り出し、テストは `<名前>.test.ts`、参照値は `<名前>.reference.json`。
 - 常駐の開発サーバー（`http://127.0.0.1:4321/`）で教材と一緒に開く。テスト・ESLint・型は context-router の `.web/` で `bun run web-check`。
 
 ## Coding Standards
@@ -40,24 +41,20 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 ## Commands
 
 ```bash
-uv sync                                      # 依存導入
-uv run scripts/main.py                       # fit + MLflow log のみ (kernel は回さない)
-uv run scripts/main.py surrogate=_hh_informed  # Hydra プリセット切替
-uv run scripts/main.py --multirun            # preset の hydra.sweeper.params 直積 sweep
-just test                  # pytest + main.py
-just format && just lint   # ruff / ruff + mypy (scripts/ も含む)
-just mlflow                # MLflow server (port 5100)。Mac ではログイン時に常駐する
-just eval <系列> <学習 run>...  # 評価して波形 run を MLflow に置く (系列の一覧は just eval -h)
-just traub                 # traub_* preset を順に --multirun
-just clean-cache / clean-log
-just clean-run / clean-test # MLflow run 全削除 / smoke_test experiment のみ削除
+uv sync                        # 依存導入
+just train <preset>...         # 学習。preset は 53-evaluation/conf.ts の PRESETS (掃引は preset が run の列で持つ)
+just eval <系列> <preset かハッシュ>...  # 評価。原系と置換系を runs/ に置く。preset の未学習分は学習もする
+just runs list                 # run の一覧。just runs -h で preset と系列の一覧、just runs index で index.json を書き直す
+just test                      # pytest + 段取りから学習 1 本 (使い捨ての置き場)
+just format && just lint       # ruff / ruff + mypy
+just clean-cache
 ```
 
 ## Architecture
 
 - 依存の向き: `core ← neurons ← sim.{_current_catalog,spec,result} ← surrogate ← sim.run`
-- `neurosurrogate/` はドメイン層で、MLflow/Hydra を import しない。
-- 評価結果は波形 run に、学習 run の中身は学習 run の `description/` に置き、Python では図を描かない。形式は `DESIGN.md`。
-- 動的に呼ばれる入口（Hydra entry / `just eval` の main / `neurons/{hh,traub}.py`）はテスト側の免除リストに明記する。
+- `neurosurrogate/` はドメイン層で、MLflow や Hydra のような記録・設定の基盤を知らない。run の保存形式を知るのは最上位の `run.py` だけ。
+- Python は数値計算（シミュレータ、学習、指標）だけを持ち、段取り（何を回すか、掃引、ハッシュ、重複の回避、run の一覧）は TS が持つ。Python では図を描かない。run の形式は `DESIGN.md`。
+- 動的に呼ばれる入口（段取りが起動する `neurosurrogate/run.py` の main / `neurons/{hh,traub}.py`）はテスト側の免除リストに明記する。
 - `tests/test_conventions.py` が落ちたら、テストを緩めずコードを直す。
 - 各ディレクトリとファイルの責務、設定ファイルの規約、どちらへ倒すかの判断基準は `DESIGN.md` が持つ。設計に手を入れる前に読む。

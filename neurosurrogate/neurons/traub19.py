@@ -61,5 +61,5 @@ def g_axial(i: int) -> float:
 
 
 # dend 刺激版の注入先。soma (8) 隣の active な apical proximal dendrite で、
-# soma へ確実に電流が伝播する (g_Na=15)。
-DEND_STIM_IDX = 9
+# soma へ確実に電流が伝播する (g_Na=15)。評価系列 (conf.ts) は名前 c09 で綴る。
+_DEND_STIM_IDX = 9

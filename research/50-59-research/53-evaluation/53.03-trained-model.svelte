@@ -10,11 +10,11 @@
   import MatrixTable from '$lib/MatrixTable.svelte';
   import NetChart from '$lib/NetChart.svelte';
   import { tex } from '$lib/tex.ts';
-  import { MLFLOW, decimate, decodeComp, listArtifacts, listTrainRuns, readComp, readCurrent, readF32, readJson, type Point, type TrainRun, type WaveMeta } from './mlflow.ts';
+  import { RUNS, decimate, decodeComp, listRuns, listTrainRuns, readComp, readCurrent, readF32, readJson, type Point, type TrainRun, type WaveMeta } from './runs.ts';
   import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from './model-json.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
-  /** 学習 run の中身の置き場（scripts/mlflow_io/surrogate.py）。 */
+  /** 学習 run の中身の置き場（neurosurrogate/run.py）。 */
   const ROOT = 'description';
   /** 時間の図を間引くときの区間の数。 */
   const BUCKETS = 400;
@@ -32,7 +32,6 @@
   let meta = $state<WaveMeta>();
   let comps = $state<Record<string, CompData>>({});
   let current = $state<Float32Array>();
-  let missing = $state(false);
   let error = $state('');
 
   let shownComps = $state<string[]>([]);
@@ -50,10 +49,10 @@
 
   onMount(async () => {
     try {
-      runs = await listTrainRuns();
-      if (runs.length > 0) runId = runs[0].runId;
+      runs = listTrainRuns(await listRuns());
+      if (runs.length > 0) runId = runs[0].hash;
     } catch (e) {
-      error = `MLflow（${MLFLOW}）を読めない：${e instanceof Error ? e.message : String(e)}`;
+      error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`;
     }
   });
 
@@ -63,12 +62,7 @@
     if (!id) return;
     model = undefined;
     meta = undefined;
-    missing = false;
     void (async () => {
-      if ((await listArtifacts(id, ROOT)).length === 0) {
-        missing = true;
-        return;
-      }
       const readModel = await readJson<ModelJson>(id, `${ROOT}/model.json`);
       const readMeta = await readJson<WaveMeta>(id, `${ROOT}/train/meta.json`);
       const n = readMeta.n[0];
@@ -259,10 +253,10 @@
     <section>
       <h3>学習 run</h3>
       {#if runs.length > 0}
-        <Choice label="見る run" bind:value={runId} options={runs.map(r => ({ value: r.runId, label: r.name }))} />
+        <Choice label="見る run" bind:value={runId} options={runs.map(r => ({ value: r.hash, label: r.name }))} />
         <p class="note"><code>{runId}</code></p>
       {:else if !error}
-        <p class="note">学習を終えた run が無い。この repo で <code>uv run scripts/main.py</code> を回す。</p>
+        <p class="note">学習を終えた run が無い。この repo で <code>just train &lt;preset&gt;</code> を回す（preset の一覧は <code>just runs -h</code>）。</p>
       {/if}
     </section>
     {#if model}
@@ -279,11 +273,7 @@
   {/snippet}
 
   {#snippet left()}
-    {#if missing}
-      <Card kicker="学習 run" title="中身が無い">
-        <p class="note">この run は中身（description/）を持たない（学習のときに中身を書くようになる前の run）。この repo で <code>just eval &lt;系列&gt; {runId}</code> を回すと、評価のついでに書き足される。</p>
-      </Card>
-    {:else if model && meta && current}
+    {#if model && meta && current}
       <Card kicker="ネット" title="区画のつながり" subtitle={`刺激 ${model.net.stim}、線の数字は結合の重み`}>
         <NetChart nodes={netNodes()} edges={netEdges()} />
       </Card>

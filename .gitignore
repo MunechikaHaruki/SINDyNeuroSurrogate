@@ -4,16 +4,9 @@
 neurosurrogate.egg-info/
 # cache
 **/__pycache__/**
-# logged artifacts
-**/mlruns/**
-mlflow.db
-**/hydra-multiruns/**
-**/hydra-outputs/**/
-
-scripts/conf/surrogate/__*
-
-
 graphify-out/
 
 .DS_Store
 **/.DS_Store
+# 実験の結果 (research/50-59-research/53-evaluation/orchestrate.ts が runs/<ハッシュ>/ に置く)
+runs/

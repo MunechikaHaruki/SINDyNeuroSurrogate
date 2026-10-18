@@ -7,10 +7,10 @@
    印として信用できる状態を保つ (import 元を grep しないと公開範囲が分からない、を防ぐ)
 2. **依存の向き** — `neurosurrogate/` 内の import が `_LAYERS` の許可を超えない
    (`DESIGN.md` の層の宣言をそのまま実行可能にしたもの)
-3. **ドメイン層の独立** — `neurosurrogate/` が MLflow/Hydra を import しない
+3. **ドメイン層の独立** — `neurosurrogate/` が記録・設定・描画の基盤を import しない
 
-判定は import 文と属性アクセスの静的解析。動的にしか呼ばれない入口 (Hydra の
-`_target_`、`just eval` の入口、コンソールスクリプト) は `_EXEMPT` で明示的に免除する
+判定は import 文と属性アクセスの静的解析。動的にしか呼ばれない入口 (段取りが
+起動する `neurosurrogate/run.py`) は `_EXEMPT` で明示的に免除する
 = **免除もコードに書いてあるものだけ**。
 """
 
@@ -19,7 +19,7 @@ import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # 検査対象 (ドメイン層 + 入口)。tests/ は「消費者」側としてだけ読む。
-SRC_DIRS = ("neurosurrogate", "scripts")
+SRC_DIRS = ("neurosurrogate",)
 # **参照元として数えるのは production だけ** — テストが import しているのは
 # 「外から使われている」ではなく「中を検査している」なので、これに数えると
 # テストを書くだけで公開名・公開 module を作れてしまう (`_` が公開範囲の印で
@@ -29,14 +29,13 @@ PUBLIC_REF_DIRS = SRC_DIRS
 
 # 動的に解決される入口 = 静的解析からは参照が見えない。
 _EXEMPT = {
-    ("scripts/main.py", "main"),  # Hydra の @hydra.main エントリ
-    ("scripts/evaluate.py", "main"),  # `just eval` が直接起動する
+    ("neurosurrogate/run.py", "main"),  # 段取り (orchestrate.ts) が -m で起動する
     # 学習 run の pickle がクラス名で引く (改名すると既存 run が読めない)。
     ("neurosurrogate/surrogate/parts/preprocessor/pca.py", "PCAPreprocessor"),
 }
 # **名前空間ごと**外へ渡す module = 公開範囲が「module 直下の全部」。
 # `sindy._catalog` が `vars(hh) | vars(traub)` を lambdify の名前空間に注入するので、
-# レート関数は import されなくても**名前が API** (yaml の library_specs が文字列で
+# レート関数は import されなくても**名前が API** (conf.ts の library_specs が文字列で
 # 引く)。
 _EXEMPT_MODULES = {
     "neurosurrogate/neurons/hh.py",
@@ -45,8 +44,8 @@ _EXEMPT_MODULES = {
 # 名前を文字列で受け取る呼び出し (monkeypatch など) の引数も参照とみなす。
 _BY_NAME = {"setattr", "getattr", "hasattr", "delattr"}
 
-# `_` 無しの module 名でも、外から import されない入口 (Hydra/just が直接起動する)。
-_EXEMPT_ENTRY_MODULES = {"scripts/main.py", "scripts/evaluate.py"}
+# `_` 無しの module 名でも、外から import されない入口 (段取りが直接起動する)。
+_EXEMPT_ENTRY_MODULES = {"neurosurrogate/run.py"}
 
 # --- 依存の向き (DESIGN.md の宣言) -------------------------------------------
 # 場所 → 層 (module path の前方一致。長い方が勝つ = ファイル単位で層を割れる)。
@@ -58,6 +57,7 @@ _GROUP_OF = {
     "neurosurrogate/sim/run": "sim_exec",
     "neurosurrogate/sim/": "sim_desc",
     "neurosurrogate/surrogate/": "surrogate",
+    "neurosurrogate/run": "entry",  # spec.json → run のディレクトリ (段取りが起動する)
 }
 # 層 → import してよい層 (自分自身は常に可)。推移的な許可も**明示的に**書く
 # = 「どこから何が見えるか」がこの表だけで読める。
@@ -67,9 +67,11 @@ _LAYERS = {
     "sim_desc": frozenset({"base", "neurons"}),
     "surrogate": frozenset({"base", "neurons", "sim_desc"}),
     "sim_exec": frozenset({"base", "neurons", "sim_desc", "surrogate"}),
+    # 計算の入口と run の保存形式。どの層からも import されない最上位
+    "entry": frozenset({"base", "neurons", "sim_desc", "surrogate", "sim_exec"}),
 }
 
-# ドメイン層が触ってはいけない基盤 (実行/記録の入口は scripts/ だけが知る)。
+# ドメイン層が触ってはいけない基盤 (記録も設定の形式も run の置き場で足りる)。
 # 描画も持たない (描くのは research/ の図。ドメインは数値を出すだけ)。
 _INFRA_ROOTS = {"mlflow", "hydra", "omegaconf", "matplotlib"}
 
@@ -85,15 +87,14 @@ def _py_files(dirs: tuple[str, ...]) -> list[pathlib.Path]:
 
 def _module_path(mod: str, base: pathlib.Path, level: int) -> pathlib.Path | None:
     """import 文の module 指定 → ファイル。相対 import は `base` から遡り、
-    絶対 import は import root (repo 直下と `scripts/`。後者は Hydra や
-    `just eval` の入口が sys.path に持つ) から引く。"""
+    絶対 import は repo 直下から引く。"""
     if level:
         pkg = base.parent
         for _ in range(level - 1):
             pkg = pkg.parent
         roots = [pkg]
     else:
-        roots = [ROOT, ROOT / "scripts"]
+        roots = [ROOT]
     for root in roots:
         target = root
         for part in mod.split(".") if mod else []:
@@ -228,8 +229,9 @@ def _names_passed_as_strings(call: ast.Call) -> set[str]:
     }
 
 
-def _yaml_strings() -> str:
-    return "\n".join(p.read_text() for p in (ROOT / "scripts" / "conf").rglob("*.yaml"))
+def _declared_strings() -> str:
+    """preset の宣言 (`conf.ts`)。項ライブラリの名前を文字列で引く。"""
+    return (ROOT / "research/50-59-research/53-evaluation/conf.ts").read_text()
 
 
 def test_public_names_are_actually_imported_elsewhere() -> None:
@@ -238,14 +240,14 @@ def test_public_names_are_actually_imported_elsewhere() -> None:
     落ちたら 2 択: **他所から呼ばないなら `_` を付ける**、呼ぶなら呼ぶ側を足す
     (どこからも呼ばれないなら消す)。"""
     used = _imported_elsewhere()
-    yaml = _yaml_strings()
+    declared = _declared_strings()
     bad = [
         f"{path.relative_to(ROOT)}:{line} {name}"
         for (path, name), line in sorted(_defined().items())
         if (path, name) not in used
         and (str(path.relative_to(ROOT)), name) not in _EXEMPT
         and str(path.relative_to(ROOT)) not in _EXEMPT_MODULES
-        and name not in yaml
+        and name not in declared
     ]
     assert not bad, (
         "他 module から参照されないのに公開の綴り (`_` を付ける):\n" + "\n".join(bad)
@@ -266,14 +268,14 @@ def test_public_modules_are_imported_from_outside() -> None:
                 for src in _imported_modules(node, path)
                 if src.parent != path.parent
             }
-    yaml = _yaml_strings()
+    declared = _declared_strings()
     bad = [
         str(path.relative_to(ROOT))
         for path in _py_files(SRC_DIRS)
         if not path.name.startswith("_")
         and path not in outside
         and str(path.relative_to(ROOT)) not in _EXEMPT_ENTRY_MODULES
-        and path.stem not in yaml
+        and path.stem not in declared
     ]
     assert not bad, "外から import されない module が公開の綴り:\n" + "\n".join(bad)
 
@@ -306,7 +308,7 @@ def test_import_direction_follows_layers() -> None:
 
 
 def test_domain_layer_does_not_import_infra() -> None:
-    """`neurosurrogate/` は MLflow/Hydra を知らない (入口は `scripts/`)。"""
+    """`neurosurrogate/` は記録や設定の基盤を知らない。"""
     bad = []
     for path in _py_files(("neurosurrogate",)):
         for node in _import_nodes(path):

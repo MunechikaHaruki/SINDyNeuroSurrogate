@@ -1,4 +1,4 @@
-// 学習 run 1 本の中身（この repo が学習 run の description/ に置く。形式は scripts/mlflow_io/surrogate.py）。
+// 学習 run 1 本の中身（この repo が学習 run の description/ に置く。形式は neurosurrogate/run.py）。
 // ここは表示のための変換だけを持つ。指標や再構成誤差の計算はこの repo が済ませて置いている。
 
 /** 閉包項の中身。kind で表現を見分ける。 */

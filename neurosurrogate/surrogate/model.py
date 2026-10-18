@@ -85,8 +85,9 @@ class SurrogateSpec:
 
     @classmethod
     def from_config(cls, config: dict) -> "SurrogateSpec":
-        """Hydra の surrogate ブロックから。**4 ブロックはそのまま仕様の一部**で、
-        ここが設定ツリーの形を知る唯一の場所 (以降 fit は spec しか見ない)。
+        """設定ツリー (`conf.ts` の preset 1 本) から。**4 ブロックはそのまま
+        仕様の一部**で、ここが設定ツリーの形を知る唯一の場所 (以降 fit は spec
+        しか見ない)。
 
         学習ノードは config では名前で書き、ここで index へ解く。
         """
@@ -240,9 +241,7 @@ class Surrogate:
     @classmethod
     def load(cls, dir: Path | str) -> "Surrogate":
         # spec は JSON 別ファイル (構造で保存)、学習成果物は pickle。ansatz は状態を
-        # 持たず spec から解けるので保存しない。run 一覧が spec だけ読む経路は
-        # mlflow_io が artifact の spec.json を直読みする (surrogate を経由しない)
-        # → ここは load 内でまとめて読めば足りる。
+        # 持たず spec から解けるので保存しない。
         data = joblib.load(Path(dir) / _BUNDLE_FILE)
         return cls(
             SurrogateSpec.read(Path(dir) / _SPEC_FILE),

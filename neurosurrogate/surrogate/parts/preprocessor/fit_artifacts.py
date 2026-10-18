@@ -19,7 +19,7 @@ def fit_artifacts(
 ) -> tuple[list[float], dict[str, float]]:
     """(学習データ先頭の潜在, 再構成統計) を返す。
 
-    統計のキーは前置きなし — MLflow へ出すときの `pca/` `ae/` は実装が付ける
+    統計のキーは前置きなし — 表に出すときの `pca/` `ae/` は実装が付ける
     (どの前処理の値かはこの層では決まらない)。
     """
     latent = preprocessor.encode(train_gate)

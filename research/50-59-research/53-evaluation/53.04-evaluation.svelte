@@ -6,13 +6,15 @@
   import Choice from '$lib/Choice.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import LineChart from '$lib/LineChart.svelte';
-  import { MLFLOW, decimate, gatesOf, listColumns, listSeries, listTrainRuns, readComp, readCurrent, readInternal, readJson, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type TrainRun, type WaveMeta } from './mlflow.ts';
+  import { RUNS, decimate, gatesOf, listColumns, listRuns, listSeries, listTrainRuns, readComp, readCurrent, readInternal, readJson, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type TrainRun, type WaveMeta } from './runs.ts';
+  import type { IndexEntry } from './conf.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
   /** 表示用に間引くときの区間の数。1 本あたり最大でこの 2 倍の点になる。 */
   const BUCKETS = 400;
 
-  // ---- MLflow から読んだもの ----
+  // ---- runs/ から読んだもの ----
+  let index = $state<IndexEntry[]>([]);
   let series = $state<SeriesEntry[]>([]);
   let trainRuns = $state<TrainRun[]>([]);
   let columns = $state<Column[]>([]);
@@ -23,7 +25,7 @@
   let error = $state('');
 
   // ---- 選ぶもの ----
-  let seriesHash = $state('');
+  let seriesKey = $state('');
   let chosen = $state<string[]>([]);
   let evalComp = $state('soma');
   let viewComps = $state<string[]>(['soma']);
@@ -38,9 +40,9 @@
   let windowStart = $state(0);
   let windowLength = $state(1000);
 
-  let entry = $derived(series.find(s => s.hash === seriesHash));
-  /** 選んだ列を、MLflow から読んだ並びのまま（凡例の並び）。 */
-  let selected = $derived(columns.filter(c => chosen.includes(c.trainRunId)));
+  let entry = $derived(series.find(s => s.key === seriesKey));
+  /** 選んだ列を、run の一覧の並びのまま（凡例の並び）。 */
+  let selected = $derived(columns.filter(c => chosen.includes(c.train)));
   /** 凡例と表の見出しに使う短い名前。この系列の全列の名前に共通する語を省く（選び方で名前が変わらない）。 */
   let shortNames = $derived.by(() => {
     const names: Record<string, string> = {};
@@ -51,25 +53,26 @@
         for (const other of columns) if (!other.trainName.split(' ').includes(word)) shared = false;
         if (!shared) kept.push(word);
       }
-      names[column.trainRunId] = kept.length > 0 ? kept.join(' ') : column.trainName;
+      names[column.train] = kept.length > 0 ? kept.join(' ') : column.trainName;
     }
     return names;
   });
-  let detail = $derived(selected.find(c => c.trainRunId === detailRun) ?? selected[0]);
+  let detail = $derived(selected.find(c => c.train === detailRun) ?? selected[0]);
   let compNames = $derived(originalMeta?.names ? Object.keys(originalMeta.names) : []);
   let compId = $derived(originalMeta?.names?.[evalComp] ?? 0);
   let duration = $derived(originalMeta ? originalMeta.n[point] * originalMeta.dt : 0);
   let domain = $derived<[number, number]>([windowStart, Math.min(duration, windowStart + windowLength)]);
   /** 評価していない学習 run。`just eval` で回す。 */
-  let pendingRuns = $derived(trainRuns.filter(run => !columns.some(c => c.trainRunId === run.runId)));
+  let pendingRuns = $derived(trainRuns.filter(run => !columns.some(c => c.train === run.hash)));
 
   onMount(async () => {
     try {
-      series = await listSeries();
-      trainRuns = await listTrainRuns();
-      if (series.length > 0) seriesHash = series[0].hash;
+      index = await listRuns();
+      series = listSeries(index);
+      trainRuns = listTrainRuns(index);
+      if (series.length > 0) seriesKey = series[0].key;
     } catch (e) {
-      error = `MLflow（${MLFLOW}）を読めない：${e instanceof Error ? e.message : String(e)}`;
+      error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`;
     }
   });
 
@@ -78,17 +81,17 @@
     const current = entry;
     if (!current) return;
     void (async () => {
-      const found = await listColumns(current.hash);
-      const meta = await readJson<WaveMeta>(current.runId, 'waves/meta.json');
+      const found = listColumns(index, current);
+      const meta = await readJson<WaveMeta>(current.run, 'waves/meta.json');
       for (const column of found) {
-        metas[column.evalRunId] = await readJson<WaveMeta>(column.evalRunId, 'waves/meta.json');
-        metrics[column.evalRunId] = await readJson<Metrics>(column.evalRunId, 'metrics.json');
-        summaries[column.evalRunId] = await readJson<Record<string, number | null>>(column.evalRunId, 'summary.json');
+        metas[column.run] = await readJson<WaveMeta>(column.run, 'waves/meta.json');
+        metrics[column.run] = await readJson<Metrics>(column.run, 'metrics.json');
+        summaries[column.run] = await readJson<Record<string, number | null>>(column.run, 'summary.json');
       }
       originalMeta = meta;
       columns = found;
-      chosen = found.map(c => c.trainRunId);
-      detailRun = found[0]?.trainRunId ?? '';
+      chosen = found.map(c => c.train);
+      detailRun = found[0]?.train ?? '';
       point = 0;
       windowStart = 0;
       windowLength = meta.n[0] * meta.dt;
@@ -104,12 +107,12 @@
     const shown = selected;
     const id = compId;
     if (!meta || !entry) return;
-    const runId = entry.runId;
+    const originalRun = entry.run;
     void (async () => {
       const list: Waves[] = [];
       for (let k = 0; k < meta.n.length; k++) {
-        const waves: Waves = { original: await readComp(runId, 'waves', meta, k, id), columns: {} };
-        for (const column of shown) waves.columns[column.evalRunId] = await readComp(column.evalRunId, 'waves', metas[column.evalRunId], k, id);
+        const waves: Waves = { original: await readComp(originalRun, 'waves', meta, k, id), columns: {} };
+        for (const column of shown) waves.columns[column.run] = await readComp(column.run, 'waves', metas[column.run], k, id);
         list.push(waves);
       }
       grid = list;
@@ -126,14 +129,14 @@
     if (!originalMeta) return [];
     const list: Trace[] = [{ label: '原系', points: decimate(waves.original.V, originalMeta.t0, originalMeta.dt, domain[0], domain[1], BUCKETS) }];
     for (const column of selected) {
-      const values = waves.columns[column.evalRunId];
+      const values = waves.columns[column.run];
       if (!values || diverged(column, index)) continue;
-      list.push({ label: shortNames[column.trainRunId], points: decimate(values.V, originalMeta.t0, originalMeta.dt, domain[0], domain[1], BUCKETS), dashed: true });
+      list.push({ label: shortNames[column.train], points: decimate(values.V, originalMeta.t0, originalMeta.dt, domain[0], domain[1], BUCKETS), dashed: true });
     }
     return list;
   }
   function pair(column: Column, index: number): PairMetrics | undefined {
-    return metrics[column.evalRunId]?.[evalComp]?.[index];
+    return metrics[column.run]?.[evalComp]?.[index];
   }
   function diverged(column: Column, index: number): boolean {
     return pair(column, index)?.diverged ?? false;
@@ -141,13 +144,13 @@
   /** 発散した列の名前（その点で）。 */
   function divergedNames(index: number): string {
     const names: string[] = [];
-    for (const column of selected) if (diverged(column, index)) names.push(shortNames[column.trainRunId]);
+    for (const column of selected) if (diverged(column, index)) names.push(shortNames[column.train]);
     return names.join('、');
   }
 
   // ---- 指標の折れ線：掃引値に沿って ----
   let metricKeys = $derived.by(() => {
-    const first = selected[0] ? metrics[selected[0].evalRunId]?.[evalComp]?.[0] : undefined;
+    const first = selected[0] ? metrics[selected[0].run]?.[evalComp]?.[0] : undefined;
     if (!first) return [];
     const keys = Object.keys(first.rows);
     for (const key of Object.keys(first.scalars)) keys.push(key);
@@ -177,7 +180,7 @@
         const value = metricValue(column, k, 'surrogate');
         if (value !== null) points.push({ x: entry.values[k], y: value });
       }
-      list.push({ label: shortNames[column.trainRunId], points, dashed: true });
+      list.push({ label: shortNames[column.train], points, dashed: true });
     }
     return list;
   }
@@ -193,18 +196,18 @@
     const comp = evalComp;
     const others = viewComps;
     if (!meta || !entry || !column) return;
-    const runId = entry.runId;
+    const originalRun = entry.run;
     void (async () => {
       const projectedRoot = `projected/${comp}`;
-      const projected = entry!.replaceTargets.includes(comp) ? await readComp(column.evalRunId, projectedRoot, await readJson<WaveMeta>(column.evalRunId, `${projectedRoot}/meta.json`), k, id) : undefined;
+      const projected = entry!.replaceTargets.includes(comp) ? await readComp(column.run, projectedRoot, await readJson<WaveMeta>(column.run, `${projectedRoot}/meta.json`), k, id) : undefined;
       const comps: Record<string, Record<string, Float32Array>> = {};
-      for (const name of others) comps[name] = await readComp(runId, 'waves', meta, k, meta.names![name]);
-      const internal = others.length > 0 && meta.nodes ? await readInternal(runId, 'waves', meta, k) : undefined;
+      for (const name of others) comps[name] = await readComp(originalRun, 'waves', meta, k, meta.names![name]);
+      const internal = others.length > 0 && meta.nodes ? await readInternal(originalRun, 'waves', meta, k) : undefined;
       detailWaves = {
-        original: await readComp(runId, 'waves', meta, k, id),
-        surrogate: await readComp(column.evalRunId, 'waves', metas[column.evalRunId], k, id),
+        original: await readComp(originalRun, 'waves', meta, k, id),
+        surrogate: await readComp(column.run, 'waves', metas[column.run], k, id),
         projected,
-        current: await readCurrent(runId, 'waves', k),
+        current: await readCurrent(originalRun, 'waves', k),
         comps,
         internal,
       };
@@ -294,14 +297,14 @@
   }
   let summaryKeys = $derived.by(() => {
     const keys: string[] = [];
-    for (const column of selected) for (const key of Object.keys(summaries[column.evalRunId] ?? {})) if (!keys.includes(key)) keys.push(key);
+    for (const column of selected) for (const key of Object.keys(summaries[column.run] ?? {})) if (!keys.includes(key)) keys.push(key);
     return keys;
   });
   /** まだ評価していない学習 run を回すコマンド。 */
   let evalCommand = $derived.by(() => {
     if (!entry || pendingRuns.length === 0) return '';
     const ids: string[] = [];
-    for (const run of pendingRuns) ids.push(run.runId);
+    for (const run of pendingRuns) ids.push(run.hash);
     return `just eval ${entry.name} ${ids.join(' ')}`;
   });
 </script>
@@ -312,15 +315,15 @@
     <section>
       <h3>系列</h3>
       {#if series.length > 0}
-        <Choice label="評価した系列" bind:value={seriesHash} options={series.map(s => ({ value: s.hash, label: s.name }))} />
+        <Choice label="評価した系列" bind:value={seriesKey} options={series.map(s => ({ value: s.key, label: s.name }))} />
         {#if entry}<p class="note">置換：{entry.replaceTargets.join(', ')}。{entry.param ? `${entry.param} を ${entry.values.join(', ')} ${entry.unit} で振る。` : '単発。'}</p>{/if}
       {:else if !error}
-        <p class="note">評価した系列が無い。この repo で <code>just eval &lt;系列&gt; &lt;学習 run&gt;</code> を回す（系列の一覧は <code>just eval -h</code>）。</p>
+        <p class="note">評価した系列が無い。この repo で <code>just eval &lt;系列&gt; &lt;学習 run&gt;</code> を回す（系列と preset の一覧は <code>just runs -h</code>）。</p>
       {/if}
     </section>
     <section>
       <h3>比べる学習 run</h3>
-      <Toggles label="置換した列" bind:selected={chosen} options={columns.map(c => ({ value: c.trainRunId, label: c.trainName }))} />
+      <Toggles label="置換した列" bind:selected={chosen} options={columns.map(c => ({ value: c.train, label: c.trainName }))} />
       {#if evalCommand}<p class="note">まだこの系列で評価していない run：<code>{evalCommand}</code></p>{/if}
     </section>
     <section>
@@ -376,7 +379,7 @@
 
     <Card kicker="1 組" title={detail ? `詳細：${detail.trainName}` : '詳細'} subtitle={pointLabel(point) || '単発'} moreLabel="全区画の波形（原系）">
       {#snippet controls()}
-        <Choice label="見る列" bind:value={detailRun} options={selected.map(c => ({ value: c.trainRunId, label: c.trainName }))} />
+        <Choice label="見る列" bind:value={detailRun} options={selected.map(c => ({ value: c.train, label: c.trainName }))} />
         {#if originalMeta && originalMeta.n.length > 1}
           <Range label="点" bind:value={point} min={0} max={originalMeta.n.length - 1} step={1} display={pointLabel(point)} />
         {/if}
@@ -476,13 +479,13 @@
         <table>
           <thead
             ><tr
-              ><th>指標</th>{#each selected as column (column.trainRunId)}<th>{shortNames[column.trainRunId]}</th>{/each}</tr
+              ><th>指標</th>{#each selected as column (column.train)}<th>{shortNames[column.train]}</th>{/each}</tr
             ></thead
           >
           <tbody>
             {#each summaryKeys as key (key)}
               <tr
-                ><td>{key}</td>{#each selected as column (column.trainRunId)}<td>{format(summaries[column.evalRunId]?.[key])}</td>{/each}</tr
+                ><td>{key}</td>{#each selected as column (column.train)}<td>{format(summaries[column.run]?.[key])}</td>{/each}</tr
               >
             {/each}
           </tbody>

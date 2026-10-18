@@ -1,8 +1,8 @@
 """**実行**: 記述 (`spec`) と置換器を受け取って結果 (`result`) を作る段。
 
 記述は置換器を知らない (`EvalSeries` は「何を回すか」だけ) → **仕様 × surrogate を
-掛け合わせるのはここだけ**。どの run が置換できるかの絞り込みは回す前に決まるので
-持たない (`SurrogateRuns.replacing`)。
+掛け合わせるのはここだけ**。どの run が置換できるかの判定は回す前に決まるので
+持たない (`surrogate.replace.applicable`)。
 
 返りは列 (`SeriesRun`) = 保存もキャッシュもこの単位。
 """

@@ -10,19 +10,12 @@ requires-python = ">= 3.11.0"
 
 dependencies = [
     "pysindy~=2.0.0",
-    "mlflow>=3.3.2",
     "scikit-learn<1.6.0",
     "numpy >=2.3.3",
     "xarray>=2024.7.0",
-    "hydra-core>=1.3.2",
-    "scipy>=1.16.2",
-    "tabulate>=0.10.0",
-    "psutil>=7.0.0",
-    "hydra-optuna-sweeper>=1.2.0",
     "jax>=0.10.0",
     "optax>=0.2.8",
     "efel>=5.7.23",
-    "setuptools>=83.0.0",
     "sympy>=1.14.0",
 ]
 
@@ -31,8 +24,6 @@ dev = [
     "lizard>=1.17.30",
     "radon>=6.0.1",
     "mypy>=1.17.1",
-    "psutil>=7.0.0",
-    "pynvml>=13.0.1",
     "pytest>=9.1.1",
     "pandas-stubs>=3.0.3.260530",
 ]
@@ -44,7 +35,6 @@ testpaths = ["tests"]
 strict = false
 warn_return_any = true
 warn_unused_ignores = true
-mypy_path = "scripts"
 
 [[tool.mypy.overrides]]
 module = ["sklearn.*", "pysindy", "sympy.*", "efel", "joblib", "optax"]

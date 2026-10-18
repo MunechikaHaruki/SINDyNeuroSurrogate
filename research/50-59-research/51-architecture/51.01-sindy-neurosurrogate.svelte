@@ -18,24 +18,22 @@
 
   /** repo の中の入口と、結果の置き場。 */
   const flow = `flowchart LR
-    conf["scripts/conf<br/>Hydra の設定"] --> main["scripts/main.py<br/>学習"]
-    catalog["scripts/catalog.py<br/>何を回すか"] --> evaluate["scripts/evaluate.py<br/>just eval"]
-    main --> domain["neurosurrogate/<br/>ドメイン層"]
-    evaluate --> domain
-    main --> io["scripts/mlflow_io/"]
-    evaluate --> io
-    io --> mlflow[("MLflow")]
-    mlflow -- REST --> research["research/<br/>図"]
+    conf["53-evaluation/conf.ts<br/>何を回すか"] --> orchestrate["53-evaluation/orchestrate.ts<br/>just train と just eval"]
+    orchestrate -- spec.json --> run["neurosurrogate/run.py<br/>計算"]
+    run --> domain["neurosurrogate/<br/>ドメイン層"]
+    run --> runs[("runs/&lt;ハッシュ&gt;/")]
+    orchestrate -- index.json --> runs
+    runs -- 開発サーバー --> research["research/<br/>図"]
   `;
 </script>
 
-<Page title="SINDyNeuroSurrogate の構成" summary="研究コードの層と依存の向き、学習と評価の入口から MLflow を経て図に届くまでの流れ。">
+<Page title="SINDyNeuroSurrogate の構成" summary="研究コードの層と依存の向き、学習と評価の段取りから runs/ を経て図に届くまでの流れ。">
   <Section id="sec-1" title="層の依存">
     <p>ドメイン層（<code>neurosurrogate/</code>）は 5 つの層に分かれ、矢印の向きにだけ import できる。左の層ほど基盤で、<code>base</code> は他の層を一切 import しない。許可は推移的にも明示してあり、図では直接の辺だけを描く。この向きは <code>tests/test_conventions.py</code> の <code>_LAYERS</code> が検査する。</p>
     <Mermaid label="ドメイン層の依存" code={layers} />
   </Section>
   <Section id="sec-2" title="入口と結果の流れ">
-    <p>重い計算は CLI の入口（学習と <code>just eval</code>）だけが持ち、結果は <code>scripts/mlflow_io/</code> を通して MLflow に置く。ドメイン層は MLflow も Hydra も知らない。図は Python を import せず、MLflow の REST からデータだけを読む。</p>
+    <p>TS は <code>research/</code>、Python は <code>neurosurrogate/</code> に置く。何を回すかは <code>53-evaluation/conf.ts</code> が型付きで宣言し、段取り（<code>53-evaluation/orchestrate.ts</code>、bun で実行）がそこから spec.json を組んでハッシュを取る。同じ spec は同じハッシュなので、<code>runs/&lt;ハッシュ&gt;/</code> があれば回さない。重い計算は Python の <code>neurosurrogate/run.py</code> だけが持ち、spec.json を 1 つ受け取って run のディレクトリを埋める。<code>run.py</code> は上の 5 層のどれからも import されない最上位の層（<code>entry</code>）で、run の保存形式を知るのはここだけ。図は Python を import せず、開発サーバーが配る <code>runs/</code> のデータだけを読む。</p>
     <Mermaid label="入口から図までの流れ" code={flow} />
   </Section>
 </Page>

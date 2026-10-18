@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 class Closure(ABC):
     @abstractmethod
     def metrics(self) -> dict[str, float]:
-        """MLflow へ流すモデル指標 (表現ごとに中身は違う)。bundle が型を知らない
+        """比べる表に並べるモデル指標 (表現ごとに中身は違う)。bundle が型を知らない
         まま呼ぶ窓口。"""
         ...
 
@@ -83,7 +83,7 @@ class Preprocessor(ABC):
 
     @abstractmethod
     def metrics(self) -> dict[str, float]:
-        """MLflow へ流す前処理の指標 (`Closure.metrics` と同じ問い方・同じ形 —
+        """比べる表に並べる前処理の指標 (`Closure.metrics` と同じ問い方・同じ形 —
         合流点の `sim.artifacts._report` が両者を 1 つの dict へ畳む)。"""
         ...
 

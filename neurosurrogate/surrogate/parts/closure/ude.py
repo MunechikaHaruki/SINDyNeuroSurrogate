@@ -59,7 +59,7 @@ class UDEClosure(Closure):
     layers : 各層の {W, b} (np で保持 → そのまま pickle 可能)。
     v_mean / v_std : 学習データの V 統計 (入力正規化。推論時も同じ値を使う)。
     pull : 潜在を値域 [-1,1] へ戻す復元力の強さ (`latent_deriv` 参照)。
-    losses : 学習末尾のロス内訳 (MLflow へ流す)。
+    losses : 学習末尾のロス内訳 (比べる表に並べる)。
     """
 
     layers: list[dict[str, np.ndarray]]

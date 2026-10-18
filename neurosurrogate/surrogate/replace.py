@@ -114,8 +114,8 @@ def _rejected_targets(
     (「何個か落ちた」で終わらせない)。**文言は持たない** — 分かるのは食い違った値まで
     で、それをどう見せるかは提示側 (`_NotReplaceable`) の関心。
 
-    読み手は 2 つ: `replace` が例外へ載せ、run 選択 (`SurrogateRuns.replacing`) は
-    `applicable` 経由で真偽だけを見て絞る (落ちた run の理由はどこにも出ない —
+    読み手は 2 つ: `replace` が例外へ載せ、計算の入口 (`neurosurrogate/run.py`) は
+    `applicable` 経由で真偽だけを見て回すかを決める (落ちた run の理由はどこにも出ない —
     出したくなったらこの返り値と理由の型を公開にして UI まで運ぶ)。
     """
     rejections: list[_Rejection] = []

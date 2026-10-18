@@ -1,21 +1,22 @@
-"""サロゲート fit → 置換シミュ → 指標の smoke (MLflow 非依存)。
+"""サロゲート fit → 置換シミュ → 指標の smoke (保存を介さない)。
 
-Hydra プリセットを実設定源として読み、UI/実験ログを介さずドメイン層だけを通す。
-設定は `conf/surrogate/_test_*.yaml` (素体から library_specs を継承し、学習構造と
-短縮電流だけ固定したテスト専用プリセット) に置き、テスト側は override しない。
+preset と評価系列は `conf.ts` の宣言を実設定源として段取り (`orchestrate.ts
+spec|series`、どちらも research/50-59-research/53-evaluation/) から読み、
+ドメイン層だけを通す。テスト専用の preset は `_test_*` (学習構造と短縮電流だけ
+固定) で、テスト側は override しない。
 """
 
+import copy
 import json
+import subprocess
 from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
+from typing import Any, cast
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from catalog import SERIES
-from hydra import compose, initialize_config_dir
-from omegaconf import OmegaConf
 
 from neurosurrogate.core import access
 from neurosurrogate.core.network import Compartment, CompartmentType, NeuronGraph
@@ -33,7 +34,7 @@ from neurosurrogate.neurons.traub import (
     TRAUB_EXTRA_GATE_NAMES,
     TRAUB_SR_EXTRA_GATE_NAMES,
 )
-from neurosurrogate.neurons.traub19 import DEND_STIM_IDX, name_at
+from neurosurrogate.neurons.traub19 import _DEND_STIM_IDX, name_at
 from neurosurrogate.sim.result import SeriesResults, SeriesRun
 from neurosurrogate.sim.run import run_column
 from neurosurrogate.sim.spec import EvalSeries, SimSpec
@@ -60,10 +61,29 @@ from neurosurrogate.surrogate.replace import (
     applicable,
     replace,
 )
-from neurosurrogate.surrogate.runs import SurrogateRuns
 
-CONF_DIR = Path(__file__).resolve().parents[1] / "scripts" / "conf"
+ORCHESTRATE = (
+    Path(__file__).resolve().parents[1]
+    / "research/50-59-research/53-evaluation/orchestrate.ts"
+)
 LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, z1..zN, u] の両端
+
+
+def _declared(*args: str) -> Any:
+    """`conf.ts` の宣言を段取りに JSON で出させる。"""
+    return json.loads(subprocess.check_output(["bun", str(ORCHESTRATE), *args]))
+
+
+@cache
+def preset_config(preset: str) -> dict:
+    """preset の先頭の学習 run の設定ツリー。"""
+    return cast(dict, _declared("spec", preset)[0])
+
+
+@cache
+def declared_series() -> dict[str, EvalSeries]:
+    """評価系列の宣言 (`conf.ts` の SERIES) を Python の記述へ。"""
+    return {name: EvalSeries.from_dict(d) for name, d in _declared("series").items()}
 
 
 @cache
@@ -71,21 +91,10 @@ def fit_preset(preset: str, n_components: int | None = None) -> Surrogate:
     """テスト専用プリセットを fit。テストの唯一の surrogate 生成口。
     n_components だけは preset 既定を上書きできる (列構造を振るテストのため)。
     fit は決定的 (pca 固定) なので同一引数は使い回す — テスト全体を 20s 以内に保つ。"""
-    with initialize_config_dir(config_dir=str(CONF_DIR), version_base=None):
-        cfg = compose(
-            config_name="config",
-            overrides=[
-                f"surrogate={preset}",
-                *(
-                    []
-                    if n_components is None
-                    else [f"surrogate.spec.n_components={n_components}"]
-                ),
-            ],
-        )
-    c = OmegaConf.to_container(cfg.surrogate, resolve=True)
-    assert isinstance(c, dict)
-    return fit_surrogate(c)
+    cfg = copy.deepcopy(preset_config(preset))
+    if n_components is not None:
+        cfg["spec"]["n_components"] = n_components
+    return fit_surrogate(cfg)
 
 
 def _train_comp(surrogate: Surrogate) -> int:
@@ -113,10 +122,12 @@ def _spec_of(bundle: Surrogate) -> SimSpec:
     return bundle.spec.dataset
 
 
-def _simulate_view(series: EvalSeries, runs: SurrogateRuns) -> SeriesResults:
-    """1 系列を run 軸に開いてその場で回す (保存を経由しない経路)。本番の描画入力は
-    MLflow から読む `mlflow_io.report` の内部実装に相当するので、この経路はテストに
-    だけ居る。"""
+_Runs = tuple[tuple[str, Surrogate], ...]
+
+
+def _simulate_view(series: EvalSeries, runs: _Runs) -> SeriesResults:
+    """1 系列を run 軸に開いてその場で回す (保存を経由しない経路)。本番は 1 列ずつ
+    run のディレクトリへ書くので、この束ね方はテストにだけ居る。"""
     return SeriesResults(
         run_column(series, None, None),
         tuple(
@@ -127,7 +138,7 @@ def _simulate_view(series: EvalSeries, runs: SurrogateRuns) -> SeriesResults:
     )
 
 
-def _run_view(runs: SurrogateRuns, spec: SimSpec) -> SeriesResults:
+def _run_view(runs: _Runs, spec: SimSpec) -> SeriesResults:
     """spec をsurrogate run全部と原系で並走シミュした1系列。"""
     return _simulate_view(EvalSeries(spec=spec, replace_targets=("soma",)), runs)
 
@@ -135,7 +146,7 @@ def _run_view(runs: SurrogateRuns, spec: SimSpec) -> SeriesResults:
 @pytest.fixture(scope="module")
 def sindy_view(sindy: Surrogate) -> SeriesResults:
     """単発 = 点 1 つ・run 1 本の系列。"""
-    return _run_view(SurrogateRuns((("r0", sindy),)), _spec_of(sindy))
+    return _run_view((("r0", sindy),), _spec_of(sindy))
 
 
 @pytest.fixture(scope="module")
@@ -153,7 +164,7 @@ def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
     assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent
     assert len(surrogate.preprocessor.gate_inits) == n_components
 
-    view = _run_view(SurrogateRuns((("r0", surrogate),)), _spec_of(surrogate))
+    view = _run_view((("r0", surrogate),), _spec_of(surrogate))
     orig, surr = view.pair(0, view.column("r0"))
     v = access.potential(surr, _train_comp(surrogate))
     assert v.shape == access.time(orig).shape
@@ -182,11 +193,12 @@ def test_compare_reports_every_metric_for_one_pair(
 
 
 def test_catalog_is_self_consistent() -> None:
-    """カタログ (`scripts/catalog.py`) が自己整合: `SERIES` の全系列の電流が掃引点
-    まで含めて構築でき、どの系列も comp 名を持つ (冊の comp つまみは**選んだ
-    1 系列**の適用先から選択肢を作るので、ここが空だとその系列を選ぶと何も選べない)。
-    条件が型になった今、綴り間違いは import 時に落ちるので、ここで見るのは名前の
-    対応だけ。単発系列も「点 1 つ」として同じ経路を通る。"""
+    """評価系列の宣言 (`conf.ts` の SERIES) が Python の記述として自己整合:
+    全系列の電流が掃引点まで含めて構築でき、どの系列も comp 名を持つ (冊の comp
+    つまみは**選んだ 1 系列**の適用先から選択肢を作るので、ここが空だとその系列を
+    選ぶと何も選べない)。TS の型は名前の綴りまでは見ないので、ここで Python の
+    名前と突き合わせる。単発系列も「点 1 つ」として同じ経路を通る。"""
+    SERIES = declared_series()
     for series in SERIES.values():
         assert series.spec.net.names
         for spec in series.points:
@@ -198,8 +210,10 @@ def test_catalog_is_self_consistent() -> None:
     assert len(SERIES["traub_soma_dc"].points) == 1
     assert len(SERIES["traub19_somastim"].points) == 5
     # soma 1 点置換と全 comp 置換は**置換範囲だけ**が違う対照ペア
-    assert SERIES["traub19_somastim_allcomp"].spec is SERIES["traub19_somastim"].spec
+    assert SERIES["traub19_somastim_allcomp"].spec == SERIES["traub19_somastim"].spec
     assert len(SERIES["traub19_somastim_allcomp"].replace_targets) == 19
+    # dend 刺激の注入先は名前で綴るので、traub19 の定める注入先と揃っているかを見る
+    assert SERIES["traub19_dendstim"].spec.stim == name_at(_DEND_STIM_IDX)
 
 
 def test_series_view_columns_must_line_up_across_runs(
@@ -207,8 +221,8 @@ def test_series_view_columns_must_line_up_across_runs(
 ) -> None:
     """列は自分の点数を、束は**列が同じ掃引を回したものか**を構築時に保証する
     (揃わない列を図の側で検出させない)。**由来の id は持たない** = 評価 run の同一性は
-    ここに無く、描く中身だけの純粋なデータ (評価 run の id は MLflow の tag だけが
-    持つ)。"""
+    ここに無く、描く中身だけの純粋なデータ (評価 run のハッシュは run のディレクトリ
+    名だけが持つ)。"""
     series = sindy_view.series
     with pytest.raises(ValueError, match="点数"):
         SeriesRun(series, "r0", [])
@@ -224,23 +238,6 @@ def test_series_view_columns_must_line_up_across_runs(
         SeriesResults(SeriesRun(series, "r0", sindy_view.original_waves), ())
     with pytest.raises(ValueError, match="置換系の run_id"):
         SeriesResults(sindy_view.original, (sindy_view.original,))
-
-
-def test_surrogate_runs_owns_run_axis(sindy: Surrogate) -> None:
-    """surrogate列がrun名の一意性・選択順と結果軸との対応を保証する。"""
-    runs = SurrogateRuns((("r0", sindy), ("r1", sindy)))
-    assert runs.names == ("r0", "r1")
-    assert runs.surrogate("r1") is sindy
-    with pytest.raises(ValueError, match="重複"):
-        SurrogateRuns((("r0", sindy), ("r0", sindy)))
-
-
-@pytest.mark.parametrize("name", ("", ".", "..", "a/b", "a\\b", "a\0b"))
-def test_surrogate_runs_rejects_names_unusable_as_path(
-    name: str, sindy: Surrogate
-) -> None:
-    with pytest.raises(ValueError, match="pathに使えない"):
-        SurrogateRuns(((name, sindy),))
 
 
 def test_description_survives_reload_and_lines_up_with_the_model(
@@ -432,13 +429,13 @@ def test_dendstim_injects_into_dendrite_while_replacing_soma() -> None:
     surrogate = fit_preset("_test_traub_hybrid")
     ds = SimSpec(
         target="traub19",
-        stim=name_at(DEND_STIM_IDX),
+        stim=name_at(_DEND_STIM_IDX),
         current_type="train",
         dt=0.01,
         current_params={"duration": 180},
     )
     assert ds.stim != "soma"  # 注入先は dendrite
-    assert ds.materialize().stim_idx == DEND_STIM_IDX
+    assert ds.materialize().stim_idx == _DEND_STIM_IDX
 
     v = access.potential(
         unified_simulator(replace(surrogate, ds.materialize(), ["soma"])),
@@ -522,6 +519,7 @@ def test_original_key_is_shared_across_replacement_scopes() -> None:
     """原系の鍵 (`hash`) は置換範囲を含まない = 置換範囲だけが違う対照系列は原系 run
     を 1 本共有する (原系の波形は置換に依らないので正しい)。置換系の鍵
     (`replaced_hash`) は含む = 範囲違いを同じ run に潰さない。"""
+    SERIES = declared_series()
     soma, allcomp = SERIES["traub19_somastim"], SERIES["traub19_somastim_allcomp"]
     assert soma.replace_targets != allcomp.replace_targets
     assert soma.hash() == allcomp.hash()
@@ -532,6 +530,7 @@ def test_multi_target_series_runs_through_run_column() -> None:
     """複数対象の系列が記述 → 実行まで通る: `run_column` が `replace_targets` を
     `apply` へ渡し、19 comp 全部を置換した列が有限に走る。カタログの全置換系列が
     実サロゲートで適用可能であることも併せて見る (適用不可なら UI に出ない)。"""
+    SERIES = declared_series()
     surrogate = fit_preset("_test_traub_hybrid")
     assert applicable(surrogate.spec, SERIES["traub19_somastim_allcomp"])
 

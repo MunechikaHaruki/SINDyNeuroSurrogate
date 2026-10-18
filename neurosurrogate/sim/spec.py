@@ -50,7 +50,7 @@ class SimSpec:
     stim: str = "soma"
 
     def to_dict(self) -> dict:
-        """永続化 (MLflow の学習 run / 評価 run) が仕様として持ち回る形へ。
+        """永続化 (run の spec.json) が仕様として持ち回る形へ。
         **名前だけを書く** = 適用先のグラフも電流の波形も保存しない (どちらも
         `MCMODELS` / `CURRENT_MAP` から名前で解ける導出物)。"""
         return {
@@ -106,9 +106,10 @@ class EvalSeries:
     run 軸に開いた結果を持つのは `result.SeriesResults` で、どちらもこの型の外に居る。
     掃引の記述が置換器から独立している = 原系の再利用が `hash` 1 本で効く。
 
-    **保存の単位でもある**: 1 系列 = 1 評価 run (点列を丸ごと 1 artifact に持つ)
-    なので、「同じ掃引を既に回したか」を引く鍵 (原系は `hash`、置換系は
-    `replaced_hash`) と往復の形 (`to_dict` / `from_dict`) をこの型が持つ。
+    **保存の単位でもある**: 1 系列 = 1 run (点列を丸ごと持つ) なので、往復の形
+    (`to_dict` / `from_dict`) をこの型が持つ。run の置き場の鍵は段取り
+    (`orchestrate.ts`) が組み、原系は置換範囲を除いた spec で共有する。
+    同じ区別を Python の側で表すのが `hash` (原系) と `replaced_hash` (置換系)。
     """
 
     spec: SimSpec
@@ -145,14 +146,15 @@ class EvalSeries:
         置換に効く要素を足したらここから外さない限り原系の共有が切れるので、
         除外は `replace_targets` を名指しで 1 箇所だけ書く。
 
-        完全な仕様は波形 run 側が別に持つので、短縮ハッシュで足りる。"""
+        完全な仕様は run の spec.json が持つので、短縮ハッシュで足りる。"""
         return _digest(
             {k: v for k, v in self.to_dict().items() if k != "replace_targets"}
         )
 
     def replaced_hash(self) -> str:
         """**置換系の波形を既に回したか**の鍵 = 原系の鍵 + 置換範囲。置換器 (学習 run)
-        だけは含まない — それは呼び出し側がここに組む (`mlflow_io._series`)。"""
+        だけは含まない。run の置き場の鍵は段取り (`orchestrate.ts`) が spec.json
+        から組むので、ここの鍵が答えるのは束ねてよい列かだけ。"""
         return _digest(
             {"original": self.hash(), "replace_targets": list(self.replace_targets)}
         )
