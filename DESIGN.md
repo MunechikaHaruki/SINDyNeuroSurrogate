@@ -50,58 +50,60 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
                 closure/         # ude.py / sindy/{__init__,roles,_entry,_catalog}.py
                 preprocessor/    # pca.py / autoencoder.py / fit_artifacts.py (fit 後に埋まる派生量 = 再構成統計と初期潜在。埋め方は全実装共通なので契約でなくここ)
               description.py     # 学習済み surrogate の中身を図に依らないデータで出す (describe)。閉包項と前処理の中身 (各実装の describe)、ネット、学習データ、学習 comp ごとに同定器へ渡した列・潜在・再構成 RMSE。置換シミュは回さない
-  run.py                         # **計算の入口** (`python -m neurosurrogate.run <spec.json> <runs/ハッシュ>`。層 `entry` = どこからも import されない最上位): spec.json 1 つ → run のディレクトリ。kind = train / original / replaced。隣の .partial に書いてから名前を変える (半端な run を残さない)。置換できない組み合わせは終了コード 3 で何も書かない。**run の保存形式 (波形の write/read) を知るのはここだけ**
+  run.py                         # **計算の入口** (`python -m neurosurrogate.run <spec.json> <run のディレクトリ>`。層 `entry` = どこからも import されない最上位): spec.json 1 つ → run のディレクトリ。kind = train / sim (meta.json では train / original / replaced)。隣の .partial に書いてから名前を変える (半端な run を残さない)。置換できない組み合わせは終了コード 3 で何も書かない。**run の保存形式 (波形の write/read) を知るのはここだけ**
 tests/    test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py (preset と系列は段取りに JSON で出させて読む) / test_inits.py / test_run.py (neurosurrogate/run.py の 3 種類の run の往復と、回し直さないこと)
 evaluation/    # TS はすべてここ。直下は評価の冊だけで、.ts は役割のディレクトリ (orchestrate/ read/ traub/)。評価の冊 (TS + Svelte。画面と部品は context-router の .web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
 evaluation/orchestrate/conf.ts        # **何を回すか**の宣言だけ: PRESETS (学習の設定。preset が決める値を平らに書き、`expand` が設定ツリーへ開く。n_components を配列で書くと掃引)、SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)、EXPERIMENTS (見比べる preset と系列の組。冊はここから選び、どの実験にも入らない preset と系列は冊に出ない)。**描き方は持たない**。node/bun に依存しない (ブラウザの冊も import する)
 evaluation/orchestrate/spec.ts        # spec.json の形 (Spec、FORMAT)、index.json の行、段取り・口・図が受け渡す状態の型
-evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: 本人が使う操作盤の冊 (53.03-runs) のボタンが切り離した子プロセスで起こす launch と、エージェント用の CLI (`bun evaluation/orchestrate/orchestrate.ts train|eval|list`。人は使わない)。宣言の組の状態 (status: 済み・計算中・未・置換できない) と、launch で起こした仕事の状態 (runs/.jobs/ の中身・pid・ログ・終了コード) もここ
+evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → 置き場 (runs/models/<ハッシュ>/ か runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/) が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置き換えたモデルは学習 run のハッシュを spec の model に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: 本人が使う操作盤の冊 (53.03-runs) のボタンが切り離した子プロセスで起こす launch と、エージェント用の CLI (`bun evaluation/orchestrate/orchestrate.ts train|eval|list`。人は使わない)。宣言の組の状態 (status: 済み・計算中・未・置換できない) と、launch で起こした仕事の状態 (runs/.jobs/ の中身・pid・ログ・終了コード) もここ
 evaluation/orchestrate/api.ts         # **操作盤の口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation/orchestrate に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status (実験ごとの preset・系列・組のハッシュと状態、仕事のログの末尾。図はこのハッシュで runs/ を読む。ブラウザではハッシュを組めないため)、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
 evaluation/read/runs.ts        # 図が runs/ を読む口 (ブラウザ)
 evaluation/read/model-json.ts  # 学習 run の description/model.json を図の形に直す
 evaluation/traub/traub.ts      # Traub の単一区画の TS シミュレータ。53.01・53.02 と context-router の 52.01 が使う。Python とのずれは traub.reference.json のテストで見張る
-runs/     <ハッシュ>/ と index.json  # 実験の結果 (Git の外)。下の「run の置き場」
+runs/     models/ と inputs/ と index.json  # 実験の結果 (Git の外)。下の「run の置き場」
 ```
 
 ### run の置き場
 
-1 run = spec.json 1 つで、ディレクトリ名はその spec のハッシュ (`orchestrate.ts` の
-`hashOf`)。同じ spec は同じハッシュなので、ディレクトリがあれば回さない。図は Python で
-描かず、`evaluation/53.05-evaluation` (評価) と
-`53.04-trained-model` (学習 run) が `runs.ts` を通して読む。Python が置くのは図に要る
+保存の単位はモデルと入力の二つ。学習したモデルは `runs/models/<学習のハッシュ>/`、入力 (電流と掃引 =
+系列から置換範囲を除いたもの) ごとの結果は `runs/inputs/<入力のハッシュ>/` の下に、元のモデルなら
+`original/`、置き換えたモデルなら `<モデルの鍵>/` (学習 run のハッシュ + 置換範囲) で置く。1 run = spec.json 1 つで、
+置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。
+run は `runs/` の下のパス (id) で指す。図は Python で描かず、`evaluation/53.05-evaluation` (評価) と
+`53.04-trained-model` (学習 run) が `runs.ts` を通して、口が宣言から組んだ id で読む。Python が置くのは図に要る
 データだけ:
 
 ```
-runs/index.json                全 run の meta.json + spec + ハッシュ (段取りが書く。図はここから一覧を作る)
-runs/<ハッシュ>/ spec.json      回した条件 (format = 形式の版, kind, ...)
-                 meta.json      kind, name (図に出す名前。同一性に入らない), created, unit (掃引の単位)
-<学習 run>/  surrogate/                spec.json + pickle
-             description/model.json    閉包項と前処理の中身 (describe)、ネット、列の名前
-             description/train/        学習データ (waves と同じ形式、点は 1 つ)
-             description/fit/<comp_id>/{x,latent,recon_rmse}.f32
-                                       学習 comp ごとの同定器への入力・潜在・再構成 RMSE (列ごとに連続)
-<原系 run>/  waves/                    下の形式。meta.json に comp 名 → id も入る
-<置換系 run>/ waves/
-             metrics.json              comp 名 → 点ごとの compare (全 comp・全点)
-             summary.json              Surrogate.summary (学習側の指標)
-             projected/<comp>/         置換した comp の原系ゲートを潜在空間へ射影したもの (waves と同じ形式)
+runs/index.json                全 run の id + meta.json + spec (段取りが書く。図はここから一覧を作る)
+<run>/  spec.json              回した条件 (format = 形式の版, kind, ...)
+        meta.json              kind (train / original / replaced), name (図に出す名前。同一性に入らない), created, unit (掃引の単位)
+models/<ハッシュ>/  surrogate/                spec.json + pickle
+                    summary.json              Surrogate.summary (学習側の指標)
+                    description/model.json    閉包項と前処理の中身 (describe)、ネット、列の名前
+                    description/train/        学習データ (waves と同じ形式、点は 1 つ)
+                    description/fit/<comp_id>/{x,latent,recon_rmse}.f32
+                                              学習 comp ごとの同定器への入力・潜在・再構成 RMSE (列ごとに連続)
+inputs/<ハッシュ>/  input.json                電流と掃引 (段取りが書く)
+                    original/waves/           下の形式。meta.json に comp 名 → id も入る
+                    <モデルの鍵>/ waves/
+                                  metrics.json    comp 名 → 点ごとの compare (全 comp・全点。相手は original/)
+                                  projected/<comp>/ 置換した comp の original/ のゲートを潜在空間へ射影したもの (waves と同じ形式)
 
 waves/meta.json            t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]], nodes, names
 waves/<点>/comp<id>.f32    その comp の変数 (features の並び順)。変数ごとに連続した little-endian float32
 waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
 ```
 
-- spec の 3 種類: `train` は設定ツリー (`surrogate`)、`original` は掃引から置換範囲を除いたもの
-  (置換範囲だけが違う対照系列どうしで原系 run を共有する)、`replaced` は置換範囲つきの掃引と、
-  学習 run・原系 run のハッシュ (`train` / `original`)
-- **ハッシュを組むのは TS だけ。** Python は渡された spec とディレクトリを埋めるだけで、
-  参照先も spec に書かれたハッシュで引く (JS と Python で数値の JSON 表記が違うので、鍵を 2 か所で組まない)
+- spec の 2 種類: `train` は設定ツリー (`surrogate`)、`sim` は入力 (`input`) とモデル (`model` = `{train, replace_targets}`、
+  元のモデルは null)。置換範囲はモデルの側に入るので、置換範囲だけが違う系列は同じ入力のディレクトリに別のモデルとして並ぶ
+- **ハッシュを組むのは TS だけ。** Python は渡された spec とディレクトリを埋めるだけで、学習 run は spec の `model.train`、
+  比べる相手は隣の `original/` で引く (JS と Python で数値の JSON 表記が違うので、鍵を 2 か所で組まない)
 - **比べた束 (どの列を並べたか) は残さない。** 図が選び直すたびに描く
 - 形式を変えたら `neurosurrogate/run.py` の `_FORMAT` と `spec.ts` の `FORMAT` を変える。spec に入るので、
-  古い形式の run はハッシュが合わず回し直される
+  古い形式の run は置き場が合わず回し直される
 - **記録した run を描画が書き換えない**: 図は読むだけ
 - JSON に nan は書かない (null)。JS の JSON が読めないため
-- **書きかけと印**: `<ハッシュ>.partial/` は書きかけで、中の `pid` が書いているプロセス (生きていれば計算中、死んでいれば残骸として次に片付ける。同じ run を二つのプロセスが書かないよう、生きた書き手がいれば run.py は終了コード 4 で退き、段取りは終わるのを待つ)。`<ハッシュ>.unreplaceable` は置換できないと分かった組の印 (置換できるかは Python だけが知るので答えを覚える)。`.jobs/<組のハッシュ>.{json,pid,log,exit}` は操作盤のボタンが起こした段取りの中身・pid・ログ・終了コード (同じ組の二重起動を pid で弾き、終了コードが 0 でないか書かずに消えたものを失敗として操作盤に出す)
+- **書きかけと印**: `<置き場>.partial/` は書きかけで、中の `pid` が書いているプロセス (生きていれば計算中、死んでいれば残骸として次に片付ける。同じ run を二つのプロセスが書かないよう、生きた書き手がいれば run.py は終了コード 4 で退き、段取りは終わるのを待つ)。`<置き場>.unreplaceable` は置換できないと分かったモデルの印 (置換できるかは Python だけが知るので答えを覚える)。`.jobs/<組のハッシュ>.{json,pid,log,exit}` は操作盤のボタンが起こした段取りの中身・pid・ログ・終了コード (同じ組の二重起動を pid で弾き、終了コードが 0 でないか書かずに消えたものを失敗として操作盤に出す)
 
 ### 設定ファイル
 

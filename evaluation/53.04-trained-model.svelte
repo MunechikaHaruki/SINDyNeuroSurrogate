@@ -64,12 +64,12 @@
     const params = new URLSearchParams(window.location.search);
     experimentName = params.get('experiment') ?? '';
     const preset = experiment?.presets.find(p => p.preset === params.get('preset'));
-    runId = preset?.runs[0]?.hash ?? runs[0]?.hash ?? '';
+    runId = preset?.runs[0]?.id ?? runs[0]?.id ?? '';
   }
 
   // 実験を選び直して、選んでいた run がその実験に無ければ、最初の run を選ぶ。
   $effect(() => {
-    if (runs.length > 0 && !runs.some(r => r.hash === runId)) runId = runs[0].hash;
+    if (runs.length > 0 && !runs.some(r => r.id === runId)) runId = runs[0].id;
   });
 
   onMount(() => {
@@ -277,7 +277,7 @@
     <section>
       <h3>学習 run</h3>
       {#if runs.length > 0}
-        <Choice label="見る run" bind:value={runId} options={runs.map(r => ({ value: r.hash, label: r.name }))} />
+        <Choice label="見る run" bind:value={runId} options={runs.map(r => ({ value: r.id, label: r.name }))} />
         <p class="note"><code>{runId}</code></p>
       {:else if !error}
         <p class="note">この実験には学習を終えた run が無い。</p>

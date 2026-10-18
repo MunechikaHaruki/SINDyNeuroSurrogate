@@ -1,26 +1,30 @@
-"""計算の入口: `uv run python -m neurosurrogate.run <spec.json> <runs/ハッシュ>`。
+"""計算の入口: `uv run python -m neurosurrogate.run <spec.json> <run のディレクトリ>`。
 
 spec.json 1 つを受け取り、run のディレクトリを埋めるだけの純粋な計算。何を回すか、
-掃引、ハッシュ、重複の回避、run の一覧は bun の段取り
+掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
 (`evaluation/orchestrate/orchestrate.ts`) が持ち、spec の形は同じ
-場所の `conf.ts` が持つ。ドメインのどの層からも import されない最上位の層。
-spec の種類は 3 つ (`kind`):
+場所の `spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
+spec の種類は 2 つ (`kind`):
 
-- `train`    学習。`surrogate` は設定ツリー (spec + preprocessor/ansatz/closure)
-- `original` 原系の掃引。`series` は `EvalSeries.to_dict` から置換範囲を除いたもの
-- `replaced` 置換系の掃引。`series` に置換範囲が入り、`train` と `original` が
-             同じ runs/ の下の学習 run と原系 run のハッシュを指す
+- `train` 学習。`surrogate` は設定ツリー (spec + preprocessor/ansatz/closure)。
+          置き場は `runs/models/<ハッシュ>/`
+- `sim`   入力 × モデルのシミュレーション。`input` は `EvalSeries.to_dict`
+          から置換範囲を除いたもの (電流と掃引)。`model` は
+          `{train, replace_targets}` か null (元のモデル)。置き場は
+          `runs/inputs/<入力のハッシュ>/` の下で、元のモデルは `original/`、
+          置き換えたモデルは段取りが組んだ鍵の名前。`train` は
+          `runs/models/` の学習 run を指す
 
 書くもの (図が読む形。`.f32` は little-endian の float32 を並べただけ、
 JSON の nan は null):
 
-    spec.json  meta.json (kind, name, created, 掃引の単位)
-    train      surrogate/ (spec.json + pickle)、description/model.json、
-               description/train/ (waves と同じ形、点は 1 つ)、
+    spec.json  meta.json (kind = train / original / replaced, name, created, 掃引の単位)
+    train      surrogate/ (spec.json + pickle)、summary.json (学習側の指標)、
+               description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
                description/fit/<comp_id>/{x,latent,recon_rmse}.f32
-    original   waves/
-    replaced   waves/、metrics.json (comp 名 → 点ごとの compare)、summary.json、
-               projected/<comp>/ (置換した comp の原系ゲートを潜在へ射影したもの。
+    sim        waves/。置き換えたモデルは加えて、metrics.json (comp 名 →
+               点ごとの、同じ入力の original/ との compare)、projected/<comp>/
+               (置換した comp の original/ のゲートを潜在へ射影したもの。
                waves と同じ形)
 
     waves/meta.json           t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]],
@@ -28,7 +32,7 @@ JSON の nan は null):
     waves/<点>/comp<id>.f32   その comp の変数 (features の並び順)。変数ごとに連続
     waves/<点>/I_ext.f32      waves/<点>/I_internal.f32 (node ごとに連続)
 
-途中で落ちても半端な run を残さないよう、隣の一時ディレクトリ (`<ハッシュ>.partial`)
+途中で落ちても半端な run を残さないよう、隣の一時ディレクトリ (`<名前>.partial`)
 に書いてから名前を変える。一時ディレクトリには書いているプロセスの pid を置き、図は
 それで「計算中」を出す。ディレクトリが既にあれば回さない。置換できない組み合わせは何も書かずに
 終了コード 3、同じ run を生きた別のプロセスが書いていれば終了コード 4。
@@ -59,7 +63,7 @@ from .surrogate.description import describe
 from .surrogate.model import Surrogate, fit_surrogate
 from .surrogate.replace import applicable
 
-_FORMAT = 1  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
+_FORMAT = 2  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _logger = logging.getLogger(__name__)
@@ -161,7 +165,7 @@ def _write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(_jsonable(value), ensure_ascii=False))
 
 
-# --- 3 種類の run ---------------------------------------------------------------
+# --- 2 種類の run ---------------------------------------------------------------
 
 
 def _names(series: EvalSeries) -> dict[str, int]:
@@ -185,32 +189,28 @@ def _train(root: Path, spec: dict) -> dict:
         _write_f32(folder / "x.f32", fit.x.T)
         _write_f32(folder / "latent.f32", fit.latent.T)
         _write_f32(folder / "recon_rmse.f32", fit.recon_rmse)
+    _write_json(root / "summary.json", surrogate.summary())
     return {}
 
 
-def _series(spec: dict) -> EvalSeries:
-    return EvalSeries.from_dict({"replace_targets": [], **spec["series"]})
-
-
-def _original(root: Path, spec: dict) -> dict:
-    """原系の掃引を回して波形を書く。"""
-    series = _series(spec)
-    _write_waves(root / "waves", run_column(series, None, None).waves, _names(series))
-    return {"unit": series.unit}
-
-
-def _replaced(root: Path, spec: dict) -> dict:
-    """置換系の掃引を回し、原系と比べた指標・射影・学習側の指標も書く。指標は全 comp・
-    全点の分 (どの comp を見るかは図が選ぶ)、射影は置換した comp の分。"""
-    series = _series(spec)
-    surrogate = Surrogate.load(root.parent / spec["train"] / "surrogate")
+def _sim(root: Path, spec: dict) -> dict:
+    """入力をモデルで回して波形を書く。置き換えたモデルなら、同じ入力の元のモデル
+    (`original/`) と比べた指標と射影も書く。指標は全 comp・全点の分 (どの comp を
+    見るかは図が選ぶ)、射影は置換した comp の分。"""
+    model = spec["model"]
+    targets = model["replace_targets"] if model else []
+    series = EvalSeries.from_dict({**spec["input"], "replace_targets": targets})
+    if model is None:
+        column = run_column(series, None, None)
+        _write_waves(root / "waves", column.waves, _names(series))
+        return {"unit": series.unit}
+    runs = root.parents[2]
+    surrogate = Surrogate.load(runs / "models" / model["train"] / "surrogate")
     if not applicable(surrogate.spec, series):
-        print(f"{spec['train']} は {series.replace_targets} を置換できない")
+        print(f"{model['train']} は {targets} を置換できない")
         sys.exit(_NOT_REPLACEABLE)
-    original = SeriesRun(
-        series, None, _read_waves(root.parent / spec["original"] / "waves")
-    )
-    column = run_column(series, spec["train"], surrogate)
+    original = SeriesRun(series, None, _read_waves(root.parent / "original/waves"))
+    column = run_column(series, model["train"], surrogate)
     _write_waves(root / "waves", column.waves, _names(series))
     view = SeriesResults(original, (column,))
     net, dt = series.spec.net, series.spec.dt
@@ -223,8 +223,7 @@ def _replaced(root: Path, spec: dict) -> dict:
         for comp in net.names
     }
     _write_json(root / "metrics.json", metrics)
-    _write_json(root / "summary.json", surrogate.summary())
-    for comp in series.replace_targets:
+    for comp in targets:
         comp_id = net.name_to_idx(comp)
         _write_waves(
             root / "projected" / comp,
@@ -236,7 +235,15 @@ def _replaced(root: Path, spec: dict) -> dict:
     return {"unit": series.unit}
 
 
-_KINDS = {"train": _train, "original": _original, "replaced": _replaced}
+def _kind(spec: dict) -> str:
+    """図に出す run の種類。sim はモデルの有無で、元のモデルと置き換えたモデルに
+    分ける。"""
+    if spec["kind"] == "train":
+        return "train"
+    return "original" if spec["model"] is None else "replaced"
+
+
+_KINDS = {"train": _train, "sim": _sim}
 
 
 def _writer_alive(partial: Path) -> bool:
@@ -272,7 +279,7 @@ def _run(spec_path: Path, root: Path, name: str) -> None:
         (partial / "spec.json").write_text(spec_path.read_text())
         extra = _KINDS[spec["kind"]](partial, spec)
         meta = {
-            "kind": spec["kind"],
+            "kind": _kind(spec),
             "name": name,
             "created": datetime.now().isoformat(timespec="seconds"),
             **extra,

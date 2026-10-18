@@ -55,16 +55,16 @@ test('columns are the finished replaced runs of an experiment, in preset and swe
   const experiment: ExperimentStatus = {
     name: 'e',
     presets: [
-      { preset: 'p', state: 'done', runs: [{ name: 'p n=1', hash: 't1', state: 'done' }, { name: 'p n=2', hash: 't2', state: 'done' }] },
-      { preset: 'q', state: 'todo', runs: [{ name: 'q', hash: 't3', state: 'todo' }] },
+      { preset: 'p', state: 'done', runs: [{ name: 'p n=1', id: 't1', state: 'done' }, { name: 'p n=2', id: 't2', state: 'done' }] },
+      { preset: 'q', state: 'todo', runs: [{ name: 'q', id: 't3', state: 'todo' }] },
     ],
-    series: [{ series: 's', original: { name: 's', hash: 'o', state: 'done' } }],
+    series: [{ series: 's', original: { name: 's', id: 'o', state: 'done' } }],
     pairs: [
-      { series: 's', preset: 'p', state: 'todo', runs: [{ name: 'p n=1', hash: 'r1', state: 'done' }, { name: 'p n=2', hash: 'r2', state: 'todo' }] },
-      { series: 's', preset: 'q', state: 'todo', runs: [{ name: 'q', hash: 'r3', state: 'todo' }] },
+      { series: 's', preset: 'p', state: 'todo', runs: [{ name: 'p n=1', id: 'r1', state: 'done' }, { name: 'p n=2', id: 'r2', state: 'todo' }] },
+      { series: 's', preset: 'q', state: 'todo', runs: [{ name: 'q', id: 'r3', state: 'todo' }] },
     ],
   };
   expect(experimentColumns(experiment, 's')).toEqual([{ run: 'r1', train: 't1', trainName: 'p n=1' }]);
-  expect(experimentTrains(experiment).map(r => r.hash)).toEqual(['t1', 't2']);
+  expect(experimentTrains(experiment).map(r => r.id)).toEqual(['t1', 't2']);
   expect(declaredNames({ experiments: [experiment], jobs: [] }).r1).toBe('s × p n=1');
 });

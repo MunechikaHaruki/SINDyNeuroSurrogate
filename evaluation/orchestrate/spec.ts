@@ -52,16 +52,20 @@ export type Train = { name: string; config: SurrogateConfig };
 export type Experiment = { presets: string[]; series: string[] };
 
 /** spec の形式の版。neurosurrogate/run.py の _FORMAT と揃える。spec に入るので、変えると鍵が変わり古い run は回し直される。 */
-export const FORMAT = 1;
+export const FORMAT = 2;
 
-/** run.py に渡す spec.json。ハッシュを取ると run のディレクトリ名になる。 */
+/** 入力：電流と掃引。系列から置換範囲を除いたもので、同じ入力の結果は一つのディレクトリにまとまる。 */
+export type Input = Omit<Series, 'replace_targets'>;
+/** 置き換えたモデル：どの学習 run（ハッシュ）で、どの区画を置き換えるか。 */
+export type Model = { train: string; replace_targets: string[] };
+
+/** run.py に渡す spec.json。学習は runs/models/ に、入力 × モデルは runs/inputs/<入力>/ に置く。model が null なら元のモデル。 */
 export type Spec =
   | { format: number; kind: 'train'; surrogate: SurrogateConfig }
-  | { format: number; kind: 'original'; series: Omit<Series, 'replace_targets'> }
-  | { format: number; kind: 'replaced'; series: Series; original: string; train: string };
+  | { format: number; kind: 'sim'; input: Input; model: Model | null };
 
-/** run の一覧の 1 行（runs/index.json）。run の meta.json に spec とハッシュを足したもの。 */
-export type IndexEntry = { hash: string; kind: Spec['kind']; name: string; created: string; unit?: string; spec: Spec };
+/** run の一覧の 1 行（runs/index.json）。id は runs/ の下のパス、kind は run.py が meta.json に書く種類。 */
+export type IndexEntry = { id: string; kind: 'train' | 'original' | 'replaced'; name: string; created: string; unit?: string; spec: Spec };
 
 /** run 1 本、または組がいまどこまで回っているか。unreplaceable は置換できないと分かった組。 */
 export type State = 'done' | 'running' | 'todo' | 'unreplaceable';
@@ -70,8 +74,8 @@ export type Job = { action: 'train'; preset: string } | { action: 'eval'; series
 /** 操作盤から起こした仕事 1 つ。failed は終了コードが 0 でないか、終わりを書かずに消えたもの。log はログの末尾の行。 */
 export type JobState = { job: Job; started: string; state: 'running' | 'done' | 'failed'; log: string[] };
 
-/** 宣言した run 1 本（学習なら掃引の 1 点）の名前・ハッシュ・状態。図はこのハッシュで runs/ を読む。 */
-export type RunStatus = { name: string; hash: string; state: State };
+/** 宣言した run 1 本（学習なら掃引の 1 点）の名前・場所・状態。id は runs/ の下のパスで、図はここを読む。 */
+export type RunStatus = { name: string; id: string; state: State };
 /** 実験 1 つの状態。preset の runs は掃引の点の順、組の runs はその preset の runs と同じ順。 */
 export type ExperimentStatus = {
   name: string;

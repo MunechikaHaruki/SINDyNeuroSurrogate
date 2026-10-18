@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EXPERIMENTS, PRESETS, SERIES } from './conf.ts';
-import { canonical, hashOf, jobs, originalSpec, replacedSpec, trainSpec } from './orchestrate.ts';
+import { canonical, dirOf, hashOf, jobs, simSpec, trainSpec } from './orchestrate.ts';
 
 test('the key does not depend on the order the spec was written in', () => {
   expect(canonical({ b: 1, a: { d: [1, { f: 2, e: 3 }], c: null } })).toBe(
@@ -14,12 +14,17 @@ test('the key does not depend on the order the spec was written in', () => {
   expect(hashOf(trainSpec(reordered))).toBe(hashOf(trainSpec(config)));
 });
 
-test('series that differ only in what they replace share the original run but not the replaced one', () => {
+test('series that differ only in what they replace share the input directory but not the model', () => {
   const soma = SERIES.traub19_somastim;
   const all = SERIES.traub19_somastim_allcomp;
-  expect(hashOf(originalSpec(soma))).toBe(hashOf(originalSpec(all)));
-  expect(hashOf(replacedSpec(soma, 't'))).not.toBe(hashOf(replacedSpec(all, 't')));
-  expect(hashOf(replacedSpec(soma, 't'))).not.toBe(hashOf(replacedSpec(soma, 'u')));
+  const original = dirOf(simSpec(soma, null));
+  expect(original).toMatch(/^inputs\/[0-9a-f]{12}\/original$/);
+  expect(dirOf(simSpec(all, null))).toBe(original);
+  const input = original.slice(0, -'original'.length);
+  for (const dir of [dirOf(simSpec(soma, 't')), dirOf(simSpec(all, 't')), dirOf(simSpec(soma, 'u'))]) expect(dir.startsWith(input)).toBe(true);
+  expect(dirOf(simSpec(soma, 't'))).not.toBe(dirOf(simSpec(all, 't')));
+  expect(dirOf(simSpec(soma, 't'))).not.toBe(dirOf(simSpec(soma, 'u')));
+  expect(dirOf(trainSpec(PRESETS._test_hh_sindy[0].config))).toMatch(/^models\/[0-9a-f]{12}$/);
 });
 
 test('a sweep gives one differently configured run per point', () => {

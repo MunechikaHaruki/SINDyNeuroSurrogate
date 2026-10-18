@@ -263,16 +263,16 @@
 
     <Card kicker="一覧" title="runs/ の run" subtitle={`${shownRuns.length} 本（新しい順）。名前はどの実験にも当たらない run だけ、回したときの名前で出す`}>
       <table>
-        <thead><tr><th>種類</th><th>名前</th><th>作った日時</th><th>ハッシュ</th></tr></thead>
+        <thead><tr><th>種類</th><th>名前</th><th>作った日時</th><th>場所</th></tr></thead>
         <tbody>
-          {#each shownRuns as run (run.hash)}
+          {#each shownRuns as run (run.id)}
             <tr>
               <td>{run.kind}</td>
               <td
-                >{#if run.hash in names}{names[run.hash]}{:else}<small>実験に無い：{run.name}</small>{/if}</td
+                >{#if run.id in names}{names[run.id]}{:else}<small>実験に無い：{run.name}</small>{/if}</td
               >
               <td>{run.created.slice(5, 16).replace('T', ' ')}</td>
-              <td><code>{run.hash}</code></td>
+              <td><code>{run.id}</code></td>
             </tr>
           {/each}
         </tbody>

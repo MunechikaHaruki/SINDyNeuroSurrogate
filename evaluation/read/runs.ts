@@ -1,5 +1,5 @@
 // SINDyNeuroSurrogate の結果を runs/ から読む（評価の冊と学習 run の冊が共有する）。
-// run は段取り（orchestrate.ts。操作盤の冊のボタンから起こす）が runs/<ハッシュ>/ に置き、一覧を runs/index.json に書く。
+// run は段取り（orchestrate.ts。操作盤の冊のボタンから起こす）が runs/models/ と runs/inputs/ に置き、一覧を runs/index.json に書く。run は runs/ の下のパス（id）で指す。
 // spec の形は orchestrate/spec.ts、ファイルの形式は neurosurrogate/run.py の先頭。ここは読むだけで、Python は import しない。配信は context-router の開発サーバー。
 import { SERIES } from '../orchestrate/conf.ts';
 import { FORMAT, type ExperimentStatus, type IndexEntry, type Job, type RunStatus, type Status } from '../orchestrate/spec.ts';
@@ -21,14 +21,14 @@ export type WaveMeta = {
 /** 評価の系列 1 つ。原系の run と、どこを置換したか。 */
 export type SeriesEntry = {
   name: string;
-  /** 原系の run のハッシュ */
+  /** 元のモデルの run の id */
   run: string;
   param: string | null;
   values: number[];
   unit: string;
   replaceTargets: string[];
 };
-/** 系列を 1 つの学習 run で置換して回した列。 */
+/** 系列を 1 つの学習 run で置換して回した列。run と train は id。 */
 export type Column = { run: string; train: string; trainName: string };
 /** 1 ペア（原系, 置換系）の 1 comp の指標。null は値が無い（nan）。 */
 export type PairMetrics = {
@@ -53,10 +53,10 @@ export async function listRuns(): Promise<IndexEntry[]> {
 /** 実験の系列を、原系 run の一覧の行から読む。原系をまだ回していなければ undefined。 */
 export function seriesEntry(runs: IndexEntry[], experiment: ExperimentStatus, name: string): SeriesEntry | undefined {
   const declared = experiment.series.find(s => s.series === name);
-  const row = runs.find(r => r.hash === declared?.original.hash);
-  if (!row || row.spec.kind !== 'original') return undefined;
-  const series = row.spec.series;
-  return { name, run: row.hash, param: series.param, values: series.values, unit: row.unit ?? '', replaceTargets: SERIES[name].replace_targets };
+  const row = runs.find(r => r.id === declared?.original.id);
+  if (!row || row.spec.kind !== 'sim') return undefined;
+  const input = row.spec.input;
+  return { name, run: row.id, param: input.param, values: input.values, unit: row.unit ?? '', replaceTargets: SERIES[name].replace_targets };
 }
 
 /** 実験の系列を、その実験の preset で置換して回し終えた列。preset の順、掃引の点の順。 */
@@ -66,7 +66,7 @@ export function experimentColumns(experiment: ExperimentStatus, series: string):
     if (pair.series !== series) continue;
     const trains = experiment.presets.find(p => p.preset === pair.preset)?.runs ?? [];
     pair.runs.forEach((run, i) => {
-      if (run.state === 'done') list.push({ run: run.hash, train: trains[i].hash, trainName: run.name });
+      if (run.state === 'done') list.push({ run: run.id, train: trains[i].id, trainName: run.name });
     });
   }
   return list;
@@ -79,13 +79,13 @@ export function experimentTrains(experiment: ExperimentStatus): RunStatus[] {
   return list;
 }
 
-/** 宣言から引いた run の名前（ハッシュ → 名前）。どの実験にも当たらない run は入らない。 */
+/** 宣言から引いた run の名前（id → 名前）。どの実験にも当たらない run は入らない。 */
 export function declaredNames(status: Status): Record<string, string> {
   const names: Record<string, string> = {};
   for (const experiment of status.experiments) {
-    for (const series of experiment.series) names[series.original.hash] = series.series;
-    for (const preset of experiment.presets) for (const run of preset.runs) names[run.hash] = run.name;
-    for (const pair of experiment.pairs) for (const run of pair.runs) names[run.hash] = `${pair.series} × ${run.name}`;
+    for (const series of experiment.series) names[series.original.id] = series.series;
+    for (const preset of experiment.presets) for (const run of preset.runs) names[run.id] = run.name;
+    for (const pair of experiment.pairs) for (const run of pair.runs) names[run.id] = `${pair.series} × ${run.name}`;
   }
   return names;
 }

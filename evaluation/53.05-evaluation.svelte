@@ -105,7 +105,7 @@
       for (const column of found) {
         metas[column.run] = await readJson<WaveMeta>(column.run, 'waves/meta.json');
         metrics[column.run] = await readJson<Metrics>(column.run, 'metrics.json');
-        summaries[column.run] = await readJson<Record<string, number | null>>(column.run, 'summary.json');
+        summaries[column.run] = await readJson<Record<string, number | null>>(column.train, 'summary.json');
       }
       originalMeta = meta;
       columns = found;

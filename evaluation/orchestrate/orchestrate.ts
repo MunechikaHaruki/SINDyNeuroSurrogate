@@ -1,5 +1,6 @@
-// 段取り: conf.ts の宣言から spec.json を組み、ハッシュを鍵に runs/<ハッシュ>/ を Python の計算の入口（neurosurrogate/run.py）で埋める。
-// 同じ spec は同じハッシュになるので、ディレクトリがあれば回さない。回したあとは runs/index.json（図が読む run の一覧）を書き直す。
+// 段取り: conf.ts の宣言から spec.json を組み、ハッシュで決めた置き場を Python の計算の入口（neurosurrogate/run.py）で埋める。
+// 置き場は学習が runs/models/<ハッシュ>/、入力 × モデルが runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/。
+// 同じ spec は同じ置き場になるので、ディレクトリがあれば回さない。回したあとは runs/index.json（図が読む run の一覧）を書き直す。
 // 入口は二つで、どちらもここの関数を呼ぶ。本人は操作盤の冊のボタン（api.ts）、エージェントはこの CLI。人は CLI を使わない。
 //   bun evaluation/orchestrate/orchestrate.ts train <preset>...
 //   … eval <系列> <preset かハッシュ>...
@@ -19,10 +20,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXPERIMENTS, PRESETS, SERIES } from './conf.ts';
-import { FORMAT, type ExperimentStatus, type IndexEntry, type Job, type JobState, type RunStatus, type Series, type Spec, type State, type Status, type SurrogateConfig } from './spec.ts';
+import { FORMAT, type ExperimentStatus, type IndexEntry, type Input, type Job, type JobState, type RunStatus, type Series, type Spec, type State, type Status, type SurrogateConfig } from './spec.ts';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
 /** 既定の run の置き場 */
@@ -55,26 +56,43 @@ export function trainSpec(config: SurrogateConfig): Spec {
   return { format: FORMAT, kind: 'train', surrogate: config };
 }
 
-/** 原系は置換範囲を含まない。置換範囲だけが違う対照系列どうしで原系 run を共有する。 */
-export function originalSpec(series: Series): Spec {
-  const { replace_targets: _targets, ...rest } = series;
-  return { format: FORMAT, kind: 'original', series: rest };
+/** 系列の入力（電流と掃引）。置換範囲はモデルの側に入る。 */
+export function inputOf(series: Series): Input {
+  const { replace_targets: _targets, ...input } = series;
+  return input;
 }
 
-export function replacedSpec(series: Series, train: string): Spec {
-  return { format: FORMAT, kind: 'replaced', series, original: hashOf(originalSpec(series)), train };
+/** 系列を学習 run（ハッシュ）で置き換えて回す spec。train が null なら元のモデル。 */
+export function simSpec(series: Series, train: string | null): Spec {
+  const model = train === null ? null : { train, replace_targets: series.replace_targets };
+  return { format: FORMAT, kind: 'sim', input: inputOf(series), model };
+}
+
+/** spec の置き場（runs/ の下のパス）。置換範囲だけが違う系列は同じ入力のディレクトリに並ぶ。 */
+export function dirOf(spec: Spec): string {
+  if (spec.kind === 'train') return `models/${hashOf(spec)}`;
+  const input = digest({ format: spec.format, input: spec.input });
+  return `inputs/${input}/${spec.model === null ? 'original' : digest(spec.model)}`;
+}
+
+/** 置き場の下の、名前に . を含まないディレクトリ。 */
+function children(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const names: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) if (entry.isDirectory() && !entry.name.includes('.')) names.push(entry.name);
+  return names;
 }
 
 /** runs/ の下の完成した run を新しい順に。書きかけ（.partial）と印のファイルは数えない。 */
 export function scan(runs: string): IndexEntry[] {
-  if (!existsSync(runs)) return [];
+  const dirs: string[] = [];
+  for (const name of children(join(runs, 'models'))) dirs.push(join(runs, 'models', name));
+  for (const input of children(join(runs, 'inputs'))) for (const name of children(join(runs, 'inputs', input))) dirs.push(join(runs, 'inputs', input, name));
   const list: IndexEntry[] = [];
-  for (const entry of readdirSync(runs, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name.includes('.')) continue;
-    const dir = join(runs, entry.name);
+  for (const dir of dirs) {
     if (!existsSync(join(dir, 'meta.json'))) continue;
     const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'));
-    list.push({ hash: entry.name, ...meta, spec: JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8')) });
+    list.push({ id: relative(runs, dir), ...meta, spec: JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8')) });
   }
   return list.sort((a, b) => b.created.localeCompare(a.created));
 }
@@ -83,39 +101,43 @@ export function writeIndex(runs: string): void {
   if (existsSync(runs)) writeFileSync(join(runs, 'index.json'), JSON.stringify(scan(runs)));
 }
 
-/** 置換できないと分かった組の印。置換できるかは Python だけが知るので、一度聞いた答えをハッシュで覚えておく。 */
-function unreplaceableMark(runs: string, hash: string): string {
-  return join(runs, `${hash}.unreplaceable`);
+/** 置換できないと分かった組の印。置換できるかは Python だけが知るので、一度聞いた答えを置き場の隣に覚えておく。 */
+function unreplaceableMark(runs: string, id: string): string {
+  return join(runs, `${id}.unreplaceable`);
 }
 
-/** spec の run を用意してハッシュを返す。あれば回さない。置換できなければ undefined。 */
+/** spec の run を用意して置き場（runs/ の下のパス）を返す。あれば回さない。置換できなければ undefined。 */
 function ensure(runs: string, spec: Spec, name: string): string | undefined {
-  const hash = hashOf(spec);
-  const root = join(runs, hash);
-  if (existsSync(unreplaceableMark(runs, hash))) return undefined;
+  const id = dirOf(spec);
+  const root = join(runs, id);
+  if (existsSync(unreplaceableMark(runs, id))) return undefined;
   if (existsSync(root)) {
-    console.log(`${hash} ${name}: 回してある`);
-    return hash;
+    console.log(`${id} ${name}: 回してある`);
+    return id;
+  }
+  if (spec.kind === 'sim') {
+    mkdirSync(dirname(root), { recursive: true });
+    writeFileSync(join(dirname(root), 'input.json'), JSON.stringify(spec.input, null, 2));
   }
   const file = join(mkdtempSync(join(tmpdir(), 'spec-')), 'spec.json');
   writeFileSync(file, JSON.stringify(spec, null, 2));
-  console.log(`${hash} ${name}: 回す`);
+  console.log(`${id} ${name}: 回す`);
   const { exitCode } = Bun.spawnSync(['uv', 'run', 'python', '-m', 'neurosurrogate.run', file, root, '--name', name], {
     cwd: REPO,
     stdio: ['inherit', 'inherit', 'inherit'],
   });
   if (exitCode === NOT_REPLACEABLE) {
-    writeFileSync(unreplaceableMark(runs, hash), '');
+    writeFileSync(unreplaceableMark(runs, id), '');
     return undefined;
   }
   if (exitCode === RUNNING) {
-    // 別の段取りが同じ run を回している（原系を共有する二つの評価など）。終わるのを待って使う。
-    console.log(`${hash} ${name}: 別のプロセスが回しているので待つ`);
-    while (!existsSync(root) && running(join(runs, `${hash}.partial`))) Bun.sleepSync(5000);
+    // 別の段取りが同じ run を回している（元のモデルを共有する二つの評価など）。終わるのを待って使う。
+    console.log(`${id} ${name}: 別のプロセスが回しているので待つ`);
+    while (!existsSync(root) && running(join(runs, `${id}.partial`))) Bun.sleepSync(5000);
     return ensure(runs, spec, name);
   }
-  if (exitCode !== 0) throw new Error(`${hash} ${name}: run.py が ${exitCode} で落ちた`);
-  return hash;
+  if (exitCode !== 0) throw new Error(`${id} ${name}: run.py が ${exitCode} で落ちた`);
+  return id;
 }
 
 function presetOf(name: string) {
@@ -133,10 +155,13 @@ function seriesOf(name: string): Series {
 /** 学習 run を指す引数（preset 名か、ハッシュかその先頭）→ 学習 run のハッシュと名前。preset は無ければ学習する。 */
 function trainRuns(runs: string, selector: string): { hash: string; name: string }[] {
   if (selector in PRESETS)
-    return presetOf(selector).map(t => ({ hash: ensure(runs, trainSpec(t.config), t.name)!, name: t.name }));
-  const hits = scan(runs).filter(e => e.kind === 'train' && e.hash.startsWith(selector));
+    return presetOf(selector).map(t => {
+      ensure(runs, trainSpec(t.config), t.name);
+      return { hash: hashOf(trainSpec(t.config)), name: t.name };
+    });
+  const hits = scan(runs).filter(e => e.kind === 'train' && e.id.startsWith(`models/${selector}`));
   if (hits.length !== 1) throw new Error(`学習 run ${selector} が ${hits.length} 本に当たる`);
-  return [{ hash: hits[0].hash, name: hits[0].name }];
+  return [{ hash: hits[0].id.slice('models/'.length), name: hits[0].name }];
 }
 
 /** preset の学習 run を全部用意する。 */
@@ -145,14 +170,14 @@ export function train(runs: string, preset: string): void {
   writeIndex(runs);
 }
 
-/** 系列を原系と、選んだ学習 run（preset かハッシュ）で回す。置換できない学習 run は回さない。 */
+/** 系列を元のモデルと、選んだ学習 run（preset かハッシュ）で置き換えたモデルで回す。置換できない学習 run は回さない。 */
 export function evaluate(runs: string, name: string, selectors: string[]): void {
   const series = seriesOf(name);
-  ensure(runs, originalSpec(series), name);
+  ensure(runs, simSpec(series, null), name);
   writeIndex(runs);
   for (const selector of selectors)
     for (const t of trainRuns(runs, selector))
-      if (ensure(runs, replacedSpec(series, t.hash), name) === undefined)
+      if (ensure(runs, simSpec(series, t.hash), `${name} × ${t.name}`) === undefined)
         console.log(`${t.name} は ${name} を置換できないので回さない`);
   writeIndex(runs);
 }
@@ -219,10 +244,16 @@ export function jobs(runs: string): JobState[] {
 }
 
 /** run 1 本の状態。 */
-function runState(runs: string, hash: string): State {
-  if (existsSync(unreplaceableMark(runs, hash))) return 'unreplaceable';
-  if (existsSync(join(runs, hash))) return 'done';
-  return running(join(runs, `${hash}.partial`)) ? 'running' : 'todo';
+function runState(runs: string, id: string): State {
+  if (existsSync(unreplaceableMark(runs, id))) return 'unreplaceable';
+  if (existsSync(join(runs, id))) return 'done';
+  return running(join(runs, `${id}.partial`)) ? 'running' : 'todo';
+}
+
+/** 宣言した run 1 本の名前・置き場・状態。 */
+function runStatus(runs: string, spec: Spec, name: string): RunStatus {
+  const id = dirOf(spec);
+  return { name, id, state: runState(runs, id) };
 }
 
 /** 組の状態。置換系がどれか回っていれば計算中、全部が置換できなければ置換できない、全部そろえば済み。 */
@@ -237,15 +268,13 @@ function pairState(runs: string, job: Job, parts: State[], replaced: State[]): S
 function experimentStatus(runs: string, name: string): ExperimentStatus {
   const experiment = EXPERIMENTS[name];
   const result: ExperimentStatus = { name, presets: [], series: [], pairs: [] };
-  for (const series of experiment.series) {
-    const hash = hashOf(originalSpec(seriesOf(series)));
-    result.series.push({ series, original: { name: series, hash, state: runState(runs, hash) } });
-  }
+  for (const series of experiment.series) result.series.push({ series, original: runStatus(runs, simSpec(seriesOf(series), null), series) });
   for (const preset of experiment.presets) {
     const trains: RunStatus[] = [];
+    const hashes: string[] = [];
     for (const t of presetOf(preset)) {
-      const hash = hashOf(trainSpec(t.config));
-      trains.push({ name: t.name, hash, state: runState(runs, hash) });
+      trains.push(runStatus(runs, trainSpec(t.config), t.name));
+      hashes.push(hashOf(trainSpec(t.config)));
     }
     const trainStates = trains.map(t => t.state);
     let state: State = trainStates.every(s => s === 'done') ? 'done' : 'todo';
@@ -253,10 +282,7 @@ function experimentStatus(runs: string, name: string): ExperimentStatus {
     result.presets.push({ preset, state, runs: trains });
     for (const entry of result.series) {
       const replaced: RunStatus[] = [];
-      for (const t of trains) {
-        const hash = hashOf(replacedSpec(seriesOf(entry.series), t.hash));
-        replaced.push({ name: t.name, hash, state: runState(runs, hash) });
-      }
+      trains.forEach((t, i) => replaced.push(runStatus(runs, simSpec(seriesOf(entry.series), hashes[i]), t.name)));
       const states = replaced.map(r => r.state);
       const job: Job = { action: 'eval', series: entry.series, preset };
       result.pairs.push({ series: entry.series, preset, state: pairState(runs, job, [entry.original.state, ...trainStates, ...states], states), runs: replaced });
@@ -321,7 +347,7 @@ function command(runs: string, argv: string[]): void {
   if (name === 'spec') console.log(JSON.stringify(presetOf(rest[0]).map(t => t.config)));
   else if (name === 'series') console.log(JSON.stringify(SERIES));
   else if (name === 'list')
-    for (const e of scan(runs)) console.log(`${e.hash} ${e.kind.padEnd(8)} ${e.created} ${e.name}`);
+    for (const e of scan(runs)) console.log(`${e.id} ${e.kind.padEnd(8)} ${e.created} ${e.name}`);
   else if (name === 'train') for (const preset of rest) train(runs, preset);
   else if (name === 'eval') evaluate(runs, rest[0], rest.slice(1));
   else if (name === 'index') writeIndex(runs);
