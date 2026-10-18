@@ -10,7 +10,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | 学習（Hydra）と評価（`just eval`）の入口、MLflow の読み書き | `scripts/` |
 | 実験の結果 | MLflow (`just mlflow`) |
-| 結果を解釈する図（ブラウザで動かす `.svelte`）と、図が使う計算（`.ts`）とテスト | `research/50-59-research/`。コードの構成（`51-architecture/`）、モデルを式で書きそこから計算できる図（`52-theory/`）、回して元の系と比べるものと学習 run を読むもの（`53-evaluation/`） |
+| 結果を解釈する図（ブラウザで動かす `.svelte`）と、図が使う計算（`.ts`）とテスト | `research/50-59-research/`。コードの構成（`51-architecture/`）、モデルを式で書きそこから計算できる図（`52-theory/`）、回して元の系と比べるものと学習 run を読むもの（`53-evaluation/`）、まだ研究コードにないもの（`54-future-works/`） |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 
 ## 持たないもの
