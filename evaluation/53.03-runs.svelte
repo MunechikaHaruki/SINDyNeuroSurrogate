@@ -41,6 +41,11 @@
     return experiment?.pairs.find(p => p.series === series && p.preset === preset)?.state ?? 'todo';
   }
 
+  /** 系列の列に、評価を終えた組が一つでもあるか。あれば見出しから評価の図へ行ける。 */
+  function anyDone(series: string): boolean {
+    return experiment?.pairs.some(p => p.series === series && p.state === 'done') ?? false;
+  }
+
   /** 設定の木を「spec.datasets.target」のような鍵と値の組に開く。配列は一つの値として扱う。 */
   function flatten(value: unknown, prefix: string, out: Record<string, unknown>): void {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -186,7 +191,9 @@
       <table>
         <thead>
           <tr
-            ><th>preset</th><th>学習</th>{#each seriesNames as series (series)}<th>{@html breakable(series)}</th>{/each}</tr
+            ><th>preset</th><th>学習</th>{#each seriesNames as series (series)}<th
+                >{@html breakable(series)}{#if anyDone(series)}<br /><a href={link('53.05-evaluation', { series })}>図を見る</a>{/if}</th
+              >{/each}</tr
           >
         </thead>
         <tbody>
@@ -206,9 +213,7 @@
               {#each seriesNames as series (series)}
                 {@const state = pairState(series, preset)}
                 <td>
-                  {#if state === 'done'}
-                    <a href={link('53.05-evaluation', { series })}>図を見る</a>
-                  {:else if state === 'todo'}
+                  {#if state === 'todo'}
                     <button type="button" onclick={() => void launch({ action: 'eval', series, preset })}>回す</button>
                   {:else}
                     {STATE_LABEL[state]}
@@ -220,7 +225,7 @@
         </tbody>
       </table>
       {#snippet info()}
-        <p>掃引の preset は点ごとに学習 run を作り、全部そろうと「済み」になる。評価はまだ学習していない preset でも押せて、そのときは学習から始める。原系と置換系を回し、原系と比べた指標を置換系 run に書く。置換できない組（学習した区画の形と、置換する区画が合わない）は一度回すと分かり、以後は「置換できない」と出る。</p>
+        <p>掃引の preset は点ごとに学習 run を作り、全部そろうと「済み」になる。評価はまだ学習していない preset でも押せて、そのときは学習から始める。原系と置換系を回し、原系と比べた指標を置換系 run に書く。置換できない組（学習した区画の形と、置換する区画が合わない）は一度回すと分かり、以後は「置換できない」と出る。評価の図は系列ごとに一枚で、その実験の preset を並べて比べるので、系列の見出しから開く。</p>
       {/snippet}
     </Card>
 
