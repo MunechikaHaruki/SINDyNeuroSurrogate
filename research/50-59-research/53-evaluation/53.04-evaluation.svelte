@@ -6,17 +6,20 @@
   import Choice from '$lib/Choice.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import LineChart from '$lib/LineChart.svelte';
-  import { RUNS, decimate, gatesOf, listColumns, listRuns, listSeries, listTrainRuns, readComp, readCurrent, readInternal, readJson, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type TrainRun, type WaveMeta } from './runs.ts';
-  import type { IndexEntry } from './conf.ts';
+  import { RUNS, decimate, gatesOf, listColumns, listRuns, listSeries, readComp, readCurrent, readInternal, readJson, readStatus, runningCount, start, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type WaveMeta } from './runs.ts';
+  import type { IndexEntry, Status } from './conf.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
   /** 表示用に間引くときの区間の数。1 本あたり最大でこの 2 倍の点になる。 */
   const BUCKETS = 400;
+  /** 計算の状態を見に行く間隔（ms） */
+  const POLL = 5000;
 
   // ---- runs/ から読んだもの ----
   let index = $state<IndexEntry[]>([]);
   let series = $state<SeriesEntry[]>([]);
-  let trainRuns = $state<TrainRun[]>([]);
+  /** 宣言の学習と評価の状態（ボタンの口から） */
+  let status = $state<Status>({ trains: [], pairs: [] });
   let columns = $state<Column[]>([]);
   let originalMeta = $state<WaveMeta>();
   let metas = $state<Record<string, WaveMeta>>({});
@@ -62,19 +65,37 @@
   let compId = $derived(originalMeta?.names?.[evalComp] ?? 0);
   let duration = $derived(originalMeta ? originalMeta.n[point] * originalMeta.dt : 0);
   let domain = $derived<[number, number]>([windowStart, Math.min(duration, windowStart + windowLength)]);
-  /** 評価していない学習 run。`just eval` で回す。 */
-  let pendingRuns = $derived(trainRuns.filter(run => !columns.some(c => c.train === run.hash)));
+  /** この系列で、宣言にはあるがまだ回し終えていない preset（置換できないと分かったものは出さない）。 */
+  let pending = $derived(status.pairs.filter(p => p.series === entry?.name && (p.state === 'todo' || p.state === 'running')));
 
-  onMount(async () => {
-    try {
-      index = await listRuns();
-      series = listSeries(index);
-      trainRuns = listTrainRuns(index);
-      if (series.length > 0) seriesKey = series[0].key;
-    } catch (e) {
-      error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`;
-    }
+  /** run の一覧を読み直す。選んでいた系列は残す。 */
+  async function reload(): Promise<void> {
+    index = await listRuns();
+    series = listSeries(index);
+    if (!series.some(s => s.key === seriesKey) && series.length > 0) seriesKey = series[0].key;
+  }
+
+  onMount(() => {
+    reload()
+      .then(async () => (status = await readStatus()))
+      .catch(e => (error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`));
+    // 回っているものが減ったら、回し終えた run が index.json に載ったので読み直す。
+    const timer = setInterval(() => {
+      void (async () => {
+        const before = runningCount(status);
+        status = await readStatus();
+        if (runningCount(status) < before) await reload();
+      })().catch(e => (error = e instanceof Error ? e.message : String(e)));
+    }, POLL);
+    return () => clearInterval(timer);
   });
+
+  /** この系列を preset で回す。 */
+  async function run(preset: string): Promise<void> {
+    if (!entry) return;
+    await start({ action: 'eval', series: entry.name, preset });
+    status = await readStatus();
+  }
 
   // 系列を選んだら、その系列の列と、全部の列の目録・指標・要約を読む。
   $effect(() => {
@@ -300,13 +321,6 @@
     for (const column of selected) for (const key of Object.keys(summaries[column.run] ?? {})) if (!keys.includes(key)) keys.push(key);
     return keys;
   });
-  /** まだ評価していない学習 run を回すコマンド。 */
-  let evalCommand = $derived.by(() => {
-    if (!entry || pendingRuns.length === 0) return '';
-    const ids: string[] = [];
-    for (const run of pendingRuns) ids.push(run.hash);
-    return `just eval ${entry.name} ${ids.join(' ')}`;
-  });
 </script>
 
 <Dashboard title="SINDy サロゲート：評価の比較" summary="学習したサロゲートで Traub の区画を置き換え、同じ入力の掃引で原系と比べる。点ごとの膜電位、掃引値に沿った指標、1 組の詳細（潜在変数・相平面・スパイクの特徴量）と、学習側の指標を並べる。">
@@ -324,7 +338,12 @@
     <section>
       <h3>比べる学習 run</h3>
       <Toggles label="置換した列" bind:selected={chosen} options={columns.map(c => ({ value: c.train, label: c.trainName }))} />
-      {#if evalCommand}<p class="note">まだこの系列で評価していない run：<code>{evalCommand}</code></p>{/if}
+      {#if pending.length > 0}
+        <p class="note">宣言にあってまだ回していない preset。押すと回し、回し終えると上に並ぶ。</p>
+        {#each pending as pair (pair.preset)}
+          <button type="button" disabled={pair.state === 'running'} onclick={() => void run(pair.preset).catch(e => (error = e instanceof Error ? e.message : String(e)))}>{pair.state === 'running' ? `${pair.preset} 計算中…` : `${pair.preset} を回す`}</button>
+        {/each}
+      {/if}
     </section>
     <section>
       <h3>見る区画</h3>

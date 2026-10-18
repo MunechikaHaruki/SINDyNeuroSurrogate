@@ -9,7 +9,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
-| 何を回すかの宣言と spec.json の形（`conf.ts`）、段取り（`orchestrate.ts`。bun で実行し、`just train`・`just eval` が呼ぶ） | `research/50-59-research/53-evaluation/` |
+| 何を回すかの宣言と spec.json の形（`conf.ts`）、段取り（`orchestrate.ts`。CLI の `just train`・`just eval` と図のボタンが同じ関数を呼ぶ）、図のボタンの口（`api.ts`） | `research/50-59-research/53-evaluation/` |
 | 実験の結果（1 run = spec 1 つ、ディレクトリ名は spec のハッシュ）と run の一覧 | `runs/`（Git の外） |
 | 結果を解釈する図（ブラウザで動かす `.svelte`）と、図が使う計算（`.ts`）とテスト | `research/50-59-research/`。コードの構成（`51-architecture/`）、モデルを式で書きそこから計算できる図（`52-theory/`）、回して元の系と比べるものと学習 run を読むもの（`53-evaluation/`）、まだ研究コードにないもの（`54-future-works/`） |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |

@@ -28,14 +28,17 @@ JSON の nan は null):
     waves/<点>/comp<id>.f32   その comp の変数 (features の並び順)。変数ごとに連続
     waves/<点>/I_ext.f32      waves/<点>/I_internal.f32 (node ごとに連続)
 
-途中で落ちても半端な run を残さないよう、隣の一時ディレクトリに書いてから名前を変える。
-ディレクトリが既にあれば回さない。置換できない組み合わせは何も書かずに終了コード 3。
+途中で落ちても半端な run を残さないよう、隣の一時ディレクトリ (`<ハッシュ>.partial`)
+に書いてから名前を変える。一時ディレクトリには書いているプロセスの pid を置き、図は
+それで「計算中」を出す。ディレクトリが既にあれば回さない。置換できない組み合わせは何も書かずに
+終了コード 3、同じ run を生きた別のプロセスが書いていれば終了コード 4。
 """
 
 import argparse
 import json
 import logging
 import math
+import os
 import shutil
 import sys
 from collections.abc import Hashable, Sequence
@@ -58,6 +61,7 @@ from .surrogate.replace import applicable
 
 _FORMAT = 1  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
 _NOT_REPLACEABLE = 3
+_RUNNING = 4
 _logger = logging.getLogger(__name__)
 
 
@@ -235,6 +239,17 @@ def _replaced(root: Path, spec: dict) -> dict:
 _KINDS = {"train": _train, "original": _original, "replaced": _replaced}
 
 
+def _writer_alive(partial: Path) -> bool:
+    """書きかけの run を書いているプロセスが生きているか (落ちたあとの残骸なら偽)。"""
+    try:
+        os.kill(int((partial / "pid").read_text()), 0)
+    except (FileNotFoundError, ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _run(spec_path: Path, root: Path, name: str) -> None:
     """spec を回して `root` を埋める。`root` があれば回さない。"""
     if root.exists():
@@ -244,8 +259,15 @@ def _run(spec_path: Path, root: Path, name: str) -> None:
     if spec.get("format") != _FORMAT:
         raise ValueError(f"spec の形式 {spec.get('format')} は {_FORMAT} でない")
     partial = root.with_name(f"{root.name}.partial")
+    if _writer_alive(partial):
+        print(f"{root.name} は別のプロセスが書いている")
+        sys.exit(_RUNNING)
     shutil.rmtree(partial, ignore_errors=True)
-    partial.mkdir(parents=True)
+    try:
+        partial.mkdir(parents=True)
+    except FileExistsError:
+        sys.exit(_RUNNING)
+    (partial / "pid").write_text(str(os.getpid()))
     try:
         (partial / "spec.json").write_text(spec_path.read_text())
         extra = _KINDS[spec["kind"]](partial, spec)
@@ -256,6 +278,7 @@ def _run(spec_path: Path, root: Path, name: str) -> None:
             **extra,
         }
         _write_json(partial / "meta.json", meta)
+        (partial / "pid").unlink()
     except BaseException:
         shutil.rmtree(partial, ignore_errors=True)
         raise

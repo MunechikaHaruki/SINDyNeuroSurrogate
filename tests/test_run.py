@@ -6,6 +6,7 @@
 """
 
 import json
+import os
 from pathlib import Path
 from typing import cast
 
@@ -104,10 +105,9 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     assert [v for _, v, _ in projected["features"]][0] == "V"
 
 
-def test_unreplaceable_pair_writes_nothing(runs: Path) -> None:
-    """置換できない組み合わせ (hh で学習した run で traub の系列) は何も書かず、
-    終了コードで段取りに知らせる。"""
-    series = {
+def _unreplaceable() -> dict:
+    """hh で学習した run では置換できない traub の系列。"""
+    return {
         "spec": {
             "target": "traub",
             "current_type": "lin&steady",
@@ -119,8 +119,31 @@ def test_unreplaceable_pair_writes_nothing(runs: Path) -> None:
         "param": None,
         "values": [],
     }
+
+
+def test_unreplaceable_pair_writes_nothing(runs: Path) -> None:
+    """置換できない組み合わせ (hh で学習した run で traub の系列) は何も書かず、
+    終了コードで段取りに知らせる。"""
+    series = _unreplaceable()
     spec = {"kind": "replaced", "series": series, "original": "O", "train": "T"}
     with pytest.raises(SystemExit) as raised:
         _put(runs.parent, "X", spec)
     assert raised.value.code == run._NOT_REPLACEABLE
     assert not (runs / "X").exists() and not (runs / "X.partial").exists()
+
+
+def test_a_run_being_written_is_not_written_twice(runs: Path) -> None:
+    """書きかけの run を生きたプロセスが書いていれば終了コードで知らせて触らず、
+    書き手が死んだ残骸なら片付けて回し直す。"""
+    partial = runs / "Y.partial"
+    partial.mkdir()
+    (partial / "pid").write_text(str(os.getpid()))
+    spec = {"kind": "replaced", "series": _series(), "original": "O", "train": "T"}
+    with pytest.raises(SystemExit) as raised:
+        _put(runs.parent, "Y", spec)
+    assert raised.value.code == run._RUNNING and (partial / "pid").exists()
+    (partial / "pid").write_text("999999999")
+    hh = {"kind": "replaced", "series": _unreplaceable(), "original": "O", "train": "T"}
+    with pytest.raises(SystemExit):
+        _put(runs.parent, "Y", hh)
+    assert not partial.exists()

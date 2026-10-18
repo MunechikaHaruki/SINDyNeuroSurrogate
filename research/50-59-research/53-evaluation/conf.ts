@@ -68,6 +68,16 @@ export type Spec =
 /** run の一覧の 1 行（runs/index.json）。run の meta.json に spec とハッシュを足したもの。 */
 export type IndexEntry = { hash: string; kind: Spec['kind']; name: string; created: string; unit?: string; spec: Spec };
 
+/** 宣言の 1 本がいまどこまで回っているか。unreplaceable は置換できないと分かった組。 */
+export type State = 'done' | 'running' | 'todo' | 'unreplaceable';
+/** 宣言の学習（preset ごと）と評価（preset × 系列ごと）の状態。図のボタンの口（api.ts）が返す。 */
+export type Status = {
+  trains: { preset: string; state: State }[];
+  pairs: { series: string; preset: string; state: State }[];
+};
+/** 図のボタンが起こす仕事。 */
+export type Job = { action: 'train'; preset: string } | { action: 'eval'; series: string; preset: string };
+
 /** 学習 run 1 本の宣言。name は図に出す名前で、同一性には入らない。 */
 export type Train = { name: string; config: SurrogateConfig };
 

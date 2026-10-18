@@ -1,7 +1,7 @@
 // SINDyNeuroSurrogate の結果を runs/ から読む（評価の冊と学習 run の冊が共有する）。
 // run は段取り（orchestrate.ts、`just train` と `just eval`）が runs/<ハッシュ>/ に置き、一覧を runs/index.json に書く。
 // spec の形は conf.ts、ファイルの形式は neurosurrogate/run.py の先頭。ここは読むだけで、Python は import しない。配信は context-router の開発サーバー。
-import { FORMAT, type IndexEntry } from './conf.ts';
+import { FORMAT, type IndexEntry, type Job, type Status } from './conf.ts';
 
 /** runs/ の置き場。この .ts から見た相対パスを開発サーバーの URL に直す（文字列を直に渡すと Vite が資産として扱う）。 */
 const RUNS_DIR = '../../../runs/';
@@ -96,6 +96,29 @@ export function listTrainRuns(runs: IndexEntry[]): TrainRun[] {
   const list: TrainRun[] = [];
   for (const run of runs) if (run.kind === 'train') list.push({ hash: run.hash, name: run.name });
   return list;
+}
+
+/** 学習と評価を起こす口（api.ts）。 */
+const API = '/api/face/research/50-59-research/53-evaluation';
+
+export async function readStatus(): Promise<Status> {
+  const response = await fetch(API);
+  if (!response.ok) throw new Error(`${API}: ${response.status}`);
+  return (await response.json()) as Status;
+}
+
+/** 学習か評価を切り離して回す。同じ組が回っていれば何もしない。 */
+export async function start(job: Job): Promise<void> {
+  const response = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(job) });
+  if (!response.ok) throw new Error(`${API}: ${((await response.json()) as { message: string }).message}`);
+}
+
+/** 回っているものの数。減ったら何かが回し終わったので、run の一覧を読み直す。 */
+export function runningCount(status: Status): number {
+  let count = 0;
+  for (const train of status.trains) if (train.state === 'running') count++;
+  for (const pair of status.pairs) if (pair.state === 'running') count++;
+  return count;
 }
 
 export function fileUrl(run: string, path: string): string {
