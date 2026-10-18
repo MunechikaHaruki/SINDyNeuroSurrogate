@@ -9,9 +9,9 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
-| 何を回すかの宣言と spec.json の形（`conf.ts`）、段取り（`orchestrate.ts`。CLI の `just train`・`just eval` と図のボタンが同じ関数を呼ぶ）、図のボタンの口（`api.ts`） | `research/50-59-research/53-evaluation/` |
+| 何を回すかの宣言と spec.json の形（`conf.ts`）、段取り（`orchestrate.ts`。CLI の `just train`・`just eval` と図のボタンが同じ関数を呼ぶ）、図のボタンの口（`api.ts`） | `evaluation/` |
 | 実験の結果（1 run = spec 1 つ、ディレクトリ名は spec のハッシュ）と run の一覧 | `runs/`（Git の外） |
-| 結果を解釈する図（ブラウザで動かす `.svelte`）と、図が使う計算（`.ts`）とテスト | `research/50-59-research/`。コードの構成（`51-architecture/`）、モデルを式で書きそこから計算できる図（`52-theory/`）、回して元の系と比べるものと学習 run を読むもの（`53-evaluation/`）、まだ研究コードにないもの（`54-future-works/`） |
+| 評価の冊（回して元の系と比べるもの、学習 run を読むもの）と、図が使う計算（`traub.ts`、`runs.ts`）とテスト | `evaluation/`。context-router の `resources/research/` に symlink で入り、研究の文書（51 構成、52 理論、54 これから）と一つの面に見える |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 
 ## 持たないもの
@@ -27,7 +27,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 ## 図
 
 - 書き方（部品、宣言、見た目の規約）は教材と同じで、スキル book に従う。画面と部品はルートの `.web/` が持つ。
-- 図の番号は教材と同じ Johnny.Decimal の体系から取る（区域はルートの `AGENTS.md`）。図は `research/50-59-research/<NN-分類>/<NN.MM-名前>.svelte`。
+- この repo が持つ冊は評価だけで、`evaluation/53.MM-名前.svelte`。番号は教材と同じ Johnny.Decimal の体系から取る（区域はルートの `AGENTS.md`）。研究の文書は context-router の `resources/research/50-59-research/` が持ち、コードと一緒に変わらないものはこの repo に置かない。
   計算はテストで数値を固定できるよう同じ分類に番号なしの役割の名前（`traub.ts`、`runs.ts`）で切り出し、テストは `<名前>.test.ts`、参照値は `<名前>.reference.json`。
 - 常駐の開発サーバー（`http://127.0.0.1:4321/`）で教材と一緒に開く。テスト・ESLint・型は context-router の `.web/` で `bun run web-check`。
 
@@ -42,7 +42,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ```bash
 uv sync                        # 依存導入
-just train <preset>...         # 学習。preset は 53-evaluation/conf.ts の PRESETS (掃引は preset が run の列で持つ)
+just train <preset>...         # 学習。preset は evaluation/conf.ts の PRESETS (掃引は preset が run の列で持つ)
 just eval <系列> <preset かハッシュ>...  # 評価。原系と置換系を runs/ に置く。preset の未学習分は学習もする
 just runs list                 # run の一覧。just runs -h で preset と系列の一覧、just runs index で index.json を書き直す
 just test                      # pytest + 段取りから学習 1 本 (使い捨ての置き場)

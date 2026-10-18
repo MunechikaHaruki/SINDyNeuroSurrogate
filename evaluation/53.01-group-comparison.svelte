@@ -7,7 +7,7 @@
   import LineChart from '$lib/LineChart.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import Choice from '$lib/Choice.svelte';
-  import { checkTrajectory, duration, equilibria, equivalentPotential, groupCriteria, groupLayout, initial, input, psiPartitions, readFull, readSample, rmse, simulate, spikes, type Alpha0Mode, type Config, type GateName, type Grouping, type GroupCheck, type Partition, type Sample, type Verdict } from '../52-theory/traub.ts';
+  import { checkTrajectory, duration, equilibria, equivalentPotential, groupCriteria, groupLayout, initial, input, psiPartitions, readFull, readSample, rmse, simulate, spikes, type Alpha0Mode, type Config, type GateName, type Grouping, type GroupCheck, type Partition, type Sample, type Verdict } from './traub.ts';
 
   type Point = { x: number; y: number };
   type Trace = { label: string; points: Point[]; dashed?: boolean };

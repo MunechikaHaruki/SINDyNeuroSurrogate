@@ -1,7 +1,7 @@
 """サロゲート fit → 置換シミュ → 指標の smoke (保存を介さない)。
 
 preset と評価系列は `conf.ts` の宣言を実設定源として段取り (`orchestrate.ts
-spec|series`、どちらも research/50-59-research/53-evaluation/) から読み、
+spec|series`、どちらも evaluation/) から読み、
 ドメイン層だけを通す。テスト専用の preset は `_test_*` (学習構造と短縮電流だけ
 固定) で、テスト側は override しない。
 """
@@ -62,10 +62,7 @@ from neurosurrogate.surrogate.replace import (
     replace,
 )
 
-ORCHESTRATE = (
-    Path(__file__).resolve().parents[1]
-    / "research/50-59-research/53-evaluation/orchestrate.ts"
-)
+ORCHESTRATE = Path(__file__).resolve().parents[1] / "evaluation/orchestrate.ts"
 LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, z1..zN, u] の両端
 
 

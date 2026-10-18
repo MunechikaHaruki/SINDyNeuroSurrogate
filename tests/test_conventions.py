@@ -72,7 +72,7 @@ _LAYERS = {
 }
 
 # ドメイン層が触ってはいけない基盤 (記録も設定の形式も run の置き場で足りる)。
-# 描画も持たない (描くのは research/ の図。ドメインは数値を出すだけ)。
+# 描画も持たない (描くのは evaluation/ の図。ドメインは数値を出すだけ)。
 _INFRA_ROOTS = {"mlflow", "hydra", "omegaconf", "matplotlib"}
 
 
@@ -231,7 +231,7 @@ def _names_passed_as_strings(call: ast.Call) -> set[str]:
 
 def _declared_strings() -> str:
     """preset の宣言 (`conf.ts`)。項ライブラリの名前を文字列で引く。"""
-    return (ROOT / "research/50-59-research/53-evaluation/conf.ts").read_text()
+    return (ROOT / "evaluation/conf.ts").read_text()
 
 
 def test_public_names_are_actually_imported_elsewhere() -> None:

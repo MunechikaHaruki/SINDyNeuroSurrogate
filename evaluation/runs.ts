@@ -4,7 +4,7 @@
 import { FORMAT, type IndexEntry, type Job, type Status } from './conf.ts';
 
 /** runs/ の置き場。この .ts から見た相対パスを開発サーバーの URL に直す（文字列を直に渡すと Vite が資産として扱う）。 */
-const RUNS_DIR = '../../../runs/';
+const RUNS_DIR = '../runs/';
 export const RUNS = new URL(RUNS_DIR, import.meta.url).href;
 
 export type Point = { x: number; y: number };

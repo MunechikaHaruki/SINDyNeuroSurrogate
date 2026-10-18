@@ -8,5 +8,5 @@ graphify-out/
 
 .DS_Store
 **/.DS_Store
-# 実験の結果 (research/50-59-research/53-evaluation/orchestrate.ts が runs/<ハッシュ>/ に置く)
+# 実験の結果 (evaluation/orchestrate.ts が runs/<ハッシュ>/ に置く)
 runs/

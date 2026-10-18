@@ -6,7 +6,7 @@ set shell := ["bash", "-cu"]
 PROJECT_NAME := "neurosurrogate"
 VIRTUAL_ENV := "uv run"
 
-ORCHESTRATE := "bun research/50-59-research/53-evaluation/orchestrate.ts"
+ORCHESTRATE := "bun evaluation/orchestrate.ts"
 
 # Delete all compiled Python files
 clean-cache:
@@ -58,12 +58,12 @@ test:
     trap 'rm -rf "$runs"' EXIT
     {{ ORCHESTRATE }} train _test_hh_sindy --runs "$runs"
 
-# 学習: preset (53-evaluation/conf.ts の PRESETS) の run を runs/<ハッシュ>/ に置く。回してあれば回さない
+# 学習: preset (evaluation/conf.ts の PRESETS) の run を runs/<ハッシュ>/ に置く。回してあれば回さない
 #   just train traub_useMC19CompForTeachingData   (preset の一覧は just runs -h)
 train *presets:
     {{ ORCHESTRATE }} train {{ presets }}
 
-# 評価: 系列を原系と学習 run で回し、runs/ に置く。図は research/ が読む
+# 評価: 系列を原系と学習 run で回し、runs/ に置く。図は evaluation/ が読む
 #   just eval traub19_somastim <preset か学習 run のハッシュ> ...
 eval series *trains:
     {{ ORCHESTRATE }} eval {{ series }} {{ trains }}

@@ -40,7 +40,7 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
   sim/  _current_catalog.py      # **名前 → 実体の対応表だけ** (SimSpec.current_type が引く選択肢): 注入電流波形 + CURRENT_MAP。sim の内部専用 (適用先モデルの対応表は neurons が持つ)
         spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない**) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+**replace_targets**+param+values の 1 掃引 = **保存の単位でもある**。どこを置換する実験かも記述の一部で、置換器は知らないまま対象を名前で挙げる。points は派生、to_dict/from_dict で往復 (run の spec.json の中身)。原系 `hash` (置換範囲を含まない) と置換系 `replaced_hash` (含む) は束ねてよい列かの検査に使う。run の置き場の鍵は段取りが組む)。**記述 2 段が result の 波形 / SeriesRun と 1 対 1**。surrogate より前の層 (SurrogateSpec.dataset がこれ)
         result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = runs/ の原系・置換系の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。**答えるのは「どの列か・どの点か」だけ** (column/pair/run_ids) = 適用先も掃引軸も刻み幅も素通しせず、要るものは view.series から直接引く。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。**系列名も評価 run の id も持たない**
-        run.py                   # **仕様 × surrogate を掛ける唯一の段** (保存を知らない。**何を**回すかは research/ の conf.ts): _simulate (1 シミュ + 置換対象名 → 波形) / run_column (series + run_id + surrogate → **1 列** `SeriesRun`。系列 → 結果の唯一の入口。両方 None が原系)。**回す前に決まること (どの run が置換できるか) は持たない** → surrogate.replace.applicable。表示名は出てこない (学習 run の id は列の標識として通るだけ)。surrogate の後の層
+        run.py                   # **仕様 × surrogate を掛ける唯一の段** (保存を知らない。**何を**回すかは evaluation/ の conf.ts): _simulate (1 シミュ + 置換対象名 → 波形) / run_column (series + run_id + surrogate → **1 列** `SeriesRun`。系列 → 結果の唯一の入口。両方 None が原系)。**回す前に決まること (どの run が置換できるか) は持たない** → surrogate.replace.applicable。表示名は出てこない (学習 run の id は列の標識として通るだけ)。surrogate の後の層
         waveform.py              # 波形の指標: 常に 1 ペア (原系, 置換系) だけを見る (点軸も run 軸も持たない)。公開は compare 1 つ = 1 ペア 1 comp の全指標 (rows=(orig, surr) / scalars / spikes=全 AP の特徴量 / diverged) を素の値の dict で返す。並べ方と描き方は持たない (図は research/)
   surrogate/  model.py           # SurrogateSpec (宣言 + hyperparams + JSON 往復 + **設定ツリー (spec + parts 3 ブロック) を解く唯一の場所** from_config + 名前 → 実装の解決 ansatz (**型**) / preprocessor_fit (**fit_pca / fit_ae 関数**) + **学習ドメインの述語** in_train_domain (置換の可否と学習 comp の選定 train_comp_ids の両方が引く = 置換専用でないのでここ)) と Surrogate (**学習済みのもの** = 保存する 3 点 spec/preprocessor/closure だけを持ち (ansatz は spec しか状態を持たないので派生)、答えるのは持つ・保存する・読むと、比べる表に並べる学習側の指標 summary だけ = 適用先を知らない)。**組み立ては型のメソッドでなくモジュール関数** fit_surrogate — hyperparams まで spec が持つので引数は設定ツリー 1 つ。**preprocessor → closure の学習順もここが持つ** (定式化に依らないので Ansatz の既定実装にしない)
               replace.py         # **適用先 (NeuronGraph) を知る唯一の場所** = 置換の語彙一式。**公開は applicable / replace の 2 つだけ** (残りは `_` = 内部の綴り): どこへ当てられるか (applicable ← _rejected_targets) + 当てられない理由の**事実** (_Absent / _TypeMismatch / _ParamsMismatch の直和 = 理由の網羅が型で見える。**文言は持たない** — 文にするのは提示側 _NotReplaceable.__str__ だけ) + 当てること (replace(surrogate, dataset, targets) = 全数検証、1 つでも通らなければ部分適用せず _NotReplaceable)。**判定と適用を分けない** (replace が断る条件 = applicable が偽になる条件そのもの)。型のメソッドでなくモジュール関数 = 適用先はサロゲートの持ち物でない
@@ -52,11 +52,11 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
               description.py     # 学習済み surrogate の中身を図に依らないデータで出す (describe)。閉包項と前処理の中身 (各実装の describe)、ネット、学習データ、学習 comp ごとに同定器へ渡した列・潜在・再構成 RMSE。置換シミュは回さない
   run.py                         # **計算の入口** (`python -m neurosurrogate.run <spec.json> <runs/ハッシュ>`。層 `entry` = どこからも import されない最上位): spec.json 1 つ → run のディレクトリ。kind = train / original / replaced。隣の .partial に書いてから名前を変える (半端な run を残さない)。置換できない組み合わせは終了コード 3 で何も書かない。**run の保存形式 (波形の write/read) を知るのはここだけ**
 tests/    test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py (preset と系列は段取りに JSON で出させて読む) / test_inits.py / test_run.py (neurosurrogate/run.py の 3 種類の run の往復と、回し直さないこと)
-research/ 50-59-research/<分類>/    # TS はすべてここ。結果を解釈する図 (TS + Svelte。画面と部品は context-router の .web/)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。52-theory/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
-          53-evaluation/conf.ts        # **何を回すか**の型付き宣言: PRESETS (学習の設定ツリー。継承は深いマージ merge、掃引は直積で run の列に開く) と SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)。spec.json の形 (Spec、FORMAT、index.json の行) もここ。値の理由はコメントに書く。**描き方は持たない**。node/bun に依存しない (ブラウザの runs.ts も import する)
-          53-evaluation/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: CLI (just train・just eval・just runs、エージェント用) と、図のボタンが切り離した子プロセスで起こす launch。宣言の組の状態 (status: 済み・計算中・未・置換できない) もここ
-          53-evaluation/api.ts         # **図のボタンの口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
-          53-evaluation/runs.ts        # 図が runs/ を読む口 (ブラウザ)
+evaluation/    # TS はすべてここ。評価の冊 (TS + Svelte。画面と部品は context-router の .web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
+evaluation/conf.ts        # **何を回すか**の型付き宣言: PRESETS (学習の設定ツリー。継承は深いマージ merge、掃引は直積で run の列に開く) と SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)。spec.json の形 (Spec、FORMAT、index.json の行) もここ。値の理由はコメントに書く。**描き方は持たない**。node/bun に依存しない (ブラウザの runs.ts も import する)
+evaluation/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: CLI (just train・just eval・just runs、エージェント用) と、図のボタンが切り離した子プロセスで起こす launch。宣言の組の状態 (status: 済み・計算中・未・置換できない) もここ
+evaluation/api.ts         # **図のボタンの口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
+evaluation/runs.ts        # 図が runs/ を読む口 (ブラウザ)
 runs/     <ハッシュ>/ と index.json  # 実験の結果 (Git の外)。下の「run の置き場」
 ```
 
@@ -64,7 +64,7 @@ runs/     <ハッシュ>/ と index.json  # 実験の結果 (Git の外)。下�
 
 1 run = spec.json 1 つで、ディレクトリ名はその spec のハッシュ (`orchestrate.ts` の
 `hashOf`)。同じ spec は同じハッシュなので、ディレクトリがあれば回さない。図は Python で
-描かず、`research/50-59-research/53-evaluation/53.04-evaluation` (評価) と
+描かず、`evaluation/53.04-evaluation` (評価) と
 `53.03-trained-model` (学習 run) が `runs.ts` を通して読む。Python が置くのは図に要る
 データだけ:
 
@@ -102,7 +102,7 @@ waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
 
 ### 設定ファイル
 
-- 学習の設定も評価の条件も `research/50-59-research/53-evaluation/conf.ts` に型付きで書く。YAML の設定ファイルは持たない。
+- 学習の設定も評価の条件も `evaluation/conf.ts` に型付きで書く。YAML の設定ファイルは持たない。
   綴りの浅い誤りは型が、名前の誤り (comp 名、項ライブラリの名前) は pytest が Python のドメインに当てて見つける
   (`test_catalog_is_self_consistent`、`fit_preset`)。実験条件は滅多に変わらず、変えたら別の実験 =
   コードの差分に出る方が正しい。
@@ -119,7 +119,7 @@ waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
 - **どの系列を回すか**は `just eval` の引数で、系列を置換できない学習 run は回さない。
 - **描き方 (つまみ) は宣言に持たない** → 全キー (比較対象 comp・
   全 comp 図の表示制限・点軸の指標・詳細図の点・スパイク番号・折れ線の y レンジ)
-  を research/ の図が持つ。どれも図を見て決め直すもので、宣言に置くと「何を
+  を evaluation/ の図が持つ。どれも図を見て決め直すもので、宣言に置くと「何を
   回すか」と同じ寿命に見えてしまう。comp の選択肢は原系の `waves/meta.json` の names
   なので、適用先と噛み合わない comp を選べない。**何の図を出すかはどこにも書かない**:
   学習側は run の中身の `kind` (SINDy なら係数、PCA なら寄与率)、評価側は結果の形
@@ -207,7 +207,7 @@ sympy 式・Symbol などドメインの実体は**型のまま**持ち回り、
 ### 6. ドメインは数値を出し、冊は描くだけ
 
 ドメイン (`neurosurrogate/`) が出すのは数値と式 (LaTeX) だけで、表示のための加工 (係数の丸め、
-0 係数を落とす、下付きの整形、配置、色) は research/ の図が持つ。逆に図はドメインの計算を
+0 係数を落とす、下付きの整形、配置、色) は evaluation/ の図が持つ。逆に図はドメインの計算を
 しない。図に許すのは間引きや区間分けのような表示のための変換だけ。
 
 **発火条件**: ドメインに表示名・色・並べ方を書きそうになったとき → 冊へ回す。冊で指標や
@@ -225,7 +225,7 @@ pickle / run のスキーマを変えて過去の run がロード不能にな�
 ### 8. 実行経路を二重に持たない
 
 同じ操作に 2 経路を作らない。重い計算 (学習と評価) は `neurosurrogate/run.py` だけが持ち、段取りは
-`orchestrate.ts` の関数だけが持つ (CLI と図のボタンはその関数を呼ぶ薄い入口)。結果は runs/ に置く。描くのは research/ の図だけで、Python で図を描く入口
+`orchestrate.ts` の関数だけが持つ (CLI と図のボタンはその関数を呼ぶ薄い入口)。結果は runs/ に置く。描くのは evaluation/ の図だけで、Python で図を描く入口
 (`scripts/draw.py` やレポート run) を復活させない。
 
 **発火条件**: 新しい操作を足すとき → 計算なら CLI に、見せ方なら冊に置く。

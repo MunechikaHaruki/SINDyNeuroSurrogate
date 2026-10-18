@@ -1,7 +1,7 @@
 // 段取り: conf.ts の宣言から spec.json を組み、ハッシュを鍵に runs/<ハッシュ>/ を Python の計算の入口（neurosurrogate/run.py）で埋める。
 // 同じ spec は同じハッシュになるので、ディレクトリがあれば回さない。回したあとは runs/index.json（図が読む run の一覧）を書き直す。
 // 入口は二つで、どちらもここの関数を呼ぶ。エージェントは CLI（just train・just eval・just runs）、本人は図のボタン（api.ts）。
-//   bun research/50-59-research/53-evaluation/orchestrate.ts train <preset>...
+//   bun evaluation/orchestrate.ts train <preset>...
 //   … eval <系列> <preset かハッシュ>...
 //   … index | spec <preset> | series | list
 // --runs <dir> で置き場を変えられる（just test が使う）。
@@ -22,7 +22,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FORMAT, PRESETS, SERIES, type IndexEntry, type Job, type Series, type Spec, type State, type Status, type SurrogateConfig } from './conf.ts';
 
-const REPO = fileURLToPath(new URL('../../..', import.meta.url));
+const REPO = fileURLToPath(new URL('..', import.meta.url));
 /** 既定の run の置き場 */
 export const RUNS = join(REPO, 'runs');
 /** run.py が「置換できない」で返す終了コード */

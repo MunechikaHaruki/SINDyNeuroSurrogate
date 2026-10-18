@@ -2,7 +2,7 @@
 // 段取り（orchestrate.ts）がここから spec.json を組み、Python の計算の入口（neurosurrogate/run.py）へ渡す。図（runs.ts）は同じ形で読む。
 // node や bun に依存しない（ブラウザで動く runs.ts も import する）。
 // 綴りの確かめは型と、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
-// 描き方（比較する comp、指標、点）はここに持たない。図を見て決め直すもので、research/ の図が持つ。
+// 描き方（比較する comp、指標、点）はここに持たない。図を見て決め直すもので、evaluation/ の図が持つ。
 
 /** 1 回のシミュレーションの仕様（Python の SimSpec）。 */
 export type SimSpec = {
