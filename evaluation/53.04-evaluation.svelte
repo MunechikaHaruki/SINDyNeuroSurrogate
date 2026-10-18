@@ -6,8 +6,8 @@
   import Choice from '$lib/Choice.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import LineChart from '$lib/LineChart.svelte';
-  import { RUNS, decimate, gatesOf, listColumns, listRuns, listSeries, readComp, readCurrent, readInternal, readJson, readStatus, runningCount, start, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type WaveMeta } from './runs.ts';
-  import type { IndexEntry, Status } from './conf.ts';
+  import { RUNS, decimate, gatesOf, listColumns, listRuns, listSeries, readComp, readCurrent, readInternal, readJson, readStatus, runningCount, start, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
+  import type { IndexEntry, Status } from './orchestrate/conf.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
   /** 表示用に間引くときの区間の数。1 本あたり最大でこの 2 倍の点になる。 */

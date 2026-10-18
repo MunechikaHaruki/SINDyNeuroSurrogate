@@ -52,11 +52,13 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
               description.py     # 学習済み surrogate の中身を図に依らないデータで出す (describe)。閉包項と前処理の中身 (各実装の describe)、ネット、学習データ、学習 comp ごとに同定器へ渡した列・潜在・再構成 RMSE。置換シミュは回さない
   run.py                         # **計算の入口** (`python -m neurosurrogate.run <spec.json> <runs/ハッシュ>`。層 `entry` = どこからも import されない最上位): spec.json 1 つ → run のディレクトリ。kind = train / original / replaced。隣の .partial に書いてから名前を変える (半端な run を残さない)。置換できない組み合わせは終了コード 3 で何も書かない。**run の保存形式 (波形の write/read) を知るのはここだけ**
 tests/    test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py (preset と系列は段取りに JSON で出させて読む) / test_inits.py / test_run.py (neurosurrogate/run.py の 3 種類の run の往復と、回し直さないこと)
-evaluation/    # TS はすべてここ。評価の冊 (TS + Svelte。画面と部品は context-router の .web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
-evaluation/conf.ts        # **何を回すか**の型付き宣言: PRESETS (学習の設定ツリー。継承は深いマージ merge、掃引は直積で run の列に開く) と SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)。spec.json の形 (Spec、FORMAT、index.json の行) もここ。値の理由はコメントに書く。**描き方は持たない**。node/bun に依存しない (ブラウザの runs.ts も import する)
-evaluation/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: CLI (just train・just eval・just runs、エージェント用) と、図のボタンが切り離した子プロセスで起こす launch。宣言の組の状態 (status: 済み・計算中・未・置換できない) もここ
-evaluation/api.ts         # **図のボタンの口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
-evaluation/runs.ts        # 図が runs/ を読む口 (ブラウザ)
+evaluation/    # TS はすべてここ。直下は評価の冊だけで、.ts は役割のディレクトリ (orchestrate/ read/ traub/)。評価の冊 (TS + Svelte。画面と部品は context-router の .web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
+evaluation/orchestrate/conf.ts        # **何を回すか**の型付き宣言: PRESETS (学習の設定ツリー。継承は深いマージ merge、掃引は直積で run の列に開く) と SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)。spec.json の形 (Spec、FORMAT、index.json の行) もここ。値の理由はコメントに書く。**描き方は持たない**。node/bun に依存しない (ブラウザの runs.ts も import する)
+evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: CLI (just train・just eval・just runs、エージェント用) と、図のボタンが切り離した子プロセスで起こす launch。宣言の組の状態 (status: 済み・計算中・未・置換できない) もここ
+evaluation/orchestrate/api.ts         # **図のボタンの口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation/orchestrate に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
+evaluation/read/runs.ts        # 図が runs/ を読む口 (ブラウザ)
+evaluation/read/model-json.ts  # 学習 run の description/model.json を図の形に直す
+evaluation/traub/traub.ts      # Traub の単一区画の TS シミュレータ。53.01・53.02 と context-router の 52.01 が使う。Python とのずれは traub.reference.json のテストで見張る
 runs/     <ハッシュ>/ と index.json  # 実験の結果 (Git の外)。下の「run の置き場」
 ```
 
@@ -102,7 +104,7 @@ waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
 
 ### 設定ファイル
 
-- 学習の設定も評価の条件も `evaluation/conf.ts` に型付きで書く。YAML の設定ファイルは持たない。
+- 学習の設定も評価の条件も `evaluation/orchestrate/conf.ts` に型付きで書く。YAML の設定ファイルは持たない。
   綴りの浅い誤りは型が、名前の誤り (comp 名、項ライブラリの名前) は pytest が Python のドメインに当てて見つける
   (`test_catalog_is_self_consistent`、`fit_preset`)。実験条件は滅多に変わらず、変えたら別の実験 =
   コードの差分に出る方が正しい。

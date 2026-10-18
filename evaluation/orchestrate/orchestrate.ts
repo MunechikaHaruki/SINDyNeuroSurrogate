@@ -22,7 +22,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FORMAT, PRESETS, SERIES, type IndexEntry, type Job, type Series, type Spec, type State, type Status, type SurrogateConfig } from './conf.ts';
 
-const REPO = fileURLToPath(new URL('..', import.meta.url));
+const REPO = fileURLToPath(new URL('../..', import.meta.url));
 /** 既定の run の置き場 */
 export const RUNS = join(REPO, 'runs');
 /** run.py が「置換できない」で返す終了コード */

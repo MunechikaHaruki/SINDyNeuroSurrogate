@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { decimate, decodeComp, listColumns, listSeries, listTrainRuns, variablesOf, type WaveMeta } from './runs.ts';
-import { PRESETS, type IndexEntry, type SimSpec } from './conf.ts';
+import { PRESETS, type IndexEntry, type SimSpec } from '../orchestrate/conf.ts';
 
 const meta: WaveMeta = {
   t0: 0,

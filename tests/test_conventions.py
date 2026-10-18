@@ -231,7 +231,7 @@ def _names_passed_as_strings(call: ast.Call) -> set[str]:
 
 def _declared_strings() -> str:
     """preset の宣言 (`conf.ts`)。項ライブラリの名前を文字列で引く。"""
-    return (ROOT / "evaluation/conf.ts").read_text()
+    return (ROOT / "evaluation/orchestrate/conf.ts").read_text()
 
 
 def test_public_names_are_actually_imported_elsewhere() -> None:

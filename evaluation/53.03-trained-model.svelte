@@ -10,9 +10,9 @@
   import MatrixTable from '$lib/MatrixTable.svelte';
   import NetChart from '$lib/NetChart.svelte';
   import { tex } from '$lib/tex.ts';
-  import { RUNS, decimate, decodeComp, listRuns, listTrainRuns, readComp, readCurrent, readF32, readJson, readStatus, runningCount, start, type Point, type TrainRun, type WaveMeta } from './runs.ts';
-  import type { Status } from './conf.ts';
-  import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from './model-json.ts';
+  import { RUNS, decimate, decodeComp, listRuns, listTrainRuns, readComp, readCurrent, readF32, readJson, readStatus, runningCount, start, type Point, type TrainRun, type WaveMeta } from './read/runs.ts';
+  import type { Status } from './orchestrate/conf.ts';
+  import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from './read/model-json.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
   /** 学習 run の中身の置き場（neurosurrogate/run.py）。 */

@@ -62,7 +62,9 @@ from neurosurrogate.surrogate.replace import (
     replace,
 )
 
-ORCHESTRATE = Path(__file__).resolve().parents[1] / "evaluation/orchestrate.ts"
+ORCHESTRATE = (
+    Path(__file__).resolve().parents[1] / "evaluation/orchestrate/orchestrate.ts"
+)
 LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, z1..zN, u] の両端
 
 

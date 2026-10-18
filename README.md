@@ -17,7 +17,7 @@ just train traub_useMC19CompForTeachingData          # 学習
 just eval traub19_somastim poster_traub_pca          # 評価（preset か学習 run のハッシュ）
 ```
 
-何を回すかは `evaluation/conf.ts` に書き、結果は `runs/<spec のハッシュ>/` に入る。同じ条件は回し直さない。`evaluation/` の図（`53.03-trained-model` が学習 run、`53.04-evaluation` が評価）が読んで描く。図は context-router の開発サーバー（`http://127.0.0.1:4321/`）で開く。
+何を回すかは `evaluation/orchestrate/conf.ts` に書き、結果は `runs/<spec のハッシュ>/` に入る。同じ条件は回し直さない。`evaluation/` の図（`53.03-trained-model` が学習 run、`53.04-evaluation` が評価）が読んで描く。図は context-router の開発サーバー（`http://127.0.0.1:4321/`）で開く。
 
 ## Usage
 ![Status](https://img.shields.io/badge/docs-writing-orange)

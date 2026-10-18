@@ -3,7 +3,7 @@
   import Dashboard from '$lib/Dashboard.svelte';
   import Card from '$lib/Card.svelte';
   import Range from '$lib/Range.svelte';
-  import { equilibria, psiPartitions, type GateName, type Partition } from './traub.ts';
+  import { equilibria, psiPartitions, type GateName, type Partition } from './traub/traub.ts';
 
   /** 電位だけで動く 6 ゲート。s,r は Ca 系と一緒に元のまま残す。 */
   const panelGates: GateName[] = ['m', 'h', 'n', 'a', 'b', 'c'];
