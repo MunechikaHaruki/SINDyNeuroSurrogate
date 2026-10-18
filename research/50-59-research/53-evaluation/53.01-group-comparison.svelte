@@ -7,7 +7,7 @@
   import LineChart from '$lib/LineChart.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import Choice from '$lib/Choice.svelte';
-  import { checkTrajectory, duration, equilibria, equivalentPotential, groupCriteria, groupLayout, initial, input, psiPartitions, readFull, readSample, rmse, simulate, spikes, type Alpha0Mode, type Config, type GateName, type Grouping, type GroupCheck, type Partition, type Sample, type Verdict } from './traub.ts';
+  import { checkTrajectory, duration, equilibria, equivalentPotential, groupCriteria, groupLayout, initial, input, psiPartitions, readFull, readSample, rmse, simulate, spikes, type Alpha0Mode, type Config, type GateName, type Grouping, type GroupCheck, type Partition, type Sample, type Verdict } from '../52-theory/traub.ts';
 
   type Point = { x: number; y: number };
   type Trace = { label: string; points: Point[]; dashed?: boolean };
@@ -246,7 +246,7 @@
 
 <Dashboard title="Traub 単一区画：ゲートの組を選び、縮約と比べる" summary="元モデルの各変数と等価電位を並べてまとめる組を選び、その組を作れるか（等価電位と感度の符号）を元モデルの軌道の上で確かめる。最後に同じ入力で 11 状態と縮約した系を積分し、発火時刻・波形・Ca と AHP の履歴を比べる。">
   {#snippet sidebar()}
-    <p class="note">導出と記号は <a href="52.01-apply-kam">別冊「Traub 単一コンパートメントへの Kepler–Abbott–Marder 法の適用」</a> にある。</p>
+    <p class="note">導出と記号は <a href="../52-theory/52.01-apply-kam">別冊「Traub 単一コンパートメントへの Kepler–Abbott–Marder 法の適用」</a> にある。</p>
     <section>
       <h3>入力</h3>
       <Range label="平均電流密度 I₀" bind:value={mean} min={0} max={20} step={0.5} display={`${mean} µA/cm²`} disabled={busy} />

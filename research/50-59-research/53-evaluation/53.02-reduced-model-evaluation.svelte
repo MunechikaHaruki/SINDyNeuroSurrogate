@@ -3,7 +3,7 @@
   import Dashboard from '$lib/Dashboard.svelte';
   import Card from '$lib/Card.svelte';
   import Range from '$lib/Range.svelte';
-  import { equilibria, psiPartitions, type GateName, type Partition } from './traub.ts';
+  import { equilibria, psiPartitions, type GateName, type Partition } from '../52-theory/traub.ts';
 
   /** 電位だけで動く 6 ゲート。s,r は Ca 系と一緒に元のまま残す。 */
   const panelGates: GateName[] = ['m', 'h', 'n', 'a', 'b', 'c'];
@@ -48,7 +48,7 @@
 
 <Dashboard title="Traub 単一区画：縮約モデル群の評価" summary="比較図で作れる縮約モデルを並べ、元の 11 状態系をどの程度再現できているかを評価する。まず基本的な力学的特徴で足切りし、残ったモデルの忠実さを比べる。">
   {#snippet sidebar()}
-    <p class="note">縮約モデルの作り方と群分けは <a href="52.02-group-comparison">別冊「Traub 単一区画：ゲートの組を選び、縮約と比べる」</a> にある。</p>
+    <p class="note">縮約モデルの作り方と群分けは <a href="53.01-group-comparison">別冊「Traub 単一区画：ゲートの組を選び、縮約と比べる」</a> にある。</p>
     <section>
       <h3>評価するモデル</h3>
       <Range label="式(10) の目安 ε" bind:value={epsilon} min={0.01} max={1} step={0.01} display={epsilon.toFixed(2)} />

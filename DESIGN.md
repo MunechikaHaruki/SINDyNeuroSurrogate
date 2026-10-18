@@ -63,13 +63,13 @@ scripts/  main.py                # Hydra エントリ (学習。surrogate とそ
             evaluation.py        # 評価 = 1 系列を原系と選んだ学習 run で回す (evaluate)。系列を置換できない run は回さない。選んだ学習 run に中身が無ければ書き足す。どの列を並べて見るかは残さない (冊が選ぶ)
           conf/                  # 学習設定 (Hydra) のみ。下記「設定ファイル」参照
 tests/    conftest.py (scripts/ を import path へ) / test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py / test_inits.py / test_eval_mlflow.py (評価 run の保存/読込。tracking 先は tmp へ差し替え)
-research/ 50-59-research/<分類>/    # 結果を解釈する図 (TS + Svelte。画面と部品は context-router の .web/)。Python とは import し合わず、MLflow の REST と設定 JSON だけを読む。52-gate-reduction/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
+research/ 50-59-research/<分類>/    # 結果を解釈する図 (TS + Svelte。画面と部品は context-router の .web/)。Python とは import し合わず、MLflow の REST と設定 JSON だけを読む。52-theory/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
 ```
 
 ### 成果物の置き場 (MLflow)
 
-図は Python で描かず、`research/50-59-research/53-sindy-surrogate/53.02-evaluation` (評価) と
-`53.01-trained-model` (学習 run) が MLflow の REST から読んで描く。Python が置くのは
+図は Python で描かず、`research/50-59-research/53-evaluation/53.04-evaluation` (評価) と
+`53.03-trained-model` (学習 run) が MLflow の REST から読んで描く。Python が置くのは
 図に要るデータだけ:
 
 ```

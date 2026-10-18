@@ -258,7 +258,7 @@
     </div>
   </Section>
   <Section id="sec-kam" title="KAM 縮約">
-    <p>Kepler–Abbott–Marder 縮約は、時定数と電流への効き方がそろうゲートを、一つの変数にまとめる（<a href="https://doi.org/10.1007/BF00197717">Kepler et al. 1992</a>）。導出と、Traub で群を作れる条件は <a href="../52-gate-reduction/52.01-apply-kam">別冊「Traub 単一コンパートメントへの Kepler–Abbott–Marder 法の適用」</a>にある。ここでは縮約後の形だけを置く。</p>
+    <p>Kepler–Abbott–Marder 縮約は、時定数と電流への効き方がそろうゲートを、一つの変数にまとめる（<a href="https://doi.org/10.1007/BF00197717">Kepler et al. 1992</a>）。導出と、Traub で群を作れる条件は <a href="52.01-apply-kam">別冊「Traub 単一コンパートメントへの Kepler–Abbott–Marder 法の適用」</a>にある。ここでは縮約後の形だけを置く。</p>
     <p>膜より十分速い m は膜電位へ吸収し（φ 群）、残りは群 {@html tex`\Psi_k`} ごとに一つの等価電位 {@html tex`\psi_k`} で代表させる。</p>
     {@html eq`m=\bar{m}(V),\qquad x_i=\bar{x}_i(\psi_k)\quad(i\in\Psi_k)`}
     {@html eq`C\frac{dV}{dt}=\alpha_0\big[I_{\mathrm{ext}}-I_{\mathrm{ion}}\big],\qquad \frac{d\psi_k}{dt}=\sum_{i\in\Psi_k}\underbrace{\frac{D_i}{\sum_{j\in\Psi_k}D_j}}_{\text{重み}\ \alpha_i}\ \underbrace{\frac{k_i(V)\,[\bar{x}_i(V)-\bar{x}_i(\psi_k)]}{\bar{x}_i'(\psi_k)}}_{f_i}`}
@@ -318,7 +318,7 @@
 
     <div class="panel caution">
       <p><b>未決</b></p>
-      <p>群の潜在次元 {@html tex`d_k`} を 1 に固定するか群ごとに選ぶか、m を膜電位へ吸収するか元の式で残すか、一つだけの群（b など）を学習するか元の式で解くか。6 ゲートを 3 本にする組（{@html tex`\{h,n\}\{a,c\}\{b\}`} か {@html tex`\{h,a,c\}\{n\}\{b\}`}）も未決で、<a href="../52-gate-reduction/52.02-group-comparison">別冊「Traub 単一区画：ゲートの組を選び、縮約と比べる」</a>で比べている。</p>
+      <p>群の潜在次元 {@html tex`d_k`} を 1 に固定するか群ごとに選ぶか、m を膜電位へ吸収するか元の式で残すか、一つだけの群（b など）を学習するか元の式で解くか。6 ゲートを 3 本にする組（{@html tex`\{h,n\}\{a,c\}\{b\}`} か {@html tex`\{h,a,c\}\{n\}\{b\}`}）も未決で、<a href="../53-evaluation/53.01-group-comparison">別冊「Traub 単一区画：ゲートの組を選び、縮約と比べる」</a>で比べている。</p>
     </div>
   </Section>
   <Section id="sec-mc" title="Multi-Compartment への適用">
