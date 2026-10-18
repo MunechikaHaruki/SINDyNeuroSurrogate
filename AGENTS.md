@@ -9,7 +9,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
-| 何を回すかの宣言と spec.json の形（`conf.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊 `53.05-runs` のボタン、エージェントは CLI で、同じ関数を呼ぶ）、操作盤の口（`api.ts`） | `evaluation/orchestrate/` |
+| 何を回すかの宣言と spec.json の形（`conf.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊 `53.03-runs` のボタン、エージェントは CLI で、同じ関数を呼ぶ）、操作盤の口（`api.ts`） | `evaluation/orchestrate/` |
 | 実験の結果（1 run = spec 1 つ、ディレクトリ名は spec のハッシュ）と run の一覧 | `runs/`（Git の外） |
 | 評価の冊（回して元の系と比べるもの、学習 run を読むもの） | `evaluation/` の直下。図が runs/ を読む口は `evaluation/read/`、Traub の TS シミュレータは `evaluation/traub/`。context-router の `resources/research/` に symlink で入り、研究の文書（51 構成、52 理論、54 これから）と一つの面に見える |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
@@ -42,7 +42,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ```bash
 uv sync                        # 依存導入
-# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (evaluation/53.05-runs) から回すので、本人に CLI を案内しない
+# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (evaluation/53.03-runs) から回すので、本人に CLI を案内しない
 bun evaluation/orchestrate/orchestrate.ts train <preset>...               # 学習。preset は evaluation/orchestrate/conf.ts の PRESETS (掃引は preset が run の列で持つ)
 bun evaluation/orchestrate/orchestrate.ts eval <系列> <preset かハッシュ>...  # 評価。原系と置換系を runs/ に置く。preset の未学習分は学習もする
 bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで preset と系列の一覧、index で index.json を書き直す

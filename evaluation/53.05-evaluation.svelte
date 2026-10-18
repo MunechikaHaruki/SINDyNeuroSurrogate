@@ -310,13 +310,13 @@
         <Choice label="評価した系列" bind:value={seriesKey} options={series.map(s => ({ value: s.key, label: s.name }))} />
         {#if entry}<p class="note">置換：{entry.replaceTargets.join(', ')}。{entry.param ? `${entry.param} を ${entry.values.join(', ')} ${entry.unit} で振る。` : '単発。'}</p>{/if}
       {:else if !error}
-        <p class="note">評価した系列が無い。<a href="53.05-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
+        <p class="note">評価した系列が無い。<a href="53.03-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
       {/if}
     </section>
     <section>
       <h3>比べる学習 run</h3>
       <Toggles label="置換した列" bind:selected={chosen} options={columns.map(c => ({ value: c.train, label: c.trainName }))} />
-      <p class="note">宣言にあってまだ回していない組は <a href="53.05-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
+      <p class="note">宣言にあってまだ回していない組は <a href="53.03-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
     </section>
     <section>
       <h3>見る区画</h3>

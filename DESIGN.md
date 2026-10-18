@@ -54,7 +54,7 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
 tests/    test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py (preset と系列は段取りに JSON で出させて読む) / test_inits.py / test_run.py (neurosurrogate/run.py の 3 種類の run の往復と、回し直さないこと)
 evaluation/    # TS はすべてここ。直下は評価の冊だけで、.ts は役割のディレクトリ (orchestrate/ read/ traub/)。評価の冊 (TS + Svelte。画面と部品は context-router の .web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
 evaluation/orchestrate/conf.ts        # **何を回すか**の型付き宣言: PRESETS (学習の設定ツリー。継承は深いマージ merge、掃引は直積で run の列に開く) と SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)。spec.json の形 (Spec、FORMAT、index.json の行) もここ。値の理由はコメントに書く。**描き方は持たない**。node/bun に依存しない (ブラウザの runs.ts も import する)
-evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: 本人が使う操作盤の冊 (53.05-runs) のボタンが切り離した子プロセスで起こす launch と、エージェント用の CLI (`bun evaluation/orchestrate/orchestrate.ts train|eval|list`。人は使わない)。宣言の組の状態 (status: 済み・計算中・未・置換できない) と、launch で起こした仕事の状態 (runs/.jobs/ の中身・pid・ログ・終了コード) もここ
+evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: 本人が使う操作盤の冊 (53.03-runs) のボタンが切り離した子プロセスで起こす launch と、エージェント用の CLI (`bun evaluation/orchestrate/orchestrate.ts train|eval|list`。人は使わない)。宣言の組の状態 (status: 済み・計算中・未・置換できない) と、launch で起こした仕事の状態 (runs/.jobs/ の中身・pid・ログ・終了コード) もここ
 evaluation/orchestrate/api.ts         # **操作盤の口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation/orchestrate に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status (宣言の組の状態と仕事のログの末尾)、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
 evaluation/read/runs.ts        # 図が runs/ を読む口 (ブラウザ)
 evaluation/read/model-json.ts  # 学習 run の description/model.json を図の形に直す
@@ -66,8 +66,8 @@ runs/     <ハッシュ>/ と index.json  # 実験の結果 (Git の外)。下�
 
 1 run = spec.json 1 つで、ディレクトリ名はその spec のハッシュ (`orchestrate.ts` の
 `hashOf`)。同じ spec は同じハッシュなので、ディレクトリがあれば回さない。図は Python で
-描かず、`evaluation/53.04-evaluation` (評価) と
-`53.03-trained-model` (学習 run) が `runs.ts` を通して読む。Python が置くのは図に要る
+描かず、`evaluation/53.05-evaluation` (評価) と
+`53.04-trained-model` (学習 run) が `runs.ts` を通して読む。Python が置くのは図に要る
 データだけ:
 
 ```

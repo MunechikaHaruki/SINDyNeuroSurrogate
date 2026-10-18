@@ -161,7 +161,7 @@
                 {@const state = pairState(series, preset)}
                 <td>
                   {#if state === 'done'}
-                    <a href={`53.04-evaluation?series=${encodeURIComponent(series)}`}>図を見る</a>
+                    <a href={`53.05-evaluation?series=${encodeURIComponent(series)}`}>図を見る</a>
                   {:else if state === 'todo'}
                     <button type="button" onclick={() => void launch({ action: 'eval', series, preset })}>回す</button>
                   {:else}
