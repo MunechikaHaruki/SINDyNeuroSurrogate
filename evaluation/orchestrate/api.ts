@@ -1,6 +1,7 @@
 // 操作盤の冊（53.03）のボタンから学習と評価を起こす口。開発サーバーが /api/face/research/50-59-research/53-evaluation/orchestrate に載せる（context-router の .web/routes/api/face）。
 // 受けるのは conf.ts に宣言した preset 名と系列名だけで、段取り（orchestrate.ts）の関数を呼ぶ。任意のコマンドは通さない。
-import { PRESETS, SERIES, type Status } from './conf.ts';
+import { PRESETS, SERIES } from './conf.ts';
+import type { Status } from './spec.ts';
 import { RUNS, launch, status } from './orchestrate.ts';
 
 /** 宣言の学習と評価の状態と、起こした仕事のログの末尾。操作盤はこれを見て状態とボタンを出す。 */

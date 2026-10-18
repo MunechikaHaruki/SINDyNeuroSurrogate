@@ -10,7 +10,8 @@
   import MatrixTable from '$lib/MatrixTable.svelte';
   import NetChart from '$lib/NetChart.svelte';
   import { tex } from '$lib/tex.ts';
-  import { RUNS, decimate, decodeComp, listRuns, listTrainRuns, readComp, readCurrent, readF32, readJson, type Point, type TrainRun, type WaveMeta } from './read/runs.ts';
+  import { RUNS, decimate, decodeComp, experimentTrains, readComp, readCurrent, readF32, readJson, readStatus, type Point, type WaveMeta } from './read/runs.ts';
+  import type { Status } from './orchestrate/spec.ts';
   import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from './read/model-json.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
@@ -26,7 +27,8 @@
   /** 学習 comp 1 つ分：学習データの変数、同定器への入力、潜在、再構成 RMSE。 */
   type CompData = { vars: Record<string, Float32Array>; x: Record<string, Float32Array>; latent: Record<string, Float32Array>; recon: Float32Array };
 
-  let runs = $state<TrainRun[]>([]);
+  let status = $state<Status>({ experiments: [], jobs: [] });
+  let experimentName = $state('');
   let runId = $state('');
   let model = $state<ModelJson>();
   let meta = $state<WaveMeta>();
@@ -47,11 +49,28 @@
     return names;
   });
 
-  /** 学習 run の一覧を読み、一番新しい run を選ぶ。 */
+  let experiment = $derived(status.experiments.find(e => e.name === experimentName) ?? status.experiments[0]);
+  // 名前を選んでいなければ最初の実験になるので、選択欄にもその名前を出す。
+  $effect(() => {
+    if (experiment && experimentName !== experiment.name) experimentName = experiment.name;
+  });
+
+  /** 実験の preset の、学習を終えた run（preset の順、掃引の点の順）。 */
+  let runs = $derived(experiment ? experimentTrains(experiment) : []);
+
+  /** 実験の状態を読み、操作盤から ?experiment=…&preset=… で来たらその preset の最初の run を選ぶ。 */
   async function load(): Promise<void> {
-    runs = listTrainRuns(await listRuns());
-    if (runs.length > 0) runId = runs[0].hash;
+    status = await readStatus();
+    const params = new URLSearchParams(window.location.search);
+    experimentName = params.get('experiment') ?? '';
+    const preset = experiment?.presets.find(p => p.preset === params.get('preset'));
+    runId = preset?.runs[0]?.hash ?? runs[0]?.hash ?? '';
   }
+
+  // 実験を選び直して、選んでいた run がその実験に無ければ、最初の run を選ぶ。
+  $effect(() => {
+    if (runs.length > 0 && !runs.some(r => r.hash === runId)) runId = runs[0].hash;
+  });
 
   onMount(() => {
     load().catch(e => (error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`));
@@ -252,12 +271,16 @@
   {#snippet sidebar()}
     {#if error}<p class="note" aria-live="polite">停止：{error}</p>{/if}
     <section>
+      <h3>実験</h3>
+      <Choice label="見比べる組" bind:value={experimentName} options={status.experiments.map(e => ({ value: e.name, label: e.name }))} />
+    </section>
+    <section>
       <h3>学習 run</h3>
       {#if runs.length > 0}
         <Choice label="見る run" bind:value={runId} options={runs.map(r => ({ value: r.hash, label: r.name }))} />
         <p class="note"><code>{runId}</code></p>
       {:else if !error}
-        <p class="note">学習を終えた run が無い。</p>
+        <p class="note">この実験には学習を終えた run が無い。</p>
       {/if}
       <p class="note">学習は <a href="53.03-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
     </section>

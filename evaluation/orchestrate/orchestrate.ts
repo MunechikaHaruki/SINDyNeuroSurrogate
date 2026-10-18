@@ -21,7 +21,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FORMAT, PRESETS, SERIES, type IndexEntry, type Job, type JobState, type Series, type Spec, type State, type Status, type SurrogateConfig } from './conf.ts';
+import { EXPERIMENTS, PRESETS, SERIES } from './conf.ts';
+import { FORMAT, type ExperimentStatus, type IndexEntry, type Job, type JobState, type RunStatus, type Series, type Spec, type State, type Status, type SurrogateConfig } from './spec.ts';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
 /** 既定の run の置き場 */
@@ -224,27 +225,51 @@ function runState(runs: string, hash: string): State {
   return running(join(runs, `${hash}.partial`)) ? 'running' : 'todo';
 }
 
-/** 宣言の preset と、preset × 系列の組の状態。 */
-export function status(runs: string): Status {
-  const trains: Status['trains'] = [];
-  const pairs: Status['pairs'] = [];
-  for (const [preset, list] of Object.entries(PRESETS)) {
-    const hashes = list.map(t => hashOf(trainSpec(t.config)));
-    const job = jobRunning(runs, { action: 'train', preset });
-    const trainStates = hashes.map(h => runState(runs, h));
-    if (job || trainStates.includes('running')) trains.push({ preset, state: 'running' });
-    else trains.push({ preset, state: trainStates.every(s => s === 'done') ? 'done' : 'todo' });
-    for (const [name, series] of Object.entries(SERIES)) {
-      const replaced = hashes.map(h => runState(runs, hashOf(replacedSpec(series, h))));
-      const parts = [runState(runs, hashOf(originalSpec(series))), ...trainStates, ...replaced];
-      let state: State = 'todo';
-      if (jobRunning(runs, { action: 'eval', series: name, preset }) || parts.includes('running')) state = 'running';
-      else if (replaced.every(s => s === 'unreplaceable')) state = 'unreplaceable';
-      else if (replaced.every(s => s === 'done' || s === 'unreplaceable')) state = 'done';
-      pairs.push({ series: name, preset, state });
+/** 組の状態。置換系がどれか回っていれば計算中、全部が置換できなければ置換できない、全部そろえば済み。 */
+function pairState(runs: string, job: Job, parts: State[], replaced: State[]): State {
+  if (jobRunning(runs, job) || parts.includes('running')) return 'running';
+  if (replaced.every(s => s === 'unreplaceable')) return 'unreplaceable';
+  if (replaced.every(s => s === 'done' || s === 'unreplaceable')) return 'done';
+  return 'todo';
+}
+
+/** 実験 1 つの preset・系列・組の、ハッシュと状態。 */
+function experimentStatus(runs: string, name: string): ExperimentStatus {
+  const experiment = EXPERIMENTS[name];
+  const result: ExperimentStatus = { name, presets: [], series: [], pairs: [] };
+  for (const series of experiment.series) {
+    const hash = hashOf(originalSpec(seriesOf(series)));
+    result.series.push({ series, original: { name: series, hash, state: runState(runs, hash) } });
+  }
+  for (const preset of experiment.presets) {
+    const trains: RunStatus[] = [];
+    for (const t of presetOf(preset)) {
+      const hash = hashOf(trainSpec(t.config));
+      trains.push({ name: t.name, hash, state: runState(runs, hash) });
+    }
+    const trainStates = trains.map(t => t.state);
+    let state: State = trainStates.every(s => s === 'done') ? 'done' : 'todo';
+    if (jobRunning(runs, { action: 'train', preset }) || trainStates.includes('running')) state = 'running';
+    result.presets.push({ preset, state, runs: trains });
+    for (const entry of result.series) {
+      const replaced: RunStatus[] = [];
+      for (const t of trains) {
+        const hash = hashOf(replacedSpec(seriesOf(entry.series), t.hash));
+        replaced.push({ name: t.name, hash, state: runState(runs, hash) });
+      }
+      const states = replaced.map(r => r.state);
+      const job: Job = { action: 'eval', series: entry.series, preset };
+      result.pairs.push({ series: entry.series, preset, state: pairState(runs, job, [entry.original.state, ...trainStates, ...states], states), runs: replaced });
     }
   }
-  return { trains, pairs, jobs: jobs(runs) };
+  return result;
+}
+
+/** 宣言した実験ごとの状態と、操作盤から起こした仕事。 */
+export function status(runs: string): Status {
+  const experiments: ExperimentStatus[] = [];
+  for (const name of Object.keys(EXPERIMENTS)) experiments.push(experimentStatus(runs, name));
+  return { experiments, jobs: jobs(runs) };
 }
 
 /** 段取りを切り離した子プロセスで起こしてすぐ返す（開発サーバーが落ちても道連れにしない）。同じ組が回っていれば起こさない。 */

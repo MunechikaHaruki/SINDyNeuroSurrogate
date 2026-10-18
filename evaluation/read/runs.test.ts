@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import { decimate, decodeComp, listColumns, listSeries, listTrainRuns, variablesOf, type WaveMeta } from './runs.ts';
-import { PRESETS, type IndexEntry, type SimSpec } from '../orchestrate/conf.ts';
+import { decimate, decodeComp, declaredNames, experimentColumns, experimentTrains, variablesOf, type WaveMeta } from './runs.ts';
+import type { ExperimentStatus } from '../orchestrate/spec.ts';
 
 const meta: WaveMeta = {
   t0: 0,
@@ -51,21 +51,20 @@ test('decimation reads only the shown window and skips values that are not finit
   expect(xs).toEqual([3, 4, 5]);
 });
 
-test('runs are grouped into series by their original run and what they replace', () => {
-  const sim: SimSpec = { target: 'traub19', current_type: 'lin&steady', dt: 0.01, current_params: {} };
-  const series = { spec: sim, param: 'value', values: [0, 5] };
-  const runs: IndexEntry[] = [
-    { hash: 'r2', kind: 'replaced', name: 'all', created: '3', spec: { format: 1, kind: 'replaced', series: { ...series, replace_targets: ['soma', 'c00'] }, original: 'o', train: 't' } },
-    { hash: 'r1', kind: 'replaced', name: 'soma', created: '2', unit: 'μA/cm²', spec: { format: 1, kind: 'replaced', series: { ...series, replace_targets: ['soma'] }, original: 'o', train: 't' } },
-    { hash: 'o', kind: 'original', name: 'soma', created: '1', spec: { format: 1, kind: 'original', series } },
-    { hash: 'p', kind: 'original', name: 'pulse', created: '1', spec: { format: 1, kind: 'original', series } },
-    { hash: 't', kind: 'train', name: 'preset', created: '0', spec: { format: 1, kind: 'train', surrogate: PRESETS._test_hh_sindy[0].config } },
-  ];
-  const list = listSeries(runs);
-  const names: string[] = [];
-  for (const entry of list) names.push(`${entry.name}:${entry.run}`);
-  expect(names).toEqual(['all:o', 'soma:o', 'pulse:p']);
-  expect(listColumns(runs, list[1])).toEqual([{ run: 'r1', train: 't', trainName: 'preset' }]);
-  expect(listColumns(runs, list[2])).toEqual([]);
-  expect(listTrainRuns(runs)).toEqual([{ hash: 't', name: 'preset' }]);
+test('columns are the finished replaced runs of an experiment, in preset and sweep order', () => {
+  const experiment: ExperimentStatus = {
+    name: 'e',
+    presets: [
+      { preset: 'p', state: 'done', runs: [{ name: 'p n=1', hash: 't1', state: 'done' }, { name: 'p n=2', hash: 't2', state: 'done' }] },
+      { preset: 'q', state: 'todo', runs: [{ name: 'q', hash: 't3', state: 'todo' }] },
+    ],
+    series: [{ series: 's', original: { name: 's', hash: 'o', state: 'done' } }],
+    pairs: [
+      { series: 's', preset: 'p', state: 'todo', runs: [{ name: 'p n=1', hash: 'r1', state: 'done' }, { name: 'p n=2', hash: 'r2', state: 'todo' }] },
+      { series: 's', preset: 'q', state: 'todo', runs: [{ name: 'q', hash: 'r3', state: 'todo' }] },
+    ],
+  };
+  expect(experimentColumns(experiment, 's')).toEqual([{ run: 'r1', train: 't1', trainName: 'p n=1' }]);
+  expect(experimentTrains(experiment).map(r => r.hash)).toEqual(['t1', 't2']);
+  expect(declaredNames({ experiments: [experiment], jobs: [] }).r1).toBe('s × p n=1');
 });

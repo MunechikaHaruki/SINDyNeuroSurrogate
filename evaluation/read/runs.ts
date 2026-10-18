@@ -1,7 +1,8 @@
 // SINDyNeuroSurrogate の結果を runs/ から読む（評価の冊と学習 run の冊が共有する）。
 // run は段取り（orchestrate.ts。操作盤の冊のボタンから起こす）が runs/<ハッシュ>/ に置き、一覧を runs/index.json に書く。
-// spec の形は conf.ts、ファイルの形式は neurosurrogate/run.py の先頭。ここは読むだけで、Python は import しない。配信は context-router の開発サーバー。
-import { FORMAT, type IndexEntry, type Job, type Status } from '../orchestrate/conf.ts';
+// spec の形は orchestrate/spec.ts、ファイルの形式は neurosurrogate/run.py の先頭。ここは読むだけで、Python は import しない。配信は context-router の開発サーバー。
+import { SERIES } from '../orchestrate/conf.ts';
+import { FORMAT, type ExperimentStatus, type IndexEntry, type Job, type RunStatus, type Status } from '../orchestrate/spec.ts';
 
 /** runs/ の置き場。この .ts から見た相対パスを開発サーバーの URL に直す（文字列を直に渡すと Vite が資産として扱う）。 */
 const RUNS_DIR = '../../runs/';
@@ -17,9 +18,8 @@ export type WaveMeta = {
   nodes: number[] | null;
   names: Record<string, number> | null;
 };
-/** 評価した系列。原系の run と、どこを置換したかの組。 */
+/** 評価の系列 1 つ。原系の run と、どこを置換したか。 */
 export type SeriesEntry = {
-  key: string;
   name: string;
   /** 原系の run のハッシュ */
   run: string;
@@ -30,7 +30,6 @@ export type SeriesEntry = {
 };
 /** 系列を 1 つの学習 run で置換して回した列。 */
 export type Column = { run: string; train: string; trainName: string };
-export type TrainRun = { hash: string; name: string };
 /** 1 ペア（原系, 置換系）の 1 comp の指標。null は値が無い（nan）。 */
 export type PairMetrics = {
   rows: Record<string, [number | null, number | null]>;
@@ -51,51 +50,44 @@ export async function listRuns(): Promise<IndexEntry[]> {
   return list;
 }
 
-/** 系列の鍵。原系が同じでも置換範囲が違えば別の系列。 */
-function seriesKey(original: string, targets: string[]): string {
-  return `${original}/${targets.join(',')}`;
+/** 実験の系列を、原系 run の一覧の行から読む。原系をまだ回していなければ undefined。 */
+export function seriesEntry(runs: IndexEntry[], experiment: ExperimentStatus, name: string): SeriesEntry | undefined {
+  const declared = experiment.series.find(s => s.series === name);
+  const row = runs.find(r => r.hash === declared?.original.hash);
+  if (!row || row.spec.kind !== 'original') return undefined;
+  const series = row.spec.series;
+  return { name, run: row.hash, param: series.param, values: series.values, unit: row.unit ?? '', replaceTargets: SERIES[name].replace_targets };
 }
 
-/** 評価した系列。置換系の run を原系と置換範囲で束ね、置換系がまだ無い原系も足す。 */
-export function listSeries(runs: IndexEntry[]): SeriesEntry[] {
-  const list: SeriesEntry[] = [];
-  const keys = new Set<string>();
-  const used = new Set<string>();
-  for (const run of runs) {
-    const spec = run.spec;
-    if (spec.kind !== 'replaced') continue;
-    const key = seriesKey(spec.original, spec.series.replace_targets);
-    if (keys.has(key)) continue;
-    keys.add(key);
-    used.add(spec.original);
-    list.push({ key, name: run.name, run: spec.original, param: spec.series.param, values: spec.series.values, unit: run.unit ?? '', replaceTargets: spec.series.replace_targets });
-  }
-  for (const run of runs) {
-    const spec = run.spec;
-    if (spec.kind !== 'original' || used.has(run.hash)) continue;
-    list.push({ key: seriesKey(run.hash, []), name: run.name, run: run.hash, param: spec.series.param, values: spec.series.values, unit: run.unit ?? '', replaceTargets: [] });
-  }
-  return list;
-}
-
-/** 系列を置換して回した列。 */
-export function listColumns(runs: IndexEntry[], entry: SeriesEntry): Column[] {
-  const names: Record<string, string> = {};
-  for (const run of runs) if (run.kind === 'train') names[run.hash] = run.name;
+/** 実験の系列を、その実験の preset で置換して回し終えた列。preset の順、掃引の点の順。 */
+export function experimentColumns(experiment: ExperimentStatus, series: string): Column[] {
   const list: Column[] = [];
-  for (const run of runs) {
-    const spec = run.spec;
-    if (spec.kind !== 'replaced' || seriesKey(spec.original, spec.series.replace_targets) !== entry.key) continue;
-    list.push({ run: run.hash, train: spec.train, trainName: names[spec.train] ?? spec.train });
+  for (const pair of experiment.pairs) {
+    if (pair.series !== series) continue;
+    const trains = experiment.presets.find(p => p.preset === pair.preset)?.runs ?? [];
+    pair.runs.forEach((run, i) => {
+      if (run.state === 'done') list.push({ run: run.hash, train: trains[i].hash, trainName: run.name });
+    });
   }
   return list;
 }
 
-/** 学習を終えた run。 */
-export function listTrainRuns(runs: IndexEntry[]): TrainRun[] {
-  const list: TrainRun[] = [];
-  for (const run of runs) if (run.kind === 'train') list.push({ hash: run.hash, name: run.name });
+/** 実験の preset の学習 run のうち、学習を終えたもの。 */
+export function experimentTrains(experiment: ExperimentStatus): RunStatus[] {
+  const list: RunStatus[] = [];
+  for (const preset of experiment.presets) for (const run of preset.runs) if (run.state === 'done') list.push(run);
   return list;
+}
+
+/** 宣言から引いた run の名前（ハッシュ → 名前）。どの実験にも当たらない run は入らない。 */
+export function declaredNames(status: Status): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const experiment of status.experiments) {
+    for (const series of experiment.series) names[series.original.hash] = series.series;
+    for (const preset of experiment.presets) for (const run of preset.runs) names[run.hash] = run.name;
+    for (const pair of experiment.pairs) for (const run of pair.runs) names[run.hash] = `${pair.series} × ${run.name}`;
+  }
+  return names;
 }
 
 /** 操作盤が学習と評価を起こす口（api.ts）。 */
@@ -116,8 +108,10 @@ export async function start(job: Job): Promise<void> {
 /** 回っているものの数。減ったら何かが回し終わったので、run の一覧を読み直す。 */
 export function runningCount(status: Status): number {
   let count = 0;
-  for (const train of status.trains) if (train.state === 'running') count++;
-  for (const pair of status.pairs) if (pair.state === 'running') count++;
+  for (const experiment of status.experiments) {
+    for (const preset of experiment.presets) if (preset.state === 'running') count++;
+    for (const pair of experiment.pairs) if (pair.state === 'running') count++;
+  }
   return count;
 }
 

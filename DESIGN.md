@@ -53,9 +53,10 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
   run.py                         # **計算の入口** (`python -m neurosurrogate.run <spec.json> <runs/ハッシュ>`。層 `entry` = どこからも import されない最上位): spec.json 1 つ → run のディレクトリ。kind = train / original / replaced。隣の .partial に書いてから名前を変える (半端な run を残さない)。置換できない組み合わせは終了コード 3 で何も書かない。**run の保存形式 (波形の write/read) を知るのはここだけ**
 tests/    test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py (preset と系列は段取りに JSON で出させて読む) / test_inits.py / test_run.py (neurosurrogate/run.py の 3 種類の run の往復と、回し直さないこと)
 evaluation/    # TS はすべてここ。直下は評価の冊だけで、.ts は役割のディレクトリ (orchestrate/ read/ traub/)。評価の冊 (TS + Svelte。画面と部品は context-router の .web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
-evaluation/orchestrate/conf.ts        # **何を回すか**の型付き宣言: PRESETS (学習の設定ツリー。継承は深いマージ merge、掃引は直積で run の列に開く) と SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)。spec.json の形 (Spec、FORMAT、index.json の行) もここ。値の理由はコメントに書く。**描き方は持たない**。node/bun に依存しない (ブラウザの runs.ts も import する)
+evaluation/orchestrate/conf.ts        # **何を回すか**の宣言だけ: PRESETS (学習の設定。preset が決める値を平らに書き、`expand` が設定ツリーへ開く。n_components を配列で書くと掃引)、SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)、EXPERIMENTS (見比べる preset と系列の組。冊はここから選び、どの実験にも入らない preset と系列は冊に出ない)。**描き方は持たない**。node/bun に依存しない (ブラウザの冊も import する)
+evaluation/orchestrate/spec.ts        # spec.json の形 (Spec、FORMAT)、index.json の行、段取り・口・図が受け渡す状態の型
 evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: 本人が使う操作盤の冊 (53.03-runs) のボタンが切り離した子プロセスで起こす launch と、エージェント用の CLI (`bun evaluation/orchestrate/orchestrate.ts train|eval|list`。人は使わない)。宣言の組の状態 (status: 済み・計算中・未・置換できない) と、launch で起こした仕事の状態 (runs/.jobs/ の中身・pid・ログ・終了コード) もここ
-evaluation/orchestrate/api.ts         # **操作盤の口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation/orchestrate に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status (宣言の組の状態と仕事のログの末尾)、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
+evaluation/orchestrate/api.ts         # **操作盤の口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation/orchestrate に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status (実験ごとの preset・系列・組のハッシュと状態、仕事のログの末尾。図はこのハッシュで runs/ を読む。ブラウザではハッシュを組めないため)、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
 evaluation/read/runs.ts        # 図が runs/ を読む口 (ブラウザ)
 evaluation/read/model-json.ts  # 学習 run の description/model.json を図の形に直す
 evaluation/traub/traub.ts      # Traub の単一区画の TS シミュレータ。53.01・53.02 と context-router の 52.01 が使う。Python とのずれは traub.reference.json のテストで見張る
@@ -96,7 +97,7 @@ waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
 - **ハッシュを組むのは TS だけ。** Python は渡された spec とディレクトリを埋めるだけで、
   参照先も spec に書かれたハッシュで引く (JS と Python で数値の JSON 表記が違うので、鍵を 2 か所で組まない)
 - **比べた束 (どの列を並べたか) は残さない。** 図が選び直すたびに描く
-- 形式を変えたら `neurosurrogate/run.py` の `_FORMAT` と `conf.ts` の `FORMAT` を変える。spec に入るので、
+- 形式を変えたら `neurosurrogate/run.py` の `_FORMAT` と `spec.ts` の `FORMAT` を変える。spec に入るので、
   古い形式の run はハッシュが合わず回し直される
 - **記録した run を描画が書き換えない**: 図は読むだけ
 - JSON に nan は書かない (null)。JS の JSON が読めないため
@@ -114,10 +115,12 @@ waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
   hybrid 系は `physics_type` 必須で既定を持たない (comp_type 名で代替しない) /
   閉包項の同定入口 = SINDy の `from_sindy`・UDE の joint 学習)。1 ブロック = 1 宛先
   なので、受理するキーと既定値はその署名だけが決め、綴り違いや層違いは TypeError。**既定値は宣言でなく実装側の署名**が単一源 —
-  共通の土台 (`BASE`) に既定を書くと、その層の実装が違う preset へも黙って継承されるため。
+  宣言に既定を書くと、その層の実装が違う preset へも黙って継承されるため。
   (`spec.datasets` は `SimSpec` のフィールドそのもの = target/current_type/dt/current_params)。
-- 継承は深いマージ `merge` 一つ (object は混ぜ、配列と値は置き換える)。掃引は preset が run の列を
-  直積で持つ (`sweep`)。`_test_*` はテスト専用 preset (tests は preset 名を指すだけ)。
+- preset は継承しない。各 preset が決める値を全部書き、どの preset でも同じ値 (学習用の電流・刻み・全区画で学習) だけを
+  `expand` が埋める。共通の値の組は TS の展開で使い回してよい。掃引は n_components の配列だけ。
+  `_test_*` はテスト専用 preset (tests は preset 名を指すだけ) で、どの実験にも入れない。
+- 使わなくなった preset と系列は消す。run は消さず、操作盤の一覧に「実験に無い」と出る。
 - **どの系列を回すか**は操作盤で選ぶ組 (エージェントは CLI の eval の引数) で、系列を置換できない学習 run は回さない。
 - **描き方 (つまみ) は宣言に持たない** → 全キー (比較対象 comp・
   全 comp 図の表示制限・点軸の指標・詳細図の点・スパイク番号・折れ線の y レンジ)

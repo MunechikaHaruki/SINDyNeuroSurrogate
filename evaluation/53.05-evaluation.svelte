@@ -6,8 +6,8 @@
   import Choice from '$lib/Choice.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import LineChart from '$lib/LineChart.svelte';
-  import { RUNS, decimate, gatesOf, listColumns, listRuns, listSeries, readComp, readCurrent, readInternal, readJson, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
-  import type { IndexEntry } from './orchestrate/conf.ts';
+  import { RUNS, decimate, experimentColumns, gatesOf, listRuns, readComp, readCurrent, readInternal, readJson, readStatus, seriesEntry, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
+  import type { IndexEntry, Status } from './orchestrate/spec.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
   /** 表示用に間引くときの区間の数。1 本あたり最大でこの 2 倍の点になる。 */
@@ -15,7 +15,7 @@
 
   // ---- runs/ から読んだもの ----
   let index = $state<IndexEntry[]>([]);
-  let series = $state<SeriesEntry[]>([]);
+  let status = $state<Status>({ experiments: [], jobs: [] });
   let columns = $state<Column[]>([]);
   let originalMeta = $state<WaveMeta>();
   let metas = $state<Record<string, WaveMeta>>({});
@@ -24,7 +24,8 @@
   let error = $state('');
 
   // ---- 選ぶもの ----
-  let seriesKey = $state('');
+  let experimentName = $state('');
+  let seriesName = $state('');
   let chosen = $state<string[]>([]);
   let evalComp = $state('soma');
   let viewComps = $state<string[]>(['soma']);
@@ -39,7 +40,25 @@
   let windowStart = $state(0);
   let windowLength = $state(1000);
 
-  let entry = $derived(series.find(s => s.key === seriesKey));
+  let experiment = $derived(status.experiments.find(e => e.name === experimentName) ?? status.experiments[0]);
+  /** 実験の系列のうち、原系を回したもの。 */
+  let series = $derived.by(() => {
+    const list: SeriesEntry[] = [];
+    for (const declared of experiment?.series ?? []) {
+      const found = experiment ? seriesEntry(index, experiment, declared.series) : undefined;
+      if (found) list.push(found);
+    }
+    return list;
+  });
+  let entry = $derived(series.find(s => s.name === seriesName) ?? series[0]);
+  // 名前を選んでいなければ最初の実験になるので、選択欄にもその名前を出す。
+  $effect(() => {
+    if (experiment && experimentName !== experiment.name) experimentName = experiment.name;
+  });
+  $effect(() => {
+    if (entry && seriesName !== entry.name) seriesName = entry.name;
+  });
+
   /** 選んだ列を、run の一覧の並びのまま（凡例の並び）。 */
   let selected = $derived(columns.filter(c => chosen.includes(c.train)));
   /** 凡例と表の見出しに使う短い名前。この系列の全列の名前に共通する語を省く（選び方で名前が変わらない）。 */
@@ -62,13 +81,13 @@
   let duration = $derived(originalMeta ? originalMeta.n[point] * originalMeta.dt : 0);
   let domain = $derived<[number, number]>([windowStart, Math.min(duration, windowStart + windowLength)]);
 
-  /** run の一覧を読む。操作盤から ?series=<系列名> で来たらその系列を選ぶ。 */
+  /** run の一覧と実験の状態を読む。操作盤から ?experiment=…&series=… で来たらその系列を選ぶ。 */
   async function load(): Promise<void> {
     index = await listRuns();
-    series = listSeries(index);
-    const wanted = new URLSearchParams(window.location.search).get('series');
-    const found = series.find(s => s.name === wanted) ?? series[0];
-    if (found) seriesKey = found.key;
+    status = await readStatus();
+    const params = new URLSearchParams(window.location.search);
+    experimentName = params.get('experiment') ?? '';
+    seriesName = params.get('series') ?? '';
   }
 
   onMount(() => {
@@ -78,9 +97,10 @@
   // 系列を選んだら、その系列の列と、全部の列の目録・指標・要約を読む。
   $effect(() => {
     const current = entry;
-    if (!current) return;
+    const chosenExperiment = experiment;
+    if (!current || !chosenExperiment) return;
     void (async () => {
-      const found = listColumns(index, current);
+      const found = experimentColumns(chosenExperiment, current.name);
       const meta = await readJson<WaveMeta>(current.run, 'waves/meta.json');
       for (const column of found) {
         metas[column.run] = await readJson<WaveMeta>(column.run, 'waves/meta.json');
@@ -305,12 +325,16 @@
   {#snippet sidebar()}
     {#if error}<p class="note" aria-live="polite">停止：{error}</p>{/if}
     <section>
+      <h3>実験</h3>
+      <Choice label="見比べる組" bind:value={experimentName} options={status.experiments.map(e => ({ value: e.name, label: e.name }))} />
+    </section>
+    <section>
       <h3>系列</h3>
       {#if series.length > 0}
-        <Choice label="評価した系列" bind:value={seriesKey} options={series.map(s => ({ value: s.key, label: s.name }))} />
+        <Choice label="評価した系列" bind:value={seriesName} options={series.map(s => ({ value: s.name, label: s.name }))} />
         {#if entry}<p class="note">置換：{entry.replaceTargets.join(', ')}。{entry.param ? `${entry.param} を ${entry.values.join(', ')} ${entry.unit} で振る。` : '単発。'}</p>{/if}
       {:else if !error}
-        <p class="note">評価した系列が無い。<a href="53.03-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
+        <p class="note">この実験には評価した系列が無い。<a href="53.03-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
       {/if}
     </section>
     <section>

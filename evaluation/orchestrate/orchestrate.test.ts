@@ -2,14 +2,8 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { merge, PRESETS, SERIES } from './conf.ts';
+import { EXPERIMENTS, PRESETS, SERIES } from './conf.ts';
 import { canonical, hashOf, jobs, originalSpec, replacedSpec, trainSpec } from './orchestrate.ts';
-
-test('merge mixes nested objects and replaces arrays and values', () => {
-  const base = { a: { b: 1, c: [1, 2] }, d: 'x' };
-  expect(merge(base, { a: { c: [3] } })).toEqual({ a: { b: 1, c: [3] }, d: 'x' });
-  expect(base.a.c).toEqual([1, 2]);
-});
 
 test('the key does not depend on the order the spec was written in', () => {
   expect(canonical({ b: 1, a: { d: [1, { f: 2, e: 3 }], c: null } })).toBe(
@@ -32,6 +26,13 @@ test('a sweep gives one differently configured run per point', () => {
   const runs = PRESETS.traub_useMC19CompForTeachingData;
   expect(runs.map(r => r.config.spec.n_components)).toEqual([6, 7, 8]);
   expect(new Set(runs.map(r => hashOf(trainSpec(r.config)))).size).toBe(3);
+});
+
+test('every experiment names declared presets and series', () => {
+  for (const experiment of Object.values(EXPERIMENTS)) {
+    for (const preset of experiment.presets) expect(PRESETS).toHaveProperty(preset);
+    for (const series of experiment.series) expect(SERIES).toHaveProperty(series);
+  }
 });
 
 test('a job is running while its pid lives, done on exit code 0, and failed otherwise', () => {
