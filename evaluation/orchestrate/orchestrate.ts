@@ -1,10 +1,10 @@
 // 段取り: conf.ts の宣言から spec.json を組み、ハッシュを鍵に runs/<ハッシュ>/ を Python の計算の入口（neurosurrogate/run.py）で埋める。
 // 同じ spec は同じハッシュになるので、ディレクトリがあれば回さない。回したあとは runs/index.json（図が読む run の一覧）を書き直す。
-// 入口は二つで、どちらもここの関数を呼ぶ。エージェントは CLI（just train・just eval・just runs）、本人は図のボタン（api.ts）。
-//   bun evaluation/orchestrate.ts train <preset>...
+// 入口は二つで、どちらもここの関数を呼ぶ。本人は操作盤の冊のボタン（api.ts）、エージェントはこの CLI。人は CLI を使わない。
+//   bun evaluation/orchestrate/orchestrate.ts train <preset>...
 //   … eval <系列> <preset かハッシュ>...
 //   … index | spec <preset> | series | list
-// --runs <dir> で置き場を変えられる（just test が使う）。
+// --runs <dir> で置き場を変えられる（just test が使う）。--job <鍵> は操作盤から起こしたときに launch が付け、終わりを .jobs/<鍵>.exit に書く。
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -15,12 +15,13 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FORMAT, PRESETS, SERIES, type IndexEntry, type Job, type Series, type Spec, type State, type Status, type SurrogateConfig } from './conf.ts';
+import { FORMAT, PRESETS, SERIES, type IndexEntry, type Job, type JobState, type Series, type Spec, type State, type Status, type SurrogateConfig } from './conf.ts';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
 /** 既定の run の置き場 */
@@ -155,8 +156,10 @@ export function evaluate(runs: string, name: string, selectors: string[]): void 
   writeIndex(runs);
 }
 
-// ---- 図のボタンから回す ----
+// ---- 操作盤のボタンから回す ----
 
+/** 操作盤に見せるログの末尾の行数 */
+const LOG_TAIL = 30;
 
 /** pid のプロセスが生きているか。 */
 function alive(pid: number): boolean {
@@ -174,14 +177,44 @@ function running(partial: string): boolean {
   return existsSync(file) && alive(Number(readFileSync(file, 'utf8')));
 }
 
-/** 図から起こした段取りの置き場。仕事の鍵は {何を, どれを} のハッシュで、同じ組は同じ鍵になる。 */
+/** 操作盤から起こした段取りの置き場 runs/.jobs/。仕事の鍵は {何を, どれを} のハッシュで、同じ組は同じ鍵になる。 */
+function jobDir(runs: string): string {
+  return join(runs, '.jobs');
+}
+
 function jobFile(runs: string, job: object, ext: string): string {
-  return join(runs, '.jobs', `${digest(job)}.${ext}`);
+  return join(jobDir(runs), `${digest(job)}.${ext}`);
 }
 
 function jobRunning(runs: string, job: object): boolean {
   const file = jobFile(runs, job, 'pid');
   return existsSync(file) && alive(Number(readFileSync(file, 'utf8')));
+}
+
+/** ファイルの末尾 n 行。無ければ空。 */
+function tail(file: string, n: number): string[] {
+  if (!existsSync(file)) return [];
+  const lines = readFileSync(file, 'utf8').trimEnd().split('\n');
+  return lines.slice(Math.max(0, lines.length - n));
+}
+
+/** 操作盤から起こした仕事を新しい順に。<鍵>.json が仕事、.exit が終了コード、それが無くて .pid が生きていれば計算中。 */
+export function jobs(runs: string): JobState[] {
+  const dir = jobDir(runs);
+  if (!existsSync(dir)) return [];
+  const list: JobState[] = [];
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.json')) continue;
+    const key = name.slice(0, -'.json'.length);
+    const { job, started } = JSON.parse(readFileSync(join(dir, name), 'utf8')) as { job: Job; started: string };
+    const exit = join(dir, `${key}.exit`);
+    // 終了コードを先に見る。書き終えた子が回収されるまで pid は生きて見える。
+    let state: JobState['state'] = 'failed';
+    if (existsSync(exit)) state = readFileSync(exit, 'utf8').trim() === '0' ? 'done' : 'failed';
+    else if (jobRunning(runs, job)) state = 'running';
+    list.push({ job, started, state, log: tail(join(dir, `${key}.log`), LOG_TAIL) });
+  }
+  return list.sort((a, b) => b.started.localeCompare(a.started));
 }
 
 /** run 1 本の状態。 */
@@ -211,7 +244,7 @@ export function status(runs: string): Status {
       pairs.push({ series: name, preset, state });
     }
   }
-  return { trains, pairs };
+  return { trains, pairs, jobs: jobs(runs) };
 }
 
 /** 段取りを切り離した子プロセスで起こしてすぐ返す（開発サーバーが落ちても道連れにしない）。同じ組が回っていれば起こさない。 */
@@ -219,10 +252,12 @@ export function launch(runs: string, job: Job): boolean {
   presetOf(job.preset);
   if (job.action === 'eval') seriesOf(job.series);
   if (jobRunning(runs, job)) return false;
-  mkdirSync(join(runs, '.jobs'), { recursive: true });
+  mkdirSync(jobDir(runs), { recursive: true });
+  rmSync(jobFile(runs, job, 'exit'), { force: true });
+  writeFileSync(jobFile(runs, job, 'json'), JSON.stringify({ job, started: new Date().toISOString() }));
   const log = openSync(jobFile(runs, job, 'log'), 'w');
   const args = job.action === 'train' ? ['train', job.preset] : ['eval', job.series, job.preset];
-  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...args, '--runs', runs], {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...args, '--runs', runs, '--job', digest(job)], {
     cwd: REPO,
     detached: true,
     stdio: ['ignore', log, log],
@@ -233,17 +268,38 @@ export function launch(runs: string, job: Job): boolean {
   return true;
 }
 
+/** 引数から `--名前 値` を抜き出す。無ければ undefined。 */
+function option(argv: string[], flag: string): string | undefined {
+  const at = argv.indexOf(flag);
+  return at >= 0 ? argv.splice(at, 2)[1] : undefined;
+}
+
 function main(argv: string[]): void {
-  const at = argv.indexOf('--runs');
-  const runs = at >= 0 ? resolve(argv.splice(at, 2)[1]) : RUNS;
-  const [command, ...rest] = argv;
-  if (command === 'spec') console.log(JSON.stringify(presetOf(rest[0]).map(t => t.config)));
-  else if (command === 'series') console.log(JSON.stringify(SERIES));
-  else if (command === 'list')
+  const dir = option(argv, '--runs');
+  const runs = dir ? resolve(dir) : RUNS;
+  const job = option(argv, '--job');
+  if (!job) return command(runs, argv);
+  // 操作盤から起こされた。落ちても終了コードを残し、操作盤が失敗として出せるようにする。
+  let code = 0;
+  try {
+    command(runs, argv);
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    code = 1;
+  }
+  writeFileSync(join(jobDir(runs), `${job}.exit`), String(code));
+  process.exitCode = code;
+}
+
+function command(runs: string, argv: string[]): void {
+  const [name, ...rest] = argv;
+  if (name === 'spec') console.log(JSON.stringify(presetOf(rest[0]).map(t => t.config)));
+  else if (name === 'series') console.log(JSON.stringify(SERIES));
+  else if (name === 'list')
     for (const e of scan(runs)) console.log(`${e.hash} ${e.kind.padEnd(8)} ${e.created} ${e.name}`);
-  else if (command === 'train') for (const preset of rest) train(runs, preset);
-  else if (command === 'eval') evaluate(runs, rest[0], rest.slice(1));
-  else if (command === 'index') writeIndex(runs);
+  else if (name === 'train') for (const preset of rest) train(runs, preset);
+  else if (name === 'eval') evaluate(runs, rest[0], rest.slice(1));
+  else if (name === 'index') writeIndex(runs);
   else console.log(`preset: ${Object.keys(PRESETS).join(' ')}\n系列: ${Object.keys(SERIES).join(' ')}`);
 }
 

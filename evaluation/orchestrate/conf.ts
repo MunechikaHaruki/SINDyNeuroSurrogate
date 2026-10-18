@@ -70,13 +70,16 @@ export type IndexEntry = { hash: string; kind: Spec['kind']; name: string; creat
 
 /** 宣言の 1 本がいまどこまで回っているか。unreplaceable は置換できないと分かった組。 */
 export type State = 'done' | 'running' | 'todo' | 'unreplaceable';
-/** 宣言の学習（preset ごと）と評価（preset × 系列ごと）の状態。図のボタンの口（api.ts）が返す。 */
+/** 操作盤のボタンが起こす仕事。 */
+export type Job = { action: 'train'; preset: string } | { action: 'eval'; series: string; preset: string };
+/** 操作盤から起こした仕事 1 つ。failed は終了コードが 0 でないか、終わりを書かずに消えたもの。log はログの末尾の行。 */
+export type JobState = { job: Job; started: string; state: 'running' | 'done' | 'failed'; log: string[] };
+/** 宣言の学習（preset ごと）と評価（preset × 系列ごと）の状態と、起こした仕事。操作盤の口（api.ts）が返す。 */
 export type Status = {
   trains: { preset: string; state: State }[];
   pairs: { series: string; preset: string; state: State }[];
+  jobs: JobState[];
 };
-/** 図のボタンが起こす仕事。 */
-export type Job = { action: 'train'; preset: string } | { action: 'eval'; series: string; preset: string };
 
 /** 学習 run 1 本の宣言。name は図に出す名前で、同一性には入らない。 */
 export type Train = { name: string; config: SurrogateConfig };

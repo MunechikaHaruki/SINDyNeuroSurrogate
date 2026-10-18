@@ -6,20 +6,16 @@
   import Choice from '$lib/Choice.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import LineChart from '$lib/LineChart.svelte';
-  import { RUNS, decimate, gatesOf, listColumns, listRuns, listSeries, readComp, readCurrent, readInternal, readJson, readStatus, runningCount, start, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
-  import type { IndexEntry, Status } from './orchestrate/conf.ts';
+  import { RUNS, decimate, gatesOf, listColumns, listRuns, listSeries, readComp, readCurrent, readInternal, readJson, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
+  import type { IndexEntry } from './orchestrate/conf.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
   /** 表示用に間引くときの区間の数。1 本あたり最大でこの 2 倍の点になる。 */
   const BUCKETS = 400;
-  /** 計算の状態を見に行く間隔（ms） */
-  const POLL = 5000;
 
   // ---- runs/ から読んだもの ----
   let index = $state<IndexEntry[]>([]);
   let series = $state<SeriesEntry[]>([]);
-  /** 宣言の学習と評価の状態（ボタンの口から） */
-  let status = $state<Status>({ trains: [], pairs: [] });
   let columns = $state<Column[]>([]);
   let originalMeta = $state<WaveMeta>();
   let metas = $state<Record<string, WaveMeta>>({});
@@ -65,37 +61,19 @@
   let compId = $derived(originalMeta?.names?.[evalComp] ?? 0);
   let duration = $derived(originalMeta ? originalMeta.n[point] * originalMeta.dt : 0);
   let domain = $derived<[number, number]>([windowStart, Math.min(duration, windowStart + windowLength)]);
-  /** この系列で、宣言にはあるがまだ回し終えていない preset（置換できないと分かったものは出さない）。 */
-  let pending = $derived(status.pairs.filter(p => p.series === entry?.name && (p.state === 'todo' || p.state === 'running')));
 
-  /** run の一覧を読み直す。選んでいた系列は残す。 */
-  async function reload(): Promise<void> {
+  /** run の一覧を読む。操作盤から ?series=<系列名> で来たらその系列を選ぶ。 */
+  async function load(): Promise<void> {
     index = await listRuns();
     series = listSeries(index);
-    if (!series.some(s => s.key === seriesKey) && series.length > 0) seriesKey = series[0].key;
+    const wanted = new URLSearchParams(window.location.search).get('series');
+    const found = series.find(s => s.name === wanted) ?? series[0];
+    if (found) seriesKey = found.key;
   }
 
   onMount(() => {
-    reload()
-      .then(async () => (status = await readStatus()))
-      .catch(e => (error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`));
-    // 回っているものが減ったら、回し終えた run が index.json に載ったので読み直す。
-    const timer = setInterval(() => {
-      void (async () => {
-        const before = runningCount(status);
-        status = await readStatus();
-        if (runningCount(status) < before) await reload();
-      })().catch(e => (error = e instanceof Error ? e.message : String(e)));
-    }, POLL);
-    return () => clearInterval(timer);
+    load().catch(e => (error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`));
   });
-
-  /** この系列を preset で回す。 */
-  async function run(preset: string): Promise<void> {
-    if (!entry) return;
-    await start({ action: 'eval', series: entry.name, preset });
-    status = await readStatus();
-  }
 
   // 系列を選んだら、その系列の列と、全部の列の目録・指標・要約を読む。
   $effect(() => {
@@ -332,18 +310,13 @@
         <Choice label="評価した系列" bind:value={seriesKey} options={series.map(s => ({ value: s.key, label: s.name }))} />
         {#if entry}<p class="note">置換：{entry.replaceTargets.join(', ')}。{entry.param ? `${entry.param} を ${entry.values.join(', ')} ${entry.unit} で振る。` : '単発。'}</p>{/if}
       {:else if !error}
-        <p class="note">評価した系列が無い。この repo で <code>just eval &lt;系列&gt; &lt;学習 run&gt;</code> を回す（系列と preset の一覧は <code>just runs -h</code>）。</p>
+        <p class="note">評価した系列が無い。<a href="53.05-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
       {/if}
     </section>
     <section>
       <h3>比べる学習 run</h3>
       <Toggles label="置換した列" bind:selected={chosen} options={columns.map(c => ({ value: c.train, label: c.trainName }))} />
-      {#if pending.length > 0}
-        <p class="note">宣言にあってまだ回していない preset。押すと回し、回し終えると上に並ぶ。</p>
-        {#each pending as pair (pair.preset)}
-          <button type="button" disabled={pair.state === 'running'} onclick={() => void run(pair.preset).catch(e => (error = e instanceof Error ? e.message : String(e)))}>{pair.state === 'running' ? `${pair.preset} 計算中…` : `${pair.preset} を回す`}</button>
-        {/each}
-      {/if}
+      <p class="note">宣言にあってまだ回していない組は <a href="53.05-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
     </section>
     <section>
       <h3>見る区画</h3>

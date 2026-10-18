@@ -10,8 +10,7 @@
   import MatrixTable from '$lib/MatrixTable.svelte';
   import NetChart from '$lib/NetChart.svelte';
   import { tex } from '$lib/tex.ts';
-  import { RUNS, decimate, decodeComp, listRuns, listTrainRuns, readComp, readCurrent, readF32, readJson, readStatus, runningCount, start, type Point, type TrainRun, type WaveMeta } from './read/runs.ts';
-  import type { Status } from './orchestrate/conf.ts';
+  import { RUNS, decimate, decodeComp, listRuns, listTrainRuns, readComp, readCurrent, readF32, readJson, type Point, type TrainRun, type WaveMeta } from './read/runs.ts';
   import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from './read/model-json.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
@@ -23,17 +22,11 @@
   const PATH_POINTS = 10000;
   /** 電位の分布の区間の数。 */
   const BINS = 60;
-  /** 計算の状態を見に行く間隔（ms） */
-  const POLL = 5000;
 
   /** 学習 comp 1 つ分：学習データの変数、同定器への入力、潜在、再構成 RMSE。 */
   type CompData = { vars: Record<string, Float32Array>; x: Record<string, Float32Array>; latent: Record<string, Float32Array>; recon: Float32Array };
 
   let runs = $state<TrainRun[]>([]);
-  /** 宣言の学習と評価の状態（ボタンの口から） */
-  let status = $state<Status>({ trains: [], pairs: [] });
-  /** 宣言にあってまだ学習していない preset */
-  let pending = $derived(status.trains.filter(t => t.state === 'todo' || t.state === 'running'));
   let runId = $state('');
   let model = $state<ModelJson>();
   let meta = $state<WaveMeta>();
@@ -54,32 +47,15 @@
     return names;
   });
 
-  /** 学習 run の一覧を読み直す。選んでいた run は残す。 */
-  async function reload(): Promise<void> {
+  /** 学習 run の一覧を読み、一番新しい run を選ぶ。 */
+  async function load(): Promise<void> {
     runs = listTrainRuns(await listRuns());
-    if (!runs.some(r => r.hash === runId) && runs.length > 0) runId = runs[0].hash;
+    if (runs.length > 0) runId = runs[0].hash;
   }
 
   onMount(() => {
-    reload()
-      .then(async () => (status = await readStatus()))
-      .catch(e => (error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`));
-    // 回っているものが減ったら、学習を終えた run が index.json に載ったので読み直す。
-    const timer = setInterval(() => {
-      void (async () => {
-        const before = runningCount(status);
-        status = await readStatus();
-        if (runningCount(status) < before) await reload();
-      })().catch(e => (error = e instanceof Error ? e.message : String(e)));
-    }, POLL);
-    return () => clearInterval(timer);
+    load().catch(e => (error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`));
   });
-
-  /** preset を学習する。 */
-  async function train(preset: string): Promise<void> {
-    await start({ action: 'train', preset });
-    status = await readStatus();
-  }
 
   // run を選んだら、その中身を読む。学習 comp ごとの配列は最初に全部読む。
   $effect(() => {
@@ -283,12 +259,7 @@
       {:else if !error}
         <p class="note">学習を終えた run が無い。</p>
       {/if}
-      {#if pending.length > 0}
-        <p class="note">宣言にあってまだ学習していない preset。押すと回し、終えると上に並ぶ。</p>
-        {#each pending as item (item.preset)}
-          <button type="button" disabled={item.state === 'running'} onclick={() => void train(item.preset).catch(e => (error = e instanceof Error ? e.message : String(e)))}>{item.state === 'running' ? `${item.preset} 計算中…` : `${item.preset} を学習`}</button>
-        {/each}
-      {/if}
+      <p class="note">学習は <a href="53.05-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
     </section>
     {#if model}
       <section>

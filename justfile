@@ -57,17 +57,3 @@ test:
     runs=$(mktemp -d)
     trap 'rm -rf "$runs"' EXIT
     {{ ORCHESTRATE }} train _test_hh_sindy --runs "$runs"
-
-# 学習: preset (evaluation/orchestrate/conf.ts の PRESETS) の run を runs/<ハッシュ>/ に置く。回してあれば回さない
-#   just train traub_useMC19CompForTeachingData   (preset の一覧は just runs -h)
-train *presets:
-    {{ ORCHESTRATE }} train {{ presets }}
-
-# 評価: 系列を原系と学習 run で回し、runs/ に置く。図は evaluation/ が読む
-#   just eval traub19_somastim <preset か学習 run のハッシュ> ...
-eval series *trains:
-    {{ ORCHESTRATE }} eval {{ series }} {{ trains }}
-
-# run の一覧 (just runs list)、一覧の書き直し (just runs index)、preset と系列の一覧 (just runs -h)
-runs *args:
-    {{ ORCHESTRATE }} {{ args }}

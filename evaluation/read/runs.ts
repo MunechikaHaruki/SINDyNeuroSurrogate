@@ -1,5 +1,5 @@
 // SINDyNeuroSurrogate の結果を runs/ から読む（評価の冊と学習 run の冊が共有する）。
-// run は段取り（orchestrate.ts、`just train` と `just eval`）が runs/<ハッシュ>/ に置き、一覧を runs/index.json に書く。
+// run は段取り（orchestrate.ts。操作盤の冊のボタンから起こす）が runs/<ハッシュ>/ に置き、一覧を runs/index.json に書く。
 // spec の形は conf.ts、ファイルの形式は neurosurrogate/run.py の先頭。ここは読むだけで、Python は import しない。配信は context-router の開発サーバー。
 import { FORMAT, type IndexEntry, type Job, type Status } from '../orchestrate/conf.ts';
 
@@ -98,7 +98,7 @@ export function listTrainRuns(runs: IndexEntry[]): TrainRun[] {
   return list;
 }
 
-/** 学習と評価を起こす口（api.ts）。 */
+/** 操作盤が学習と評価を起こす口（api.ts）。 */
 const API = '/api/face/research/50-59-research/53-evaluation/orchestrate';
 
 export async function readStatus(): Promise<Status> {

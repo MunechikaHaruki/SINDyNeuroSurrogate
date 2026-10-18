@@ -54,8 +54,8 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
 tests/    test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py (preset と系列は段取りに JSON で出させて読む) / test_inits.py / test_run.py (neurosurrogate/run.py の 3 種類の run の往復と、回し直さないこと)
 evaluation/    # TS はすべてここ。直下は評価の冊だけで、.ts は役割のディレクトリ (orchestrate/ read/ traub/)。評価の冊 (TS + Svelte。画面と部品は context-router の .web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
 evaluation/orchestrate/conf.ts        # **何を回すか**の型付き宣言: PRESETS (学習の設定ツリー。継承は深いマージ merge、掃引は直積で run の列に開く) と SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)。spec.json の形 (Spec、FORMAT、index.json の行) もここ。値の理由はコメントに書く。**描き方は持たない**。node/bun に依存しない (ブラウザの runs.ts も import する)
-evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: CLI (just train・just eval・just runs、エージェント用) と、図のボタンが切り離した子プロセスで起こす launch。宣言の組の状態 (status: 済み・計算中・未・置換できない) もここ
-evaluation/orchestrate/api.ts         # **図のボタンの口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation/orchestrate に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
+evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → runs/<ハッシュ>/ が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置換系は学習 run と原系 run のハッシュを spec に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: 本人が使う操作盤の冊 (53.05-runs) のボタンが切り離した子プロセスで起こす launch と、エージェント用の CLI (`bun evaluation/orchestrate/orchestrate.ts train|eval|list`。人は使わない)。宣言の組の状態 (status: 済み・計算中・未・置換できない) と、launch で起こした仕事の状態 (runs/.jobs/ の中身・pid・ログ・終了コード) もここ
+evaluation/orchestrate/api.ts         # **操作盤の口**: 開発サーバーが /api/face/research/50-59-research/53-evaluation/orchestrate に載せる (context-router の .web/routes/api/face は面の api.ts を載せるだけの汎用の仕組み)。GET = status (宣言の組の状態と仕事のログの末尾)、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
 evaluation/read/runs.ts        # 図が runs/ を読む口 (ブラウザ)
 evaluation/read/model-json.ts  # 学習 run の description/model.json を図の形に直す
 evaluation/traub/traub.ts      # Traub の単一区画の TS シミュレータ。53.01・53.02 と context-router の 52.01 が使う。Python とのずれは traub.reference.json のテストで見張る
@@ -100,7 +100,7 @@ waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
   古い形式の run はハッシュが合わず回し直される
 - **記録した run を描画が書き換えない**: 図は読むだけ
 - JSON に nan は書かない (null)。JS の JSON が読めないため
-- **書きかけと印**: `<ハッシュ>.partial/` は書きかけで、中の `pid` が書いているプロセス (生きていれば計算中、死んでいれば残骸として次に片付ける。同じ run を二つのプロセスが書かないよう、生きた書き手がいれば run.py は終了コード 4 で退き、段取りは終わるのを待つ)。`<ハッシュ>.unreplaceable` は置換できないと分かった組の印 (置換できるかは Python だけが知るので答えを覚える)。`.jobs/<組のハッシュ>.{pid,log}` は図のボタンが起こした段取り (同じ組の二重起動をこれで弾く)
+- **書きかけと印**: `<ハッシュ>.partial/` は書きかけで、中の `pid` が書いているプロセス (生きていれば計算中、死んでいれば残骸として次に片付ける。同じ run を二つのプロセスが書かないよう、生きた書き手がいれば run.py は終了コード 4 で退き、段取りは終わるのを待つ)。`<ハッシュ>.unreplaceable` は置換できないと分かった組の印 (置換できるかは Python だけが知るので答えを覚える)。`.jobs/<組のハッシュ>.{json,pid,log,exit}` は操作盤のボタンが起こした段取りの中身・pid・ログ・終了コード (同じ組の二重起動を pid で弾き、終了コードが 0 でないか書かずに消えたものを失敗として操作盤に出す)
 
 ### 設定ファイル
 
@@ -118,7 +118,7 @@ waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
   (`spec.datasets` は `SimSpec` のフィールドそのもの = target/current_type/dt/current_params)。
 - 継承は深いマージ `merge` 一つ (object は混ぜ、配列と値は置き換える)。掃引は preset が run の列を
   直積で持つ (`sweep`)。`_test_*` はテスト専用 preset (tests は preset 名を指すだけ)。
-- **どの系列を回すか**は `just eval` の引数で、系列を置換できない学習 run は回さない。
+- **どの系列を回すか**は操作盤で選ぶ組 (エージェントは CLI の eval の引数) で、系列を置換できない学習 run は回さない。
 - **描き方 (つまみ) は宣言に持たない** → 全キー (比較対象 comp・
   全 comp 図の表示制限・点軸の指標・詳細図の点・スパイク番号・折れ線の y レンジ)
   を evaluation/ の図が持つ。どれも図を見て決め直すもので、宣言に置くと「何を
@@ -227,7 +227,7 @@ pickle / run のスキーマを変えて過去の run がロード不能にな�
 ### 8. 実行経路を二重に持たない
 
 同じ操作に 2 経路を作らない。重い計算 (学習と評価) は `neurosurrogate/run.py` だけが持ち、段取りは
-`orchestrate.ts` の関数だけが持つ (CLI と図のボタンはその関数を呼ぶ薄い入口)。結果は runs/ に置く。描くのは evaluation/ の図だけで、Python で図を描く入口
+`orchestrate.ts` の関数だけが持つ (操作盤のボタンとエージェント用の CLI はその関数を呼ぶ薄い入口)。結果は runs/ に置く。描くのは evaluation/ の図だけで、Python で図を描く入口
 (`scripts/draw.py` やレポート run) を復活させない。
 
 **発火条件**: 新しい操作を足すとき → 計算なら CLI に、見せ方なら冊に置く。
