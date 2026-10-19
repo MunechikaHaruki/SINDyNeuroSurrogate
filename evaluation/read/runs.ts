@@ -91,7 +91,7 @@ export function declaredNames(status: Status): Record<string, string> {
 }
 
 /** 操作盤が学習と評価を起こす口（api.ts）。 */
-const API = '/api/face/research/50-59-research/53-evaluation/orchestrate';
+const API = '/api/resources/50-59-research/53-evaluation/orchestrate';
 
 export async function readStatus(): Promise<Status> {
   const response = await fetch(API);
