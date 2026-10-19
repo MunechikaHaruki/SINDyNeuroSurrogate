@@ -2,11 +2,13 @@ import jax.numpy as jnp
 
 
 def lin_exp_form(x):
-    denom = jnp.exp(x) - 1.0
+    """x / (e^x − 1)。|x| < 1e-4 はテイラー展開 (TS の bernoulli と同じ)。"""
+    small = jnp.abs(x) < 1e-4
+    safe = jnp.where(small, 1.0, x)
     return jnp.where(
-        jnp.abs(x) < 1e-8,
-        1.0 / (1.0 + x / 2.0 + x**2 / 6.0 + x**3 / 24.0),
-        x / jnp.where(denom == 0, 1.0, denom),
+        small,
+        1.0 - x / 2.0 + x**2 / 12.0 - x**4 / 720.0,
+        safe / jnp.expm1(safe),
     )
 
 
