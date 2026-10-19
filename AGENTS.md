@@ -26,10 +26,10 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ## 図
 
-- 書き方（部品、宣言、見た目の規約）は教材と同じで、スキル book に従う。画面と部品はルートの `.web/` が持つ。
+- 書き方（部品、宣言、見た目の規約）は教材と同じで、スキル book に従う。画面と部品は context-router の `resources/.web/` が持つ。
 - この repo が持つ冊は評価だけで、`evaluation/53.MM-名前.svelte`。番号は教材と同じ Johnny.Decimal の体系から取る（区域はルートの `AGENTS.md`）。研究の文書は context-router の `resources/research/50-59-research/` が持ち、コードと一緒に変わらないものはこの repo に置かない。
   冊の直下には冊だけを置き、`.ts` は役割ごとのディレクトリ（`orchestrate/` 何を回すかと段取り、`read/` runs/ を読む口、`traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。
-- 常駐の開発サーバー（`http://127.0.0.1:4321/`）で教材と一緒に開く。テスト・ESLint・型は context-router の `.web/` で `bun run web-check`。
+- 常駐の開発サーバー（`http://127.0.0.1:4321/`）で教材と一緒に開く。テスト・ESLint・型は context-router の `resources/.web/` で `bun run web-check`。
 
 ## Coding Standards
 
