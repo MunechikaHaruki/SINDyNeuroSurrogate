@@ -16,7 +16,7 @@ export type GateName = (typeof gateNames)[number];
 export type Gates = Record<GateName, number>;
 /** 元の 11 状態。χ は細胞内 Ca 濃度に比例する量。 */
 export type Full = { v: number; gates: Gates; q: number; chi: number };
-/** 群分け（52.01-apply-kam「群分け」）。φ 群は膜電位と一緒にまとめるゲート、ψ 群は 2 つ以上をまとめる組。書かないゲートは 1 つだけの群。 */
+/** 群分け（01-apply-kam「群分け」）。φ 群は膜電位と一緒にまとめるゲート、ψ 群は 2 つ以上をまとめる組。書かないゲートは 1 つだけの群。 */
 /** φ 群の重み α₀ の扱い。'one' は φ 群を速いゲートだけとみなして α₀ = 1、'solve' は Kepler 式(9)の根を各時刻に求める。 */
 export type Alpha0Mode = 'one' | 'solve';
 export type Grouping = { phi: GateName[]; psi: GateName[][]; alpha0?: Alpha0Mode };
@@ -63,7 +63,7 @@ export function groupLayout(grouping: Grouping): GateName[][] {
   }
   return groups;
 }
-/** 縮約系の状態ベクトルから、φ = V と 8 つのゲートを作り直して 11 状態の形で読む（52.01-apply-kam「縮約モデルの一般形」）。 */
+/** 縮約系の状態ベクトルから、φ = V と 8 つのゲートを作り直して 11 状態の形で読む（01-apply-kam「縮約モデルの一般形」）。 */
 export function readReduced(grouping: Grouping, y: number[]): Full {
   const layout = groupLayout(grouping);
   const v = y[0];

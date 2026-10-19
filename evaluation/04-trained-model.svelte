@@ -282,7 +282,7 @@
       {:else if !error}
         <p class="note">この実験には学習を終えた run が無い。</p>
       {/if}
-      <p class="note">学習は <a href="53.03-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
+      <p class="note">学習は <a href="03-runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
     </section>
     {#if model}
       <section>

@@ -52,11 +52,11 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
               description.py     # 学習済み surrogate の中身を図に依らないデータで出す (describe)。閉包項と前処理の中身 (各実装の describe)、ネット、学習データ、学習 comp ごとに同定器へ渡した列・潜在・再構成 RMSE。置換シミュは回さない
   run.py                         # **計算の入口** (`python -m neurosurrogate.run <spec.json> <run のディレクトリ>`。層 `entry` = どこからも import されない最上位): spec.json 1 つ → run のディレクトリ。kind = train / sim (meta.json では train / original / replaced)。隣の .partial に書いてから名前を変える (半端な run を残さない)。置換できない組み合わせは終了コード 3 で何も書かない。**run の保存形式 (波形の write/read) を知るのはここだけ**
 tests/    test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py (preset と系列は段取りに JSON で出させて読む) / test_inits.py / test_run.py (neurosurrogate/run.py の 3 種類の run の往復と、回し直さないこと)
-evaluation/    # TS はすべてここ。直下は評価の冊だけで、.ts は役割のディレクトリ (orchestrate/ read/ traub/)。評価の冊 (TS + Svelte。画面と部品は context-router の resources/.web/。context-router の resources/50-59-research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
+evaluation/    # TS はすべてここ。直下は評価の冊だけで、.ts は役割のディレクトリ (orchestrate/ read/ traub/)。評価の冊 (TS + Svelte。画面と部品は context-router の resources/.web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
 evaluation/orchestrate/conf.ts        # **何を回すか**の宣言だけ: PRESETS (学習の設定。preset が決める値を平らに書き、`expand` が設定ツリーへ開く。n_components を配列で書くと掃引)、SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)、EXPERIMENTS (見比べる preset と系列の組。冊はここから選び、どの実験にも入らない preset と系列は冊に出ない)。**描き方は持たない**。node/bun に依存しない (ブラウザの冊も import する)
 evaluation/orchestrate/spec.ts        # spec.json の形 (Spec、FORMAT)、index.json の行、段取り・口・図が受け渡す状態の型
-evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → 置き場 (runs/models/<ハッシュ>/ か runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/) が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置き換えたモデルは学習 run のハッシュを spec の model に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: 本人が使う操作盤の冊 (53.03-runs) のボタンが切り離した子プロセスで起こす launch と、エージェント用の CLI (`bun evaluation/orchestrate/orchestrate.ts train|eval|list`。人は使わない)。宣言の組の状態 (status: 済み・計算中・未・置換できない) と、launch で起こした仕事の状態 (runs/.jobs/ の中身・pid・ログ・終了コード) もここ
-evaluation/orchestrate/api.ts         # **操作盤の口**: 開発サーバーが /api/resources/50-59-research/53-evaluation/orchestrate に載せる (context-router の resources/.web/routes/api/resources は区域の api.ts を載せるだけの汎用の仕組み)。GET = status (実験ごとの preset・系列・組のハッシュと状態、仕事のログの末尾。図はこのハッシュで runs/ を読む。ブラウザではハッシュを組めないため)、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
+evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → 置き場 (runs/models/<ハッシュ>/ か runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/) が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置き換えたモデルは学習 run のハッシュを spec の model に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: 本人が使う操作盤の冊 (03-runs) のボタンが切り離した子プロセスで起こす launch と、エージェント用の CLI (`bun evaluation/orchestrate/orchestrate.ts train|eval|list`。人は使わない)。宣言の組の状態 (status: 済み・計算中・未・置換できない) と、launch で起こした仕事の状態 (runs/.jobs/ の中身・pid・ログ・終了コード) もここ
+evaluation/orchestrate/api.ts         # **操作盤の口**: 開発サーバーが /api/resources/research/evaluation/orchestrate に載せる (context-router の resources/.web/routes/api/resources は区域の api.ts を載せるだけの汎用の仕組み)。GET = status (実験ごとの preset・系列・組のハッシュと状態、仕事のログの末尾。図はこのハッシュで runs/ を読む。ブラウザではハッシュを組めないため)、POST = 宣言にある preset 名・系列名だけを受けて launch。任意のコマンドは通さない
 evaluation/read/runs.ts        # 図が runs/ を読む口 (ブラウザ)
 evaluation/read/model-json.ts  # 学習 run の description/model.json を図の形に直す
 evaluation/traub/traub.ts      # Traub の単一区画の TS シミュレータ。53.01・53.02 と context-router の 52.01 が使う。Python とのずれは traub.reference.json のテストで見張る
@@ -69,8 +69,8 @@ runs/     models/ と inputs/ と index.json  # 実験の結果 (Git の外)。�
 系列から置換範囲を除いたもの) ごとの結果は `runs/inputs/<入力のハッシュ>/` の下に、元のモデルなら
 `original/`、置き換えたモデルなら `<モデルの鍵>/` (学習 run のハッシュ + 置換範囲) で置く。1 run = spec.json 1 つで、
 置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。
-run は `runs/` の下のパス (id) で指す。図は Python で描かず、`evaluation/53.05-evaluation` (評価) と
-`53.04-trained-model` (学習 run) が `runs.ts` を通して、口が宣言から組んだ id で読む。Python が置くのは図に要る
+run は `runs/` の下のパス (id) で指す。図は Python で描かず、`evaluation/05-evaluation` (評価) と
+`04-trained-model` (学習 run) が `runs.ts` を通して、口が宣言から組んだ id で読む。Python が置くのは図に要る
 データだけ:
 
 ```

@@ -9,9 +9,9 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（ドメイン層） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
-| 何を回すかの宣言（`conf.ts`。preset・系列・実験）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊 `53.03-runs` のボタン、エージェントは CLI で、同じ関数を呼ぶ）、操作盤の口（`api.ts`） | `evaluation/orchestrate/` |
+| 何を回すかの宣言（`conf.ts`。preset・系列・実験）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊 `03-runs` のボタン、エージェントは CLI で、同じ関数を呼ぶ）、操作盤の口（`api.ts`） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | `runs/`（Git の外） |
-| 評価の冊（回して元の系と比べるもの、学習 run を読むもの） | `evaluation/` の直下。図が runs/ を読む口は `evaluation/read/`、Traub の TS シミュレータは `evaluation/traub/`。context-router の `resources/50-59-research/` に symlink で入り、研究の文書（51 構成、52 理論、54 これから）と一つの区域に見える |
+| 評価の冊（回して元の系と比べるもの、学習 run を読むもの） | `evaluation/` の直下。図が runs/ を読む口は `evaluation/read/`、Traub の TS シミュレータは `evaluation/traub/`。context-router の `resources/research/` に symlink で入り、研究の文書（51 構成、52 理論、54 これから）と一つの区域に見える |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 
 ## 持たないもの
@@ -27,7 +27,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 ## 図
 
 - 書き方（部品、宣言、見た目の規約）は教材と同じで、スキル book に従う。画面と部品は context-router の `resources/.web/` が持つ。
-- この repo が持つ冊は評価だけで、`evaluation/53.MM-名前.svelte`。番号は教材と同じ Johnny.Decimal の体系から取る（区域はルートの `AGENTS.md`）。研究の文書は context-router の `resources/50-59-research/` が持ち、コードと一緒に変わらないものはこの repo に置かない。
+- この repo が持つ冊は評価だけで、`evaluation/MM-名前.svelte`。context-router の `resources/research/evaluation` として入り、番号（53.MM）は教材と同じ Johnny.Decimal の体系で、区域と分類の番号は context-router の `resources/index.json` と `resources/research/index.json` が持つ。研究の文書は context-router の `resources/research/` が持ち、コードと一緒に変わらないものはこの repo に置かない。
   冊の直下には冊だけを置き、`.ts` は役割ごとのディレクトリ（`orchestrate/` 何を回すかと段取り、`read/` runs/ を読む口、`traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。
 - 常駐の開発サーバー（`http://127.0.0.1:4321/`）で教材と一緒に開く。テスト・ESLint・型は context-router の `resources/.web/` で `bun run web-check`。
 
@@ -42,7 +42,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ```bash
 uv sync                        # 依存導入
-# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (evaluation/53.03-runs) から回すので、本人に CLI を案内しない
+# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (evaluation/03-runs) から回すので、本人に CLI を案内しない
 bun evaluation/orchestrate/orchestrate.ts train <preset>...               # 学習。preset は evaluation/orchestrate/conf.ts の PRESETS (掃引は n_components の配列)
 bun evaluation/orchestrate/orchestrate.ts eval <系列> <preset かハッシュ>...  # 評価。入力を元のモデルと置き換えたモデルで回す。preset の未学習分は学習もする
 bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで preset と系列の一覧、index で index.json を書き直す
