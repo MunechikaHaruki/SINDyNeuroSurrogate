@@ -5,7 +5,7 @@
 //   bun evaluation/orchestrate/orchestrate.ts train <preset>...
 //   … eval <系列> <preset かハッシュ>...
 //   … index | spec <preset> | series | list
-// --runs <dir> で置き場を変えられる（just test が使う）。--job <鍵> は操作盤から起こしたときに launch が付け、終わりを .jobs/<鍵>.exit に書く。
+// --runs <dir> で置き場を変えられる。--job <鍵> は操作盤から起こしたときに launch が付け、終わりを .jobs/<鍵>.exit に書く。
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {

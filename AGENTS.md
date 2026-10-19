@@ -36,7 +36,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 - 一時変数は同じ値を何度も使うときだけ許す（NG: `x = obj.attr; f(x)` / OK: `f(obj.attr)`）
 - `__init__.py` に `__all__` を定義しない。過剰な複雑さになる
 - `_` 始まりの名前とモジュール名は「外から参照しない」印。外から使うものに付けない
-- 大きな改装のあとは `just test` が通ることを確認する。テストは自由に足してよいが 20s 以下に抑える
+- 大きな改装のあとは下の Commands のテストが通ることを確認する。テストは自由に足してよいが 20s 以下に抑える
 
 ## Commands
 
@@ -46,10 +46,10 @@ uv sync                        # 依存導入
 bun evaluation/orchestrate/orchestrate.ts train <preset>...               # 学習。preset は evaluation/orchestrate/conf.ts の PRESETS (掃引は n_components の配列)
 bun evaluation/orchestrate/orchestrate.ts eval <系列> <preset かハッシュ>...  # 評価。入力を元のモデルと置き換えたモデルで回す。preset の未学習分は学習もする
 bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで preset と系列の一覧、index で index.json を書き直す
-just test                      # pytest + 段取りから学習 1 本 (使い捨ての置き場)
-just format && just lint       # ruff / ruff + mypy
-just clean-cache
+uv run pytest -q               # 規約、ドメイン層、neurosurrogate/run.py
 ```
+
+ruff の整形と lint は編集のたび、mypy はターンの終わりに、context-router の hook が走らせる。行数・複雑度・保守性指数は context-router の冊 51.09（`resources/research/architecture/09-code-metrics`）で見る。
 
 ## Architecture
 

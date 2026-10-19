@@ -9,7 +9,6 @@
 # Requirements
 * uv
 * bun
-* just
 
 ## setup
 ```bash
