@@ -144,7 +144,7 @@
   });
 </script>
 
-<Dashboard title="SINDy サロゲート：run の操作盤" summary="evaluation/orchestrate/conf.ts に宣言した実験（見比べる preset と系列の組）を選び、学習と評価を画面から回す。実験の組の状態とボタン、preset の設定、計算中・失敗した仕事のログの末尾、runs/ の全 run の一覧を並べる。">
+<Dashboard title="SINDy サロゲート：run の操作盤" summary="conf.ts に宣言した実験を画面から学習・評価で回す操作盤。実験の状態とボタン、preset の設定、仕事のログ、runs/ の全 run の一覧。">
   {#snippet sidebar()}
     {#if error}<p class="note" aria-live="polite">停止：{error}</p>{/if}
     <section>
