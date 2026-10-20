@@ -197,7 +197,7 @@
     ];
   }
 
-  // ---- 時間の図：選んだ組を作れるか（01-apply-kam の条件 1,2） ----
+  // ---- 時間の図：選んだ組を作れるか（apply-kam の条件 1,2） ----
   /** V を選べば膜電位側（φ）、選ばなければ回復側（ψ）として判定する。 */
   let judged = $derived(withVoltage ? gates.length >= 1 : gates.length >= 2);
   let groupCheck = $derived(result && judged ? checkTrajectory(gates, result.full, withVoltage) : undefined);
@@ -246,7 +246,7 @@
 
 <Dashboard title="Traub 単一区画：ゲートの組を選び、縮約と比べる" summary="まとめるゲートの組を元モデルの軌道上で等価電位と感度の符号から確かめ、11 状態と縮約した系の発火時刻・波形・Ca と AHP を比べる。">
   {#snippet sidebar()}
-    <p class="note">導出と記号は <a href="../theory/01-apply-kam">別冊「Traub 単一コンパートメントへの Kepler–Abbott–Marder 法の適用」</a> にある。</p>
+    <p class="note">導出と記号は <a href="../theory/apply-kam">別冊「Traub 単一コンパートメントへの Kepler–Abbott–Marder 法の適用」</a> にある。</p>
     <section>
       <h3>入力</h3>
       <Range label="平均電流密度 I₀" bind:value={mean} min={0} max={20} step={0.5} display={`${mean} µA/cm²`} disabled={busy} />
@@ -363,9 +363,9 @@
       {#snippet info()}
         <p>図1 と図2 は原著の図1・図2 に当たる。等価電位は、電位を固定して待てばそのゲート値になる電位 {@html tex`v_x=\bar{x}^{-1}(x)`}。すべて mV になり、{@html tex`V`} と同じ目盛りで重ねられる。図2 でよく重なる変数どうしが、一つにまとめる候補。同じ変数は図の間で同じ色。</p>
         <p>{@html tex`\bar{c}`} は −10 mV より上で 1 に張り付くので、{@html tex`v_c`} は −10 mV で頭打ちになる。{@html tex`\bar{x}`} の値域の外に出た点は描かない。</p>
-        <p>三つ目の図は、01-apply-kam の条件 1（等価電位に変換できる）と条件 2（重みが正）を、元モデルが実際にたどる各時刻の状態で確かめる。縮約後の重みは各時刻の状態で決まるので、平衡点だけでは足りない。V を含めれば膜電位側の群 φ、含めなければ回復側の群 ψ として見る。</p>
+        <p>三つ目の図は、apply-kam の条件 1（等価電位に変換できる）と条件 2（重みが正）を、元モデルが実際にたどる各時刻の状態で確かめる。縮約後の重みは各時刻の状態で決まるので、平衡点だけでは足りない。V を含めれば膜電位側の群 φ、含めなければ回復側の群 ψ として見る。</p>
         <p>条件 1：群のすべてのゲートが等価電位 {@html tex`v_x=\bar{x}^{-1}(x)`} を持つこと。条件 2：感度 {@html tex`D_x=(\partial I/\partial x)\,\bar{x}'(v_x)`} の符号が、{withVoltage ? 'すべて負であること（φ 群）' : '群の中でそろうこと（ψ 群）。そのとき重み α はすべて 0 と 1 の間に入る'}。</p>
-        <p>{@html tex`D_x`} は今のゲート値・{@html tex`V`}・{@html tex`\chi`} と、{@html tex`v_x`} での傾き {@html tex`\bar{x}'`} で計算する。等価電位がない時刻は曲線を描かない。ψ 群の速さ（式(10)）は一番上の図、φ 群の速さ（式(11)）は 01-apply-kam で見る。</p>
+        <p>{@html tex`D_x`} は今のゲート値・{@html tex`V`}・{@html tex`\chi`} と、{@html tex`v_x`} での傾き {@html tex`\bar{x}'`} で計算する。等価電位がない時刻は曲線を描かない。ψ 群の速さ（式(10)）は一番上の図、φ 群の速さ（式(11)）は apply-kam で見る。</p>
       {/snippet}
     </Card>
 
@@ -386,7 +386,7 @@
         {/if}
       {/snippet}
       {#snippet info()}
-        <p>一番上の「群分けと式(10) の判定」で選んだ組を、01-apply-kam「縮約モデルの一般形」で積分する。φ 群のゲートは {@html tex`\bar{x}(\phi)`} に置き、{@html tex`\alpha_0`} は「φ 群の重み α₀」で、1 と置く（φ 群は速いゲートだけとみなす近似）か、各時刻に Kepler 式(9)の根を求めるかを選ぶ。ψ 群は各時刻の状態から式(6)の重みを計算する。発火数が一致しても、時刻や波形が一致するとは限らない。</p>
+        <p>一番上の「群分けと式(10) の判定」で選んだ組を、apply-kam「縮約モデルの一般形」で積分する。φ 群のゲートは {@html tex`\bar{x}(\phi)`} に置き、{@html tex`\alpha_0`} は「φ 群の重み α₀」で、1 と置く（φ 群は速いゲートだけとみなす近似）か、各時刻に Kepler 式(9)の根を求めるかを選ぶ。ψ 群は各時刻の状態から式(6)の重みを計算する。発火数が一致しても、時刻や波形が一致するとは限らない。</p>
         {#if result}
           <p>
             発火は 0 mV の上向き通過で数え、標本間を線形補間する。元モデル (ms)：{spikes(result.full)

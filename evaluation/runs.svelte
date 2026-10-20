@@ -192,7 +192,7 @@
         <thead>
           <tr
             ><th>preset</th><th>学習</th>{#each seriesNames as series (series)}<th
-                >{@html breakable(series)}{#if anyDone(series)}<br /><a href={link('05-evaluation', { series })}>図を見る</a>{/if}</th
+                >{@html breakable(series)}{#if anyDone(series)}<br /><a href={link('evaluation', { series })}>図を見る</a>{/if}</th
               >{/each}</tr
           >
         </thead>
@@ -203,7 +203,7 @@
               <td><code>{@html breakable(preset)}</code></td>
               <td>
                 {#if train === 'done'}
-                  <a href={link('04-trained-model', { preset })}>中身を見る</a>
+                  <a href={link('trained-model', { preset })}>中身を見る</a>
                 {:else if train === 'todo'}
                   <button type="button" onclick={() => void launch({ action: 'train', preset })}>学習する</button>
                 {:else}
