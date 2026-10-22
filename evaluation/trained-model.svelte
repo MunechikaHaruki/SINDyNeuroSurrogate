@@ -8,7 +8,7 @@
   import LineChart from '$lib/LineChart.svelte';
   import SignedChart from '$lib/SignedChart.svelte';
   import MatrixTable from '$lib/MatrixTable.svelte';
-  import NetChart from '$lib/NetChart.svelte';
+  import NetChart from './trained-model/NetChart.svelte';
   import { tex } from '$lib/tex.ts';
   import { RUNS, decimate, decodeComp, experimentTrains, readComp, readCurrent, readF32, readJson, readStatus, type Point, type WaveMeta } from './read/runs.ts';
   import type { Status } from './orchestrate/spec.ts';
