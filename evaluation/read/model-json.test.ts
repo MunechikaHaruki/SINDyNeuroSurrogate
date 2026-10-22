@@ -56,7 +56,7 @@ describe('ネットの配置', () => {
 
 describe('表示のための変換', () => {
   test('ヒストグラムは範囲の中の有限な値だけを数え、上端は最後の区間に入れる', () => {
-    const bins = histogram(new Float32Array([0, 0.5, 1, 2, NaN, -1]), 0, 2, 2);
+    const bins = histogram(new Float64Array([0, 0.5, 1, 2, NaN, -1]), 0, 2, 2);
     expect(bins).toEqual([
       { center: 0.5, count: 2 },
       { center: 1.5, count: 2 },

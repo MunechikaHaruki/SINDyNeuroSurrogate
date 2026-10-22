@@ -15,13 +15,13 @@ spec の種類は 2 つ (`kind`):
           置き換えたモデルは段取りが組んだ鍵の名前。`train` は
           `runs/models/` の学習 run を指す
 
-書くもの (図が読む形。`.f32` は little-endian の float32 を並べただけ、
+書くもの (図が読む形。`.f64` は little-endian の float64 を並べただけ、
 JSON の nan は null):
 
     spec.json  meta.json (kind = train / original / replaced, name, created, 掃引の単位)
     train      surrogate/ (spec.json + pickle)、summary.json (学習側の指標)、
                description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
-               description/fit/<comp_id>/{x,latent,recon_rmse}.f32
+               description/fit/<comp_id>/{x,latent,recon_rmse}.f64
     sim        waves/。置き換えたモデルは加えて、metrics.json (comp 名 →
                点ごとの、同じ入力の original/ との compare)、projected/<comp>/
                (置換した comp の original/ のゲートを潜在へ射影したもの。
@@ -29,8 +29,8 @@ JSON の nan は null):
 
     waves/meta.json           t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]],
                               I_internal の nodes, comp 名 → id
-    waves/<点>/comp<id>.f32   その comp の変数 (features の並び順)。変数ごとに連続
-    waves/<点>/I_ext.f32      waves/<点>/I_internal.f32 (node ごとに連続)
+    waves/<点>/comp<id>.f64   その comp の変数 (features の並び順)。変数ごとに連続
+    waves/<点>/I_ext.f64      waves/<点>/I_internal.f64 (node ごとに連続)
 
 途中で落ちても半端な run を残さないよう、隣の一時ディレクトリ (`<名前>.partial`)
 に書いてから名前を変える。一時ディレクトリには書いているプロセスの pid を置き、図は
@@ -63,7 +63,7 @@ from .surrogate.description import describe
 from .surrogate.model import Surrogate, fit_surrogate
 from .surrogate.replace import applicable
 
-_FORMAT = 2  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
+_FORMAT = 3  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _logger = logging.getLogger(__name__)
@@ -72,12 +72,12 @@ _logger = logging.getLogger(__name__)
 # --- 波形の形式 ---------------------------------------------------------------
 
 
-def _write_f32(path: Path, array: np.ndarray) -> None:
-    path.write_bytes(np.ascontiguousarray(array, dtype="<f4").tobytes())
+def _write_f64(path: Path, array: np.ndarray) -> None:
+    path.write_bytes(np.ascontiguousarray(array, dtype="<f8").tobytes())
 
 
-def _read_f32(path: Path) -> np.ndarray:
-    return np.frombuffer(path.read_bytes(), dtype="<f4")
+def _read_f64(path: Path) -> np.ndarray:
+    return np.frombuffer(path.read_bytes(), dtype="<f8")
 
 
 def _comp_columns(features: Sequence[Sequence[Any]], comp_id: int) -> list[int]:
@@ -108,12 +108,12 @@ def _write_waves(
         point.mkdir()
         values = ds["vars"].to_numpy()
         for comp in sorted({c for c, _, _ in features}):
-            _write_f32(
-                point / f"comp{comp}.f32", values[:, _comp_columns(features, comp)].T
+            _write_f64(
+                point / f"comp{comp}.f64", values[:, _comp_columns(features, comp)].T
             )
-        _write_f32(point / "I_ext.f32", ds["I_ext"].to_numpy())
+        _write_f64(point / "I_ext.f64", ds["I_ext"].to_numpy())
         if nodes is not None:
-            _write_f32(point / "I_internal.f32", ds["I_internal"].to_numpy().T)
+            _write_f64(point / "I_internal.f64", ds["I_internal"].to_numpy().T)
 
 
 def _read_waves(root: Path) -> list[xr.Dataset]:
@@ -126,21 +126,21 @@ def _read_waves(root: Path) -> list[xr.Dataset]:
     waves = []
     for point_index, n in enumerate(meta["n"]):
         point = root / str(point_index)
-        values = np.empty((n, len(features)), dtype=np.float32)
+        values = np.empty((n, len(features)), dtype=np.float64)
         for comp in sorted({c for c, _, _ in features}):
             columns = _comp_columns(features, comp)
-            raw = _read_f32(point / f"comp{comp}.f32")
+            raw = _read_f64(point / f"comp{comp}.f64")
             values[:, columns] = raw.reshape(len(columns), n).T
         data: dict[str, Any] = {
             "vars": (("time", "features"), values),
-            "I_ext": (("time",), _read_f32(point / "I_ext.f32")),
+            "I_ext": (("time",), _read_f64(point / "I_ext.f64")),
         }
         coords: dict[Hashable, Any] = {
             "time": meta["t0"] + np.arange(n) * meta["dt"],
             **xr.Coordinates.from_pandas_multiindex(index, "features"),
         }
         if nodes is not None:
-            raw = _read_f32(point / "I_internal.f32")
+            raw = _read_f64(point / "I_internal.f64")
             data["I_internal"] = (("time", "node_id"), raw.reshape(len(nodes), n).T)
             coords["node_id"] = nodes
         waves.append(xr.Dataset(data, coords=coords))
@@ -186,9 +186,9 @@ def _train(root: Path, spec: dict) -> dict:
     for comp_id, fit in desc.fits.items():
         folder = root / "description/fit" / str(comp_id)
         folder.mkdir(parents=True)
-        _write_f32(folder / "x.f32", fit.x.T)
-        _write_f32(folder / "latent.f32", fit.latent.T)
-        _write_f32(folder / "recon_rmse.f32", fit.recon_rmse)
+        _write_f64(folder / "x.f64", fit.x.T)
+        _write_f64(folder / "latent.f64", fit.latent.T)
+        _write_f64(folder / "recon_rmse.f64", fit.recon_rmse)
     _write_json(root / "summary.json", surrogate.summary())
     return {}
 

@@ -19,16 +19,16 @@ const meta: WaveMeta = {
 test('a comp file is split into one column per variable, in the order the features list them', () => {
   expect(variablesOf(meta, 0)).toEqual(['V', 'M', 'H']);
   // この repo は comp の変数を変数ごとに続けて書く（V の 4 点、M の 4 点、H の 4 点）。
-  const raw = new Float32Array([-60, -59, -58, -57, 0.1, 0.2, 0.3, 0.4, 0.9, 0.8, 0.7, 0.6]);
+  const raw = new Float64Array([-60, -59, -58, -57, 0.1, 0.2, 0.3, 0.4, 0.9, 0.8, 0.7, 0.6]);
   const table = decodeComp(raw.buffer, variablesOf(meta, 0), meta.n[0]);
   expect(Array.from(table.V)).toEqual([-60, -59, -58, -57]);
-  expect(Array.from(table.M)).toEqual(Array.from(new Float32Array([0.1, 0.2, 0.3, 0.4])));
-  expect(Array.from(table.H)).toEqual(Array.from(new Float32Array([0.9, 0.8, 0.7, 0.6])));
+  expect(Array.from(table.M)).toEqual(Array.from(new Float64Array([0.1, 0.2, 0.3, 0.4])));
+  expect(Array.from(table.H)).toEqual(Array.from(new Float64Array([0.9, 0.8, 0.7, 0.6])));
   expect(() => decodeComp(raw.buffer, ['V', 'M'], 4)).toThrow();
 });
 
 test('decimation keeps each bucket’s extremes in time order, so a spike survives', () => {
-  const values = new Float32Array(1000).fill(-65);
+  const values = new Float64Array(1000).fill(-65);
   values[503] = 40; // スパイクの頂上
   values[507] = -80; // 後過分極の谷
   const points = decimate(values, 0, 0.01, 0, 9.99, 50);
@@ -44,7 +44,7 @@ test('decimation keeps each bucket’s extremes in time order, so a spike surviv
 });
 
 test('decimation reads only the shown window and skips values that are not finite', () => {
-  const values = new Float32Array([0, 1, Number.NaN, 3, 4, 5, 6, 7, 8, 9]);
+  const values = new Float64Array([0, 1, Number.NaN, 3, 4, 5, 6, 7, 8, 9]);
   const points = decimate(values, 0, 1, 2, 5, 4);
   const xs: number[] = [];
   for (const point of points) xs.push(point.x);

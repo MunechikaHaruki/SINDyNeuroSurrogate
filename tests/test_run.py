@@ -61,7 +61,7 @@ def runs(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def test_runs_round_trip_and_are_not_rerun(runs: Path) -> None:
-    """波形は点の並びごと float32 で往復し、ディレクトリがあれば回し直さない。"""
+    """波形は点の並びごと float64 で往復し、ディレクトリがあれば回し直さない。"""
     series = EvalSeries.from_dict(_series())
     waves = run._read_waves(runs / "inputs/I/original/waves")
     np.testing.assert_allclose(
@@ -83,19 +83,19 @@ def test_runs_round_trip_and_are_not_rerun(runs: Path) -> None:
 
 
 def test_runs_hold_what_the_figures_read(runs: Path) -> None:
-    """図が読むものは全部 run の中にある: 学習 run の中身、素の float32 の波形、
+    """図が読むものは全部 run の中にある: 学習 run の中身、素の float64 の波形、
     全 comp・全点の指標、置換した comp の射影、学習側の指標。JSON に nan は出さない
     (JS が読めない)。"""
     model = json.loads((runs / "models/T/description/model.json").read_text())
     n_time = json.loads((runs / "models/T/description/train/meta.json").read_text())
-    x = np.fromfile(runs / "models/T/description/fit/0/x.f32", dtype="<f4")
+    x = np.fromfile(runs / "models/T/description/fit/0/x.f64", dtype="<f8")
     assert x.size == len(model["x_names"]) * n_time["n"][0]
     assert (runs / "models/T/surrogate/spec.json").exists()
 
     meta = json.loads((runs / "inputs/I/original/waves/meta.json").read_text())
     assert meta["names"] == {"soma": 0}
     n_vars = sum(1 for comp, _, _ in meta["features"] if comp == 0)
-    raw = np.fromfile(runs / "inputs/I/original/waves/1/comp0.f32", dtype="<f4")
+    raw = np.fromfile(runs / "inputs/I/original/waves/1/comp0.f64", dtype="<f8")
     assert raw.size == n_vars * meta["n"][1]
 
     def strict(path: str) -> dict:

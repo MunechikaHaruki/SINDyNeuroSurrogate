@@ -131,9 +131,9 @@ async function readBuffer(run: string, path: string): Promise<ArrayBuffer> {
   return await response.arrayBuffer();
 }
 
-/** little-endian の float32 を並べただけのファイル（`.f32`）。 */
-export async function readF32(run: string, path: string): Promise<Float32Array> {
-  return new Float32Array(await readBuffer(run, path));
+/** little-endian の float64 を並べただけのファイル（`.f64`）。 */
+export async function readF64(run: string, path: string): Promise<Float64Array> {
+  return new Float64Array(await readBuffer(run, path));
 }
 
 /** comp `compId` の変数名（ファイルの中の並び順）。 */
@@ -143,18 +143,18 @@ export function variablesOf(meta: WaveMeta, compId: number): string[] {
   return names;
 }
 
-/** comp<id>.f32 を変数ごとの列に分ける。変数ごとに n 個ずつ続いて並んでいる。 */
-export function decodeComp(buffer: ArrayBuffer, variables: string[], n: number): Record<string, Float32Array> {
-  const all = new Float32Array(buffer);
+/** comp<id>.f64 を変数ごとの列に分ける。変数ごとに n 個ずつ続いて並んでいる。 */
+export function decodeComp(buffer: ArrayBuffer, variables: string[], n: number): Record<string, Float64Array> {
+  const all = new Float64Array(buffer);
   if (all.length !== variables.length * n)
     throw new Error(`comp の長さ ${all.length} が ${variables.length} 変数 × ${n} 点と合わない`);
-  const table: Record<string, Float32Array> = {};
+  const table: Record<string, Float64Array> = {};
   for (let i = 0; i < variables.length; i++) table[variables[i]] = all.subarray(i * n, (i + 1) * n);
   return table;
 }
 
 /** 読んだ波形。run は書き換わらないので、選び直すたびに読み直さない。 */
-const loaded = new Map<string, Promise<Record<string, Float32Array>>>();
+const loaded = new Map<string, Promise<Record<string, Float64Array>>>();
 
 /** 1 点の 1 comp の全変数。root は waves か projected/<comp 名>。 */
 export function readComp(
@@ -163,8 +163,8 @@ export function readComp(
   meta: WaveMeta,
   point: number,
   compId: number,
-): Promise<Record<string, Float32Array>> {
-  const path = `${root}/${point}/comp${compId}.f32`;
+): Promise<Record<string, Float64Array>> {
+  const path = `${root}/${point}/comp${compId}.f64`;
   const key = `${run}/${path}`;
   if (!loaded.has(key)) {
     const reading = readBuffer(run, path).then(buffer =>
@@ -181,8 +181,8 @@ export function readInternal(
   root: string,
   meta: WaveMeta,
   point: number,
-): Promise<Record<string, Float32Array>> {
-  const path = `${root}/${point}/I_internal.f32`;
+): Promise<Record<string, Float64Array>> {
+  const path = `${root}/${point}/I_internal.f64`;
   const key = `${run}/${path}`;
   if (!loaded.has(key)) {
     const nodes: string[] = [];
@@ -203,8 +203,8 @@ export function gatesOf(meta: WaveMeta, compId: number): string[] {
 }
 
 /** 1 点の注入電流 I_ext。 */
-export async function readCurrent(run: string, root: string, point: number): Promise<Float32Array> {
-  return readF32(run, `${root}/${point}/I_ext.f32`);
+export async function readCurrent(run: string, root: string, point: number): Promise<Float64Array> {
+  return readF64(run, `${root}/${point}/I_ext.f64`);
 }
 
 /**
@@ -212,7 +212,7 @@ export async function readCurrent(run: string, root: string, point: number): Pro
  * スパイクの山と谷は潰れずに残り、点の数は 2 × buckets 以下になる。有限でない値は捨てる。
  */
 export function decimate(
-  values: Float32Array,
+  values: Float64Array,
   t0: number,
   dt: number,
   start: number,

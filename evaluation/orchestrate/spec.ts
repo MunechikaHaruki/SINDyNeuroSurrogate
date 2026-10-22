@@ -52,7 +52,7 @@ export type Train = { name: string; config: SurrogateConfig };
 export type Experiment = { presets: string[]; series: string[] };
 
 /** spec の形式の版。neurosurrogate/run.py の _FORMAT と揃える。spec に入るので、変えると鍵が変わり古い run は回し直される。 */
-export const FORMAT = 2;
+export const FORMAT = 3;
 
 /** 入力：電流と掃引。系列から置換範囲を除いたもので、同じ入力の結果は一つのディレクトリにまとまる。 */
 export type Input = Omit<Series, 'replace_targets'>;

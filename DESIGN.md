@@ -81,7 +81,7 @@ models/<ハッシュ>/  surrogate/                spec.json + pickle
                     summary.json              Surrogate.summary (学習側の指標)
                     description/model.json    閉包項と前処理の中身 (describe)、ネット、列の名前
                     description/train/        学習データ (waves と同じ形式、点は 1 つ)
-                    description/fit/<comp_id>/{x,latent,recon_rmse}.f32
+                    description/fit/<comp_id>/{x,latent,recon_rmse}.f64
                                               学習 comp ごとの同定器への入力・潜在・再構成 RMSE (列ごとに連続)
 inputs/<ハッシュ>/  input.json                電流と掃引 (段取りが書く)
                     original/waves/           下の形式。meta.json に comp 名 → id も入る
@@ -90,8 +90,8 @@ inputs/<ハッシュ>/  input.json                電流と掃引 (段取りが�
                                   projected/<comp>/ 置換した comp の original/ のゲートを潜在空間へ射影したもの (waves と同じ形式)
 
 waves/meta.json            t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]], nodes, names
-waves/<点>/comp<id>.f32    その comp の変数 (features の並び順)。変数ごとに連続した little-endian float32
-waves/<点>/I_ext.f32       waves/<点>/I_internal.f32 (node ごとに連続)
+waves/<点>/comp<id>.f64    その comp の変数 (features の並び順)。変数ごとに連続した little-endian float64
+waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 ```
 
 - spec の 2 種類: `train` は設定ツリー (`surrogate`)、`sim` は入力 (`input`) とモデル (`model` = `{train, replace_targets}`、

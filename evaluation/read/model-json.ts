@@ -82,7 +82,7 @@ function distances(net: NetJson, start: string): Record<string, number> {
 export type Bin = { center: number; count: number };
 
 /** [low, high] を bins 個の等しい幅に分けて数える。範囲の外と有限でない値は数えない。 */
-export function histogram(values: Float32Array, low: number, high: number, bins: number): Bin[] {
+export function histogram(values: Float64Array, low: number, high: number, bins: number): Bin[] {
   const width = (high - low) / bins;
   const counts = new Array<number>(bins).fill(0);
   for (const value of values) {

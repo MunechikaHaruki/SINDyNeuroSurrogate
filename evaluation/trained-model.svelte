@@ -10,7 +10,7 @@
   import MatrixTable from '$lib/MatrixTable.svelte';
   import NetChart from './trained-model/NetChart.svelte';
   import { tex } from '$lib/tex.ts';
-  import { RUNS, decimate, decodeComp, experimentTrains, readComp, readCurrent, readF32, readJson, readStatus, type Point, type WaveMeta } from './read/runs.ts';
+  import { RUNS, decimate, decodeComp, experimentTrains, readComp, readCurrent, readF64, readJson, readStatus, type Point, type WaveMeta } from './read/runs.ts';
   import type { Status } from './orchestrate/spec.ts';
   import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from './read/model-json.ts';
 
@@ -25,7 +25,7 @@
   const BINS = 60;
 
   /** 学習 comp 1 つ分：学習データの変数、同定器への入力、潜在、再構成 RMSE。 */
-  type CompData = { vars: Record<string, Float32Array>; x: Record<string, Float32Array>; latent: Record<string, Float32Array>; recon: Float32Array };
+  type CompData = { vars: Record<string, Float64Array>; x: Record<string, Float64Array>; latent: Record<string, Float64Array>; recon: Float64Array };
 
   let status = $state<Status>({ experiments: [], jobs: [] });
   let experimentName = $state('');
@@ -33,7 +33,7 @@
   let model = $state<ModelJson>();
   let meta = $state<WaveMeta>();
   let comps = $state<Record<string, CompData>>({});
-  let current = $state<Float32Array>();
+  let current = $state<Float64Array>();
   let error = $state('');
 
   let shownComps = $state<string[]>([]);
@@ -92,9 +92,9 @@
         const folder = `${ROOT}/fit/${compId}`;
         return {
           vars: await readComp(id, `${ROOT}/train`, readMeta, 0, compId),
-          x: decodeComp((await readF32(id, `${folder}/x.f32`)).buffer as ArrayBuffer, readModel.x_names, n),
-          latent: decodeComp((await readF32(id, `${folder}/latent.f32`)).buffer as ArrayBuffer, readModel.latent_names, n),
-          recon: await readF32(id, `${folder}/recon_rmse.f32`),
+          x: decodeComp((await readF64(id, `${folder}/x.f64`)).buffer as ArrayBuffer, readModel.x_names, n),
+          latent: decodeComp((await readF64(id, `${folder}/latent.f64`)).buffer as ArrayBuffer, readModel.latent_names, n),
+          recon: await readF64(id, `${folder}/recon_rmse.f64`),
         };
       }
       const readings: Promise<CompData>[] = [];
@@ -114,19 +114,19 @@
   });
 
   /** 時間の図の 1 本。 */
-  function timeTrace(label: string, values: Float32Array): Trace {
+  function timeTrace(label: string, values: Float64Array): Trace {
     return { label, points: decimate(values, meta!.t0, meta!.dt, domain[0], domain[1], BUCKETS) };
   }
   /** 表示する区画ごとに 1 本ずつ。 */
-  function perComp(pick: (data: CompData) => Float32Array): Trace[] {
+  function perComp(pick: (data: CompData) => Float64Array): Trace[] {
     const list: Trace[] = [];
     for (const name of shown) list.push(timeTrace(name, pick(comps[name])));
     return list;
   }
-  function voltageOf(data: CompData): Float32Array {
+  function voltageOf(data: CompData): Float64Array {
     return data.vars.V;
   }
-  function reconOf(data: CompData): Float32Array {
+  function reconOf(data: CompData): Float64Array {
     return data.recon;
   }
   /** 表示する先頭の区画の学習ゲート。 */

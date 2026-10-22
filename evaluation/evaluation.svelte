@@ -119,7 +119,7 @@
   });
 
   // ---- 波形：点ごとに、原系と選んだ列の電位を読む ----
-  type Waves = { original: Record<string, Float32Array>; columns: Record<string, Record<string, Float32Array>> };
+  type Waves = { original: Record<string, Float64Array>; columns: Record<string, Record<string, Float64Array>> };
   let grid = $state<Waves[]>([]);
   $effect(() => {
     const meta = originalMeta;
@@ -206,7 +206,7 @@
   let sweepDomain = $derived<[number, number]>(entry && entry.values.length > 1 ? [Math.min(...entry.values), Math.max(...entry.values)] : [0, 1]);
 
   // ---- 1 ペアの詳細 ----
-  let detailWaves = $state<{ original: Record<string, Float32Array>; surrogate: Record<string, Float32Array>; projected?: Record<string, Float32Array>; current: Float32Array; comps: Record<string, Record<string, Float32Array>>; internal?: Record<string, Float32Array> }>();
+  let detailWaves = $state<{ original: Record<string, Float64Array>; surrogate: Record<string, Float64Array>; projected?: Record<string, Float64Array>; current: Float64Array; comps: Record<string, Record<string, Float64Array>>; internal?: Record<string, Float64Array> }>();
   $effect(() => {
     const meta = originalMeta;
     const column = detail;
@@ -219,7 +219,7 @@
     void (async () => {
       const projectedRoot = `projected/${comp}`;
       const projected = entry!.replaceTargets.includes(comp) ? await readComp(column.run, projectedRoot, await readJson<WaveMeta>(column.run, `${projectedRoot}/meta.json`), k, id) : undefined;
-      const comps: Record<string, Record<string, Float32Array>> = {};
+      const comps: Record<string, Record<string, Float64Array>> = {};
       for (const name of others) comps[name] = await readComp(originalRun, 'waves', meta, k, meta.names![name]);
       const internal = others.length > 0 && meta.nodes ? await readInternal(originalRun, 'waves', meta, k) : undefined;
       detailWaves = {
@@ -234,7 +234,7 @@
   });
   /** 置換系の潜在変数 z1, z2, …（射影した原系と重ねる）。 */
   let latents = $derived(detailWaves?.projected ? Object.keys(detailWaves.projected).filter(name => name !== 'V') : []);
-  function overlay(original: Float32Array, surrogate: Float32Array | undefined): Trace[] {
+  function overlay(original: Float64Array, surrogate: Float64Array | undefined): Trace[] {
     const t0 = originalMeta!.t0;
     const dt = originalMeta!.dt;
     const list: Trace[] = [{ label: '原系', points: decimate(original, t0, dt, domain[0], domain[1], BUCKETS) }];
@@ -244,7 +244,7 @@
   /** 相平面の 1 本あたりの点の上限。1 本の折れ線は 1 つの path なので、時間の図より多く描ける。 */
   const PHASE_POINTS = 10000;
   /** 相平面（V と第 1 潜在変数）。時刻順に結ぶので、間引きは等間隔に取る。 */
-  function phase(v: Float32Array, z: Float32Array): Point[] {
+  function phase(v: Float64Array, z: Float64Array): Point[] {
     const points: Point[] = [];
     const first = Math.max(0, Math.ceil((domain[0] - originalMeta!.t0) / originalMeta!.dt));
     const last = Math.min(v.length - 1, Math.floor((domain[1] - originalMeta!.t0) / originalMeta!.dt));
@@ -271,7 +271,7 @@
     return low < high ? [low, high] : [low - 1, low + 1];
   }
   /** 時間の図の 1 本（表示幅で間引く）。 */
-  function timeTrace(label: string, values: Float32Array): Trace {
+  function timeTrace(label: string, values: Float64Array): Trace {
     return { label, points: decimate(values, originalMeta!.t0, originalMeta!.dt, domain[0], domain[1], BUCKETS) };
   }
   /** 全区画の図に出す区画の電位。 */
