@@ -274,7 +274,6 @@ Kepler-Abbott-Marder 縮約を Traub の単一区画から Multi-Compartment と
 ### solver との組み合わせ
 
 - m を膜電位へ吸収する縮約と Rush–Larsen は、どちらも m の刻みの制約を外す。組み合わせても刻みの得は掛け算にならない。
-- 誤差は「縮約だけ → 粗い solver → NN 補正」と段階を分けて測る。
 
 ## Python と TS のニューロン設定
 
