@@ -36,7 +36,7 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
          diverge.py              # 置換系の数値的破綻判定 (diverged / log_divergence)。発散ログと指標 (`waveform.compare` の diverged) の両方から呼ばれる共通述語なのでどちらにも属させない
   neurons/  __init__.py          # NeuronGraph の語彙一式: COMPARTMENT_TYPES (型名 → CompartmentType) + _build_traub19 (組み方) + MCMODELS (`SimSpec.target` が引く適用先モデル) + HYBRID_SPLITS (hybrid サロゲートの学習/physics 分割 — 分割位置も残す物理もモデルの性質)。**組み方も組んだ結果もニューロンの語彙**なので、使う側 (sim/surrogate) でなくここが持つ
             traub19.py           # 19-comp モデルの per-comp 定数 + ヘルパ (traub.c 代数的等価)
-            hh.py / traub.py     # comp 型の実装 (kernel/コスト/初期値)。`_common.py` は共有のゲート形状
+            hh.py / traub.py     # comp 型の実装 (kernel/コスト/初期値)。レートの式は隣の hh.json / traub.json。`_common.py` は共有のゲート形状と、JSON のレートの三つの形とそのコスト
   sim/  _current_catalog.py      # **名前 → 実体の対応表だけ** (SimSpec.current_type が引く選択肢): 注入電流波形 + CURRENT_MAP。sim の内部専用 (適用先モデルの対応表は neurons が持つ)
         spec.py                  # **実験の記述だけ** (実行も結果も置換器も知らない): SimSpec (**唯一の仕様型**: 適用先 target × 電流。学習データの指定も評価条件もこれ 1 つ。**同一性は持たない**) + materialize (仕様 → DatasetConfig。名前 → 実体の解決はここだけ) + EvalSeries (spec+**replace_targets**+param+values の 1 掃引 = **保存の単位でもある**。どこを置換する実験かも記述の一部で、置換器は知らないまま対象を名前で挙げる。points は派生、to_dict/from_dict で往復 (run の spec.json の中身)。原系 `hash` (置換範囲を含まない) と置換系 `replaced_hash` (含む) は束ねてよい列かの検査に使う。run の置き場の鍵は段取りが組む)。**記述 2 段が result の 波形 / SeriesRun と 1 対 1**。surrogate より前の層 (SurrogateSpec.dataset がこれ)
         result.py                # **結果の器だけ** (計算も描画もしない): SeriesRun (**1 列** = 記述 EvalSeries + run_id (None=原系) + 波形 `list[xr.Dataset]`。**キャッシュの単位でも永続化の単位でもある** = runs/ の原系・置換系の 1 run と一致) / SeriesResults (原系 1 列 + 置換系の列 tuple。全列が同じ記述を回したことを構築時に検査。run_id は列が持つので束は id をキーに持たない)。**答えるのは「どの列か・どの点か」だけ** (column/pair/run_ids) = 適用先も掃引軸も刻み幅も素通しせず、要るものは view.series から直接引く。波形を包む型は無い — 点 i の計算入力は `series.points[i]`、対応は list の添字。**系列名も評価 run の id も持たない**
@@ -52,7 +52,7 @@ neurosurrogate/                  # ドメイン層 (記録・設定の基盤を�
               description.py     # 学習済み surrogate の中身を図に依らないデータで出す (describe)。閉包項と前処理の中身 (各実装の describe)、ネット、学習データ、学習 comp ごとに同定器へ渡した列・潜在・再構成 RMSE。置換シミュは回さない
   run.py                         # **計算の入口** (`python -m neurosurrogate.run <spec.json> <run のディレクトリ>`。層 `entry` = どこからも import されない最上位): spec.json 1 つ → run のディレクトリ。kind = train / sim (meta.json では train / original / replaced)。隣の .partial に書いてから名前を変える (半端な run を残さない)。置換できない組み合わせは終了コード 3 で何も書かない。**run の保存形式 (波形の write/read) を知るのはここだけ**
 tests/    test_conventions.py (層の向き・公開名・import の機械検査) / test_surrogate.py (preset と系列は段取りに JSON で出させて読む) / test_inits.py / test_run.py (neurosurrogate/run.py の 3 種類の run の往復と、回し直さないこと)
-evaluation/    # TS はすべてここ。直下は評価の冊だけで、.ts は役割のディレクトリ (orchestrate/ read/ traub/)。評価の冊 (TS + Svelte。画面と部品は context-router の resources/.web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
+evaluation/    # TS はすべてここ。直下は評価の冊だけで、.ts は役割のディレクトリ (orchestrate/ read/ traub/)。評価の冊 (TS + Svelte。画面と部品は context-router の resources/.web/。context-router の resources/research/ に symlink で入る。研究の文書 51・52・54〜56 は context-router 側)。Python とは import し合わず、開発サーバーが配る runs/ と設定 JSON だけを読む。evaluation/traub/traub.ts は Traub のシミュレータの TS 版で、ずれは reference.json のテストで見張る
 evaluation/orchestrate/conf.ts        # **何を回すか**の宣言だけ: PRESETS (学習の設定。preset が決める値を平らに書き、`expand` が設定ツリーへ開く。n_components を配列で書くと掃引)、SERIES (評価の掃引 = Python の EvalSeries の形。**どこを置換するかも挙げる** = replace_targets)、EXPERIMENTS (見比べる preset と系列の組。冊はここから選び、どの実験にも入らない preset と系列は冊に出ない)。**描き方は持たない**。node/bun に依存しない (ブラウザの冊も import する)
 evaluation/orchestrate/spec.ts        # spec.json の形 (Spec、FORMAT)、index.json の行、段取り・口・図が受け渡す状態の型
 evaluation/orchestrate/orchestrate.ts # **段取り** (bun): 宣言 → spec.json → ハッシュ (canonical + sha1。**鍵を組むのはここだけ**) → 置き場 (runs/models/<ハッシュ>/ か runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/) が無ければ `python -m neurosurrogate.run` を呼ぶ → runs/index.json を書き直す。置き換えたモデルは学習 run のハッシュを spec の model に入れて名指す。入口は二つで同じ関数 (train / evaluate) を呼ぶ: 本人が使う操作盤の冊 (03-runs) のボタンが切り離した子プロセスで起こす launch と、エージェント用の CLI (`bun evaluation/orchestrate/orchestrate.ts train|eval|list`。人は使わない)。宣言の組の状態 (status: 済み・計算中・未・置換できない) と、launch で起こした仕事の状態 (runs/.jobs/ の中身・pid・ログ・終了コード) もここ
@@ -278,6 +278,7 @@ Kepler-Abbott-Marder 縮約を Traub の単一区画から Multi-Compartment と
 ## Python と TS のニューロン設定
 
 ニューロン固有の設定（パラメータと、指数・シグモイド・線形×指数の三つの形に収まるレート）だけを一つの JSON に置き、Python と TS が読む。
+JSON は Python のパッケージの中の `neurosurrogate/neurons/<モデル>.json` に置き、Python はパッケージの中だけで完結する。TS は `evaluation/traub/traub.ts` から `traub.json` を import する（HH は TS 側に実装が無いので Python だけが読む）。今はレート（HH は 6 本、Traub は m・h・n・a・b・s の 12 本）と Traub の基準電位だけで、密度などのパラメータはまだ両方に手書きしている。レートの演算コストも JSON の形から導く。
 シミュレータ本体と三つの形の関数は両方で手書きする。形に収まらない c・r・q のレートは両方で手書きし、共通の基準値のテストで見張る。
 重い計算と保存は Python、段取りは TS、描画は Svelte が runs/ から読む。
 

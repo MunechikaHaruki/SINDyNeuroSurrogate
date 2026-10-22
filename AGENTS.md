@@ -11,7 +11,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
 | 何を回すかの宣言（`conf.ts`。preset・系列・実験）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊 `runs` のボタン、エージェントは CLI で、同じ関数を呼ぶ）、操作盤の口（`api.ts`） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | `runs/`（Git の外） |
-| 評価の冊（回して元の系と比べるもの、学習 run を読むもの） | `evaluation/` の直下。図が runs/ を読む口は `evaluation/read/`、Traub の TS シミュレータは `evaluation/traub/`。context-router の `resources/research/` に symlink で入り、研究の文書（51 構成、52 理論、54 これから）と一つの区域に見える |
+| 評価の冊（回して元の系と比べるもの、学習 run を読むもの） | `evaluation/` の直下。図が runs/ を読む口は `evaluation/read/`、Traub の TS シミュレータは `evaluation/traub/`。context-router の `resources/research/` に symlink で入り、研究の文書（51 構成、52 理論、54 結果、55 これから、56 修論）と一つの区域に見える |
 | 用語、ディレクトリとファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 
 ## 持たないもの
@@ -28,7 +28,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 - 書き方（部品、宣言、見た目の規約）は教材と同じで、スキル book に従う。画面と部品は context-router の `resources/.web/` が持つ。
 - この repo が持つ冊は評価だけで、`evaluation/名前.svelte`。context-router の `resources/research/evaluation` として入り、番号（53.MM）は教材と同じ Johnny.Decimal の体系で、冊の番号も含めて context-router の `resources/index.json` と `resources/research/index.json` が持つ。冊を足したらそこに番号を足す。研究の文書は context-router の `resources/research/` が持ち、コードと一緒に変わらないものはこの repo に置かない。
-  冊の直下には冊だけを置き、`.ts` は役割ごとのディレクトリ（`orchestrate/` 何を回すかと段取り、`read/` runs/ を読む口、`traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。
+  冊の直下には冊だけを置き、`.ts` は役割ごとのディレクトリ（`orchestrate/` 何を回すかと段取り、`read/` runs/ を読む口、`traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。`traub/traub.ts` はレートの式を Python と共有する `neurosurrogate/neurons/traub.json` から読む（symlink 越しの相対 import は context-router の `resources/.web/tsconfig.json` の `rootDirs` が解く）。
 - 常駐の開発サーバー（`http://127.0.0.1:4321/`）で教材と一緒に開く。テスト・ESLint・型は context-router の `resources/.web/` で `bun run web-check`。
 
 ## Coding Standards

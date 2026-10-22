@@ -1,11 +1,12 @@
 // Traub 単一区画の 11 状態系と、Kepler–Abbott–Marder 法で任意の群分けにまとめた縮約系。DOM に触らない。
 // 節は原著の順：Traub の元の系 → §2 等価電位 → §3 重みと整合性条件 → §6 縮約後の運動方程式 → 積分と比較。
-// Traub のレート・密度パラメータ: SINDyNeuroSurrogate 290ee405b8d0。
+// Traub の密度パラメータ: SINDyNeuroSurrogate 290ee405b8d0。三つの形に収まるレートは Python と共有する traub.json から読む。
 //
 // 読み手は本人なので、式と 1 対 1 に読めることを速さや短さより優先する。
 // 状態は名前で読み書きし（Gates、Full、Reduced）、番号の並びは状態ベクトルとの出入口にだけ置く。
 // 数式の項は 1 行に 1 つずつ書き、分割代入・map/reduce の連なり・タプル型は使わない。
 import { Solver } from 'odex';
+import spec from '../../neurosurrogate/neurons/traub.json';
 
 /** 一つのゲートの、開くレート α と閉じるレート β（ms⁻¹）。 */
 export type Rate = { alpha: number; beta: number };
@@ -93,19 +94,47 @@ function bernoulliSlope(z: number): number {
   return (Math.expm1(z) - z * Math.exp(z)) / Math.expm1(z) ** 2;
 }
 
-/** 8 つのゲートの [開くレート α, 閉じるレート β]（ms⁻¹）。u = V + 60 は原著の基準電位。 */
+/** traub.json の 1 本。A·form(z)、z = (θ − u)/s。 */
+type RateSpec = { form: string; A: number; theta: number; s: number };
+/** 三つの形に収まる 6 ゲート。c と r は下で手書きする。 */
+type FormGate = 'm' | 'h' | 'n' | 'a' | 'b' | 's';
+const formRates: Record<FormGate, { alpha: RateSpec; beta: RateSpec }> = spec.rates;
+
+/** u = V − V_rest。原著の基準電位からの電位。 */
+function potential(v: number): number {
+  return v - spec.v_rest;
+}
+/** 1 本のレート A·form(z)。指数 e^z、シグモイド 1/(1+e^z)、線形×指数 z/(e^z−1)。 */
+function rateOf(rate: RateSpec, u: number): number {
+  const z = (rate.theta - u) / rate.s;
+  if (rate.form === 'exp') return rate.A * Math.exp(z);
+  if (rate.form === 'sigmoid') return rate.A / (1 + Math.exp(z));
+  return rate.A * bernoulli(z);
+}
+/** rateOf の u による微分。z' = −1/s。 */
+function rateSlope(rate: RateSpec, u: number): number {
+  const z = (rate.theta - u) / rate.s;
+  if (rate.form === 'exp') return (-rate.A * Math.exp(z)) / rate.s;
+  if (rate.form === 'sigmoid') return (rate.A * Math.exp(z)) / ((1 + Math.exp(z)) ** 2 * rate.s);
+  return (-rate.A * bernoulliSlope(z)) / rate.s;
+}
+/** 三つの形に収まるゲートの α, β。 */
+function formRate(name: FormGate, u: number): Rate {
+  return { alpha: rateOf(formRates[name].alpha, u), beta: rateOf(formRates[name].beta, u) };
+}
+/** 8 つのゲートの [開くレート α, 閉じるレート β]（ms⁻¹）。 */
 export function rates(v: number): Record<GateName, Rate> {
-  const u = v + 60;
-  // c と r は電位で場合分けする。α を先に決め、β を α との差で置く。
+  const u = potential(v);
+  // c と r は電位で場合分けし、α を先に決めて β を α との差で置くので三つの形に収まらない。Python と両方で手書きする。
   const alphaC = v <= -10 ? Math.exp((u - 10) / 11 - (u - 6.5) / 27) / 18.975 : 2 * Math.exp(-(u - 6.5) / 27);
   const alphaR = v <= -60 ? 0.005 : Math.exp(-u / 20) / 200;
   return {
-    m: { alpha: 1.28 * bernoulli((13.1 - u) / 4), beta: 1.4 * bernoulli((u - 40.1) / 5) },
-    h: { alpha: 0.128 * Math.exp((17 - u) / 18), beta: 4 / (1 + Math.exp((40 - u) / 5)) },
-    n: { alpha: 0.08 * bernoulli((35.1 - u) / 5), beta: 0.25 * Math.exp((20 - u) / 40) },
-    a: { alpha: 0.2 * bernoulli((13.1 - u) / 10), beta: 0.175 * bernoulli((u - 40.1) / 10) },
-    b: { alpha: 0.0016 * Math.exp((-13 - u) / 18), beta: 0.05 / (1 + Math.exp((10.1 - u) / 5)) },
-    s: { alpha: 1.6 / (1 + Math.exp(-0.072 * (u - 65))), beta: 0.1 * bernoulli((u - 51.1) / 5) },
+    m: formRate('m', u),
+    h: formRate('h', u),
+    n: formRate('n', u),
+    a: formRate('a', u),
+    b: formRate('b', u),
+    s: formRate('s', u),
     r: { alpha: alphaR, beta: v <= -60 ? 0 : 0.005 - alphaR },
     c: { alpha: alphaC, beta: v <= -10 ? 2 * Math.exp(-(u - 6.5) / 27) - alphaC : 0 },
   };
@@ -213,16 +242,19 @@ export function equilibria(current: number): number[] {
 
 // ---- §2 等価電位：ゲート値 x を x = x̄(v) となる電位 v で表す ----
 
-/** h,n の定常値 x̄(v) と傾き x̄'(v)。傾きは商の微分による解析式。 */
+/** x̄ = α/(α+β) の傾き x̄' = (α'β − αβ')/(α+β)²。商の微分による解析式。 */
+function formSteadySlope(name: FormGate, u: number): number {
+  const rate = formRate(name, u);
+  const alphaSlope = rateSlope(formRates[name].alpha, u);
+  const betaSlope = rateSlope(formRates[name].beta, u);
+  return (alphaSlope * rate.beta - rate.alpha * betaSlope) / (rate.alpha + rate.beta) ** 2;
+}
+/** h,n の定常値 x̄(v) と傾き x̄'(v)。 */
 export function recoverySteady(v: number): { h: number; n: number; slopeH: number; slopeN: number } {
-  const u = v + 60;
-  const alphaH = 0.128 * Math.exp((17 - u) / 18);
-  const betaH = 4 / (1 + Math.exp((40 - u) / 5));
-  const alphaN = 0.08 * bernoulli((35.1 - u) / 5);
-  const betaN = 0.25 * Math.exp((20 - u) / 40);
-  const slopeH = ((-alphaH / 18) * betaH - (alphaH * betaH * (1 - betaH / 4)) / 5) / (alphaH + betaH) ** 2;
-  const slopeN = (-0.016 * bernoulliSlope((35.1 - u) / 5) * betaN + (alphaN * betaN) / 40) / (alphaN + betaN) ** 2;
-  return { h: alphaH / (alphaH + betaH), n: alphaN / (alphaN + betaN), slopeH, slopeN };
+  const u = potential(v);
+  const h = steady(formRate('h', u));
+  const n = steady(formRate('n', u));
+  return { h, n, slopeH: formSteadySlope('h', u), slopeN: formSteadySlope('n', u) };
 }
 /** 等価電位を探す範囲（mV）。x̄ はこの中で単調。r̄ は −60 mV 以下、c̄ は −10 mV 以上で 1 に張り付くので、そこを外す。 */
 const equivalentRange: Record<GateName, { low: number; high: number }> = {

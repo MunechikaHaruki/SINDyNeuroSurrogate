@@ -1,0 +1,29 @@
+{
+  "v_rest": -60.0,
+  "rates": {
+    "m": {
+      "alpha": { "form": "linexp", "A": 1.28, "theta": 13.1, "s": 4.0 },
+      "beta": { "form": "linexp", "A": 1.4, "theta": 40.1, "s": -5.0 }
+    },
+    "h": {
+      "alpha": { "form": "exp", "A": 0.128, "theta": 17.0, "s": 18.0 },
+      "beta": { "form": "sigmoid", "A": 4.0, "theta": 40.0, "s": 5.0 }
+    },
+    "n": {
+      "alpha": { "form": "linexp", "A": 0.08, "theta": 35.1, "s": 5.0 },
+      "beta": { "form": "exp", "A": 0.25, "theta": 20.0, "s": 40.0 }
+    },
+    "a": {
+      "alpha": { "form": "linexp", "A": 0.2, "theta": 13.1, "s": 10.0 },
+      "beta": { "form": "linexp", "A": 0.175, "theta": 40.1, "s": -10.0 }
+    },
+    "b": {
+      "alpha": { "form": "exp", "A": 0.0016, "theta": -13.0, "s": 18.0 },
+      "beta": { "form": "sigmoid", "A": 0.05, "theta": 10.1, "s": 5.0 }
+    },
+    "s": {
+      "alpha": { "form": "sigmoid", "A": 1.6, "theta": 65.0, "s": 13.88888888888889 },
+      "beta": { "form": "linexp", "A": 0.1, "theta": 51.1, "s": -5.0 }
+    }
+  }
+}

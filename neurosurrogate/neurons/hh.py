@@ -4,31 +4,18 @@ import jax.numpy as jnp
 
 from ..core.network import CompartmentType
 from ..core.opcost import OpCost
-from ._common import gate_ode, inf_ode, lin_exp_form
+from ._common import form_rate, form_rate_cost, gate_ode, inf_ode, read_spec
 
+# レートの式は隣の hh.json が持つ。
+# 引数は静止電位からの電位 v_rel (calc_hh_channel が引く)。
+_RATES = read_spec("hh")["rates"]
 
-def alpha_m_hh(v):
-    return lin_exp_form(2.5 - 0.1 * v)
-
-
-def beta_m_hh(v):
-    return 4.0 * jnp.exp(-v / 18.0)
-
-
-def alpha_h_hh(v):
-    return 0.07 * jnp.exp(-v / 20.0)
-
-
-def beta_h_hh(v):
-    return 1.0 / (jnp.exp(3.0 - 0.1 * v) + 1.0)
-
-
-def alpha_n_hh(v):
-    return 0.1 * lin_exp_form(1 - 0.1 * v)
-
-
-def beta_n_hh(v):
-    return 0.125 * jnp.exp(-v / 80.0)
+alpha_m_hh = form_rate(_RATES["m"]["alpha"])
+beta_m_hh = form_rate(_RATES["m"]["beta"])
+alpha_h_hh = form_rate(_RATES["h"]["alpha"])
+beta_h_hh = form_rate(_RATES["h"]["beta"])
+alpha_n_hh = form_rate(_RATES["n"]["alpha"])
+beta_n_hh = form_rate(_RATES["n"]["beta"])
 
 
 m_inf = inf_ode(alpha_m_hh, beta_m_hh)
@@ -88,13 +75,11 @@ def calc_passive_channel(p: PassiveParams, u_t, v, state):
 # --- OpCost ---
 
 
+# レート関数の演算コスト。hh.json の形から導く。
 HH_RATE_COST_MAP: dict[str, OpCost] = {
-    "alpha_m_hh": OpCost(exp=1, div=1, pm=2, mul=2),
-    "beta_m_hh": OpCost(exp=1, div=1, pm=1, mul=1),
-    "alpha_h_hh": OpCost(exp=1, div=1, pm=1, mul=1),
-    "beta_h_hh": OpCost(exp=1, div=1, pm=2, mul=1),
-    "alpha_n_hh": OpCost(exp=1, div=1, pm=2, mul=2),
-    "beta_n_hh": OpCost(exp=1, div=1, pm=1, mul=1),
+    f"{kind}_{gate}_hh": form_rate_cost(spec)
+    for gate, pair in _RATES.items()
+    for kind, spec in pair.items()
 }
 
 

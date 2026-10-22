@@ -7,39 +7,45 @@ import jax.numpy as jnp
 
 from ..core.network import CompartmentType
 from ..core.opcost import OpCost
-from ._common import gate_ode, inf_ode, lin_exp_form
+from ._common import form_rate, form_rate_cost, gate_ode, inf_ode, read_spec
 
-TRAUB_V_LEAK = -60.0
+# レートの式は隣の traub.json が持つ。
+# TS の図 (evaluation/traub/traub.ts) も同じ JSON を読む。
+_SPEC = read_spec("traub")
+_RATES = _SPEC["rates"]
+TRAUB_V_LEAK = _SPEC["v_rest"]
 
 
 def _traub_u(v):
     return v - TRAUB_V_LEAK
 
 
-def alpha_m_traub(v):
-    return 0.32 * 4.0 * lin_exp_form((13.1 - _traub_u(v)) / 4.0)
+def _rate(spec):
+    """traub.json の 1 本を、原著の基準電位 u = v − V_LEAK で読む。"""
+    rate_u = form_rate(spec)
+
+    def rate(v):
+        return rate_u(_traub_u(v))
+
+    return rate
 
 
-def beta_m_traub(v):
-    return 0.28 * 5.0 * lin_exp_form((_traub_u(v) - 40.1) / 5.0)
+alpha_m_traub = _rate(_RATES["m"]["alpha"])
+beta_m_traub = _rate(_RATES["m"]["beta"])
+alpha_h_traub = _rate(_RATES["h"]["alpha"])
+beta_h_traub = _rate(_RATES["h"]["beta"])
+alpha_n_traub = _rate(_RATES["n"]["alpha"])
+beta_n_traub = _rate(_RATES["n"]["beta"])
+alpha_a_traub = _rate(_RATES["a"]["alpha"])
+beta_a_traub = _rate(_RATES["a"]["beta"])
+alpha_b_traub = _rate(_RATES["b"]["alpha"])
+beta_b_traub = _rate(_RATES["b"]["beta"])
+alpha_s_traub = _rate(_RATES["s"]["alpha"])
+beta_s_traub = _rate(_RATES["s"]["beta"])
 
 
-def alpha_s_traub(v):
-    return 1.6 / (1.0 + jnp.exp(-0.072 * (_traub_u(v) - 65.0)))
-
-
-def beta_s_traub(v):
-    return 0.02 * 5.0 * lin_exp_form((_traub_u(v) - 51.1) / 5.0)
-
-
-def alpha_n_traub(v):
-    return 0.016 * 5.0 * lin_exp_form((35.1 - _traub_u(v)) / 5.0)
-
-
-def beta_n_traub(v):
-    return 0.25 * jnp.exp((20.0 - _traub_u(v)) / 40.0)
-
-
+# c と r は電位で場合分けし、β を α との差で置くので三つの形に収まらない。
+# TS と両方で手書きする。
 def alpha_c_traub(v):
     u = _traub_u(v)
     low = jnp.exp((u - 10.0) / 11.0 - (u - 6.5) / 27.0) / 18.975
@@ -56,22 +62,6 @@ def beta_c_traub(v):
     )
 
 
-def alpha_a_traub(v):
-    return 0.02 * 10.0 * lin_exp_form((13.1 - _traub_u(v)) / 10.0)
-
-
-def beta_a_traub(v):
-    return 0.0175 * 10.0 * lin_exp_form((_traub_u(v) - 40.1) / 10.0)
-
-
-def alpha_h_traub(v):
-    return 0.128 * jnp.exp((17.0 - _traub_u(v)) / 18.0)
-
-
-def beta_h_traub(v):
-    return 4.0 / (1.0 + jnp.exp((40.0 - _traub_u(v)) / 5.0))
-
-
 def alpha_r_traub(v):
     u = _traub_u(v)
     return jnp.where(v <= TRAUB_V_LEAK, 0.005, jnp.exp(-u / 20.0) / 200.0)
@@ -79,14 +69,6 @@ def alpha_r_traub(v):
 
 def beta_r_traub(v):
     return jnp.where(v <= TRAUB_V_LEAK, 0.0, 0.005 - alpha_r_traub(v))
-
-
-def alpha_b_traub(v):
-    return 0.0016 * jnp.exp((-13.0 - _traub_u(v)) / 18.0)
-
-
-def beta_b_traub(v):
-    return 0.05 / (1.0 + jnp.exp((10.1 - _traub_u(v)) / 5.0))
 
 
 def alpha_q_traub(xi):
@@ -266,25 +248,18 @@ def _traub_dstate_v(name, v, x):
     return _TRAUB_DSTATE_V[name](v, x)
 
 
-# レート関数の演算コスト。_traub_u の pm=1、lin_exp_form の (exp=1, pm=1, div=1) を
-# 含む。jnp.where の分岐は両枝とも評価されるため両方を積算 (比較自体は無視)。
+# レート関数の演算コスト。三つの形の 12 本は traub.json の形から導き、
+# _traub_u の pm=1 を足す。
+# c と r は手書き。jnp.where の分岐は両枝とも評価されるため両方を積算 (比較自体は無視)。
 TRAUB_RATE_COST_MAP: dict[str, OpCost] = {
-    "alpha_m_traub": OpCost(exp=1, div=2, pm=3, mul=1),
-    "beta_m_traub": OpCost(exp=1, div=2, pm=3, mul=1),
-    "alpha_s_traub": OpCost(exp=1, div=1, pm=3, mul=1),
-    "beta_s_traub": OpCost(exp=1, div=2, pm=3, mul=1),
-    "alpha_n_traub": OpCost(exp=1, div=2, pm=3, mul=1),
-    "beta_n_traub": OpCost(exp=1, div=1, pm=2, mul=1),
+    f"{kind}_{gate}_traub": OpCost(pm=1) + form_rate_cost(spec)
+    for gate, pair in _RATES.items()
+    for kind, spec in pair.items()
+} | {
     "alpha_c_traub": OpCost(exp=2, div=4, pm=6, mul=1),
     "beta_c_traub": OpCost(exp=3, div=5, pm=10, mul=2),  # alpha_c 再計算を含む
-    "alpha_a_traub": OpCost(exp=1, div=2, pm=3, mul=1),
-    "beta_a_traub": OpCost(exp=1, div=2, pm=3, mul=1),
-    "alpha_h_traub": OpCost(exp=1, div=1, pm=2, mul=1),
-    "beta_h_traub": OpCost(exp=1, div=2, pm=3),
     "alpha_r_traub": OpCost(exp=1, div=2, pm=2),
     "beta_r_traub": OpCost(exp=1, div=2, pm=3),  # alpha_r 再計算を含む
-    "alpha_b_traub": OpCost(exp=1, div=1, pm=2, mul=1),
-    "beta_b_traub": OpCost(exp=1, div=2, pm=3),
 }
 
 
