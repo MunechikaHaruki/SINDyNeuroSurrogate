@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Dashboard from '$lib/Dashboard.svelte';
+  import Dashboard from '$lib/book/Dashboard.svelte';
   import Card from '$lib/Card.svelte';
   import Range from '$lib/Range.svelte';
   import Choice from '$lib/Choice.svelte';

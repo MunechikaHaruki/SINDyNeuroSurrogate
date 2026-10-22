@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { eq, tex } from '$lib/tex.ts';
-  import Dashboard from '$lib/Dashboard.svelte';
+  import Dashboard from '$lib/book/Dashboard.svelte';
   import Card from '$lib/Card.svelte';
   import Range from '$lib/Range.svelte';
   import LineChart from '$lib/LineChart.svelte';
