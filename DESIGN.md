@@ -17,7 +17,7 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 
 ### ファイル
 
-`neurosurrogate/` は元のモデルを解く `physics/` と、学習して置き換える `surrogate/` に分け、比べる `metrics.py` と入口の `run.py` を直下に置く。physics は surrogate を import しない (`tests/test_conventions.py` の `_ALLOWED`)。ファイルは上から順に読める関数で書く。
+`neurosurrogate/` は元のモデルを解く `physics/` と、学習して置き換える `surrogate/` に分け、スパイクの特徴量を取る `spikes.py` と入口の `run.py` を直下に置く。physics は surrogate を import しない (`tests/test_conventions.py` の `_ALLOWED`)。ファイルは上から順に読める関数で書く。
 
 | ファイル | 持つもの |
 | --- | --- |
@@ -28,7 +28,7 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 | `surrogate/sindy.py` | SINDy の項のカタログと、列への束縛、疎回帰 |
 | `surrogate/ude.py` | 潜在の右辺を MLP にし、AutoEncoder と一緒に学習する |
 | `surrogate/model.py` | 設定 (`Config`・`Group`)、学習 (`fit`)、置換に使う区画の型 (`surrogate_cell`)、置換の可否と置換、中身の書き出し |
-| `metrics.py` | 元のモデルと置き換えたモデルの波形の指標 |
+| `spikes.py` | 1 本の波形のスパイクの特徴量 (eFEL)。元のモデルとの比較は図の `evaluation/read/compare.ts` が持つ |
 | `run.py` | 計算の入口。spec.json → run のディレクトリ。run の保存形式を知るのはここだけ |
 
 ```
@@ -36,7 +36,7 @@ evaluation/orchestrate/conf.ts        何を回すか: preset (群分けを含�
 evaluation/orchestrate/spec.ts        spec.json の形
 evaluation/orchestrate/orchestrate.ts 段取り: 宣言 → spec.json → ハッシュ → 置き場が無ければ run.py を呼ぶ
 evaluation/orchestrate/api.ts         操作盤の口
-evaluation/read/                      図が runs/ を読む口
+evaluation/read/                      図が runs/ を読む口と、元のモデルと比べる指標 (compare.ts)
 evaluation/traub/traub.ts             Traub の単一区画の TS シミュレータ
 runs/                                 実験の結果 (Git の外)
 ```
@@ -64,9 +64,9 @@ models/<ハッシュ>/  surrogate/                config.json + parts.joblib (�
                     description/fit/<comp_id>/{x,latent,recon_rmse}.f64
                                               学習 comp ごとの同定器への入力・潜在・再構成 RMSE (列ごとに連続)
 inputs/<ハッシュ>/  input.json                電流と掃引 (段取りが書く)
-                    original/waves/           下の形式。meta.json に comp 名 → id も入る
-                    <モデルの鍵>/ waves/
-                                  metrics.json    comp 名 → 点ごとの compare (全 comp・全点。相手は original/)
+                    original/ waves/          下の形式。meta.json に comp 名 → id も入る
+                              spikes.json     comp 名 → 点ごとのスパイクの特徴量 (全 comp・全点)
+                    <モデルの鍵>/ waves/, spikes.json
                                   projected/<comp>/ 置換した comp の original/ のゲートを潜在空間へ射影したもの (waves と同じ形式)
 
 waves/meta.json            t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]], nodes, names

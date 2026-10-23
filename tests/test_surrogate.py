@@ -11,9 +11,9 @@ import numpy as np
 import pytest
 from sympy.core.function import AppliedUndef
 
-from neurosurrogate.metrics import compare
 from neurosurrogate.physics.cells import CELLS, NETS, OpCost
 from neurosurrogate.physics.simulate import EvalSeries, SimSpec, potential, simulate
+from neurosurrogate.spikes import FEATURES, spike_features
 from neurosurrogate.surrogate.compress import AE, fit_ae
 from neurosurrogate.surrogate.model import (
     Config,
@@ -290,22 +290,14 @@ def test_summary_counts_the_decode_and_the_physics() -> None:
     assert surrogate_cell(s).opcost == expected
 
 
-def test_compare_reports_every_metric_for_one_pair() -> None:
-    s = fit_preset("_test_hh_hybrid")
+def test_spike_features_count_the_spikes_of_one_trace() -> None:
     spec = _dc("hh", value=10.0)
-    original = simulate(spec.run_input())
-    replaced = simulate(replace(s, spec.run_input(), ["soma"]))
-    metrics = compare(original, replaced, 0, spec.dt)
-    assert set(metrics["rows"]) == {"spike_count", "latency", "mean_isi", "std_isi"}
-    assert set(metrics["scalars"]) == {
-        "rmse",
-        "mae",
-        "periodicity_gap",
-        "spike_shape_corr",
-    }
-    o_n, s_n = metrics["rows"]["spike_count"]
-    peaks = metrics["spikes"]["peak_voltage"]
-    assert (len(peaks[0]), len(peaks[1])) == (o_n, s_n)
+    v = potential(simulate(spec.run_input()), 0)
+    features = spike_features(v, spec.dt)
+    assert set(features) == set(FEATURES)
+    peaks = features["peak_indices"]
+    assert len(peaks) > 0 and len(features["peak_voltage"]) == len(peaks)
+    assert spike_features(np.full_like(v, -65.0), spec.dt)["peak_indices"] == []
 
 
 def test_declared_series_resolve() -> None:

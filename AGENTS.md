@@ -7,7 +7,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 | 中身 | 場所 |
 | --- | --- |
-| 研究コード（`physics/` 元のモデルを解く、`surrogate/` 学習して置き換える、直下に指標 `metrics.py` と入口 `run.py`） | `neurosurrogate/` |
+| 研究コード（`physics/` 元のモデルを解く、`surrogate/` 学習して置き換える、直下にスパイクの特徴量 `spikes.py` と入口 `run.py`） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
 | 何を回すかの宣言（`conf.ts`。preset・系列・実験）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊 `runs` のボタン、エージェントは CLI で、同じ関数を呼ぶ）、操作盤の口（`api.ts`） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | `runs/`（Git の外） |
@@ -55,6 +55,6 @@ ruff の整形と lint は編集のたび、mypy はターンの終わりに、c
 
 - 依存の向き: `physics ← surrogate ← run`。physics は surrogate を import しない。表は `tests/test_conventions.py` の `_ALLOWED`。
 - `neurosurrogate/` は記録・設定の基盤（MLflow や Hydra）を知らない。run の保存形式を知るのは `run.py` だけ。
-- Python は数値計算（シミュレータ、学習、指標）だけを持ち、段取り（何を回すか、掃引、ハッシュ、重複の回避、run の一覧）は TS が持つ。Python では図を描かない。run の形式は `DESIGN.md`。
+- Python は数値計算（シミュレータ、学習、eFEL のスパイクの特徴量）だけを持ち、元のモデルと比べる指標は図の `evaluation/read/compare.ts`、段取り（何を回すか、掃引、ハッシュ、重複の回避、run の一覧）は TS が持つ。Python では図を描かない。run の形式は `DESIGN.md`。
 - `tests/test_conventions.py` が落ちたら、テストを緩めずコードを直す。
 - ファイルの責務、設定の形、どちらへ倒すかの判断基準は `DESIGN.md` が持つ。設計に手を入れる前に読む。

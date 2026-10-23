@@ -6,7 +6,8 @@
   import Choice from '$lib/Choice.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import LineChart from '$lib/LineChart.svelte';
-  import { RUNS, decimate, experimentColumns, gatesOf, listRuns, readComp, readCurrent, readInternal, readJson, readStatus, seriesEntry, type Column, type Metrics, type PairMetrics, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
+  import { RUNS, decimate, experimentColumns, gatesOf, listRuns, readComp, readCurrent, readInternal, readJson, readStatus, seriesEntry, type Column, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
+  import { compare, type PairMetrics, type SpikesFile } from './read/compare.ts';
   import type { IndexEntry, Status } from './orchestrate/spec.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
@@ -19,7 +20,8 @@
   let columns = $state<Column[]>([]);
   let originalMeta = $state<WaveMeta>();
   let metas = $state<Record<string, WaveMeta>>({});
-  let metrics = $state<Record<string, Metrics>>({});
+  /** run の id → スパイクの特徴量（spikes.json）。原系の run も入る。 */
+  let spikes = $state<Record<string, SpikesFile>>({});
   let summaries = $state<Record<string, Record<string, number | null>>>({});
   let error = $state('');
 
@@ -102,9 +104,10 @@
     void (async () => {
       const found = experimentColumns(chosenExperiment, current.name);
       const meta = await readJson<WaveMeta>(current.run, 'waves/meta.json');
+      spikes[current.run] = await readJson<SpikesFile>(current.run, 'spikes.json');
       for (const column of found) {
         metas[column.run] = await readJson<WaveMeta>(column.run, 'waves/meta.json');
-        metrics[column.run] = await readJson<Metrics>(column.run, 'metrics.json');
+        spikes[column.run] = await readJson<SpikesFile>(column.run, 'spikes.json');
         summaries[column.run] = await readJson<Record<string, number | null>>(column.train, 'summary.json');
       }
       originalMeta = meta;
@@ -121,10 +124,13 @@
   // ---- 波形：点ごとに、原系と選んだ列の電位を読む ----
   type Waves = { original: Record<string, Float64Array>; columns: Record<string, Record<string, Float64Array>> };
   let grid = $state<Waves[]>([]);
+  /** grid を読んだ区画。区画を選び直してから読み終えるまでは、選んだ区画と違う。 */
+  let gridComp = $state('');
   $effect(() => {
     const meta = originalMeta;
     const shown = selected;
     const id = compId;
+    const comp = evalComp;
     if (!meta || !entry) return;
     const originalRun = entry.run;
     void (async () => {
@@ -135,6 +141,7 @@
         list.push(waves);
       }
       grid = list;
+      gridComp = comp;
     })().catch(e => (error = e instanceof Error ? e.message : String(e)));
   });
 
@@ -154,8 +161,26 @@
     }
     return list;
   }
+  /** run の id → 点ごとの指標。読んだ波形とスパイクの特徴量から計算する。 */
+  let metrics = $derived.by(() => {
+    const table: Record<string, PairMetrics[]> = {};
+    if (!originalMeta || !entry || grid.length !== originalMeta.n.length) return table;
+    const original = spikes[entry.run]?.[gridComp];
+    for (const column of selected) {
+      const surrogate = spikes[column.run]?.[gridComp];
+      if (!original || !surrogate) continue;
+      const list: PairMetrics[] = [];
+      for (let k = 0; k < grid.length; k++) {
+        const v = grid[k].columns[column.run]?.V;
+        if (!v) break;
+        list.push(compare(grid[k].original.V, v, original[k], surrogate[k], originalMeta.dt));
+      }
+      table[column.run] = list;
+    }
+    return table;
+  });
   function pair(column: Column, index: number): PairMetrics | undefined {
-    return metrics[column.run]?.[evalComp]?.[index];
+    return metrics[column.run]?.[index];
   }
   function diverged(column: Column, index: number): boolean {
     return pair(column, index)?.diverged ?? false;
@@ -169,7 +194,7 @@
 
   // ---- 指標の折れ線：掃引値に沿って ----
   let metricKeys = $derived.by(() => {
-    const first = selected[0] ? metrics[selected[0].run]?.[evalComp]?.[0] : undefined;
+    const first = selected[0] ? pair(selected[0], 0) : undefined;
     if (!first) return [];
     const keys = Object.keys(first.rows);
     for (const key of Object.keys(first.scalars)) keys.push(key);

@@ -82,8 +82,8 @@ def test_runs_round_trip_and_are_not_rerun(runs: Path) -> None:
 
 def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     """図が読むものは全部 run の中にある: 学習 run の中身、素の float64 の波形、
-    全 comp・全点の指標、置換した comp の射影、学習側の指標。JSON に nan は出さない
-    (JS が読めない)。"""
+    全 comp・全点のスパイクの特徴量、置換した comp の射影、学習側の指標。JSON に nan は
+    出さない (JS が読めない)。"""
     model = json.loads((runs / "models/T/description/model.json").read_text())
     n_time = json.loads((runs / "models/T/description/train/meta.json").read_text())
     x = np.fromfile(runs / "models/T/description/fit/0/x.f64", dtype="<f8")
@@ -103,8 +103,9 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
         text = (runs / path).read_text()
         return cast(dict, json.loads(text, parse_constant=reject))
 
-    metrics = strict("inputs/I/R/metrics.json")
-    assert list(metrics) == ["soma"] and len(metrics["soma"]) == 2
+    for kind in ["original", "R"]:
+        spikes = strict(f"inputs/I/{kind}/spikes.json")
+        assert list(spikes) == ["soma"] and len(spikes["soma"]) == 2
     assert "nnz" in strict("models/T/summary.json")
     projected = json.loads((runs / "inputs/I/R/projected/soma/meta.json").read_text())
     assert [v for _, v, _ in projected["features"]][0] == "V"

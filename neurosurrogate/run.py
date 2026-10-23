@@ -22,10 +22,10 @@ JSON の nan は null):
     train      surrogate/ (config.json + parts.joblib)、summary.json (学習側の指標)、
                description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
                description/fit/<comp_id>/{x,latent,recon_rmse}.f64
-    sim        waves/。置き換えたモデルは加えて、metrics.json (comp 名 →
-               点ごとの、同じ入力の original/ との compare)、projected/<comp>/
-               (置換した comp の original/ のゲートを潜在へ射影したもの。
-               waves と同じ形)
+    sim        waves/、spikes.json (comp 名 → 点ごとの spike_features)。置き換えた
+               モデルは加えて、projected/<comp>/ (置換した comp の original/ の
+               ゲートを潜在へ射影したもの。waves と同じ形)。元のモデルとの比較は
+               図が波形と spikes.json から計算する
 
     waves/meta.json           t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]],
                               I_internal の nodes, comp 名 → id
@@ -54,7 +54,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .metrics import compare, diverged
 from .physics.simulate import (
     EvalSeries,
     gate_matrix,
@@ -63,6 +62,7 @@ from .physics.simulate import (
     potential,
     simulate,
 )
+from .spikes import spike_features
 from .surrogate.model import (
     Surrogate,
     applicable,
@@ -72,9 +72,10 @@ from .surrogate.model import (
     summary,
 )
 
-_FORMAT = 5  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
+_FORMAT = 6  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
+_DIVERGE_V = 1e3  # |V| [mV] の発散の閾値 (生理的な範囲は ±200 程度)
 _logger = logging.getLogger(__name__)
 
 
@@ -218,15 +219,31 @@ def _project(surrogate: Surrogate, ds: xr.Dataset, comp_id: int) -> xr.Dataset:
     )
 
 
+def _diverged(v: np.ndarray) -> bool:
+    """電位が NaN・inf を含むか、生理的にあり得ない大きさへ振り切れたか。"""
+    return not bool(np.all(np.isfinite(v))) or float(np.abs(v).max()) > _DIVERGE_V
+
+
+def _write_spikes(root: Path, series: EvalSeries, waves: list[xr.Dataset]) -> None:
+    """全区画・全点のスパイクの特徴量を spikes.json に書く。"""
+    net, dt = series.spec.net, series.spec.dt
+    spikes = {
+        comp: [spike_features(potential(ds, net.index(comp)), dt) for ds in waves]
+        for comp in net.names
+    }
+    _write_json(root / "spikes.json", spikes)
+
+
 def _sim(root: Path, spec: dict) -> dict:
-    """入力をモデルで回して波形を書く。置き換えたモデルなら、同じ入力の元のモデル
-    (`original/`) と比べた指標 (全区画・全点) と、置換した区画の射影も書く。"""
+    """入力をモデルで回して波形とスパイクの特徴量を書く。置き換えたモデルなら、
+    置換した区画の射影も書く。"""
     model = spec["model"]
     targets = model["replace_targets"] if model else []
     series = EvalSeries.from_dict({**spec["input"], "replace_targets": targets})
     if model is None:
         waves = [simulate(point.run_input()) for point in series.points]
         _write_waves(root / "waves", waves, _names(series))
+        _write_spikes(root, series, waves)
         return {"unit": series.unit}
     runs = root.parents[2]
     surrogate = Surrogate.load(runs / "models" / model["train"] / "surrogate")
@@ -238,19 +255,13 @@ def _sim(root: Path, spec: dict) -> dict:
     for point in series.points:
         ds = simulate(replace(surrogate, point.run_input(), targets))
         if broken := [
-            c for c in targets if diverged(potential(ds, point.net.index(c)))
+            c for c in targets if _diverged(potential(ds, point.net.index(c)))
         ]:
             _logger.warning("置換系の電位が発散 (%s): %s", point.current_type, broken)
         waves.append(ds)
     _write_waves(root / "waves", waves, _names(series))
-    net, dt = series.spec.net, series.spec.dt
-    metrics = {}
-    for comp in net.names:
-        metrics[comp] = [
-            compare(originals[i], waves[i], net.index(comp), dt)
-            for i in range(len(originals))
-        ]
-    _write_json(root / "metrics.json", metrics)
+    _write_spikes(root, series, waves)
+    net = series.spec.net
     for comp in targets:
         projected = [_project(surrogate, ds, net.index(comp)) for ds in originals]
         _write_waves(root / "projected" / comp, projected)

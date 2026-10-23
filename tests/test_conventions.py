@@ -6,7 +6,7 @@ import pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "neurosurrogate"
 
 # 置き場 → import してよい置き場。physics は元のモデルを解くだけで、学習を知らない。
-# 直下 (metrics・run) は両方を使う。
+# 直下 (spikes・run) は両方を使う。
 _ALLOWED = {
     "physics": {"physics"},
     "surrogate": {"physics", "surrogate"},

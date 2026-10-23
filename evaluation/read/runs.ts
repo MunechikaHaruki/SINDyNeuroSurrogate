@@ -30,16 +30,6 @@ export type SeriesEntry = {
 };
 /** 系列を 1 つの学習 run で置換して回した列。run と train は id。 */
 export type Column = { run: string; train: string; trainName: string };
-/** 1 ペア（原系, 置換系）の 1 comp の指標。null は値が無い（nan）。 */
-export type PairMetrics = {
-  rows: Record<string, [number | null, number | null]>;
-  scalars: Record<string, number | null>;
-  spikes: Record<string, [number[], number[]]>;
-  diverged: boolean;
-};
-/** comp 名 → 点ごとの指標（metrics.json）。 */
-export type Metrics = Record<string, PairMetrics[]>;
-
 /** run の一覧（新しい順）。今の形式の run だけ。まだ何も回していなければ空。 */
 export async function listRuns(): Promise<IndexEntry[]> {
   const response = await fetch(`${RUNS}index.json`, { cache: 'no-store' });
