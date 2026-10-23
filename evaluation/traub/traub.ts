@@ -663,6 +663,18 @@ function derivativeOf(grouping?: Grouping): (y: number[], current: number) => nu
 }
 /** 無入力で 200 ms 落ち着かせてから、入力を 500 ms 与えて積分し、0.1 ms ごとの標本を返す。群分けがなければ元モデル。 */
 export function simulate(config: Config, grouping?: Grouping, tolerance = 1e-7, maxStep = 0.1): Sample[] {
+  return simulateCurrent(
+    function (t: number): number {
+      return input(t, config);
+    },
+    duration,
+    grouping,
+    tolerance,
+    maxStep,
+  );
+}
+/** 無入力で 200 ms 落ち着かせてから、電流 current(t) を length ms 与えて積分し、0.1 ms ごとの標本を返す。 */
+export function simulateCurrent(current: (t: number) => number, length: number, grouping?: Grouping, tolerance = 1e-7, maxStep = 0.1): Sample[] {
   const derivative = derivativeOf(grouping);
   const size = initial(grouping).length;
   const options = {
@@ -674,11 +686,11 @@ export function simulate(config: Config, grouping?: Grouping, tolerance = 1e-7, 
   // 待機と刺激の境界をまたいで補間しないよう、積分器を二つに分ける。
   const settle = new Solver((_t, y) => derivative(y, 0), size, options);
   const settled = settle.integrate(-warmup, initial(grouping))(0);
-  const solver = new Solver((t, y) => derivative(y, input(t, config)), size, options);
+  const solver = new Solver((t, y) => derivative(y, current(t)), size, options);
   // integrate は時刻を渡すと状態を返す補間関数を返す。時刻は増える向きにしか渡せない。
   const evaluate = solver.integrate(0, settled);
   const result: Sample[] = [];
-  for (let i = 0; i <= Math.round(duration / sampleStep); i++) {
+  for (let i = 0; i <= Math.round(length / sampleStep); i++) {
     const time = i * sampleStep;
     const state = [...evaluate(time)];
     if (!state.every(Number.isFinite)) throw new Error(`非有限の状態: t=${time} ms`);

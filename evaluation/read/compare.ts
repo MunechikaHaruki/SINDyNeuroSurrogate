@@ -141,3 +141,32 @@ export function compare(
     diverged: diverged(surrogate),
   };
 }
+
+/** 0 mV を上向きにまたいだ時刻 [ms] と、そのスパイクの山 [mV]。eFEL を通さないので、TS の縮約モデルにも同じ物差しを当てられる。 */
+export type Crossings = { times: number[]; peaks: number[] };
+
+export function crossings(v: ArrayLike<number>, dt: number): Crossings {
+  const times: number[] = [];
+  const peaks: number[] = [];
+  for (let i = 1; i < v.length; i++) {
+    if (!(v[i - 1] < 0 && v[i] >= 0)) continue;
+    times.push(i * dt);
+    let top = v[i];
+    for (let j = i; j < v.length && v[j] >= 0; j++) top = Math.max(top, v[j]);
+    peaks.push(top);
+  }
+  return { times, peaks };
+}
+
+/** 元のモデルとの差。peak は山の平均の差（モデル − 元）、lastShift は両方にある最後の山の時刻の差の大きさ。 */
+export type CrossingDiff = { count: [number, number]; peak: number | null; lastShift: number | null };
+
+export function crossingDiff(original: Crossings, model: Crossings): CrossingDiff {
+  const n = Math.min(original.times.length, model.times.length);
+  const peak = original.peaks.length > 0 && model.peaks.length > 0 ? mean(model.peaks) - mean(original.peaks) : null;
+  return {
+    count: [original.times.length, model.times.length],
+    peak,
+    lastShift: n > 0 ? Math.abs(model.times[n - 1] - original.times[n - 1]) : null,
+  };
+}

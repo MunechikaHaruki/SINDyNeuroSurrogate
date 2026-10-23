@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { compare, diverged, type Spikes } from './compare.ts';
+import { compare, crossingDiff, crossings, diverged, type Spikes } from './compare.ts';
 
 /** 山を 2 つ持つ波形（dt = 0.5 ms で 2 ms の窓は ±4 点）。 */
 const v = new Float64Array([
@@ -43,4 +43,13 @@ test('a NaN or a runaway potential counts as diverged and gives no waveform erro
   expect(compare(v, broken, spikes, spikes, 0.5).scalars.rmse).toBeNull();
   // eFEL の nan（JSON の null）を含む ISI の統計は nan
   expect(compare(v, v, spikes, { ...spikes, ISI_values: [null] }, 0.5).rows.mean_isi).toEqual([4.5, null]);
+});
+
+test('crossings count upward passes through 0 mV with their peaks, and the diff compares the last shared spike', () => {
+  const found = crossings(v, 0.5);
+  expect(found).toEqual({ times: [2.5, 7], peaks: [30, 30] });
+  const shifted = crossings(new Float64Array([-65, -65, -65, -65, -65, -65, 0, 20, 0, -65]), 0.5);
+  expect(shifted).toEqual({ times: [3], peaks: [20] });
+  expect(crossingDiff(found, shifted)).toEqual({ count: [2, 1], peak: -10, lastShift: 0.5 });
+  expect(crossingDiff(found, { times: [], peaks: [] })).toEqual({ count: [2, 0], peak: null, lastShift: null });
 });
