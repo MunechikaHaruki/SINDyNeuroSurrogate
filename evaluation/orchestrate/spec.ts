@@ -18,10 +18,11 @@ export type LibrarySpec = { type: string; gates?: string };
 /** 1 つの群。gates は区画の状態の名前（Python の cells の states）。params は各 fit 関数の引数へそのまま渡る。 */
 export type Group = {
   gates: string[];
-  compressor: 'pca' | 'ae';
+  /** kam は学習しない KAM 縮約（rhs も kam、d は 1）。 */
+  compressor: 'pca' | 'ae' | 'kam';
   /** 潜在次元。 */
   d: number;
-  rhs: 'sindy' | 'ude';
+  rhs: 'sindy' | 'ude' | 'kam';
   compressor_params: Record<string, unknown>;
   /** sindy は library_specs と optimizer、ude は学習の hyperparams。 */
   rhs_params: { library_specs?: LibrarySpec[]; [key: string]: unknown };

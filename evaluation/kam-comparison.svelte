@@ -7,77 +7,51 @@
   import LineChart from '$lib/LineChart.svelte';
   import { RUNS, decimate, experimentColumns, listRuns, readComp, readJson, readStatus, seriesEntry, type Column, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
   import { crossingDiff, crossings, type CrossingDiff } from './read/compare.ts';
-  import { gateNames, simulateCurrent, type GateName, type Grouping } from './traub/traub.ts';
-  import type { IndexEntry, Status } from './orchestrate/spec.ts';
+  import type { IndexEntry } from './orchestrate/spec.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
-  /** 群ごとに圧縮した実験。どれも単一区画の Traub を SERIES で評価する。 */
+  /** 群ごとに圧縮した実験。どれも単一区画の Traub を SERIES で評価し、同じ群の KAM 縮約（preset kam_*）を含む。 */
   const EXPERIMENTS = ['grouped_hn', 'grouped_hn_ac'];
   const SERIES = 'traub_somastim';
-  /** SERIES と同じ電流：静穏 10 ms のあと定常電流を 300 ms（conf.ts の STIM）。 */
-  const SILENCE = 10;
-  const LENGTH = 310;
-  /** TS の縮約モデルの標本の間隔（traub.ts の sampleStep）。 */
-  const TS_DT = 0.1;
   const BUCKETS = 400;
 
-  /** 学習した列と、同じ群を KAM でまとめた縮約。 */
-  type Pair = Column & { groups: string[][]; kam: Grouping };
-  /** 表の 1 行：学習した列か、KAM の縮約。 */
-  type Row = { label: string; diffs: CrossingDiff[] };
+  /** 回し終えた列と、その群（「{N,H}{A,C}」の形）と、KAM か。 */
+  type Entry = Column & { groups: string; kam: boolean };
 
-  let index = $state<IndexEntry[]>([]);
-  let status = $state<Status>({ experiments: [], jobs: [] });
   let error = $state('');
   let entry = $state<SeriesEntry>();
   let meta = $state<WaveMeta>();
-  let pairs = $state<Pair[]>([]);
+  let entries = $state<Entry[]>([]);
   /** run の id → 点ごとの soma の電位。原系の run も入る。 */
-  let python = $state<Record<string, Float64Array[]>>({});
-  /** 縮約の鍵 → 点ごとの電位。鍵 'full' は TS の元のモデル。 */
-  let reduced = $state<Record<string, Float64Array[]>>({});
+  let voltages = $state<Record<string, Float64Array[]>>({});
 
-  let absorb = $state(false);
   let detailRun = $state('');
   let metric = $state<'count' | 'peak' | 'lastShift'>('count');
   let windowStart = $state(0);
-  let windowLength = $state(LENGTH);
+  let windowLength = $state(0);
 
-  let detail = $derived(pairs.find(p => p.run === detailRun) ?? pairs[0]);
-  let domain = $derived<[number, number]>([windowStart, Math.min(LENGTH, windowStart + windowLength)]);
+  let learned = $derived(entries.filter(e => !e.kam));
+  let detail = $derived(learned.find(e => e.run === detailRun) ?? learned[0]);
+  let duration = $derived(meta ? meta.n[0] * meta.dt : 0);
+  let domain = $derived<[number, number]>([windowStart, Math.min(duration, windowStart + windowLength)]);
 
-  /** 学習した群を KAM の ψ 群にする。1 つだけの群は元の式なので、ψ 群にしない。 */
-  function kamOf(groups: string[][], phi: GateName[]): Grouping {
-    const psi: GateName[][] = [];
-    for (const gates of groups) {
-      if (gates.length < 2) continue;
-      // ゲートは traub.ts の並び（m, h, n, a, …）にする
-      const names: GateName[] = [];
-      for (const name of gateNames) if (gates.includes(name.toUpperCase())) names.push(name);
-      psi.push(names);
-    }
-    return { phi, psi };
+  /** 学習した列と同じ群の KAM の列。 */
+  function kamFor(column: Entry): Entry | undefined {
+    return entries.find(e => e.kam && e.groups === column.groups);
   }
-  function groupingKey(grouping: Grouping): string {
-    return JSON.stringify(grouping);
-  }
-  /** 縮約を「KAM Φ{m}、ψ{h,n}、ψ{a,c}」の形に書く。 */
-  function kamLabel(grouping: Grouping): string {
-    const parts: string[] = [];
-    if (grouping.phi.length > 0) parts.push(`Φ{${grouping.phi.join(',')}}`);
-    for (const group of grouping.psi) parts.push(`ψ{${group.join(',')}}`);
-    return `KAM ${parts.join('、')}`;
-  }
-  /** 表と図に出す縮約。m を吸収するかで φ 群が変わる。 */
-  function kamFor(pair: Pair): Grouping {
-    return absorb ? kamOf(pair.groups, ['m']) : pair.kam;
+  /** 群を「{N,H}{A,C}」の形に書く。 */
+  function groupsOf(train: IndexEntry): string {
+    let label = '';
+    if (train.spec.kind !== 'train') return label;
+    for (const group of train.spec.surrogate.groups) label += `{${group.gates.join(',')}}`;
+    return label;
   }
 
-  /** run の一覧と、比べる列を読む。 */
+  /** run の一覧と比べる列を読み、soma の電位を読む。 */
   async function load(): Promise<void> {
-    index = await listRuns();
-    status = await readStatus();
-    const found: Pair[] = [];
+    const index = await listRuns();
+    const status = await readStatus();
+    const found: Entry[] = [];
     for (const name of EXPERIMENTS) {
       const experiment = status.experiments.find(e => e.name === name);
       if (!experiment) continue;
@@ -85,18 +59,17 @@
       for (const column of experimentColumns(experiment, SERIES)) {
         const train = index.find(e => e.id === column.train);
         if (!train || train.spec.kind !== 'train') continue;
-        const groups: string[][] = [];
-        for (const group of train.spec.surrogate.groups) groups.push(group.gates);
-        found.push({ ...column, groups, kam: kamOf(groups, []) });
+        found.push({ ...column, groups: groupsOf(train), kam: train.spec.surrogate.groups[0].compressor === 'kam' });
       }
     }
     if (!entry) return;
     const original = await readJson<WaveMeta>(entry.run, 'waves/meta.json');
-    python[entry.run] = await readVoltages(entry.run, original);
-    for (const pair of found) python[pair.run] = await readVoltages(pair.run, await readJson<WaveMeta>(pair.run, 'waves/meta.json'));
+    voltages[entry.run] = await readVoltages(entry.run, original);
+    for (const column of found) voltages[column.run] = await readVoltages(column.run, await readJson<WaveMeta>(column.run, 'waves/meta.json'));
     meta = original;
-    pairs = found;
-    detailRun = found[0]?.run ?? '';
+    entries = found;
+    detailRun = found.find(e => !e.kam)?.run ?? '';
+    windowLength = original.n[0] * original.dt;
   }
   async function readVoltages(run: string, waves: WaveMeta): Promise<Float64Array[]> {
     const list: Float64Array[] = [];
@@ -104,73 +77,31 @@
     return list;
   }
 
-  /** 縮約を全点で積分する。描画を止めないよう、1 本ごとに手を離す。 */
-  async function integrate(key: string, grouping?: Grouping): Promise<void> {
-    if (!entry || reduced[key]) return;
-    const list: Float64Array[] = [];
-    for (const value of entry.values) {
-      await new Promise(resolve => setTimeout(resolve));
-      const current = function (t: number): number {
-        return t < SILENCE ? 0 : value;
-      };
-      const samples = simulateCurrent(current, LENGTH, grouping);
-      const v = new Float64Array(samples.length);
-      for (let i = 0; i < samples.length; i++) v[i] = samples[i].state[0];
-      list.push(v);
-    }
-    reduced[key] = list;
-  }
-
   onMount(() => {
     load().catch(e => (error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`));
   });
-  // 列が揃うか、m の扱いを変えたら、まだ積分していない縮約を積分する。
-  $effect(() => {
-    const list = pairs;
-    const phi = absorb;
-    if (list.length === 0) return;
-    void (async () => {
-      await integrate('full');
-      for (const pair of list) {
-        const grouping = phi ? kamOf(pair.groups, ['m']) : pair.kam;
-        await integrate(groupingKey(grouping), grouping);
-      }
-    })().catch(e => (error = e instanceof Error ? e.message : String(e)));
-  });
 
-  /** 学習した列は Python の原系と、KAM は TS の元のモデルと比べる（二つの実装は強い電流で発火が 1 回違う）。 */
-  function pythonDiffs(run: string): CrossingDiff[] {
+  /** 列の点ごとの、原系との差。どの列も同じ原系と比べる。 */
+  function diffs(column: Entry): CrossingDiff[] {
     const list: CrossingDiff[] = [];
-    const original = entry ? python[entry.run] : undefined;
-    const model = python[run];
+    const original = entry ? voltages[entry.run] : undefined;
+    const model = voltages[column.run];
     if (!original || !model || !meta) return list;
     for (let k = 0; k < original.length; k++) list.push(crossingDiff(crossings(original[k], meta.dt), crossings(model[k], meta.dt)));
     return list;
   }
-  function kamDiffs(grouping: Grouping): CrossingDiff[] {
-    const list: CrossingDiff[] = [];
-    const full = reduced.full;
-    const model = reduced[groupingKey(grouping)];
-    if (!full || !model) return list;
-    for (let k = 0; k < full.length; k++) list.push(crossingDiff(crossings(full[k], TS_DT), crossings(model[k], TS_DT)));
-    return list;
-  }
-  /** 列ごとに学習した行を並べ、同じ群の KAM の行をその後ろに一度だけ置く。 */
+  /** 表の行：群ごとに学習した列を並べ、その後ろに同じ群の KAM を置く。 */
   let rows = $derived.by(() => {
-    const list: Row[] = [];
-    const placed: string[] = [];
-    for (const pair of pairs) {
-      list.push({ label: pair.trainName, diffs: pythonDiffs(pair.run) });
-      const grouping = kamFor(pair);
-      const key = groupingKey(grouping);
-      if (placed.includes(key)) continue;
-      placed.push(key);
-      list.push({ label: kamLabel(grouping), diffs: kamDiffs(grouping) });
+    const groups: string[] = [];
+    for (const column of entries) if (!groups.includes(column.groups)) groups.push(column.groups);
+    const list: Entry[] = [];
+    for (const group of groups) {
+      for (const column of entries) if (column.groups === group && !column.kam) list.push(column);
+      for (const column of entries) if (column.groups === group && column.kam) list.push(column);
     }
     return list;
   });
-  function cell(diff: CrossingDiff | undefined): string {
-    if (!diff) return '…';
+  function cell(diff: CrossingDiff): string {
     if (metric === 'count') return `${diff.count[0]} → ${diff.count[1]}`;
     const value = metric === 'peak' ? diff.peak : diff.lastShift;
     if (value === null) return '—';
@@ -182,43 +113,40 @@
     { value: 'lastShift', label: '最後の山の時刻のずれ（ms）' },
   ];
 
-  function trace(label: string, v: Float64Array, dt: number, dashed = false): Trace {
-    return { label, points: decimate(v, 0, dt, domain[0], domain[1], BUCKETS), dashed };
+  function trace(label: string, v: Float64Array, dashed = false): Trace {
+    return { label, points: decimate(v, meta!.t0, meta!.dt, domain[0], domain[1], BUCKETS), dashed };
   }
-  /** 1 点の電位：Python の原系と学習した列、TS の元のモデルと KAM。 */
+  /** 1 点の電位：原系と、選んだ列と、同じ群の KAM。 */
   function traces(k: number): Trace[] {
     const list: Trace[] = [];
     if (!entry || !meta || !detail) return list;
-    list.push(trace('原系（Python）', python[entry.run][k], meta.dt));
-    list.push(trace(detail.trainName, python[detail.run][k], meta.dt, true));
-    const full = reduced.full?.[k];
-    const kam = reduced[groupingKey(kamFor(detail))]?.[k];
-    if (full) list.push(trace('原系（TS）', full, TS_DT));
-    if (kam) list.push(trace(kamLabel(kamFor(detail)), kam, TS_DT, true));
+    list.push(trace('原系', voltages[entry.run][k]));
+    list.push(trace(detail.trainName, voltages[detail.run][k], true));
+    const kam = kamFor(detail);
+    if (kam) list.push(trace(kam.trainName, voltages[kam.run][k], true));
     return list;
   }
 </script>
 
-<Dashboard title="群ごとの圧縮と KAM 縮約の比較" summary="Traub 単一区画で、群ごとに学習した圧縮と同じ群の KAM 縮約を定常電流で比べる。膜電位の重ね描きと、発火回数・山の高さ・時刻のずれの表。">
+<Dashboard title="群ごとの圧縮と KAM 縮約の比較" summary="Traub 単一区画で、群ごとに学習した圧縮と同じ群の KAM 縮約を、同じシミュレータと原系で比べる。膜電位の重ね描きと、発火回数・山の高さ・時刻のずれの表。">
   {#snippet sidebar()}
     {#if error}<p class="note" aria-live="polite">停止：{error}</p>{/if}
     <section>
       <h3>比べるもの</h3>
-      <p class="note">実験 {EXPERIMENTS.join('、')} を系列 {SERIES} で回した列と、その群を ψ 群にした KAM 縮約。学習した群は <a href="evaluation">別冊「SINDy サロゲート：評価の比較」</a>、KAM の作り方は <a href="group-comparison">別冊「Traub 単一区画：ゲートの組を選び、縮約と比べる」</a>。</p>
-      <label><input type="checkbox" bind:checked={absorb} /> KAM で m を膜電位へ吸収する</label>
-      {#if pairs.length === 0 && !error}<p class="note">回し終えた列が無い。<a href="runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>{/if}
+      <p class="note">実験 {EXPERIMENTS.join('、')} を系列 {SERIES} で回した列。学習した圧縮と、同じ群を学習せずにまとめた KAM 縮約（ψ 群。m は元の式）を、同じシミュレータ・同じ原系で比べる。全指標は <a href="evaluation">別冊「SINDy サロゲート：評価の比較」</a>、KAM の作り方は <a href="group-comparison">別冊「Traub 単一区画：ゲートの組を選び、縮約と比べる」</a>。</p>
+      {#if entries.length === 0 && !error}<p class="note">回し終えた列が無い。<a href="runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>{/if}
     </section>
     <section>
       <h3>時間の表示</h3>
-      <Range label="表示開始" bind:value={windowStart} min={0} max={LENGTH - 10} step={10} display={`${windowStart} ms`} />
-      <Range label="表示幅" bind:value={windowLength} min={10} max={LENGTH} step={10} display={`${Math.min(windowLength, LENGTH - windowStart)} ms`} />
+      <Range label="表示開始" bind:value={windowStart} min={0} max={Math.max(0, duration - 10)} step={10} display={`${windowStart} ms`} />
+      <Range label="表示幅" bind:value={windowLength} min={10} max={Math.max(10, duration)} step={10} display={`${Math.min(windowLength, duration - windowStart).toFixed(0)} ms`} />
     </section>
   {/snippet}
 
   {#snippet left()}
-    <Card kicker="点ごと" title="膜電位" subtitle={detail ? `${detail.trainName} と ${kamLabel(kamFor(detail))}` : '列を読んでいる'}>
+    <Card kicker="点ごと" title="膜電位" subtitle={detail ? `${detail.trainName} と ${kamFor(detail)?.trainName ?? '同じ群の KAM（未実行）'}` : '列を読んでいる'}>
       {#snippet controls()}
-        <Choice label="学習した列" bind:value={detailRun} options={pairs.map(p => ({ value: p.run, label: p.trainName }))} />
+        <Choice label="学習した列" bind:value={detailRun} options={learned.map(e => ({ value: e.run, label: e.trainName }))} />
       {/snippet}
       {#if entry && meta && detail}
         <figure>
@@ -231,7 +159,7 @@
         </figure>
       {/if}
       {#snippet info()}
-        <p>学習した列は Python のシミュレータで、KAM は TS のシミュレータで積分する。二つの元のモデルは強い電流で発火が 1 回違うので、それぞれの元のモデル（実線）と重ねる。</p>
+        <p>どの列も Python の同じシミュレータ（前進 Euler、刻み 0.01 ms）で回し、同じ原系（実線）と重ねる。</p>
       {/snippet}
     </Card>
   {/snippet}
@@ -249,16 +177,16 @@
             ></thead
           >
           <tbody>
-            {#each rows as row (row.label)}
+            {#each rows as row (row.run)}
               <tr
-                ><td>{row.label}</td>{#each entry.values as value, k (k)}<td title={String(value)}>{cell(row.diffs[k])}</td>{/each}</tr
+                ><td>{row.trainName}</td>{#each diffs(row) as diff, k (k)}<td>{cell(diff)}</td>{/each}</tr
               >
             {/each}
           </tbody>
         </table>
       {/if}
       {#snippet info()}
-        <p>スパイクは 0 mV を上向きに越えた所で数え、山はそのスパイクの最大値。KAM にも同じ物差しを当てるため eFEL を使わない。時刻のずれは、両方にある最後のスパイクで測る。</p>
+        <p>スパイクは 0 mV を上向きに越えた所で数え、山はそのスパイクの最大値。時刻のずれは、両方にある最後のスパイクで測る。</p>
       {/snippet}
     </Card>
   {/snippet}

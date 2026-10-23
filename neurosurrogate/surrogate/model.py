@@ -17,6 +17,7 @@ import numpy as np
 import xarray as xr
 
 from ..physics.cells import CELLS, CellType, Compartment, Net, total
+from ..physics.kam import KamCompressor, KamRhs
 from ..physics.simulate import (
     EvalSeries,
     RunInput,
@@ -28,7 +29,7 @@ from ..physics.simulate import (
     simulate,
     times,
 )
-from .compress import FITS
+from .compress import FITS, fill_fit_results
 from .sindy import Roles, fit_sindy
 from .ude import fit_ude
 
@@ -40,9 +41,9 @@ class Group:
     """1 つの群: 圧縮する状態と、圧縮器と右辺。params は各 fit 関数の引数へ展開する。"""
 
     gates: list[str]
-    compressor: str  # "pca" | "ae"
+    compressor: str  # "pca" | "ae" | "kam" (学習しない KAM 縮約。rhs も "kam")
     d: int  # 潜在次元
-    rhs: str = "sindy"  # "sindy" | "ude"
+    rhs: str = "sindy"  # "sindy" | "ude" | "kam"
     compressor_params: dict = field(default_factory=dict)
     rhs_params: dict = field(default_factory=dict)
 
@@ -85,6 +86,11 @@ class Config:
         for group in self.groups:
             if group.rhs == "ude" and group.compressor != "ae":
                 raise ValueError("ude は encoder・decoder を更新するので compressor=ae")
+            kam = group.compressor == "kam"
+            if kam != (group.rhs == "kam"):
+                raise ValueError("kam は圧縮器と右辺の両方を kam にする")
+            if kam and (group.d != 1 or len(group.gates) < 2 or self.form != "hybrid"):
+                raise ValueError("kam は 2 つ以上のゲートを d=1 の ψ にまとめる hybrid")
         if self.form == "sindy" and (
             len(self.groups) != 1 or learned != self.cell_type.states
         ):
@@ -240,6 +246,12 @@ def fit(config_dict: dict) -> Surrogate:
     parts = []
     for group, offset in zip(config.groups, _offsets(config), strict=True):
         gates = np.concatenate(_group_gates(config, group, data), axis=0)
+        if group.compressor == "kam":
+            params = config.train_node().resolved_params
+            kam = KamCompressor(config.cell, group.gates, params)
+            fill_fit_results(kam, gates)
+            parts.append((kam, KamRhs(config.cell, group.gates)))
+            continue
         compressor = FITS[group.compressor](gates, group.d, **group.compressor_params)
         parts.append((compressor, _fit_rhs(config, group, compressor, data, offset)))
     surrogate = Surrogate(config, parts)
@@ -251,12 +263,15 @@ def fit(config_dict: dict) -> Surrogate:
 
 
 def _rhs_fn(rhs):
-    """(z, V) → dz/dt。"""
-    if hasattr(rhs, "rhs"):
+    """(z, V, 状態の名前 → 値, params) → dz/dt。KAM だけが状態と params を読む。"""
+    if isinstance(rhs, KamRhs):
         return rhs.rhs()
+    if hasattr(rhs, "rhs"):
+        f = rhs.rhs()
+        return lambda z, v, s, p: f(z, v)
     xi = jnp.asarray(rhs.xi)
     theta = rhs.theta()
-    return lambda z, v: xi @ theta(*z, v)
+    return lambda z, v, s, p: xi @ theta(*z, v)
 
 
 def surrogate_cell(s: Surrogate) -> CellType:
@@ -302,7 +317,7 @@ def surrogate_cell(s: Surrogate) -> CellType:
                 s[gate] = values[j]
         for i, state in enumerate(physics):
             s[state] = x[n_latent + i]
-        dx = [rhs(x[a:b], v) for _, a, b, _, rhs in blocks]
+        dx = [rhs(x[a:b], v, s, p) for _, a, b, _, rhs in blocks]
         if physics:
             dx.append(jnp.stack([derivs[n](p, v, s) for n in physics]))
         return dv_fn(p, u, v, s), jnp.concatenate(dx)

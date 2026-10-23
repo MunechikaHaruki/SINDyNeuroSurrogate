@@ -153,6 +153,7 @@ def test_any_grouping_with_exact_parts_reproduces_the_original(cell, groups) -> 
         "_test_traub_hybrid_sr_physics",
         "_test_traub_hybrid_hn",
         "_test_traub_two_groups",
+        "_test_traub_kam",
     ],
 )
 def test_presets_fit_and_replace_finitely(preset: str) -> None:
@@ -193,6 +194,30 @@ def test_two_groups_keep_their_latents_apart() -> None:
     assert s.config.physics == ["M", "B", "S", "R", "Q", "XI"]
 
 
+def test_kam_keeps_the_rest_state_and_the_spike_count() -> None:
+    """KAM は静止状態で ψ = V かつ動かず、DC 入力で元のモデルと同じ回数発火する。"""
+    s = fit_preset("_test_traub_kam")
+    spec = _dc("traub", value=5.0, duration=100.0)
+    rest = CELLS["traub"].inits(spec.net.nodes[0].resolved_params)
+    for (compressor, rhs), group in zip(s.parts, s.config.groups, strict=True):
+        assert compressor.gate_inits == pytest.approx([rest[0]], abs=1e-6)
+        state = dict(zip(CELLS["traub"].states, rest[1:], strict=True))
+        p = spec.net.nodes[0].resolved_params
+        assert float(rhs.rhs()(jnp.asarray([rest[0]]), rest[0], state, p)[0]) == (
+            pytest.approx(0.0, abs=1e-9)
+        )
+        gates = np.array([[state[g] for g in group.gates]])
+        decoded = np.asarray(compressor.decode(jnp.asarray(compressor.encode(gates))))
+        assert decoded == pytest.approx(gates, abs=1e-6)
+
+    def count(v: np.ndarray) -> int:
+        return int(np.sum((v[:-1] < 0) & (v[1:] >= 0)))
+
+    original = potential(simulate(spec.run_input()), 0)
+    reduced = potential(simulate(replace(s, spec.run_input(), ["soma"])), 0)
+    assert count(original) > 0 and count(reduced) == count(original)
+
+
 def test_config_rejects_bad_groups() -> None:
     base = preset_config("_test_traub_hybrid")
     group = base["groups"][0]
@@ -200,6 +225,11 @@ def test_config_rejects_bad_groups() -> None:
         ([{**group, "gates": ["X"]}], "無い状態"),
         ([{**group, "gates": ["N"]}, {**group, "gates": ["N", "H"]}], "重なって"),
         ([{**group, "rhs": "ude"}], "compressor=ae"),
+        ([{**group, "compressor": "kam"}], "両方を kam"),
+        (
+            [{**group, "gates": ["N"], "compressor": "kam", "rhs": "kam", "d": 1}],
+            "2 つ以上",
+        ),
     ]:
         with pytest.raises(ValueError, match=message):
             Config.from_dict({**base, "groups": groups})

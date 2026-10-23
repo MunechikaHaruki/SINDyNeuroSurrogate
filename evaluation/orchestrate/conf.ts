@@ -12,10 +12,10 @@ type Declared = {
   duration: number;
   /** 群。区画の状態の名前で書き、群に入らなかった状態は元の式のまま解く。 */
   groups: readonly (readonly string[])[];
-  compressor: 'pca' | 'ae';
+  compressor: 'pca' | 'ae' | 'kam';
   /** 群の潜在次元（全群で同じ）。配列なら値ごとに学習 run を 1 本ずつ作る（掃引）。 */
   d: number | number[];
-  rhs?: 'sindy' | 'ude';
+  rhs?: 'sindy' | 'ude' | 'kam';
   library_specs?: LibrarySpec[];
   compressor_params?: Record<string, unknown>;
   rhs_params?: Record<string, unknown>;
@@ -64,6 +64,8 @@ const TRAUB_ALL_GATES: LibrarySpec[] = [];
 for (const spec of TRAUB_GATES) TRAUB_ALL_GATES.push(spec.type === 'basis' ? spec : { ...spec, gates: 'msncahrb' });
 // 群ごとに圧縮する（55.01）。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。
 const TRAUB_GROUPED = { cell: 'traub', form: 'hybrid', target: 'traub', duration: 9000, library_specs: TRAUB_GATES } as const;
+// 同じ群を学習せずに KAM 縮約でまとめる基準。式から組むので項ライブラリは持たない。
+const TRAUB_KAM = { cell: 'traub', form: 'hybrid', target: 'traub', duration: 9000, compressor: 'kam', rhs: 'kam', d: 1 } as const;
 const HN = ['N', 'H'];
 const AC = ['A', 'C'];
 
@@ -88,6 +90,8 @@ const DECLARED: Record<string, Declared> = {
   // {h,n} と {a,c} をそれぞれ 1 本へ縮める（55.01 の 2 段目）。
   grouped_hn_ac_pca: { ...TRAUB_GROUPED, groups: [HN, AC], compressor: 'pca', d: 1 },
   grouped_hn_ac_ae: { ...TRAUB_GROUPED, groups: [HN, AC], compressor: 'ae', d: 1 },
+  kam_hn: { ...TRAUB_KAM, groups: [HN] },
+  kam_hn_ac: { ...TRAUB_KAM, groups: [HN, AC] },
 
   // テスト専用（tests は名前で引く）。どの実験にも入れないので冊には出ない。
   _test_hh_sindy: { ...TEST_HH, form: 'sindy', d: 3 },
@@ -99,6 +103,7 @@ const DECLARED: Record<string, Declared> = {
   _test_traub_hybrid_hn: { ...TEST_TRAUB, groups: [HN], d: 1 },
   // 群を 2 つ持つ形。{h,n} と {a,c} をそれぞれ 1 本へ縮め、残りは元の式。
   _test_traub_two_groups: { ...TEST_TRAUB, groups: [HN, AC], d: 1 },
+  _test_traub_kam: { cell: 'traub', form: 'hybrid', target: 'traub', duration: 180, compressor: 'kam', rhs: 'kam', d: 1, groups: [HN, AC] },
   // encoder・decoder と潜在方程式（NN）を同じロスで学習する経路。項ライブラリは持たない。
   _test_traub_ude: {
     cell: 'traub',
@@ -168,11 +173,11 @@ export const EXPERIMENTS: Record<string, Experiment> = {
     series: ['traub19_somastim', 'traub19_dendstim', 'traub19_somastim_allcomp'],
   },
   grouped_hn: {
-    presets: ['grouped_hn_pca', 'grouped_hn_ae'],
+    presets: ['grouped_hn_pca', 'grouped_hn_ae', 'kam_hn'],
     series: ['traub_somastim'],
   },
   grouped_hn_ac: {
-    presets: ['grouped_hn_ac_pca', 'grouped_hn_ac_ae'],
+    presets: ['grouped_hn_ac_pca', 'grouped_hn_ac_ae', 'kam_hn_ac'],
     series: ['traub_somastim'],
   },
   latent_dim: {

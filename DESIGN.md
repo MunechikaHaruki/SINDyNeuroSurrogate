@@ -23,6 +23,7 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 | --- | --- |
 | `physics/cells.py` | 区画の式。状態の名前ごとの微分 (`derivs`)、膜電位の式 (`dv`)、初期値、状態ごとの演算コスト。kernel はそこから組む (`physical_cell`)。HH・Traub・passive、Traub19 の区画の定数とネット (`NETS`)。レートの式は隣の `hh.json`・`traub.json` |
 | `physics/currents.py` | 注入電流の名前 → 波形 |
+| `physics/kam.py` | KAM 縮約の ψ 群。学習せず、元の区画の式から ψ ↔ ゲートの写しと dψ/dt を組む。サロゲートの群の圧縮器と右辺 (`kam`) として使い、学習した圧縮と同じ段取りで比べる |
 | `physics/simulate.py` | ネットを解く前進 Euler (`simulate`)、波形の Dataset の読み書き、実験の記述 (`SimSpec`・`EvalSeries`) |
 | `surrogate/compress.py` | 圧縮器 (PCA、AutoEncoder) |
 | `surrogate/sindy.py` | SINDy の項のカタログと、列への束縛、疎回帰 |
