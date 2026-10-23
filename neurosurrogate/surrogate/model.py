@@ -194,6 +194,16 @@ def _inputs(
     return _Inputs(names, ["V"], latents, [potential(data, i)[:, None] for i in ids])
 
 
+def _own_rates(group: Group, params: dict) -> dict:
+    """gates を書いていない項の束は、レートを群の状態のもの (N, H なら n, h) に絞る。"""
+    own = "".join(g.lower() for g in group.gates)
+    specs = [
+        spec if "gates" in spec else {**spec, "gates": own}
+        for spec in params["library_specs"]
+    ]
+    return {**params, "library_specs": specs}
+
+
 def _fit_rhs(config: Config, group: Group, compressor, data, offset: int):
     if group.rhs == "ude":
         gates = _group_gates(config, group, data)
@@ -219,7 +229,7 @@ def _fit_rhs(config: Config, group: Group, compressor, data, offset: int):
         inputs.u,
         times(data),
         roles,
-        **group.rhs_params,
+        **_own_rates(group, group.rhs_params),
     )
 
 

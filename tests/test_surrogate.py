@@ -174,6 +174,15 @@ def test_library_gates_keep_only_those_rates() -> None:
     assert rates == {"alpha_n_traub", "beta_n_traub", "alpha_h_traub", "beta_h_traub"}
 
 
+def test_each_group_keeps_only_its_own_rates() -> None:
+    """gates を書かなければ、群の右辺のレート項は群の状態のものだけになる。"""
+    (_, first), (_, second) = fit_preset("_test_traub_two_groups").parts
+    for rhs, gates in [(first, "nh"), (second, "ac")]:
+        assert isinstance(rhs, SINDy)
+        rates = {str(f.func) for e in rhs.feature_exprs for f in e.atoms(AppliedUndef)}
+        assert rates == {f"{k}_{g}_traub" for g in gates for k in ["alpha", "beta"]}
+
+
 def test_two_groups_keep_their_latents_apart() -> None:
     """群の右辺は自分の潜在と V だけを使い、潜在の名前は通し番号。"""
     s = fit_preset("_test_traub_two_groups")

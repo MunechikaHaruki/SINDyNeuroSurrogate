@@ -54,15 +54,18 @@ const TRAUB_GATES: LibrarySpec[] = [
 ];
 
 // 群は区画の状態の名前で書く。Traub の状態は M N C A H B S R Q XI、HH は M H N。
+// 群の右辺のレート項は、gates を書かなければ群の状態のものに絞られる（Python の _own_rates）。
 const TRAUB_8 = ['M', 'N', 'C', 'A', 'H', 'B', 'S', 'R']; // 電位だけで動く 8 ゲート。Ca 系（Q, XI）は元の式
 const TRAUB_6 = ['M', 'N', 'C', 'A', 'H', 'B']; // s, r も元の式で解く
 const HH_3 = ['M', 'H', 'N'];
 
-// 群 {h,n} だけを学習する（55.01 の 1 段目）。レート項も h, n のものに絞る。
-const HN_GATES: LibrarySpec[] = [];
-for (const spec of TRAUB_GATES) HN_GATES.push(spec.type === 'basis' ? spec : { ...spec, gates: 'hn' });
-// 単一区画の軌道で学習する。電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。
-const TRAUB_HN = { cell: 'traub', form: 'hybrid', target: 'traub', duration: 9000, groups: [['N', 'H']], library_specs: HN_GATES } as const;
+// NEURO2026 のポスターは、元の式で解く s, r のレート項も入れていた。結果を変えないよう全ゲートを書く。
+const TRAUB_ALL_GATES: LibrarySpec[] = [];
+for (const spec of TRAUB_GATES) TRAUB_ALL_GATES.push(spec.type === 'basis' ? spec : { ...spec, gates: 'msncahrb' });
+// 群ごとに圧縮する（55.01）。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。
+const TRAUB_GROUPED = { cell: 'traub', form: 'hybrid', target: 'traub', duration: 9000, library_specs: TRAUB_GATES } as const;
+const HN = ['N', 'H'];
+const AC = ['A', 'C'];
 
 // 19 区画の全軌道で学習する。どこを置換するかは系列（replace_targets）が決める。
 // 1 軌道を 1000 ms にして、総サンプル数を単一区画（9000 ms）と同じくらいにする。
@@ -75,13 +78,16 @@ const DECLARED: Record<string, Declared> = {
   // Ca 系（χ, q）だけを元の式で解き、残る 8 ゲートを潜在へ縮める。
   traub_useMC19CompForTeachingData: { ...TRAUB19, groups: [TRAUB_8], compressor: 'pca', d: [6, 7, 8] },
   // s, r も元の式で解き、残る 6 ゲートを縮める。noCompression は 6 → 6 の可逆な PCA で、圧縮しないときの基準。
-  poster_noCompression: { ...TRAUB19, groups: [TRAUB_6], compressor: 'pca', d: 6 },
-  poster_traub_pca: { ...TRAUB19, groups: [TRAUB_6], compressor: 'pca', d: 5 },
-  poster_traub_ae: { ...TRAUB19, groups: [TRAUB_6], compressor: 'ae', d: 5 },
+  poster_noCompression: { ...TRAUB19, groups: [TRAUB_6], library_specs: TRAUB_ALL_GATES, compressor: 'pca', d: 6 },
+  poster_traub_pca: { ...TRAUB19, groups: [TRAUB_6], library_specs: TRAUB_ALL_GATES, compressor: 'pca', d: 5 },
+  poster_traub_ae: { ...TRAUB19, groups: [TRAUB_6], library_specs: TRAUB_ALL_GATES, compressor: 'ae', d: 5 },
 
   // h, n を 1 本へ縮める。PCA の 2 本は 2 → 2 の可逆な変換で、圧縮しないときの基準。
-  grouped_hn_pca: { ...TRAUB_HN, compressor: 'pca', d: [1, 2] },
-  grouped_hn_ae: { ...TRAUB_HN, compressor: 'ae', d: 1 },
+  grouped_hn_pca: { ...TRAUB_GROUPED, groups: [HN], compressor: 'pca', d: [1, 2] },
+  grouped_hn_ae: { ...TRAUB_GROUPED, groups: [HN], compressor: 'ae', d: 1 },
+  // {h,n} と {a,c} をそれぞれ 1 本へ縮める（55.01 の 2 段目）。
+  grouped_hn_ac_pca: { ...TRAUB_GROUPED, groups: [HN, AC], compressor: 'pca', d: 1 },
+  grouped_hn_ac_ae: { ...TRAUB_GROUPED, groups: [HN, AC], compressor: 'ae', d: 1 },
 
   // テスト専用（tests は名前で引く）。どの実験にも入れないので冊には出ない。
   _test_hh_sindy: { ...TEST_HH, form: 'sindy', d: 3 },
@@ -89,10 +95,10 @@ const DECLARED: Record<string, Declared> = {
   // AE の経路を踏むだけなので epochs を切り詰める。
   _test_hh_ae: { ...TEST_HH, form: 'hybrid', compressor: 'ae', d: 2, compressor_params: { epochs: 20 } },
   _test_traub_hybrid: { ...TEST_TRAUB, groups: [TRAUB_8] },
-  _test_traub_hybrid_sr_physics: { ...TEST_TRAUB, groups: [TRAUB_6] },
-  _test_traub_hybrid_hn: { ...TEST_TRAUB, groups: [['N', 'H']], d: 1, library_specs: HN_GATES },
+  _test_traub_hybrid_sr_physics: { ...TEST_TRAUB, groups: [TRAUB_6], library_specs: TRAUB_ALL_GATES },
+  _test_traub_hybrid_hn: { ...TEST_TRAUB, groups: [HN], d: 1 },
   // 群を 2 つ持つ形。{h,n} と {a,c} をそれぞれ 1 本へ縮め、残りは元の式。
-  _test_traub_two_groups: { ...TEST_TRAUB, groups: [['N', 'H'], ['A', 'C']], d: 1 },
+  _test_traub_two_groups: { ...TEST_TRAUB, groups: [HN, AC], d: 1 },
   // encoder・decoder と潜在方程式（NN）を同じロスで学習する経路。項ライブラリは持たない。
   _test_traub_ude: {
     cell: 'traub',
@@ -163,6 +169,10 @@ export const EXPERIMENTS: Record<string, Experiment> = {
   },
   grouped_hn: {
     presets: ['grouped_hn_pca', 'grouped_hn_ae'],
+    series: ['traub_somastim'],
+  },
+  grouped_hn_ac: {
+    presets: ['grouped_hn_ac_pca', 'grouped_hn_ac_ae'],
     series: ['traub_somastim'],
   },
   latent_dim: {

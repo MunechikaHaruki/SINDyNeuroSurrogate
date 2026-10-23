@@ -12,7 +12,7 @@ export type SimSpec = {
 };
 
 /** 閉包項の項ライブラリの 1 項。type は Python の項カタログの名前。 */
-/** gates はレート項をそのゲートのものに絞る（例 'hn'）。省けば全ゲート。 */
+/** gates はレート項をそのゲートのものに絞る（例 'hn'）。省けば群の状態のもの。 */
 export type LibrarySpec = { type: string; gates?: string };
 
 /** 1 つの群。gates は区画の状態の名前（Python の cells の states）。params は各 fit 関数の引数へそのまま渡る。 */
