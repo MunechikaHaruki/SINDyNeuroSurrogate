@@ -1,18 +1,20 @@
+<!--
+  学習 run 1 本の中身。閉包項の係数、前処理の寄与率、区画のつながりと、学習データから同定器へ渡したもの
+  （圧縮した入力、再構成誤差、潜在の軌跡、電位の分布）をカードで並べる。
+
+    <TrainedRun run="models/<ハッシュ>" />
+-->
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import Dashboard from '$lib/book/Dashboard.svelte';
   import Card from '$lib/Card.svelte';
   import Range from '$lib/Range.svelte';
-  import Choice from '$lib/Choice.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import LineChart from '$lib/LineChart.svelte';
   import SignedChart from '$lib/SignedChart.svelte';
   import MatrixTable from '$lib/MatrixTable.svelte';
-  import NetChart from './trained-model/NetChart.svelte';
+  import NetChart from './NetChart.svelte';
   import { tex } from '$lib/tex.ts';
-  import { RUNS, decimate, decodeComp, experimentTrains, readComp, readCurrent, readF64, readJson, readStatus, type Point, type WaveMeta } from './read/runs.ts';
-  import type { Status } from './orchestrate/spec.ts';
-  import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from './read/model-json.ts';
+  import { decimate, decodeComp, readComp, readCurrent, readF64, readJson, type Point, type WaveMeta } from '../read/runs.ts';
+  import { cumulative, featureTex, histogram, placeNet, targetTex, type ModelJson } from '../read/model-json.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
   /** 学習 run の中身の置き場（neurosurrogate/run.py）。 */
@@ -27,9 +29,7 @@
   /** 学習 comp 1 つ分：学習データの変数、同定器への入力、潜在、再構成 RMSE。 */
   type CompData = { vars: Record<string, Float64Array>; x: Record<string, Float64Array>; latent: Record<string, Float64Array>; recon: Float64Array };
 
-  let status = $state<Status>({ experiments: [], jobs: [] });
-  let experimentName = $state('');
-  let runId = $state('');
+  let { run }: { run: string } = $props();
   let model = $state<ModelJson>();
   let meta = $state<WaveMeta>();
   let comps = $state<Record<string, CompData>>({});
@@ -49,36 +49,9 @@
     return names;
   });
 
-  let experiment = $derived(status.experiments.find(e => e.name === experimentName) ?? status.experiments[0]);
-  // 名前を選んでいなければ最初の実験になるので、選択欄にもその名前を出す。
-  $effect(() => {
-    if (experiment && experimentName !== experiment.name) experimentName = experiment.name;
-  });
-
-  /** 実験の preset の、学習を終えた run（preset の順、掃引の点の順）。 */
-  let runs = $derived(experiment ? experimentTrains(experiment) : []);
-
-  /** 実験の状態を読み、操作盤から ?experiment=…&preset=… で来たらその preset の最初の run を選ぶ。 */
-  async function load(): Promise<void> {
-    status = await readStatus();
-    const params = new URLSearchParams(window.location.search);
-    experimentName = params.get('experiment') ?? '';
-    const preset = experiment?.presets.find(p => p.preset === params.get('preset'));
-    runId = preset?.runs[0]?.id ?? runs[0]?.id ?? '';
-  }
-
-  // 実験を選び直して、選んでいた run がその実験に無ければ、最初の run を選ぶ。
-  $effect(() => {
-    if (runs.length > 0 && !runs.some(r => r.id === runId)) runId = runs[0].id;
-  });
-
-  onMount(() => {
-    load().catch(e => (error = `runs/（${RUNS}）を読めない：${e instanceof Error ? e.message : String(e)}`));
-  });
-
   // run を選んだら、その中身を読む。学習 comp ごとの配列は最初に全部読む。
   $effect(() => {
-    const id = runId;
+    const id = run;
     if (!id) return;
     model = undefined;
     meta = undefined;
@@ -267,137 +240,108 @@
   }
 </script>
 
-<Dashboard title="SINDy サロゲート：学習 run の中身" summary="学習した 1 本の run について、閉包項の係数、前処理の寄与率、区画のつながりと、学習データから同定器へ渡したもの（圧縮した入力、再構成誤差、潜在の軌跡、電位の分布）を並べる。">
-  {#snippet sidebar()}
-    {#if error}<p class="note" aria-live="polite">停止：{error}</p>{/if}
-    <section>
-      <h3>実験</h3>
-      <Choice label="見比べる組" bind:value={experimentName} options={status.experiments.map(e => ({ value: e.name, label: e.name }))} />
-    </section>
-    <section>
-      <h3>学習 run</h3>
-      {#if runs.length > 0}
-        <Choice label="見る run" bind:value={runId} options={runs.map(r => ({ value: r.id, label: r.name }))} />
-        <p class="note"><code>{runId}</code></p>
-      {:else if !error}
-        <p class="note">この実験には学習を終えた run が無い。</p>
-      {/if}
-      <p class="note">学習は <a href="runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
-    </section>
-    {#if model}
-      <section>
-        <h3>区画</h3>
-        <Toggles label="表示する学習区画" bind:selected={shownComps} options={model.net.train.map(name => ({ value: name, label: name }))} />
-      </section>
-      <section>
-        <h3>時間の表示</h3>
-        <Range label="表示開始" bind:value={windowStart} min={0} max={Math.max(0, duration - 10)} step={10} display={`${windowStart} ms`} />
-        <Range label="表示幅" bind:value={windowLength} min={10} max={Math.max(10, duration)} step={10} display={`${Math.min(windowLength, duration - windowStart).toFixed(0)} ms`} />
-      </section>
+{#if model && meta && current}
+  <Card kicker="ネット" title="区画のつながり" subtitle={`刺激 ${model.net.stim}、線の数字は結合の重み`}>
+    <NetChart nodes={netNodes()} edges={netEdges()} />
+  </Card>
+
+  <Card kicker="学習データ" title="入力と応答" subtitle={`学習区画 ${shown.join('、') || 'なし'} の軌道`}>
+    {#snippet controls()}
+      <Toggles label="表示する学習区画" bind:selected={shownComps} options={model!.net.train.map(name => ({ value: name, label: name }))} />
+      <Range label="表示開始" bind:value={windowStart} min={0} max={Math.max(0, duration - 10)} step={10} display={`${windowStart} ms`} />
+      <Range label="表示幅" bind:value={windowLength} min={10} max={Math.max(10, duration)} step={10} display={`${Math.min(windowLength, duration - windowStart).toFixed(0)} ms`} />
+    {/snippet}
+    <figure>
+      <figcaption>注入電流 <small>{model.net.stim}</small></figcaption>
+      <LineChart traces={[timeTrace('I_ext', current)]} xDomain={domain} xLabel="時間 (ms)" yLabel="I_ext (µA/cm²)" />
+    </figure>
+    <figure>
+      <figcaption>膜電位 V</figcaption>
+      <LineChart traces={perComp(voltageOf)} xDomain={domain} xLabel="時間 (ms)" yLabel="膜電位 (mV)" />
+    </figure>
+    {#if shown.length > 0}
+      <figure>
+        <figcaption>学習したゲート <small>{shown[0]}</small></figcaption>
+        <LineChart traces={gateTraces()} xDomain={domain} xLabel="時間 (ms)" yLabel="ゲート" />
+      </figure>
     {/if}
-  {/snippet}
+    {#snippet info()}
+      <p>学習データは保存しておらず、学習の設定（spec）からこの repo がシミュレーションし直したもの。ゲートは表示する先頭の区画だけを描く（ほかの区画のゲートも同じ多様体に乗る前提で、ずれは潜在の軌跡で見る）。</p>
+    {/snippet}
+  </Card>
 
-  {#snippet left()}
-    {#if model && meta && current}
-      <Card kicker="ネット" title="区画のつながり" subtitle={`刺激 ${model.net.stim}、線の数字は結合の重み`}>
-        <NetChart nodes={netNodes()} edges={netEdges()} />
-      </Card>
-
-      <Card kicker="学習データ" title="入力と応答" subtitle={`学習区画 ${shown.join('、') || 'なし'} の軌道`}>
+  <Card kicker="学習データ" title="同定器への入力" subtitle="閉包項の同定に渡した直前の列（圧縮した後）">
+    <figure>
+      {#each inputNames as name (name)}
         <figure>
-          <figcaption>注入電流 <small>{model.net.stim}</small></figcaption>
-          <LineChart traces={[timeTrace('I_ext', current)]} xDomain={domain} xLabel="時間 (ms)" yLabel="I_ext (µA/cm²)" />
+          <figcaption>{name}</figcaption>
+          <LineChart traces={inputTraces(name)} xDomain={domain} xLabel="時間 (ms)" yLabel={name} />
+        </figure>
+      {/each}
+    </figure>
+    {#snippet info()}
+      <p>V は圧縮しない（SINDy では状態の 1 列、hybrid では入力として素通しする）ので出さない。</p>
+    {/snippet}
+  </Card>
+
+  <Card kicker="前処理" title="再構成誤差" subtitle="ゲート → 潜在 → ゲートの RMSE（時刻ごと）">
+    <LineChart traces={perComp(reconOf)} xDomain={domain} xLabel="時間 (ms)" yLabel="RMSE" />
+    {#snippet info()}
+      <p>潜在へ落とした時点で捨てたもの。閉包項をどれだけうまく同定しても、この誤差より下には行かない。</p>
+    {/snippet}
+  </Card>
+
+  <Card kicker="前処理" title="潜在の軌跡" subtitle={`${pathAxes.x} と ${pathAxes.y}`}>
+    {@const traces = pathTraces()}
+    <LineChart {traces} xDomain={extent(traces)} xLabel={pathAxes.xIsVoltage ? '膜電位 V (mV)' : pathAxes.x} yLabel={pathAxes.y} />
+    {#snippet info()}
+      <p>学習ゲートは区画の params に依らないので、区画が違っても同じ多様体に乗るはず。軌跡が重ならなければ、潜在の次元が足りないか、params が混ざっている。</p>
+    {/snippet}
+  </Card>
+
+  <Card kicker="学習データ" title="電位の分布" subtitle="学習が踏んだ膜電位（区画ごと）">
+    {@const traces = coverageTraces()}
+    <LineChart {traces} xDomain={extent(traces)} xLabel="膜電位 V (mV)" yLabel="時刻の数" />
+    {#snippet info()}
+      <p>評価でこの範囲の外へ出た電位は外挿になる。区画を足して学習すると、増えるのは主にこの被覆。</p>
+    {/snippet}
+  </Card>
+{:else if error}
+  <p class="note" aria-live="polite">停止：{error}</p>
+{:else}
+  <p class="note">中身を読んでいる。</p>
+{/if}
+{#if model}
+  <Card kicker="閉包項" title={sindy ? 'SINDy の係数' : `閉包項（${model.closure.kind}）`} subtitle={sindy ? `0 でない係数 ${nonzero} / ${sindy.xi.length * sindy.features.length}` : ''}>
+    {#if sindy}
+      <MatrixTable rows={featureHeads()} columns={targetHeads()} values={coefficientRows()} />
+    {:else}
+      <pre>{JSON.stringify(model.closure, null, 1)}</pre>
+    {/if}
+    {#snippet info()}
+      <p>列が対象変数の時間微分、行がライブラリの項。セルの値が係数 ξ で、色の濃さは log(1 + |ξ|) に比例する。下付きのモデル名は表から省く。</p>
+    {/snippet}
+  </Card>
+
+  {#if pca}
+    <Card kicker="前処理" title="PCA の寄与率" subtitle={`n_components = ${pca.n_components}、累積 ${kept.toFixed(3)}`}>
+      <figure>
+        <figure>
+          <figcaption>成分ごと</figcaption>
+          <SignedChart mark="stem" points={ratioPoints()} xDomain={[0.5, pca.explained_variance_ratio.length + 0.5]} yDomain={[0, 1]} xLabel="主成分" yLabel="寄与率" />
         </figure>
         <figure>
-          <figcaption>膜電位 V</figcaption>
-          <LineChart traces={perComp(voltageOf)} xDomain={domain} xLabel="時間 (ms)" yLabel="膜電位 (mV)" />
+          <figcaption>累積</figcaption>
+          <LineChart traces={cumulativeTrace()} xDomain={[1, Math.max(2, pca.explained_variance_ratio.length)]} yDomain={[0, 1.02]} xLabel="主成分" yLabel="累積寄与率" guides={[{ label: '保持', tone: 'accent', x: [pca.n_components] }]} />
         </figure>
-        {#if shown.length > 0}
-          <figure>
-            <figcaption>学習したゲート <small>{shown[0]}</small></figcaption>
-            <LineChart traces={gateTraces()} xDomain={domain} xLabel="時間 (ms)" yLabel="ゲート" />
-          </figure>
-        {/if}
-        {#snippet info()}
-          <p>学習データは保存しておらず、学習の設定（spec）からこの repo がシミュレーションし直したもの。ゲートは表示する先頭の区画だけを描く（ほかの区画のゲートも同じ多様体に乗る前提で、ずれは潜在の軌跡で見る）。</p>
-        {/snippet}
-      </Card>
-
-      <Card kicker="学習データ" title="同定器への入力" subtitle="閉包項の同定に渡した直前の列（圧縮した後）">
-        <figure>
-          {#each inputNames as name (name)}
-            <figure>
-              <figcaption>{name}</figcaption>
-              <LineChart traces={inputTraces(name)} xDomain={domain} xLabel="時間 (ms)" yLabel={name} />
-            </figure>
-          {/each}
-        </figure>
-        {#snippet info()}
-          <p>V は圧縮しない（SINDy では状態の 1 列、hybrid では入力として素通しする）ので出さない。</p>
-        {/snippet}
-      </Card>
-
-      <Card kicker="前処理" title="再構成誤差" subtitle="ゲート → 潜在 → ゲートの RMSE（時刻ごと）">
-        <LineChart traces={perComp(reconOf)} xDomain={domain} xLabel="時間 (ms)" yLabel="RMSE" />
-        {#snippet info()}
-          <p>潜在へ落とした時点で捨てたもの。閉包項をどれだけうまく同定しても、この誤差より下には行かない。</p>
-        {/snippet}
-      </Card>
-
-      <Card kicker="前処理" title="潜在の軌跡" subtitle={`${pathAxes.x} と ${pathAxes.y}`}>
-        {@const traces = pathTraces()}
-        <LineChart {traces} xDomain={extent(traces)} xLabel={pathAxes.xIsVoltage ? '膜電位 V (mV)' : pathAxes.x} yLabel={pathAxes.y} />
-        {#snippet info()}
-          <p>学習ゲートは区画の params に依らないので、区画が違っても同じ多様体に乗るはず。軌跡が重ならなければ、潜在の次元が足りないか、params が混ざっている。</p>
-        {/snippet}
-      </Card>
-
-      <Card kicker="学習データ" title="電位の分布" subtitle="学習が踏んだ膜電位（区画ごと）">
-        {@const traces = coverageTraces()}
-        <LineChart {traces} xDomain={extent(traces)} xLabel="膜電位 V (mV)" yLabel="時刻の数" />
-        {#snippet info()}
-          <p>評価でこの範囲の外へ出た電位は外挿になる。区画を足して学習すると、増えるのは主にこの被覆。</p>
-        {/snippet}
-      </Card>
-    {:else if runId && !error}
-      <p class="note">中身を読んでいる。</p>
-    {/if}
-  {/snippet}
-
-  {#snippet right()}
-    {#if model}
-      <Card kicker="閉包項" title={sindy ? 'SINDy の係数' : `閉包項（${model.closure.kind}）`} subtitle={sindy ? `0 でない係数 ${nonzero} / ${sindy.xi.length * sindy.features.length}` : ''}>
-        {#if sindy}
-          <MatrixTable rows={featureHeads()} columns={targetHeads()} values={coefficientRows()} />
-        {:else}
-          <pre>{JSON.stringify(model.closure, null, 1)}</pre>
-        {/if}
-        {#snippet info()}
-          <p>列が対象変数の時間微分、行がライブラリの項。セルの値が係数 ξ で、色の濃さは log(1 + |ξ|) に比例する。下付きのモデル名は表から省く。</p>
-        {/snippet}
-      </Card>
-
-      {#if pca}
-        <Card kicker="前処理" title="PCA の寄与率" subtitle={`n_components = ${pca.n_components}、累積 ${kept.toFixed(3)}`}>
-          <figure>
-            <figure>
-              <figcaption>成分ごと</figcaption>
-              <SignedChart mark="stem" points={ratioPoints()} xDomain={[0.5, pca.explained_variance_ratio.length + 0.5]} yDomain={[0, 1]} xLabel="主成分" yLabel="寄与率" />
-            </figure>
-            <figure>
-              <figcaption>累積</figcaption>
-              <LineChart traces={cumulativeTrace()} xDomain={[1, Math.max(2, pca.explained_variance_ratio.length)]} yDomain={[0, 1.02]} xLabel="主成分" yLabel="累積寄与率" guides={[{ label: '保持', tone: 'accent', x: [pca.n_components] }]} />
-            </figure>
-          </figure>
-          {#snippet info()}
-            <p>捨てた成分も含めて描く。保持した数が累積の飽和点に対して妥当かを見る。</p>
-          {/snippet}
-        </Card>
-      {:else}
-        <Card kicker="前処理" title={`前処理（${model.preprocessor.kind}）`}>
-          <pre>{JSON.stringify(model.preprocessor, null, 1)}</pre>
-        </Card>
-      {/if}
-    {/if}
-  {/snippet}
-</Dashboard>
+      </figure>
+      {#snippet info()}
+        <p>捨てた成分も含めて描く。保持した数が累積の飽和点に対して妥当かを見る。</p>
+      {/snippet}
+    </Card>
+  {:else}
+    <Card kicker="前処理" title={`前処理（${model.preprocessor.kind}）`}>
+      <pre>{JSON.stringify(model.preprocessor, null, 1)}</pre>
+    </Card>
+  {/if}
+{/if}

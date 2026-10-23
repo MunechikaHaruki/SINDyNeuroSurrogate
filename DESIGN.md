@@ -50,9 +50,9 @@ runs/                                 実験の結果 (Git の外)
 系列から置換範囲を除いたもの) ごとの結果は `runs/inputs/<入力のハッシュ>/` の下に、元のモデルなら
 `original/`、置き換えたモデルなら `<モデルの鍵>/` (学習 run のハッシュ + 置換範囲) で置く。1 run = spec.json 1 つで、
 置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。
-run は `runs/` の下のパス (id) で指す。図は Python で描かず、`evaluation/05-evaluation` (評価) と
-`04-trained-model` (学習 run) が `runs.ts` を通して、口が宣言から組んだ id で読む。Python が置くのは図に要る
-データだけ:
+run は `runs/` の下のパス (id) で指す。図は Python で描かず、回すのは操作盤の冊 (`evaluation/runs`)、読むのは
+実験の冊 (`evaluation/experiment`。評価の比較と学習 run の中身) で、`runs.ts` を通して、口が宣言から組んだ id で
+読む。Python が置くのは図に要るデータだけ:
 
 ```
 runs/index.json                全 run の id + meta.json + spec (段取りが書く。図はここから一覧を作る)

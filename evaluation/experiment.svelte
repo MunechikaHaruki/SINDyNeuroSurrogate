@@ -6,8 +6,9 @@
   import Choice from '$lib/Choice.svelte';
   import Toggles from '$lib/Toggles.svelte';
   import LineChart from '$lib/LineChart.svelte';
-  import { RUNS, decimate, experimentColumns, gatesOf, listRuns, readComp, readCurrent, readInternal, readJson, readStatus, seriesEntry, type Column, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
-  import { compare, type PairMetrics, type SpikesFile } from './read/compare.ts';
+  import TrainedRun from './experiment/TrainedRun.svelte';
+  import { RUNS, decimate, experimentColumns, experimentTrains, gatesOf, listRuns, readComp, readCurrent, readInternal, readJson, readStatus, seriesEntry, type Column, type Point, type SeriesEntry, type WaveMeta } from './read/runs.ts';
+  import { compare, crossingDiff, crossings, type CrossingDiff, type PairMetrics, type SpikesFile } from './read/compare.ts';
   import type { IndexEntry, Status } from './orchestrate/spec.ts';
 
   type Trace = { label: string; points: Point[]; dashed?: boolean };
@@ -41,6 +42,9 @@
   let spikeSurrogate = $state(0);
   let windowStart = $state(0);
   let windowLength = $state(1000);
+  let crossingMetric = $state<'count' | 'peak' | 'lastShift'>('count');
+  /** 中身を見る学習 run の id。 */
+  let trainRun = $state('');
 
   let experiment = $derived(status.experiments.find(e => e.name === experimentName) ?? status.experiments[0]);
   /** 実験の系列のうち、原系を回したもの。 */
@@ -83,13 +87,22 @@
   let duration = $derived(originalMeta ? originalMeta.n[point] * originalMeta.dt : 0);
   let domain = $derived<[number, number]>([windowStart, Math.min(duration, windowStart + windowLength)]);
 
-  /** run の一覧と実験の状態を読む。操作盤から ?experiment=…&series=… で来たらその系列を選ぶ。 */
+  /** 実験の preset の、学習を終えた run（preset の順、掃引の点の順）。 */
+  let trains = $derived(experiment ? experimentTrains(experiment) : []);
+  // 実験を選び直して、選んでいた学習 run がその実験に無ければ、最初の run を選ぶ。
+  $effect(() => {
+    if (trains.length > 0 && !trains.some(r => r.id === trainRun)) trainRun = trains[0].id;
+  });
+
+  /** run の一覧と実験の状態を読む。操作盤から ?experiment=…&series=…&preset=… で来たら、その系列と preset の学習 run を選ぶ。 */
   async function load(): Promise<void> {
     index = await listRuns();
     status = await readStatus();
     const params = new URLSearchParams(window.location.search);
     experimentName = params.get('experiment') ?? '';
     seriesName = params.get('series') ?? '';
+    const preset = experiment?.presets.find(p => p.preset === params.get('preset'));
+    trainRun = preset?.runs[0]?.id ?? '';
   }
 
   onMount(() => {
@@ -228,6 +241,28 @@
     }
     return list;
   }
+  /** 選んだ列の点ごとの、0 mV の横切りで数えた原系との差。 */
+  function crossingDiffs(column: Column): CrossingDiff[] {
+    const list: CrossingDiff[] = [];
+    if (!originalMeta || grid.length !== originalMeta.n.length) return list;
+    for (const waves of grid) {
+      const v = waves.columns[column.run]?.V;
+      if (!v) return [];
+      list.push(crossingDiff(crossings(waves.original.V, originalMeta.dt), crossings(v, originalMeta.dt)));
+    }
+    return list;
+  }
+  function crossingCell(diff: CrossingDiff): string {
+    if (crossingMetric === 'count') return `${diff.count[0]} → ${diff.count[1]}`;
+    const value = crossingMetric === 'peak' ? diff.peak : diff.lastShift;
+    if (value === null) return '—';
+    return crossingMetric === 'peak' && value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
+  }
+  const crossingOptions = [
+    { value: 'count', label: '発火回数（元 → モデル）' },
+    { value: 'peak', label: '山の高さの差（mV）' },
+    { value: 'lastShift', label: '最後の山の時刻のずれ（ms）' },
+  ];
   let sweepDomain = $derived<[number, number]>(entry && entry.values.length > 1 ? [Math.min(...entry.values), Math.max(...entry.values)] : [0, 1]);
 
   // ---- 1 ペアの詳細 ----
@@ -346,7 +381,7 @@
   });
 </script>
 
-<Dashboard title="SINDy サロゲート：評価の比較" summary="学習したサロゲートで Traub の区画を置き換え、同じ入力の掃引で原系と比べる。点ごとの膜電位、掃引値に沿った指標、1 組の詳細（潜在変数・相平面・スパイクの特徴量）と、学習側の指標を並べる。">
+<Dashboard title="SINDy サロゲート：実験" summary="実験を 1 つ選び、置き換えた列（学習した圧縮と KAM 縮約）を同じ入力の掃引で原系と比べる。膜電位、指標、1 組の詳細と、学習 run の中身を並べる。">
   {#snippet sidebar()}
     {#if error}<p class="note" aria-live="polite">停止：{error}</p>{/if}
     <section>
@@ -363,9 +398,17 @@
       {/if}
     </section>
     <section>
-      <h3>比べる学習 run</h3>
+      <h3>比べる列</h3>
       <Toggles label="置換した列" bind:selected={chosen} options={columns.map(c => ({ value: c.train, label: c.trainName }))} />
       <p class="note">宣言にあってまだ回していない組は <a href="runs">別冊「SINDy サロゲート：run の操作盤」</a> から回す。</p>
+    </section>
+    <section>
+      <h3>学習 run の中身</h3>
+      {#if trains.length > 0}
+        <Choice label="見る学習 run" bind:value={trainRun} options={trains.map(r => ({ value: r.id, label: r.name }))} />
+      {:else if !error}
+        <p class="note">この実験には学習を終えた run が無い。</p>
+      {/if}
     </section>
     <section>
       <h3>見る区画</h3>
@@ -417,6 +460,31 @@
         {/snippet}
       </Card>
     {/if}
+
+    <Card kicker="掃引" title="原系との差の表" subtitle={`${evalComp}。どの列も同じ原系と比べる`}>
+      {#snippet controls()}
+        <Choice label="指標" bind:value={crossingMetric} options={crossingOptions} />
+      {/snippet}
+      {#if entry && selected.length > 0}
+        <table>
+          <thead
+            ><tr
+              ><th>列</th>{#each entry.values as value, k (k)}<th>{entry.param ? `${value} ${entry.unit}` : '単発'}</th>{/each}</tr
+            ></thead
+          >
+          <tbody>
+            {#each selected as column (column.run)}
+              <tr
+                ><td>{shortNames[column.train]}</td>{#each crossingDiffs(column) as diff, k (k)}<td>{crossingCell(diff)}</td>{/each}</tr
+              >
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+      {#snippet info()}
+        <p>スパイクは 0 mV を上向きに越えた所で数え、山はそのスパイクの最大値。時刻のずれは、両方にある最後のスパイクで測る。学習しない KAM 縮約の列（preset kam_*）も、学習した列と同じ扱いで並ぶ。</p>
+      {/snippet}
+    </Card>
 
     <Card kicker="1 組" title={detail ? `詳細：${detail.trainName}` : '詳細'} subtitle={pointLabel(point) || '単発'} moreLabel="全区画の波形（原系）">
       {#snippet controls()}
@@ -505,6 +573,12 @@
           </tbody>
         </table>
       </Card>
+    {/if}
+
+    {#if trainRun}
+      {#key trainRun}
+        <TrainedRun run={trainRun} />
+      {/key}
     {/if}
   {/snippet}
 
