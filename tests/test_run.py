@@ -15,15 +15,13 @@ import pytest
 from test_surrogate import preset_config
 
 from neurosurrogate import run
-from neurosurrogate.core import access
-from neurosurrogate.sim.run import _simulate
-from neurosurrogate.sim.spec import EvalSeries
+from neurosurrogate.physics.simulate import EvalSeries, potential, simulate
 
 
 def _series() -> dict:
     """学習と同じ入力を**さらに短く**した 2 点の掃引。見たいのは保存と読込の往復で
     あって波形の質ではないので、シミュ長は最小で足りる。"""
-    spec = preset_config("_test_hh_sindy")["spec"]["datasets"]
+    spec = preset_config("_test_hh_sindy")["data"]
     return {
         "spec": {**spec, "stim": "soma"},
         "replace_targets": ["soma"],
@@ -65,12 +63,12 @@ def test_runs_round_trip_and_are_not_rerun(runs: Path) -> None:
     series = EvalSeries.from_dict(_series())
     waves = run._read_waves(runs / "inputs/I/original/waves")
     np.testing.assert_allclose(
-        access.potential(waves[1], 0),
-        access.potential(_simulate(series.points[1], None, ()), 0),
+        potential(waves[1], 0),
+        potential(simulate(series.points[1].run_input()), 0),
         rtol=1e-5,
     )
     surr = run._read_waves(runs / "inputs/I/R/waves")
-    assert not np.allclose(access.potential(surr[1], 0), access.potential(waves[1], 0))
+    assert not np.allclose(potential(surr[1], 0), potential(waves[1], 0))
     meta = json.loads((runs / "inputs/I/R/meta.json").read_text())
     assert (meta["kind"], meta["name"], meta["unit"]) == ("replaced", "inputs/I/R", "")
     original = json.loads((runs / "inputs/I/original/meta.json").read_text())
@@ -90,7 +88,7 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     n_time = json.loads((runs / "models/T/description/train/meta.json").read_text())
     x = np.fromfile(runs / "models/T/description/fit/0/x.f64", dtype="<f8")
     assert x.size == len(model["x_names"]) * n_time["n"][0]
-    assert (runs / "models/T/surrogate/spec.json").exists()
+    assert (runs / "models/T/surrogate/config.json").exists()
 
     meta = json.loads((runs / "inputs/I/original/waves/meta.json").read_text())
     assert meta["names"] == {"soma": 0}

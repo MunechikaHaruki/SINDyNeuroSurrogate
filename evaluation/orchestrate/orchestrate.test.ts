@@ -10,7 +10,7 @@ test('the key does not depend on the order the spec was written in', () => {
     '{"a":{"c":null,"d":[1,{"e":3,"f":2}]},"b":1}',
   );
   const config = PRESETS._test_hh_sindy[0].config;
-  const reordered = { closure: config.closure, ansatz: config.ansatz, preprocessor: config.preprocessor, spec: config.spec };
+  const reordered = { train_comp: config.train_comp, groups: config.groups, data: config.data, form: config.form, cell: config.cell };
   expect(hashOf(trainSpec(reordered))).toBe(hashOf(trainSpec(config)));
 });
 
@@ -29,7 +29,7 @@ test('series that differ only in what they replace share the input directory but
 
 test('a sweep gives one differently configured run per point', () => {
   const runs = PRESETS.traub_useMC19CompForTeachingData;
-  expect(runs.map(r => r.config.spec.n_components)).toEqual([6, 7, 8]);
+  expect(runs.map(r => r.config.groups[0].d)).toEqual([6, 7, 8]);
   expect(new Set(runs.map(r => hashOf(trainSpec(r.config)))).size).toBe(3);
 });
 

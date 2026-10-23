@@ -12,27 +12,33 @@ export type SimSpec = {
 };
 
 /** 閉包項の項ライブラリの 1 項。type は Python の項カタログの名前。 */
-export type LibrarySpec = { type: string };
+/** gates はレート項をそのゲートのものに絞る（例 'hn'）。省けば全ゲート。 */
+export type LibrarySpec = { type: string; gates?: string };
+
+/** 1 つの群。gates は区画の状態の名前（Python の cells の states）。params は各 fit 関数の引数へそのまま渡る。 */
+export type Group = {
+  gates: string[];
+  compressor: 'pca' | 'ae';
+  /** 潜在次元。 */
+  d: number;
+  rhs: 'sindy' | 'ude';
+  compressor_params: Record<string, unknown>;
+  /** sindy は library_specs と optimizer、ude は学習の hyperparams。 */
+  rhs_params: { library_specs?: LibrarySpec[]; [key: string]: unknown };
+};
 
 /**
- * 学習の設定ツリー（Python の SurrogateSpec.from_config が解く）。spec は何を学習するか、
- * preprocessor・ansatz・closure は parts/ の 3 構成要素と同名で、それぞれその層の入口の署名へ ** で展開される。
- * 受理するキーと既定値はその署名だけが決め、綴り違いや層違いは Python で TypeError になる。
+ * 学習の設定（Python の surrogate.Config）。群に入らなかった状態は元の式のまま解く（hybrid）。
+ * form が sindy なら膜電位も含めて丸ごと同定し、群は全状態の 1 つだけ。
  */
 export type SurrogateConfig = {
-  spec: {
-    comp_type: string;
-    surrogate_type: string;
-    preprocessor_type: string;
-    n_components: number;
-    datasets: SimSpec;
-    /** 学習を 1 ノードへ絞る指定。null は学習ネット内の学習ドメイン全部。 */
-    train_comp_identifier: string | null;
-  };
-  preprocessor: Record<string, unknown>;
-  /** hybrid と ude は physics_type（neurons の HYBRID_SPLITS のキー）が必須。sindy は分割が無いので空。 */
-  ansatz: { physics_type?: string };
-  closure: { library_specs?: LibrarySpec[]; [key: string]: unknown };
+  cell: string;
+  form: 'hybrid' | 'sindy';
+  /** 学習データを取るシミュレーション。 */
+  data: SimSpec;
+  groups: Group[];
+  /** 学習を 1 区画へ絞る名前。null は同じ型の全区画。 */
+  train_comp: string | null;
 };
 
 /** 1 回の掃引実験（Python の EvalSeries）。param が null なら単発（点 1 つ）。 */
@@ -52,7 +58,7 @@ export type Train = { name: string; config: SurrogateConfig };
 export type Experiment = { presets: string[]; series: string[] };
 
 /** spec の形式の版。neurosurrogate/run.py の _FORMAT と揃える。spec に入るので、変えると鍵が変わり古い run は回し直される。 */
-export const FORMAT = 3;
+export const FORMAT = 5;
 
 /** 入力：電流と掃引。系列から置換範囲を除いたもので、同じ入力の結果は一つのディレクトリにまとまる。 */
 export type Input = Omit<Series, 'replace_targets'>;

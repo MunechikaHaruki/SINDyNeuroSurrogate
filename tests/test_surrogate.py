@@ -1,184 +1,302 @@
-"""サロゲート fit → 置換シミュ → 指標の smoke (保存を介さない)。
+"""サロゲートの学習・置換・書き出し。preset と系列は conf.ts の宣言を段取りから読む。"""
 
-preset と評価系列は `conf.ts` の宣言を実設定源として段取り (`orchestrate.ts
-spec|series`、どちらも evaluation/) から読み、
-ドメイン層だけを通す。テスト専用の preset は `_test_*` (学習構造と短縮電流だけ
-固定) で、テスト側は override しない。
-"""
-
-import copy
 import json
 import subprocess
-from dataclasses import replace as dc_replace
 from functools import cache
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from sympy.core.function import AppliedUndef
 
-from neurosurrogate.core import access
-from neurosurrogate.core.network import Compartment, CompartmentType, NeuronGraph
-from neurosurrogate.core.opcost import OpCost
-from neurosurrogate.core.simulator import unified_simulator
-from neurosurrogate.neurons.hh import (
-    HH_TYPE,
-    HHParams,
-    dhdt,
-    dmdt,
-    dndt,
-    hh_inits,
-)
-from neurosurrogate.neurons.traub import (
-    TRAUB_EXTRA_GATE_NAMES,
-    TRAUB_SR_EXTRA_GATE_NAMES,
-)
-from neurosurrogate.neurons.traub19 import _DEND_STIM_IDX, name_at
-from neurosurrogate.sim.result import SeriesResults, SeriesRun
-from neurosurrogate.sim.run import run_column
-from neurosurrogate.sim.spec import EvalSeries, SimSpec
-from neurosurrogate.sim.waveform import compare
-from neurosurrogate.surrogate.description import describe
-from neurosurrogate.surrogate.model import Surrogate, fit_surrogate
-from neurosurrogate.surrogate.parts import Closure, Preprocessor
-from neurosurrogate.surrogate.parts.ansatz.hybrid import HybridAnsatz
-from neurosurrogate.surrogate.parts.ansatz.ude import UDEAnsatz
-from neurosurrogate.surrogate.parts.closure.sindy import SINDyBundle
-from neurosurrogate.surrogate.parts.closure.sindy._entry import FeatureLibrary
-from neurosurrogate.surrogate.parts.closure.ude import UDEClosure
-from neurosurrogate.surrogate.parts.preprocessor.autoencoder import (
-    AEPreprocessor,
-    fit_ae,
-)
-from neurosurrogate.surrogate.parts.preprocessor.pca import PCAPreprocessor
-from neurosurrogate.surrogate.replace import (
-    _Absent,
-    _NotReplaceable,
-    _ParamsMismatch,
-    _rejected_targets,
-    _TypeMismatch,
+from neurosurrogate.metrics import compare
+from neurosurrogate.physics.cells import CELLS, NETS, OpCost
+from neurosurrogate.physics.simulate import EvalSeries, SimSpec, potential, simulate
+from neurosurrogate.surrogate.compress import AE, fit_ae
+from neurosurrogate.surrogate.model import (
+    Config,
+    Surrogate,
     applicable,
+    describe,
+    fit,
+    rejections,
     replace,
+    summary,
+    surrogate_cell,
 )
+from neurosurrogate.surrogate.sindy import SINDy
+from neurosurrogate.surrogate.ude import UDE
 
 ORCHESTRATE = (
     Path(__file__).resolve().parents[1] / "evaluation/orchestrate/orchestrate.ts"
 )
-LATENT_DIMS = [1, 3]  # 単一 latent と複数 latent = 列構造 [V, z1..zN, u] の両端
 
 
 def _declared(*args: str) -> Any:
-    """`conf.ts` の宣言を段取りに JSON で出させる。"""
     return json.loads(subprocess.check_output(["bun", str(ORCHESTRATE), *args]))
 
 
 @cache
 def preset_config(preset: str) -> dict:
-    """preset の先頭の学習 run の設定ツリー。"""
-    return cast(dict, _declared("spec", preset)[0])
+    """preset の先頭の学習 run の設定。"""
+    config: dict = _declared("spec", preset)[0]
+    return config
 
 
 @cache
-def declared_series() -> dict[str, EvalSeries]:
-    """評価系列の宣言 (`conf.ts` の SERIES) を Python の記述へ。"""
-    return {name: EvalSeries.from_dict(d) for name, d in _declared("series").items()}
+def fit_preset(preset: str) -> Surrogate:
+    """テスト専用の preset を学習する (決定的なので使い回す)。"""
+    return fit(preset_config(preset))
 
 
-@cache
-def fit_preset(preset: str, n_components: int | None = None) -> Surrogate:
-    """テスト専用プリセットを fit。テストの唯一の surrogate 生成口。
-    n_components だけは preset 既定を上書きできる (列構造を振るテストのため)。
-    fit は決定的 (pca 固定) なので同一引数は使い回す — テスト全体を 20s 以内に保つ。"""
-    cfg = copy.deepcopy(preset_config(preset))
-    if n_components is not None:
-        cfg["spec"]["n_components"] = n_components
-    return fit_surrogate(cfg)
-
-
-def _train_comp(surrogate: Surrogate) -> int:
-    """学習 comp の先頭 (代表)。既定では置換対象ノード全部で学習するので、
-    単体モデルではこれが唯一の comp。"""
-    return surrogate.spec.train_comp_ids()[0]
-
-
-def _surr_type(surrogate: Surrogate) -> CompartmentType:
-    """置換後の CompartmentType (定式化に依るので ansatz が学習成果物から組む)。"""
-    return surrogate.ansatz.surr_comp_type(
-        surrogate.spec, surrogate.preprocessor, surrogate.closure
+def _dc(target: str, value: float = 3.0, duration: float = 40.0) -> SimSpec:
+    return SimSpec(
+        target=target,
+        current_type="lin&steady",
+        dt=0.01,
+        current_params={"silence_duration": 10.0, "duration": duration, "value": value},
     )
 
 
-@pytest.fixture(scope="module")
-def sindy() -> Surrogate:
-    """代表 sindy surrogate。latent 次元に依らない性質のテストが共有する。"""
-    return fit_preset("_test_hh_sindy")
+# --- 恒等サロゲート: 圧縮を恒等、右辺を真の式にすると元のモデルと一致する --------
 
 
-def _spec_of(bundle: Surrogate) -> SimSpec:
-    """学習データと同じ入力の評価仕様 (掃引軸なし = 点 1 つ)。学習側の指定も
-    評価条件も同じ `SimSpec` なので、詰め替えずそのまま渡せる。"""
-    return bundle.spec.dataset
+class _Identity:
+    """encode・decode が素通しの圧縮器。"""
+
+    def __init__(self, gate_inits: list[float]) -> None:
+        self.gate_inits = gate_inits
+
+    def encode(self, x):
+        return x
+
+    def decode(self, z):
+        return z
+
+    def opcost(self) -> OpCost:
+        return OpCost()
 
 
-_Runs = tuple[tuple[str, Surrogate], ...]
+class _Exact:
+    """群のゲートの真の微分を返す右辺。ゲートは自分の値と V だけで動くものに限る。"""
+
+    def __init__(self, cell: str, gates: list[str], params) -> None:
+        derivs = CELLS[cell].derivs
+        assert derivs is not None
+        self.derivs = [derivs[g] for g in gates]
+        self.gates = gates
+        self.params = params
+
+    def rhs(self):
+        def dz(z, v):
+            s = {g: z[j] for j, g in enumerate(self.gates)}
+            return jnp.stack([d(self.params, v, s) for d in self.derivs])
+
+        return dz
+
+    def opcost(self) -> OpCost:
+        return OpCost()
 
 
-def _simulate_view(series: EvalSeries, runs: _Runs) -> SeriesResults:
-    """1 系列を run 軸に開いてその場で回す (保存を経由しない経路)。本番は 1 列ずつ
-    run のディレクトリへ書くので、この束ね方はテストにだけ居る。"""
-    return SeriesResults(
-        run_column(series, None, None),
-        tuple(
-            run_column(series, rid, bundle)
-            for rid, bundle in runs
-            if applicable(bundle.spec, series)
-        ),
+def _identity_surrogate(cell: str, groups: list[list[str]]) -> Surrogate:
+    data = {"target": cell, "current_type": "train", "dt": 0.01}
+    config = Config.from_dict(
+        {
+            "cell": cell,
+            "form": "hybrid",
+            "data": data,
+            "groups": [{"gates": g, "compressor": "pca", "d": len(g)} for g in groups],
+        }
+    )
+    node = NETS[cell].nodes[0]
+    init = node.init
+    parts = []
+    for gates in groups:
+        inits = [init[1 + CELLS[cell].states.index(g)] for g in gates]
+        parts.append((_Identity(inits), _Exact(cell, gates, node.resolved_params)))
+    return Surrogate(config, parts)
+
+
+@pytest.mark.parametrize(
+    ("cell", "groups"),
+    [
+        ("hh", [["M", "H", "N"]]),
+        ("hh", [["H"], ["N", "M"]]),
+        ("traub", [["M", "N", "C", "A", "H", "B", "S", "R"]]),
+        ("traub", [["M", "N", "C", "A", "H", "B"]]),
+        ("traub", [["N", "H"]]),
+        ("traub", [["N", "H"], ["A", "C"], ["B"]]),
+    ],
+)
+def test_any_grouping_with_exact_parts_reproduces_the_original(cell, groups) -> None:
+    """どんな群分けでも、恒等の圧縮と真の右辺なら元のモデルと同じ電位になる。
+    群の並べ直しと、元の式で解く状態の組み立てにずれが無いことの担保。"""
+    s = _identity_surrogate(cell, groups)
+    spec = _dc(cell, value=10.0)
+    original = potential(simulate(spec.run_input()), 0)
+    replaced = potential(simulate(replace(s, spec.run_input(), ["soma"])), 0)
+    np.testing.assert_allclose(replaced, original, rtol=0, atol=1e-9)
+
+
+# --- 宣言した preset の学習 ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "preset",
+    [
+        "_test_hh_sindy",
+        "_test_hh_hybrid",
+        "_test_hh_ae",
+        "_test_traub_hybrid",
+        "_test_traub_hybrid_sr_physics",
+        "_test_traub_hybrid_hn",
+        "_test_traub_two_groups",
+    ],
+)
+def test_presets_fit_and_replace_finitely(preset: str) -> None:
+    """学習した入力で置き換えて回すと有限に走る (短い学習の質までは見ない)。"""
+    s = fit_preset(preset)
+    run = replace(s, s.config.data.run_input(), ["soma"])
+    assert np.isfinite(potential(simulate(run), 0)).all()
+    cell = surrogate_cell(s)
+    n_latent = sum(group.d for group in s.config.groups)
+    assert cell.states == [f"z{i + 1}" for i in range(n_latent)] + (
+        [] if s.config.form == "sindy" else s.config.physics
     )
 
 
-def _run_view(runs: _Runs, spec: SimSpec) -> SeriesResults:
-    """spec をsurrogate run全部と原系で並走シミュした1系列。"""
-    return _simulate_view(EvalSeries(spec=spec, replace_targets=("soma",)), runs)
+def test_library_gates_keep_only_those_rates() -> None:
+    rhs = fit_preset("_test_traub_hybrid_hn").parts[0][1]
+    assert isinstance(rhs, SINDy)
+    rates = {str(f.func) for e in rhs.feature_exprs for f in e.atoms(AppliedUndef)}
+    assert rates == {"alpha_n_traub", "beta_n_traub", "alpha_h_traub", "beta_h_traub"}
 
 
-@pytest.fixture(scope="module")
-def sindy_view(sindy: Surrogate) -> SeriesResults:
-    """単発 = 点 1 つ・run 1 本の系列。"""
-    return _run_view((("r0", sindy),), _spec_of(sindy))
+def test_two_groups_keep_their_latents_apart() -> None:
+    """群の右辺は自分の潜在と V だけを使い、潜在の名前は通し番号。"""
+    s = fit_preset("_test_traub_two_groups")
+    (_, first), (_, second) = s.parts
+    assert [str(t) for t in first.targets] == ["z1"]
+    assert [str(t) for t in second.targets] == ["z2"]
+    assert all("z2" not in str(e) for e in first.feature_exprs)
+    assert s.config.physics == ["M", "B", "S", "R", "Q", "XI"]
 
 
-@pytest.fixture(scope="module")
-def sindy_closure(sindy: Surrogate) -> SINDyBundle:
-    """ξ / feature 式は SINDy 固有 (bundle.closure は表現非依存の Closure 型)。"""
-    assert isinstance(sindy.closure, SINDyBundle)
-    return sindy.closure
+def test_config_rejects_bad_groups() -> None:
+    base = preset_config("_test_traub_hybrid")
+    group = base["groups"][0]
+    for groups, message in [
+        ([{**group, "gates": ["X"]}], "無い状態"),
+        ([{**group, "gates": ["N"]}, {**group, "gates": ["N", "H"]}], "重なって"),
+        ([{**group, "rhs": "ude"}], "compressor=ae"),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            Config.from_dict({**base, "groups": groups})
+    with pytest.raises(ValueError, match="全状態"):
+        Config.from_dict({**base, "form": "sindy"})
 
 
-@pytest.mark.parametrize("n_components", LATENT_DIMS)
-def test_sindy_replaced_sim_runs_at_any_latent_dim(n_components: int) -> None:
-    """列構造 [V, z1..zN, u] は latent 次元によらず置換シミュまで通る。"""
-    surrogate = fit_preset("_test_hh_sindy", n_components)
-    assert isinstance(surrogate.closure, SINDyBundle)
-    assert surrogate.closure.xi.shape[0] == n_components + 1  # V + latent
-    assert len(surrogate.preprocessor.gate_inits) == n_components
-
-    view = _run_view((("r0", surrogate),), _spec_of(surrogate))
-    orig, surr = view.pair(0, view.column("r0"))
-    v = access.potential(surr, _train_comp(surrogate))
-    assert v.shape == access.time(orig).shape
-    assert np.isfinite(v[0])
+def test_ude_updates_the_autoencoder() -> None:
+    s = fit_preset("_test_traub_ude")
+    ae, rhs = s.parts[0]
+    assert isinstance(ae, AE) and isinstance(rhs, UDE)
+    gates = s.training_data["vars"].sel(gate=True, comp_id=0).to_numpy()[:, :8]
+    before = fit_ae(gates, 3, epochs=20)
+    assert not np.allclose(ae.dec_params["W2"], before.dec_params["W2"])
+    assert len(ae.gate_inits) == 3
 
 
-def test_compare_reports_every_metric_for_one_pair(
-    sindy_view: SeriesResults,
-) -> None:
-    """1 ペアの指標は全部 1 つの dict で出る: 原系と置換系の両方にある指標は
-    (orig, surr)、比較で決まる指標はスカラー、AP の特徴量は全 AP 分の列。"""
-    orig, surr = sindy_view.pair(0, sindy_view.column("r0"))
-    metrics = compare(orig, surr, 0, sindy_view.series.spec.dt)
+# --- 置換の可否 -----------------------------------------------------------------
+
+
+def test_hybrid_transplants_to_every_traub19_compartment() -> None:
+    """hybrid は params を入力で受けるので、密度の違う全区画へ当てられる。"""
+    s = fit_preset("_test_traub_hybrid_hn")
+    net = NETS["traub19"]
+    assert rejections(s.config, net, net.names) == []
+    spec = SimSpec(target="traub19", current_type="train", dt=0.01)
+    v = potential(simulate(replace(s, spec.run_input(), net.names)), 8)
+    assert np.isfinite(v).all()
+
+
+def test_rejections_name_each_target_and_reason() -> None:
+    sindy = fit_preset("_test_hh_sindy")  # form=sindy は params が一致する区画だけ
+    traub = fit_preset("_test_traub_hybrid")
+    assert "存在しない" in rejections(sindy.config, NETS["hh"], ["nowhere"])[0]
+    assert "種類" in rejections(traub.config, NETS["hh"], ["soma"])[0]
+    hh_series = EvalSeries(_dc("hh"), ("soma",))
+    assert applicable(sindy.config, hh_series)
+    assert not applicable(sindy.config, EvalSeries(_dc("hh"), ()))
+    with pytest.raises(ValueError, match="名前で挙げる"):
+        replace(sindy, _dc("hh").run_input(), [])
+
+
+def test_replace_swaps_only_the_named_compartments() -> None:
+    s = fit_preset("_test_traub_hybrid")
+    run = replace(
+        s,
+        SimSpec(target="traub19", current_type="train", dt=0.01).run_input(),
+        ["soma", "c09"],
+    )
+    swapped = [c.name for c in run.net.nodes if c.type.name != "traub"]
+    assert swapped == ["soma", "c09"]
+    assert [c.area for c in run.net.nodes] == [c.area for c in NETS["traub19"].nodes]
+
+
+# --- 書き出し -------------------------------------------------------------------
+
+
+def test_description_survives_reload_and_lines_up(tmp_path: Path) -> None:
+    s = fit_preset("_test_hh_sindy")
+    s.save(tmp_path)
+    reloaded = Surrogate.load(tmp_path)
+    assert reloaded.config == s.config
+    model, fits = describe(reloaded)
+    json.dumps(model)
+    assert model["closure"]["kind"] == "sindy"
+    assert np.shape(model["closure"]["xi"]) == (
+        len(model["closure"]["targets"]),
+        len(model["closure"]["features"]),
+    )
+    n_time = reloaded.training_data.sizes["time"]
+    comp_fit = fits[0]
+    assert comp_fit.x.shape == (n_time, len(model["x_names"]))
+    assert comp_fit.latent.shape == (n_time, len(model["latent_names"]))
+    compressor = s.parts[0][0]
+    assert float(np.mean(comp_fit.recon_rmse**2)) == pytest.approx(
+        compressor.reconstruction["reconstruction_mse"]
+    )
+
+
+def test_two_groups_describe_every_group() -> None:
+    model, fits = describe(fit_preset("_test_traub_two_groups"))
+    assert [g["gates"] for g in model["groups"]] == [["N", "H"], ["A", "C"]]
+    assert model["x_names"] == model["latent_names"] == ["z1", "z2"]
+    assert fits[0].latent.shape[1] == 2
+
+
+def test_summary_counts_the_decode_and_the_physics() -> None:
+    s = fit_preset("_test_traub_hybrid_hn")
+    result = summary(s)
+    assert {"nnz", "pca/reconstruction_mse", "cost/surr-orig/mul"} <= set(result)
+    compressor, rhs = s.parts[0]
+    cell = CELLS["traub"]
+    assert cell.costs is not None and cell.dv_cost is not None
+    expected = compressor.opcost() + rhs.opcost() + cell.dv_cost
+    for state in s.config.physics:
+        expected = expected + cell.costs[state]
+    assert surrogate_cell(s).opcost == expected
+
+
+def test_compare_reports_every_metric_for_one_pair() -> None:
+    s = fit_preset("_test_hh_hybrid")
+    spec = _dc("hh", value=10.0)
+    original = simulate(spec.run_input())
+    replaced = simulate(replace(s, spec.run_input(), ["soma"]))
+    metrics = compare(original, replaced, 0, spec.dt)
     assert set(metrics["rows"]) == {"spike_count", "latency", "mean_isi", "std_isi"}
-    assert all(len(pair) == 2 for pair in metrics["rows"].values())
     assert set(metrics["scalars"]) == {
         "rmse",
         "mae",
@@ -188,529 +306,12 @@ def test_compare_reports_every_metric_for_one_pair(
     o_n, s_n = metrics["rows"]["spike_count"]
     peaks = metrics["spikes"]["peak_voltage"]
     assert (len(peaks[0]), len(peaks[1])) == (o_n, s_n)
-    assert metrics["diverged"] is False
 
 
-def test_catalog_is_self_consistent() -> None:
-    """評価系列の宣言 (`conf.ts` の SERIES) が Python の記述として自己整合:
-    全系列の電流が掃引点まで含めて構築でき、どの系列も comp 名を持つ (冊の comp
-    つまみは**選んだ 1 系列**の適用先から選択肢を作るので、ここが空だとその系列を
-    選ぶと何も選べない)。TS の型は名前の綴りまでは見ないので、ここで Python の
-    名前と突き合わせる。単発系列も「点 1 つ」として同じ経路を通る。"""
-    SERIES = declared_series()
-    for series in SERIES.values():
-        assert series.spec.net.names
-        for spec in series.points:
-            assert len(spec.current()) > 0
-        # 置換対象は適用先で解ける名前 (空 = どの run も適用不可になる宣言ミス)
-        assert series.replace_targets
+def test_declared_series_resolve() -> None:
+    """宣言した評価系列は、電流と置換する区画まで Python の名前で解ける。"""
+    for d in _declared("series").values():
+        series = EvalSeries.from_dict(d)
+        for point in series.points:
+            assert len(point.current()) > 0
         assert set(series.replace_targets) <= set(series.spec.net.names)
-    # 点軸: 単発は点 1 つ、掃引は宣言した点数だけ
-    assert len(SERIES["traub_soma_dc"].points) == 1
-    assert len(SERIES["traub19_somastim"].points) == 5
-    # soma 1 点置換と全 comp 置換は**置換範囲だけ**が違う対照ペア
-    assert SERIES["traub19_somastim_allcomp"].spec == SERIES["traub19_somastim"].spec
-    assert len(SERIES["traub19_somastim_allcomp"].replace_targets) == 19
-    # dend 刺激の注入先は名前で綴るので、traub19 の定める注入先と揃っているかを見る
-    assert SERIES["traub19_dendstim"].spec.stim == name_at(_DEND_STIM_IDX)
-
-
-def test_series_view_columns_must_line_up_across_runs(
-    sindy_view: SeriesResults,
-) -> None:
-    """列は自分の点数を、束は**列が同じ掃引を回したものか**を構築時に保証する
-    (揃わない列を図の側で検出させない)。**由来の id は持たない** = 評価 run の同一性は
-    ここに無く、描く中身だけの純粋なデータ (評価 run のハッシュは run のディレクトリ
-    名だけが持つ)。"""
-    series = sindy_view.series
-    with pytest.raises(ValueError, match="点数"):
-        SeriesRun(series, "r0", [])
-    # 別の掃引を回した列は束ねられない (点数が同じでも計算入力が違う)
-    other = dc_replace(series, spec=dc_replace(series.spec, dt=series.spec.dt * 2))
-    with pytest.raises(ValueError, match="記述の違う列"):
-        SeriesResults(
-            sindy_view.original,
-            (SeriesRun(other, "r0", sindy_view.original_waves),),
-        )
-    # 原系の列に run_id は載らない / 置換系の run_id は欠けない
-    with pytest.raises(ValueError, match="原系の列"):
-        SeriesResults(SeriesRun(series, "r0", sindy_view.original_waves), ())
-    with pytest.raises(ValueError, match="置換系の run_id"):
-        SeriesResults(sindy_view.original, (sindy_view.original,))
-
-
-def test_description_survives_reload_and_lines_up_with_the_model(
-    sindy: Surrogate, tmp_path: Path
-) -> None:
-    """学習 run の中身は save/load を跨いで出せ (学習データは spec から再現)、形が
-    学習したものと揃う: ξ は対象変数 × 特徴量、寄与率は捨てた成分を含んで合計 1 以下、
-    学習 comp の列は学習データと同じ長さ。時刻ごとの再構成 RMSE を二乗平均すると、
-    学習時に残した再構成 MSE に戻る (学習 comp が 1 つなら同じデータを見ている)。"""
-    sindy.save(tmp_path)
-    reloaded = Surrogate.load(tmp_path)
-    assert reloaded.spec == sindy.spec  # spec は JSON で round-trip
-    desc = describe(reloaded)
-    json.dumps(desc.model)  # 冊が読むので JSON にできる
-    closure, prep = desc.model["closure"], desc.model["preprocessor"]
-    assert closure["kind"] == "sindy"
-    assert np.shape(closure["xi"]) == (
-        len(closure["targets"]),
-        len(closure["features"]),
-    )
-    assert prep["kind"] == "pca"
-    assert len(prep["explained_variance_ratio"]) >= prep["n_components"]
-    assert sum(prep["explained_variance_ratio"]) <= 1.0 + 1e-9
-
-    comp_id = _train_comp(sindy)
-    assert list(desc.fits) == [comp_id]
-    assert desc.model["net"]["train"] == [desc.model["net"]["nodes"][comp_id]["name"]]
-    fit, n_time = desc.fits[comp_id], desc.training_data.sizes["time"]
-    assert fit.x.shape == (n_time, len(desc.model["x_names"]))
-    assert fit.latent.shape == (n_time, len(desc.model["latent_names"]))
-    assert fit.recon_rmse.shape == (n_time,)
-    assert isinstance(sindy.preprocessor, PCAPreprocessor)
-    assert float(np.mean(fit.recon_rmse**2)) == pytest.approx(
-        sindy.preprocessor.reconstruction["reconstruction_mse"]
-    )
-
-
-def test_summary_reports_closure_metrics_and_cost(sindy: Surrogate) -> None:
-    """比べる表へ流す学習側の指標は、閉包項の指標と演算コストの差を含む。"""
-    assert {"nnz", "cost/surr-orig/mul"} <= set(sindy.summary())
-
-
-def test_pca_metrics_report_per_component_and_cumulative_ratio(
-    sindy: Surrogate,
-) -> None:
-    """PCA metrics は保持成分ごとの寄与率 (連番) と累積を出す。累積は保持成分の
-    ratio 和と一致し 0〜1、full スペクトルは保持成分以上の長さを持つ。"""
-    prep = sindy.preprocessor
-    assert isinstance(prep, PCAPreprocessor)
-    m = prep.metrics()
-    n_kept = len(prep.explained_variance_ratio)
-    assert [f"pca/explained_variance_ratio_{i + 1}" for i in range(n_kept)] == [
-        k for k in m if k.startswith("pca/explained_variance_ratio_")
-    ]
-    cumulative = m["pca/cumulative_explained_variance_ratio"]
-    assert cumulative == pytest.approx(float(prep.explained_variance_ratio.sum()))
-    assert 0.0 <= cumulative <= 1.0 + 1e-9
-    assert len(prep.full_explained_variance_ratio) >= n_kept
-
-
-def test_train_inputs_match_identified_columns(sindy: Surrogate) -> None:
-    """train_preprocessed 図が描くのは fit が同定器へ渡したものと同一 — 列名/軌道数が
-    閉包項の列構造と一致することで担保する (view は fit と同じ関数を呼ぶ)。"""
-    inputs = sindy.ansatz.train_inputs(
-        sindy.spec, sindy.training_data, sindy.preprocessor
-    )
-    assert isinstance(sindy.closure, SINDyBundle)
-    assert [str(s) for s in sindy.closure.columns] == inputs.x_names + inputs.u_names
-    assert [x.shape[1] for x in inputs.x] == [len(inputs.x_names)] * len(inputs.x)
-    # 軌道数は spec の選択規則と一致 — 出所 comp は片方だけが持つ
-    assert len(inputs.u) == len(inputs.x) == len(sindy.spec.train_comp_ids())
-
-
-def test_hybrid_training_scope_covers_the_whole_train_domain() -> None:
-    """hybrid は学習ネット内の学習ドメイン comp 全部の軌道で学習し、
-    学習ゲートは physics 分離後の先頭 n_learned 本に限られる。"""
-    surrogate = fit_preset("_test_traub_hybrid")
-    assert surrogate.spec.train_comp_ids() == [
-        i
-        for i, comp in enumerate(surrogate.spec.dataset.net.nodes)
-        if comp.type == surrogate.spec.comp_type
-    ]
-    # physics 側へ回した状態 (Ca サブ系) は学習に含めない
-    n_gate = surrogate.ansatz.n_train_gate(surrogate.spec)
-    assert n_gate == len(surrogate.spec.comp_type.gate_names) - len(
-        TRAUB_EXTRA_GATE_NAMES
-    )
-    gates = surrogate.ansatz.training_gates(surrogate.spec, surrogate.training_data)
-    assert gates[0].shape[1] == n_gate
-
-
-def test_params_match_is_answered_by_the_ansatz(sindy: Surrogate) -> None:
-    """適用範囲の params 判定は**定式化の性質**なので ansatz が答える (spec 側に
-    種別ごとの表を置かない): sindy は係数へ params を焼き込むので一致必須、
-    hybrid は physics が params を入力で受けるので不問。"""
-    assert sindy.spec.ansatz().params_match((1.0,), (1.0,))
-    assert not sindy.spec.ansatz().params_match((1.0,), (2.0,))
-    assert (
-        dc_replace(sindy.spec, surrogate_type="hybrid")
-        .ansatz()
-        .params_match((1.0,), (2.0,))
-    )
-
-
-def test_ae_preprocessor_path_runs() -> None:
-    """AE 経路の smoke (pca 固定の他テストが踏まない encode/decode を通す)。
-    epochs を切り詰めるので再構成品質は問わない — 形状と潜在次元の整合のみ。"""
-    surrogate = fit_preset("_test_hh_ae")
-    gate = surrogate.ansatz.training_gates(surrogate.spec, surrogate.training_data)[0]
-    latent = surrogate.preprocessor.encode(gate)
-    assert latent.shape == (gate.shape[0], 2)
-    assert np.asarray(surrogate.preprocessor.decode(jnp.asarray(latent))).shape == (
-        gate.shape
-    )
-    assert len(surrogate.preprocessor.gate_inits) == 2
-    assert surrogate.preprocessor.describe()["kind"] == "ae"
-
-
-def test_feature_exprs_align_with_xi_columns(sindy_closure: SINDyBundle) -> None:
-    """feature 式列は xi の列と 1:1 (fit が pysindy 名との一致を検証済み)。"""
-    assert len(sindy_closure.feature_exprs) == sindy_closure.xi.shape[1]
-
-
-def test_duplicate_library_types_are_rejected(sindy_closure: SINDyBundle) -> None:
-    """library type は互いに素 → 同 type 2 回で feature 式が重複しエラー。"""
-    library = FeatureLibrary.build(
-        sindy_closure.library_specs + sindy_closure.library_specs, sindy_closure.roles
-    )
-    with pytest.raises(ValueError, match="feature 重複"):
-        library.bound_exprs(sindy_closure.columns)
-
-
-@pytest.mark.parametrize(
-    ("preset", "extra_names"),
-    [
-        ("_test_traub_hybrid", TRAUB_EXTRA_GATE_NAMES),
-        ("_test_traub_hybrid_sr_physics", TRAUB_SR_EXTRA_GATE_NAMES),
-    ],
-)
-def test_hybrid_traub_transplants_across_heterogeneous_compartments(
-    preset: str, extra_names: list[str]
-) -> None:
-    """hybrid traub は Ca サブ系を physics へ分離し純電位依存ゲートのみ学習 →
-    Ca params (phi_area/g_Ca) がノード毎に違う traub19 全 comp を 1 サロゲートで置換
-    できる (compatible=True)。surr state は latent + physics 状態で、分割位置は
-    preset の ansatz.physics_type が決める → 両分割で kernel が有限に走ることを確認。
-    preprocessor は AE の乱数初期化で fit 品質 (=有限性) がブレる → 決定的な pca に固定
-    (主眼は physics 積分経路であり AE 再構成品質ではない)。"""
-    surrogate = fit_preset(preset)
-    assert _surr_type(surrogate).gate_names[-len(extra_names) :] == extra_names
-
-    traub19 = SimSpec(target="traub19", current_type="train", dt=0.01)
-    # phi_area/g_Ca が異なる 19 comp すべてを**明示指定**して置換できる。pre-B は
-    # soma のみ一致で ValueError だった (Ca params が latent に焼込まれていたため)。
-    assert _rejected_targets(surrogate.spec, traub19.net, traub19.net.names) == []
-
-    # 置換シミュ (XI/Q を各ノード params で physics 積分) が有限に走る。
-    v = access.potential(
-        unified_simulator(
-            replace(surrogate, surrogate.spec.dataset.materialize(), ["soma"])
-        ),
-        _train_comp(surrogate),
-    )
-    assert np.isfinite(v).all()
-
-
-def test_replacing_one_node_of_traub19_runs_finitely() -> None:
-    """19 comp 中 soma 1 つだけを置換して有限に走る。単体 traub 教師の学習を
-    **preset 変更なし**で多 comp の一部へ適用する経路 (置換範囲は適用側が名前で
-    決めるので、適用先モデルを双子で用意して型で絞る必要はない)。"""
-    surrogate = fit_preset("_test_traub_hybrid")  # comp_type=traub, 単体 traub 教師
-    ds = SimSpec(
-        target="traub19",
-        current_type="train",
-        dt=0.01,
-        current_params={"duration": 180},  # smoke: 配線確認のみ (本番は長時間)
-    )
-    replaced = replace(surrogate, ds.materialize(), ["soma"])
-    # 残り 18 comp は原系のまま = 混在ネットが積分される
-    assert [n.type.name for n in replaced.net.nodes].count("traub") == 18
-
-    v = access.potential(unified_simulator(replaced), ds.net.name_to_idx("soma"))
-    assert np.isfinite(v).all()
-
-
-def test_dendstim_injects_into_dendrite_while_replacing_soma() -> None:
-    """注入先 (`SimSpec.stim`) と置換対象 (`replace_targets`) は独立した軸。
-    dendrite へ注入しつつ soma を置換しても有限に走る。"""
-    surrogate = fit_preset("_test_traub_hybrid")
-    ds = SimSpec(
-        target="traub19",
-        stim=name_at(_DEND_STIM_IDX),
-        current_type="train",
-        dt=0.01,
-        current_params={"duration": 180},
-    )
-    assert ds.stim != "soma"  # 注入先は dendrite
-    assert ds.materialize().stim_idx == _DEND_STIM_IDX
-
-    v = access.potential(
-        unified_simulator(replace(surrogate, ds.materialize(), ["soma"])),
-        ds.net.name_to_idx("soma"),
-    )
-    assert np.isfinite(v).all()
-
-
-def test_apply_replaces_only_the_named_targets() -> None:
-    """**置換対象は明示指定**で、互換なノードが他に在っても勝手に増えない。
-    指定が不在/種類違い/params 非両立なら部分適用せず ValueError (fail first)。"""
-    surrogate = fit_preset("_test_traub_hybrid")  # traub 型を置換できる
-    ds = SimSpec(target="traub19", current_type="train", dt=0.01).materialize()
-
-    # 19 comp 全部が互換だが、名指しした 2 つだけが surr 型に変わる
-    surr_name = _surr_type(surrogate).name
-    replaced = replace(surrogate, ds, ["soma", "c00"])
-    assert {n.name for n in replaced.net.nodes if n.type.name == surr_name} == {
-        "soma",
-        "c00",
-    }
-
-    with pytest.raises(ValueError, match="存在しない"):
-        replace(surrogate, ds, ["soma", "nonexistent"])
-    with pytest.raises(ValueError, match="明示指定"):
-        replace(surrogate, ds, [])
-
-
-def test_applicable_requires_every_named_target() -> None:
-    """系列の適用可否は「指定した対象が全部置換できるか」 — 1 つでも欠ければ不可。
-    「1 つでも互換なら適用可」だと適用先の形態次第で置換範囲が黙って縮む。"""
-    surrogate = fit_preset("_test_traub_hybrid")
-    spec = SimSpec(target="traub19", current_type="train", dt=0.01)
-    assert applicable(
-        surrogate.spec, EvalSeries(spec=spec, replace_targets=("soma", "c00"))
-    )
-    assert not applicable(
-        surrogate.spec, EvalSeries(spec=spec, replace_targets=("soma", "nonexistent"))
-    )
-    assert not applicable(surrogate.spec, EvalSeries(spec=spec, replace_targets=()))
-
-
-def test_rejection_names_the_reason_per_target(sindy: Surrogate) -> None:
-    """置換できない理由は名前ごとに言える: 種類違い / params 非両立 / 不在。
-    sindy は params を係数へ焼き込むので、同じ hh 型でも params が違えば拒否される。"""
-    net = NeuronGraph(
-        nodes=[
-            Compartment(name="soma", type=HH_TYPE),
-            Compartment(name="d1", type=HH_TYPE, params=HHParams(G_NA=60.0)),
-        ],
-        edges=[],
-    )
-    assert _rejected_targets(sindy.spec, net, ["soma"]) == []
-    (reason,) = _rejected_targets(sindy.spec, net, ["d1"])
-    assert isinstance(reason, _ParamsMismatch) and reason.name == "d1"
-    assert reason.node_params != reason.train_params
-    (reason,) = _rejected_targets(sindy.spec, net, ["nope"])
-    assert isinstance(reason, _Absent) and reason.available == tuple(net.names)
-    # 種類違い (traub 型ノードへ hh の学習を当てる)
-    (reason,) = _rejected_targets(
-        sindy.spec, SimSpec(target="traub", current_type="train", dt=0.01).net, ["soma"]
-    )
-    assert isinstance(reason, _TypeMismatch)
-    assert reason.train_type == sindy.spec.comp_type.name
-
-
-def test_rejection_is_worded_only_when_shown(sindy: Surrogate) -> None:
-    """理由の文言を持つのは例外の提示だけ = 仕様が返すのは事実、`apply` が送出する
-    `_NotReplaceable` が名前ごとに文へ落とす (理由は構造のままでも読める)。"""
-    with pytest.raises(_NotReplaceable) as excinfo:
-        replace(
-            sindy,
-            SimSpec(target="traub", current_type="train", dt=0.01).materialize(),
-            ["soma", "nope"],
-        )
-    assert [type(r) for r in excinfo.value.rejections] == [_TypeMismatch, _Absent]
-    assert "'nope'" in str(excinfo.value) and "'soma'" in str(excinfo.value)
-
-
-def test_original_key_is_shared_across_replacement_scopes() -> None:
-    """原系の鍵 (`hash`) は置換範囲を含まない = 置換範囲だけが違う対照系列は原系 run
-    を 1 本共有する (原系の波形は置換に依らないので正しい)。置換系の鍵
-    (`replaced_hash`) は含む = 範囲違いを同じ run に潰さない。"""
-    SERIES = declared_series()
-    soma, allcomp = SERIES["traub19_somastim"], SERIES["traub19_somastim_allcomp"]
-    assert soma.replace_targets != allcomp.replace_targets
-    assert soma.hash() == allcomp.hash()
-    assert soma.replaced_hash() != allcomp.replaced_hash()
-
-
-def test_multi_target_series_runs_through_run_column() -> None:
-    """複数対象の系列が記述 → 実行まで通る: `run_column` が `replace_targets` を
-    `apply` へ渡し、19 comp 全部を置換した列が有限に走る。カタログの全置換系列が
-    実サロゲートで適用可能であることも併せて見る (適用不可なら UI に出ない)。"""
-    SERIES = declared_series()
-    surrogate = fit_preset("_test_traub_hybrid")
-    assert applicable(surrogate.spec, SERIES["traub19_somastim_allcomp"])
-
-    series = EvalSeries(
-        spec=SimSpec(
-            target="traub19",
-            # smoke: 配線が通ることだけ見るので、カタログと同じ電流種を最短で
-            current_type="lin&steady",
-            dt=0.01,
-            current_params={"silence_duration": 5.0, "duration": 40.0, "value": 3.0},
-        ),
-        replace_targets=SERIES["traub19_somastim_allcomp"].replace_targets,
-    )
-    column = run_column(series, "r0", surrogate)
-    assert len(column.waves) == 1
-    v = access.potential(column.waves[0], series.spec.net.name_to_idx("soma"))
-    assert np.isfinite(v).all()
-
-
-def test_ude_joint_fit_updates_the_preprocessor() -> None:
-    """UDE の要: 潜在座標が「先に固定される前処理」でなくなること。
-
-    setup は AE を再構成 MSE で fit してから fit_closure を呼ぶ (hybrid と同じ順) が、
-    UDE はその encoder/decoder を初期値として受け取り、軌道ロスで更新して書き戻す。
-    AE 単体の fit は乱数種固定で決定的 → 同じ入力で再現したものと重みが違えば、
-    joint 学習が実際に座標を動かしたことになる。
-    """
-    surrogate = fit_preset("_test_traub_ude")
-    assert isinstance(surrogate.closure, UDEClosure)
-    assert isinstance(surrogate.preprocessor, AEPreprocessor)  # ude は ae 固定
-    gates = surrogate.ansatz.training_gates(surrogate.spec, surrogate.training_data)
-    ae_only = fit_ae(gates, surrogate.spec.n_components, epochs=20)
-
-    assert not np.allclose(
-        surrogate.preprocessor.dec_params["W2"], ae_only.dec_params["W2"]
-    )
-    # 書き戻し後に再計算される派生物 (kernel の初期潜在・再構成指標) も joint 後の値
-    assert len(surrogate.preprocessor.gate_inits) == surrogate.spec.n_components
-    assert surrogate.preprocessor.reconstruction != ae_only.reconstruction
-
-
-def test_ude_traub_transplants_across_heterogeneous_compartments() -> None:
-    """UDE も hybrid と同じ kernel 骨格に載る (差分は潜在方程式の表現だけ) →
-    Ca サブ系の physics 分離と traub19 全 comp への移植がそのまま成り立つ。"""
-    surrogate = fit_preset("_test_traub_ude")
-    assert _surr_type(surrogate).gate_names[-len(TRAUB_EXTRA_GATE_NAMES) :] == (
-        TRAUB_EXTRA_GATE_NAMES
-    )
-    traub19 = SimSpec(target="traub19", current_type="train", dt=0.01)
-    assert _rejected_targets(surrogate.spec, traub19.net, traub19.net.names) == []
-
-    v = access.potential(
-        unified_simulator(
-            replace(
-                surrogate,
-                surrogate.spec.dataset.materialize(),
-                surrogate.spec.dataset.net.names,
-            )
-        ),
-        _train_comp(surrogate),
-    )
-    assert np.isfinite(v).all()
-
-
-def test_ude_rejects_non_learnable_preprocessor() -> None:
-    """UDE は encoder/decoder を学習変数として更新する → 更新できない表現 (PCA) を
-    渡されたら黙って前処理固定に退化せず、その場で落ちる。"""
-    pca_based = fit_preset("_test_traub_hybrid")  # preprocessor_type=pca の preset
-    with pytest.raises(ValueError, match="preprocessor_type=ae"):
-        UDEAnsatz.fit_closure(
-            dc_replace(pca_based.spec, ansatz_config={"epochs": 1}),
-            pca_based.training_data,
-            pca_based.preprocessor,
-        )
-
-
-class _IdentityPreprocessor(Preprocessor):
-    """恒等 preprocessor: latent==gate を無演算 passthrough する検証専用実装。
-
-    真の式を潜在方程式へ入れたとき置換 kernel が原系と bit 一致することを担保する
-    ため、decode/encode を一切の演算なしで素通しする (fit 経路は持たない手組み)。
-    """
-
-    def __init__(self, gate_inits: list[float]) -> None:
-        self.gate_inits = gate_inits
-
-    def encode(self, x: np.ndarray) -> np.ndarray:
-        return x
-
-    def decode(self, state: jnp.ndarray) -> jnp.ndarray:
-        return state
-
-    def metrics(self) -> dict:
-        return {}
-
-    def describe(self) -> dict:
-        return {}
-
-    def opcost(self) -> OpCost:
-        return OpCost()
-
-    @property
-    def n_features(self) -> int:
-        return len(self.gate_inits)
-
-
-class _NullClosure(Closure):
-    """潜在方程式は自由関数 (dlatent_fn) 側で与える → opcost/metrics だけの殻。"""
-
-    def metrics(self) -> dict[str, float]:
-        return {}
-
-    def describe(self) -> dict:
-        return {}
-
-    def opcost(self) -> OpCost:
-        return OpCost()
-
-
-def test_original_dynamics_injected_reproduces_potential_exactly() -> None:
-    """恒等サロゲート: 前処理=恒等 (latent==gate)・潜在方程式=真の HH ゲート式 を
-    hybrid kernel へ差し込むと、置換系の電位遷移が原系と **完全一致** する。
-
-    サロゲート積分経路 (座標変換・state レイアウト・physics dV/dt・euler・型差替) に
-    近似以外の齟齬が無いことの担保 — 真の右辺を入れれば差はゼロでなければならない。
-    """
-    surrogate = fit_preset("_test_hh_hybrid")  # comp_type=hh, n_components=3
-    spec = surrogate.spec
-    p = spec.train_comp().resolved_params
-    assert isinstance(p, HHParams)
-
-    # 潜在方程式 = 原 HH の dgate そのまま (latent==gate なので引数もそのまま渡せる)。
-    def exact_dlatent(latent: jnp.ndarray, v: jnp.ndarray) -> jnp.ndarray:
-        v_rel = v - p.E_REST
-        return jnp.stack(
-            [dmdt(v_rel, latent[0]), dhdt(v_rel, latent[1]), dndt(v_rel, latent[2])]
-        )
-
-    class ExactHybridAnsatz(HybridAnsatz[_NullClosure]):
-        @classmethod
-        def fit_closure(cls, spec, training_data, preprocessor):
-            raise NotImplementedError
-
-        @classmethod
-        def dlatent(cls, spec, closure):
-            return exact_dlatent
-
-    surr_type = ExactHybridAnsatz.surr_comp_type(
-        spec,
-        _IdentityPreprocessor(hh_inits(p)[1:]),  # 初期ゲート = 原 init のゲート部
-        _NullClosure(),
-    )
-    replaced = dc_replace(
-        spec.dataset.materialize(),
-        net=dc_replace(
-            spec.dataset.net,
-            nodes=[
-                dc_replace(node, type=surr_type)
-                if node.type == spec.comp_type
-                else node
-                for node in spec.dataset.net.nodes
-            ],
-        ),
-    )
-
-    comp = _train_comp(surrogate)
-    assert np.array_equal(
-        access.potential(unified_simulator(spec.dataset.materialize()), comp),
-        access.potential(unified_simulator(replaced), comp),
-    )
-
-
-def test_hybrid_opcost_includes_decode() -> None:
-    """hybrid の kernel は毎ステップ decode を呼ぶ → OpCost に計上されている。"""
-    surrogate = fit_preset("_test_hh_hybrid")
-    assert isinstance(surrogate.closure, SINDyBundle)  # opcost は表現固有
-    decode_cost = surrogate.preprocessor.opcost()
-    # PCA decode: gate ごとに latent 数の積 + 同数の加減 (3 latent x 3 gate)
-    assert (decode_cost.mul, decode_cost.pm) == (9, 9)
-    assert _surr_type(surrogate).opcost == (
-        decode_cost
-        + HybridAnsatz.split(**surrogate.spec.ansatz_config).dv_cost
-        + surrogate.closure.opcost()
-    )

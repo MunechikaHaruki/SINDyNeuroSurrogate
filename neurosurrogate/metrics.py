@@ -1,9 +1,4 @@
-"""波形/スパイクの指標計算。保存を知らない。
-
-外へ出すのは `compare` 1 つ = 1 ペア (原系, 置換系) の全指標を素の値の dict で返す。
-並べ方と描き方は持たない (図は research/ の図が JSON を読んで描く)。発散判定
-(`diverged`) は発散ログからも呼ばれる共通述語なので `core/diverge.py` に置く。
-"""
+"""元のモデルと置き換えたモデルの波形を比べる指標。並べ方と描き方は図が持つ。"""
 
 from __future__ import annotations
 
@@ -17,8 +12,7 @@ import efel
 import numpy as np
 import xarray as xr
 
-from ..core import access
-from ..core.diverge import diverged
+from .physics.simulate import potential
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -55,6 +49,12 @@ _EFEL_FEATURES = [
 ]
 
 _NAN = float("nan")
+_DIVERGE_V = 1e3  # |V| [mV] の発散の閾値 (生理的な範囲は ±200 程度)
+
+
+def diverged(v: np.ndarray) -> bool:
+    """電位が NaN・inf を含むか、生理的にあり得ない大きさへ振り切れたか。"""
+    return not bool(np.all(np.isfinite(v))) or float(np.abs(v).max()) > _DIVERGE_V
 
 
 @dataclass
@@ -70,8 +70,8 @@ class _DynamicMetrics:
     @cached_property
     def voltages(self) -> tuple[np.ndarray, np.ndarray]:
         return (
-            access.potential(self.original, self.comp_id),
-            access.potential(self.surrogate, self.comp_id),
+            potential(self.original, self.comp_id),
+            potential(self.surrogate, self.comp_id),
         )
 
     @cached_property

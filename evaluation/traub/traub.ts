@@ -6,7 +6,7 @@
 // 状態は名前で読み書きし（Gates、Full、Reduced）、番号の並びは状態ベクトルとの出入口にだけ置く。
 // 数式の項は 1 行に 1 つずつ書き、分割代入・map/reduce の連なり・タプル型は使わない。
 import { Solver } from 'odex';
-import spec from '../../neurosurrogate/neurons/traub.json';
+import spec from '../../neurosurrogate/physics/traub.json';
 
 /** 一つのゲートの、開くレート α と閉じるレート β（ms⁻¹）。 */
 export type Rate = { alpha: number; beta: number };

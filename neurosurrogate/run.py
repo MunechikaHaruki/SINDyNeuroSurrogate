@@ -6,7 +6,7 @@ spec.json 1 つを受け取り、run のディレクトリを埋めるだけの�
 場所の `spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
 spec の種類は 2 つ (`kind`):
 
-- `train` 学習。`surrogate` は設定ツリー (spec + preprocessor/ansatz/closure)。
+- `train` 学習。`surrogate` は設定 (surrogate.Config: 区画の型、形、学習データ、群)。
           置き場は `runs/models/<ハッシュ>/`
 - `sim`   入力 × モデルのシミュレーション。`input` は `EvalSeries.to_dict`
           から置換範囲を除いたもの (電流と掃引)。`model` は
@@ -19,7 +19,7 @@ spec の種類は 2 つ (`kind`):
 JSON の nan は null):
 
     spec.json  meta.json (kind = train / original / replaced, name, created, 掃引の単位)
-    train      surrogate/ (spec.json + pickle)、summary.json (学習側の指標)、
+    train      surrogate/ (config.json + parts.joblib)、summary.json (学習側の指標)、
                description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
                description/fit/<comp_id>/{x,latent,recon_rmse}.f64
     sim        waves/。置き換えたモデルは加えて、metrics.json (comp 名 →
@@ -54,16 +54,25 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .core.coords import transform_gate
-from .sim.result import SeriesResults, SeriesRun
-from .sim.run import run_column
-from .sim.spec import EvalSeries
-from .sim.waveform import compare
-from .surrogate.description import describe
-from .surrogate.model import Surrogate, fit_surrogate
-from .surrogate.replace import applicable
+from .metrics import compare, diverged
+from .physics.simulate import (
+    EvalSeries,
+    gate_matrix,
+    i_internal,
+    latent_dataset,
+    potential,
+    simulate,
+)
+from .surrogate.model import (
+    Surrogate,
+    applicable,
+    describe,
+    fit,
+    replace,
+    summary,
+)
 
-_FORMAT = 3  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
+_FORMAT = 5  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _logger = logging.getLogger(__name__)
@@ -170,68 +179,81 @@ def _write_json(path: Path, value: Any) -> None:
 
 def _names(series: EvalSeries) -> dict[str, int]:
     net = series.spec.net
-    return {comp: net.name_to_idx(comp) for comp in net.names}
+    return {comp: net.index(comp) for comp in net.names}
 
 
 def _train(root: Path, spec: dict) -> dict:
     """学習して surrogate とその中身 (`description/`) を書く。"""
-    surrogate = fit_surrogate(spec["surrogate"])
+    surrogate = fit(spec["surrogate"])
     (root / "surrogate").mkdir()
     surrogate.save(root / "surrogate")
-    desc = describe(surrogate)
-    _write_json(root / "description/model.json", desc.model)
-    net = surrogate.spec.dataset.net
-    names = {comp: net.name_to_idx(comp) for comp in net.names}
-    _write_waves(root / "description/train", [desc.training_data], names)
-    for comp_id, fit in desc.fits.items():
+    model, fits = describe(surrogate)
+    _write_json(root / "description/model.json", model)
+    net = surrogate.config.data.net
+    names = {comp: net.index(comp) for comp in net.names}
+    _write_waves(root / "description/train", [surrogate.training_data], names)
+    for comp_id, comp_fit in fits.items():
         folder = root / "description/fit" / str(comp_id)
         folder.mkdir(parents=True)
-        _write_f64(folder / "x.f64", fit.x.T)
-        _write_f64(folder / "latent.f64", fit.latent.T)
-        _write_f64(folder / "recon_rmse.f64", fit.recon_rmse)
-    _write_json(root / "summary.json", surrogate.summary())
+        _write_f64(folder / "x.f64", comp_fit.x.T)
+        _write_f64(folder / "latent.f64", comp_fit.latent.T)
+        _write_f64(folder / "recon_rmse.f64", comp_fit.recon_rmse)
+    _write_json(root / "summary.json", summary(surrogate))
     return {}
+
+
+def _project(surrogate: Surrogate, ds: xr.Dataset, comp_id: int) -> xr.Dataset:
+    """元のモデルの区画のゲートを、各群の圧縮器で潜在へ落とした [V, z...]。"""
+    config = surrogate.config
+    latents = []
+    for (compressor, _), group in zip(surrogate.parts, config.groups, strict=True):
+        gates = gate_matrix(ds, comp_id)[:, config.positions(group)]
+        latents.append(compressor.encode(gates))
+    return latent_dataset(
+        potential(ds, comp_id),
+        np.concatenate(latents, axis=1),
+        i_internal(ds, comp_id),
+        comp_id,
+        float(ds["time"][1] - ds["time"][0]),
+    )
 
 
 def _sim(root: Path, spec: dict) -> dict:
     """入力をモデルで回して波形を書く。置き換えたモデルなら、同じ入力の元のモデル
-    (`original/`) と比べた指標と射影も書く。指標は全 comp・全点の分 (どの comp を
-    見るかは図が選ぶ)、射影は置換した comp の分。"""
+    (`original/`) と比べた指標 (全区画・全点) と、置換した区画の射影も書く。"""
     model = spec["model"]
     targets = model["replace_targets"] if model else []
     series = EvalSeries.from_dict({**spec["input"], "replace_targets": targets})
     if model is None:
-        column = run_column(series, None, None)
-        _write_waves(root / "waves", column.waves, _names(series))
+        waves = [simulate(point.run_input()) for point in series.points]
+        _write_waves(root / "waves", waves, _names(series))
         return {"unit": series.unit}
     runs = root.parents[2]
     surrogate = Surrogate.load(runs / "models" / model["train"] / "surrogate")
-    if not applicable(surrogate.spec, series):
+    if not applicable(surrogate.config, series):
         print(f"{model['train']} は {targets} を置換できない")
         sys.exit(_NOT_REPLACEABLE)
-    original = SeriesRun(series, None, _read_waves(root.parent / "original/waves"))
-    column = run_column(series, model["train"], surrogate)
-    _write_waves(root / "waves", column.waves, _names(series))
-    view = SeriesResults(original, (column,))
+    originals = _read_waves(root.parent / "original/waves")
+    waves = []
+    for point in series.points:
+        ds = simulate(replace(surrogate, point.run_input(), targets))
+        if broken := [
+            c for c in targets if diverged(potential(ds, point.net.index(c)))
+        ]:
+            _logger.warning("置換系の電位が発散 (%s): %s", point.current_type, broken)
+        waves.append(ds)
+    _write_waves(root / "waves", waves, _names(series))
     net, dt = series.spec.net, series.spec.dt
-    points = range(len(view.original_waves))
-    metrics = {
-        comp: [
-            compare(*view.pair(index, column), net.name_to_idx(comp), dt)
-            for index in points
+    metrics = {}
+    for comp in net.names:
+        metrics[comp] = [
+            compare(originals[i], waves[i], net.index(comp), dt)
+            for i in range(len(originals))
         ]
-        for comp in net.names
-    }
     _write_json(root / "metrics.json", metrics)
     for comp in targets:
-        comp_id = net.name_to_idx(comp)
-        _write_waves(
-            root / "projected" / comp,
-            [
-                transform_gate(surrogate.preprocessor, ds, comp_id)
-                for ds in view.original_waves
-            ],
-        )
+        projected = [_project(surrogate, ds, net.index(comp)) for ds in originals]
+        _write_waves(root / "projected" / comp, projected)
     return {"unit": series.unit}
 
 

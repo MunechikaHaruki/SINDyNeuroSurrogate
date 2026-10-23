@@ -6,5 +6,5 @@
 
 次の一手は子の `- [ ]` に書く。済んだ行は消してよい。
 
-- [ ] Traub の密度などのパラメータを `neurosurrogate/neurons/traub.json` に移し、Python（`TraubParams`）と TS（`traub.ts` の `g`・`E`・`capacitance`・`kappa`）の二重定義をなくす
+- [ ] Traub の密度などのパラメータを `neurosurrogate/physics/traub.json` に移し、Python（`TraubParams`）と TS（`traub.ts` の `g`・`E`・`capacitance`・`kappa`）の二重定義をなくす
   - [ ] traub19 が区画ごとに上書きする値と、単一区画の既定値の境目を決める

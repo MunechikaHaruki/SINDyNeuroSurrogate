@@ -1,8 +1,4 @@
-"""**注入電流の名前 → 波形の対応表** (`SimSpec.current_type` が引く選択肢)。
-
-`spec` が仕様を実体化するときだけ引く sim 内部の表なので `_` 付き。適用先モデルの
-対応表は `neurons` が持つ (組み方と同じ語彙に置く)。
-"""
+"""注入電流の名前 → 波形 (SimSpec.current_type が引く選択肢)。"""
 
 import functools
 import inspect
@@ -299,7 +295,7 @@ _OTHER_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
 }
 
 
-CURRENT_MAP: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
+CURRENTS: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     **_OTHER_FUNC,
     **_LINEAR_FUNC,
     **_RANDOM_FUNC,

@@ -1,286 +1,447 @@
-"""サロゲートの主体と学習仕様。
+"""サロゲート: 区画の状態のどの群を、何で圧縮し、何で時間発展させるか。
 
-`Surrogate` が学習仕様 (spec) と成果物 (preprocessor / closure) を保持する。定式化
-(ansatz) は spec しか状態を持たないので field でなく派生 — 定式化に依る問い
-(学習ゲート・列構造・置換後の型) は `surrogate.ansatz` へ直接問う。
-**この型は転送メソッドを持たない**。
-
-**組み立ては `Surrogate` のメソッドでない** — 型が答えるのは持つ・保存する・読むの
-3 つだけで、設定ツリーから組む手順はモジュール関数 `fit_surrogate` に置く。
-設定の形を解くのは `SurrogateSpec.from_config` 1 箇所。
-**置換 (どこへ当てられるか・当てる) は `replace.py`** — 学習済みのものを持つことと、
-それを別のネットへ当てることは別の概念で、後者だけが適用先 (`NeuronGraph`) を知る。
-`in_train_domain` / `train_comp_ids` がここに残るのは、それが学習ドメインという
-**spec 自身の性質**で、置換の可否と学習 comp の選定の両方から引かれるから。
-学習データは保存せず spec から lazy に再現する (`training_data`)。load 後でも触れ、
-参照しなければ simulate は走らない。
+設定 (Config) は群のリストで、群ごとに圧縮器と右辺を持つ。群に入らなかった状態は
+元のモデルの式のまま解く (hybrid)。form="sindy" は膜電位も含めて丸ごと同定する。
+kernel・初期値・演算コストは、群と区画の式から組む。
 """
 
 import json
-from collections.abc import Callable
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+import jax.numpy as jnp
 import joblib
+import numpy as np
 import xarray as xr
 
-from ..core.network import Compartment, CompartmentType
-from ..core.opcost import OpCost
-from ..core.simulator import unified_simulator
-from ..neurons import COMPARTMENT_TYPES
-from ..sim.spec import SimSpec
-from .parts import Ansatz, Closure, Preprocessor
-from .parts.ansatz.hybrid import HybridSINDyAnsatz
-from .parts.ansatz.sindy import SINDyAnsatz
-from .parts.ansatz.ude import UDEAnsatz
-from .parts.preprocessor.autoencoder import fit_ae
-from .parts.preprocessor.pca import fit_pca
+from ..physics.cells import CELLS, CellType, Compartment, Net, total
+from ..physics.simulate import (
+    EvalSeries,
+    RunInput,
+    SimSpec,
+    gate_matrix,
+    i_internal,
+    latent_names,
+    potential,
+    simulate,
+    times,
+)
+from .compress import FITS
+from .sindy import Roles, fit_sindy
+from .ude import fit_ude
 
-_BUNDLE_FILE = "surrogate.joblib"  # 学習成果物 (closure/preprocessor)
-_SPEC_FILE = "spec.json"  # 同定情報。一覧はこれだけ読む
-
-# spec の dispatch キー → 実装。**解決するのは Surrogate だけ**なので、実装側に type 名
-# を持たせず (自分がどう選ばれたかを知らない) ここに対応表を置く。
-_SURR_CLS: dict[str, type[Ansatz[Any]]] = {
-    "sindy": SINDyAnsatz,
-    "hybrid": HybridSINDyAnsatz,
-    "ude": UDEAnsatz,
-}
-# 前処理は**型でなく学習関数**を引く: 種別ごとに hyperparams が違うので、名前で解いた
-# 先に config をそのまま展開して渡せる形 (`Callable[..., Preprocessor]`) にする。
-# 引数が静的に検査されないのは ansatz と同じ = 実行時の文字列で選ぶ以上そこに知識が
-# 無いというだけで、受理するキーと既定値は各関数の署名が持つ。
-_PREPROCESSOR_FIT: dict[str, Callable[..., Preprocessor]] = {
-    "pca": fit_pca,
-    "ae": fit_ae,
-}
+# --- 設定 ------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class SurrogateSpec:
-    """config を正規化した学習仕様。仕様から一意な派生値もここで答える。"""
+class Group:
+    """1 つの群: 圧縮する状態と、圧縮器と右辺。params は各 fit 関数の引数へ展開する。"""
 
-    surrogate_type: str
-    preprocessor_type: str
-    n_components: int
-    dataset: SimSpec
-    comp_type: CompartmentType
-    train_comp_id: int | None
-    # `parts/` の 3 構成要素と 1 対 1 の hyperparams。**共通のつまみ (n_components)
-    # だけは上の field へ昇格**していて、ここには**その層の入口 1 つの署名へそのまま
-    # 展開されるもの**だけが残る (preprocessor→`fit_pca`/`fit_ae`、
-    # ansatz→`HybridAnsatz.split`、closure→閉包項の同定入口)。層をまたいで持たない =
-    # ある層の実装を替えても他の層の値は動かない。
-    # 学習中しか読まれないが、仕様は学習後も由来として残るものなので spec が持つ。
-    preprocessor_config: dict
-    ansatz_config: dict
-    closure_config: dict
+    gates: list[str]
+    compressor: str  # "pca" | "ae"
+    d: int  # 潜在次元
+    rhs: str = "sindy"  # "sindy" | "ude"
+    compressor_params: dict = field(default_factory=dict)
+    rhs_params: dict = field(default_factory=dict)
 
-    # --- 構築・直列化 -------------------------------------------------------
-    # 素通しでないのは dataset (入れ子の構造) と comp_type (名前 ↔ 実体) の 2 つだけ
-    # なので、その 2 つだけ明示して残りは field 走査に任せる = 仕様に項目を足すとき
-    # 触るのは上の宣言 1 箇所。
+
+@dataclass(frozen=True)
+class Config:
+    cell: str  # 区画の型 (cells.CELLS の鍵)
+    form: str  # "hybrid" | "sindy"
+    data: SimSpec  # 学習データを取るシミュレーション
+    groups: list[Group]
+    train_comp: str | None = None  # 学習を 1 区画へ絞る名前 (None は同じ型の全区画)
 
     @classmethod
-    def from_config(cls, config: dict) -> "SurrogateSpec":
-        """設定ツリー (`conf.ts` の preset 1 本) から。**4 ブロックはそのまま
-        仕様の一部**で、ここが設定ツリーの形を知る唯一の場所 (以降 fit は spec
-        しか見ない)。
-
-        学習ノードは config では名前で書き、ここで index へ解く。
-        """
-        spec = config["spec"]
-        dataset = SimSpec(**spec["datasets"])
-        train_comp_identifier = spec.get("train_comp_identifier")
-        return cls(
-            surrogate_type=spec["surrogate_type"],
-            preprocessor_type=spec["preprocessor_type"],
-            n_components=spec["n_components"],
-            dataset=dataset,
-            comp_type=COMPARTMENT_TYPES[spec["comp_type"]],
-            train_comp_id=(
-                None
-                if train_comp_identifier is None
-                else dataset.net.name_to_idx(train_comp_identifier)
-            ),
-            preprocessor_config=config["preprocessor"],
-            ansatz_config=config["ansatz"],
-            closure_config=config["closure"],
+    def from_dict(cls, d: dict) -> "Config":
+        config = cls(
+            cell=d["cell"],
+            form=d["form"],
+            data=SimSpec.from_dict(d["data"]),
+            groups=[Group(**g) for g in d["groups"]],
+            train_comp=d.get("train_comp"),
         )
+        config._check()
+        return config
 
     def to_dict(self) -> dict:
-        """保存用の JSON 構造 (クラス定義に縛られない形で残す)。"""
         return {
-            **{f.name: getattr(self, f.name) for f in fields(self)},
-            "dataset": self.dataset.to_dict(),
-            "comp_type": self.comp_type.name,
+            "cell": self.cell,
+            "form": self.form,
+            "data": self.data.to_dict(),
+            "groups": [g.__dict__ for g in self.groups],
+            "train_comp": self.train_comp,
         }
 
-    @classmethod
-    def from_dict(cls, data: dict) -> "SurrogateSpec":
-        """`to_dict` の逆。項目の過不足はそのまま TypeError (黙って既定で埋めない)。"""
-        return cls(
-            **{
-                **data,
-                "dataset": SimSpec.from_dict(data["dataset"]),
-                "comp_type": COMPARTMENT_TYPES[data["comp_type"]],
-            }
-        )
+    def _check(self) -> None:
+        learned = [g for group in self.groups for g in group.gates]
+        if unknown := [g for g in learned if g not in self.cell_type.states]:
+            raise ValueError(f"{self.cell} に無い状態: {unknown}")
+        if len(set(learned)) != len(learned):
+            raise ValueError(f"群が重なっている: {learned}")
+        for group in self.groups:
+            if group.rhs == "ude" and group.compressor != "ae":
+                raise ValueError("ude は encoder・decoder を更新するので compressor=ae")
+        if self.form == "sindy" and (
+            len(self.groups) != 1 or learned != self.cell_type.states
+        ):
+            raise ValueError("form=sindy は全状態を 1 つの群にする")
 
-    @classmethod
-    def read(cls, path: Path | str) -> "SurrogateSpec":
-        """保存済み JSON から学習仕様だけを読む (run 一覧はこれだけ読む)。"""
-        return cls.from_dict(json.loads(Path(path).read_text()))
+    @property
+    def cell_type(self) -> CellType:
+        return CELLS[self.cell]
 
-    # --- 実装の解決 ---------------------------------------------------------
+    @property
+    def physics(self) -> list[str]:
+        """元の式のまま解く状態 (型の states の並び)。"""
+        learned = {g for group in self.groups for g in group.gates}
+        return [n for n in self.cell_type.states if n not in learned]
 
-    def ansatz(self) -> type[Ansatz[Any]]:
-        """定式化の実装。**dispatch キーを解くのはここだけ**で、返すのはインスタンス
-        でなく型 — `Ansatz` は状態を持たず全メソッドが spec を引数で受けるので、
-        学習前 (`in_train_domain` の `params_match`) も学習後も入口はこれ 1 つ。"""
-        return _SURR_CLS[self.surrogate_type]
+    def positions(self, group: Group) -> list[int]:
+        """群の状態の、型の states での位置。"""
+        return [self.cell_type.states.index(g) for g in group.gates]
 
-    def preprocessor_fit(self) -> Callable[..., Preprocessor]:
-        """座標変換の学習関数。ansatz と同じく dispatch キーはここでだけ解く
-        (実際に呼ぶのは `fit_surrogate`)。"""
-        return _PREPROCESSOR_FIT[self.preprocessor_type]
+    def train_node(self) -> Compartment:
+        """params と初期値の基準にする学習区画。"""
+        net = self.data.net
+        if self.train_comp is not None:
+            return net.nodes[net.index(self.train_comp)]
+        return next(c for c in net.nodes if c.type.name == self.cell)
 
-    def surr_type_name(self) -> str:
-        """置換後 CompartmentType の衝突しない名前。"""
-        return f"{self.comp_type.name}_{self.surrogate_type}_surr"
-
-    def train_comp(self) -> Compartment:
-        """params・初期値を参照する学習基準ノード。"""
-        if self.train_comp_id is not None:
-            return self.dataset.net.nodes[self.train_comp_id]
-        return next(
-            node for node in self.dataset.net.nodes if node.type == self.comp_type
-        )
-
-    def original_opcost(self) -> OpCost | None:
-        """置換前 CompartmentType の 1 ステップのコスト。"""
-        return self.comp_type.opcost
-
-    def in_train_domain(self, comp: Compartment) -> bool:
-        """comp が学習ドメインに属すか (種類一致かつ params 両立)。
-
-        **置換してよいかの判定はこれ 1 つ**。何を置換するかの選定はここでは決まらない
-        — 対象は適用側が名前で明示し (`EvalSeries.replace_targets` / `replace.replace`
-        の targets)、この述語はその 1 つ 1 つが通るかを答えるだけ。学習 comp の選定
-        (`train_comp_ids`) も同じ述語を引く = 置換専用でないのでここに置く。
-        """
-        if comp.type != self.comp_type:
+    def in_domain(self, comp: Compartment) -> bool:
+        """comp に当ててよいか。hybrid は params を入力で受けるので型だけを見る。"""
+        if comp.type.name != self.cell:
             return False
-        return self.ansatz().params_match(
-            self.train_comp().resolved_params, comp.resolved_params
-        )
+        if self.form == "hybrid":
+            return True
+        return comp.resolved_params == self.train_node().resolved_params
 
-    def train_comp_ids(self) -> list[int]:
-        """学習軌道を取る comp id 列。既定は学習ネット内の学習ドメイン全部、明示時
-        だけ 1 ノード。"""
-        if self.train_comp_id is not None:
-            return [self.train_comp_id]
-        return [
-            i
-            for i, comp in enumerate(self.dataset.net.nodes)
-            if self.in_train_domain(comp)
-        ]
+    def train_ids(self) -> list[int]:
+        net = self.data.net
+        if self.train_comp is not None:
+            return [net.index(self.train_comp)]
+        return [i for i, c in enumerate(net.nodes) if self.in_domain(c)]
+
+
+# --- 学習 ------------------------------------------------------------------------
 
 
 @dataclass(eq=False)
 class Surrogate:
-    """**学習済み**サロゲート。spec / preprocessor / closure の 3 点を持つ。
+    """学習済みのサロゲート。parts は群ごとの (圧縮器, 右辺)。"""
 
-    どう学習されたかはここの関心ではない (組むのは `fit_surrogate`)、どこへ当てるかも
-    ここの関心ではない (置換するのは `replace.replace`) — この型は「持つ・保存する・
-    読む」だけを担い、**設定ツリーも適用先も一切知らない**。
-    持つ 3 点は**保存する 3 点そのもの** (spec.json + pickle 2 点)。
-
-    `eq=False` = 同一性で比べる。中身は numpy を抱えるので値比較は意味を持たない。
-    """
-
-    spec: SurrogateSpec
-    preprocessor: Preprocessor
-    closure: Closure
-
-    @property
-    def ansatz(self) -> type[Ansatz[Any]]:
-        """定式化 (型そのもの。`Ansatz` は状態を持たない)。定式化に依る問い
-        (学習ゲート・列構造・置換後の型) は**この型を素通しせず**
-        `surrogate.ansatz.f(surrogate.spec, ...)` と直接問う。"""
-        return self.spec.ansatz()
+    config: Config
+    parts: list[tuple[Any, Any]]
 
     @cached_property
     def training_data(self) -> xr.Dataset:
-        """学習データ。実体は保存せず spec から決定的に再現する (dataset/電流/dt が
-        spec に揃っている)。→ load 経路でも参照でき、学習の図を後から組み直せる。"""
-        return unified_simulator(self.spec.dataset.materialize())
+        """学習データ。保存せず、設定から決定的に作り直す。"""
+        return simulate(self.config.data.run_input())
 
-    def summary(self) -> dict[str, Any]:
-        """比べる表に並べる学習側の指標。closure/preprocessor 固有の指標と、
-        演算コスト (`cost/*`)。原系のコストが無ければ差分は出さない。"""
-        orig = self.spec.original_opcost()
-        cost: dict[str, int] = {}
-        if orig is not None:
-            surr = self.ansatz.surr_comp_type(
-                self.spec, self.preprocessor, self.closure
-            ).opcost
-            assert surr is not None  # surr_comp_type は必ず opcost を焼き込む
-            surr_d, orig_d = surr.to_dict(), orig.to_dict()
-            cost = {
-                **{f"cost/surrogate/{k}": v for k, v in surr_d.items()},
-                **{f"cost/original/{k}": v for k, v in orig_d.items()},
-                **{f"cost/surr-orig/{k}": surr_d[k] - orig_d[k] for k in orig_d},
-            }
-        return {**self.closure.metrics(), **self.preprocessor.metrics(), **cost}
-
-    # --- 保存形式 (save/load は 1 つの契約の両半分) --------------------------
+    def save(self, folder: Path) -> None:
+        (folder / "config.json").write_text(
+            json.dumps(self.config.to_dict(), indent=2, ensure_ascii=False)
+        )
+        joblib.dump(self.parts, folder / "parts.joblib")
 
     @classmethod
-    def load(cls, dir: Path | str) -> "Surrogate":
-        # spec は JSON 別ファイル (構造で保存)、学習成果物は pickle。ansatz は状態を
-        # 持たず spec から解けるので保存しない。
-        data = joblib.load(Path(dir) / _BUNDLE_FILE)
-        return cls(
-            SurrogateSpec.read(Path(dir) / _SPEC_FILE),
-            data["preprocessor"],
-            data["closure"],
+    def load(cls, folder: Path) -> "Surrogate":
+        config = Config.from_dict(json.loads((folder / "config.json").read_text()))
+        return cls(config, joblib.load(folder / "parts.joblib"))
+
+
+@dataclass(frozen=True)
+class _Inputs:
+    """同定器へ渡す列。x と u は学習区画ごとの軌道 (時刻 × 列)。"""
+
+    x_names: list[str]
+    u_names: list[str]
+    x: list[np.ndarray]
+    u: list[np.ndarray]
+
+
+def _offsets(config: Config) -> list[int]:
+    """群ごとの潜在の開始位置。"""
+    offsets, start = [], 0
+    for group in config.groups:
+        offsets.append(start)
+        start += group.d
+    return offsets
+
+
+def _group_gates(config: Config, group: Group, data: xr.Dataset) -> list[np.ndarray]:
+    """学習区画ごとの、群の状態の軌道。"""
+    positions = config.positions(group)
+    return [gate_matrix(data, i)[:, positions] for i in config.train_ids()]
+
+
+def _inputs(
+    config: Config, group: Group, compressor, data: xr.Dataset, offset: int
+) -> _Inputs:
+    """hybrid は x = 潜在、u = V。form=sindy は x = [V, 潜在]、u = 流入電流。"""
+    ids = config.train_ids()
+    latents = [compressor.encode(g) for g in _group_gates(config, group, data)]
+    names = latent_names(group.d, offset)
+    if config.form == "sindy":
+        x = []
+        for i, z in zip(ids, latents, strict=True):
+            x.append(np.concatenate((potential(data, i).reshape(-1, 1), z), axis=1))
+        u = [i_internal(data, i)[:, None] for i in ids]
+        return _Inputs(["V", *names], ["u"], x, u)
+    return _Inputs(names, ["V"], latents, [potential(data, i)[:, None] for i in ids])
+
+
+def _fit_rhs(config: Config, group: Group, compressor, data, offset: int):
+    if group.rhs == "ude":
+        gates = _group_gates(config, group, data)
+        volts = [potential(data, i) for i in config.train_ids()]
+        return fit_ude(
+            compressor,
+            jnp.asarray(np.stack(gates), dtype=jnp.float32),
+            jnp.asarray(np.stack(volts), dtype=jnp.float32),
+            np.concatenate(gates, axis=0),
+            dt=float(config.data.dt),
+            d=group.d,
+            **group.rhs_params,
         )
-
-    def save(self, dir: Path | str) -> None:
-        """spec は JSON (構造で残す → クラス定義に縛られない)、学習成果物は pickle。"""
-        (Path(dir) / _SPEC_FILE).write_text(
-            json.dumps(self.spec.to_dict(), indent=2, ensure_ascii=False)
-        )
-        joblib.dump(
-            {"closure": self.closure, "preprocessor": self.preprocessor},
-            Path(dir) / _BUNDLE_FILE,
-        )
-
-
-def fit_surrogate(cfg: dict) -> Surrogate:
-    """設定ツリーから学習済み surrogate を組む唯一の入口。
-
-    **メソッドでなくモジュール関数**なのは、組み立てが `Surrogate` の関心でないから
-    (この型が答えるのは持つ・保存する・読む・適用するの 4 つだけ)。設定の形を解くのは
-    `SurrogateSpec.from_config` で、ここは simulate して学習させて組む手順だけを持つ。
-
-    **座標変換 → 閉包項の順は定式化に依らない** (閉包項は潜在座標の上に立つ) ので、
-    ansatz の既定実装でなくここで確定させる。ansatz へ問うのは定式化ごとに違う 2 点
-    だけ — 何を学習ゲートとするか (`training_gates`) と、その座標で何を同定するか
-    (`fit_closure`)。hyperparams は全部 spec が持つ = **spec に無い設定は効かない**。
-    """
-    spec = SurrogateSpec.from_config(cfg)
-    ansatz = spec.ansatz()
-    # 学習データは spec から決定的に再現できる (`Surrogate.training_data` と同じ式)
-    # ので、学習済みモデルへ持ち回さず捨てる。
-    training_data = unified_simulator(spec.dataset.materialize())
-    preprocessor = spec.preprocessor_fit()(
-        ansatz.training_gates(spec, training_data),
-        spec.n_components,
-        **spec.preprocessor_config,
+    inputs = _inputs(config, group, compressor, data, offset)
+    if config.form == "sindy":
+        roles = Roles(V=0, g=list(range(1, 1 + group.d)), u=1 + group.d)
+    else:
+        roles = Roles(V=group.d, g=list(range(group.d)))
+    return fit_sindy(
+        inputs.x_names,
+        inputs.u_names,
+        inputs.x,
+        inputs.u,
+        times(data),
+        roles,
+        **group.rhs_params,
     )
-    closure = ansatz.fit_closure(spec, training_data, preprocessor)
-    return Surrogate(spec, preprocessor, closure)
+
+
+def fit(config_dict: dict) -> Surrogate:
+    """設定から学習する。群ごとに、圧縮器を学習してから右辺を同定する。"""
+    config = Config.from_dict(config_dict)
+    data = simulate(config.data.run_input())
+    parts = []
+    for group, offset in zip(config.groups, _offsets(config), strict=True):
+        gates = np.concatenate(_group_gates(config, group, data), axis=0)
+        compressor = FITS[group.compressor](gates, group.d, **group.compressor_params)
+        parts.append((compressor, _fit_rhs(config, group, compressor, data, offset)))
+    surrogate = Surrogate(config, parts)
+    surrogate.training_data = data
+    return surrogate
+
+
+# --- 置換後の区画の型 ------------------------------------------------------------
+
+
+def _rhs_fn(rhs):
+    """(z, V) → dz/dt。"""
+    if hasattr(rhs, "rhs"):
+        return rhs.rhs()
+    xi = jnp.asarray(rhs.xi)
+    theta = rhs.theta()
+    return lambda z, v: xi @ theta(*z, v)
+
+
+def surrogate_cell(s: Surrogate) -> CellType:
+    """学習したものから、置換に使う区画の型を組む。"""
+    config, cell = s.config, s.config.cell_type
+    name = f"{cell.name}_{config.form}_surr"
+    if config.form == "sindy":
+        compressor, rhs = s.parts[0]
+        d = config.groups[0].d
+        xi, theta = jnp.asarray(rhs.xi), rhs.theta()
+
+        def sindy_kernel(p, u, v, x):
+            th = theta(v, *(x[i] for i in range(d)), u)
+            return xi[0] @ th, xi[1:] @ th
+
+        v0 = config.train_node().init[0]
+        return CellType(
+            name=name,
+            kernel=sindy_kernel,
+            # params が一致する区画にだけ当てるので、学習区画の初期値を使う
+            param_cls=None,
+            states=latent_names(d),
+            inits=lambda _: [v0, *compressor.gate_inits],
+            opcost=rhs.opcost(),
+        )
+
+    assert cell.dv is not None and cell.derivs is not None and cell.costs is not None
+    dv_fn, derivs, physics = cell.dv, cell.derivs, config.physics
+    blocks = []
+    for (compressor, rhs), group, start in zip(
+        s.parts, config.groups, _offsets(config), strict=True
+    ):
+        blocks.append(
+            (group.gates, start, start + group.d, compressor.decode, _rhs_fn(rhs))
+        )
+    n_latent = sum(group.d for group in config.groups)
+
+    def hybrid_kernel(p, u, v, x):
+        s = {}
+        for gates, a, b, decode, _ in blocks:
+            values = decode(x[a:b])
+            for j, gate in enumerate(gates):
+                s[gate] = values[j]
+        for i, state in enumerate(physics):
+            s[state] = x[n_latent + i]
+        dx = [rhs(x[a:b], v) for _, a, b, _, rhs in blocks]
+        if physics:
+            dx.append(jnp.stack([derivs[n](p, v, s) for n in physics]))
+        return dv_fn(p, u, v, s), jnp.concatenate(dx)
+
+    latent_inits = [z for compressor, _ in s.parts for z in compressor.gate_inits]
+
+    def inits(p) -> list[float]:
+        full = cell.inits(p)
+        rest = [full[1 + cell.states.index(n)] for n in physics]
+        return [full[0], *latent_inits, *rest]
+
+    learned = total([c.opcost() + r.opcost() for c, r in s.parts])
+    assert cell.dv_cost is not None
+    return CellType(
+        name=name,
+        kernel=hybrid_kernel,
+        param_cls=cell.param_cls,
+        states=latent_names(n_latent) + physics,
+        inits=inits,
+        opcost=learned + cell.dv_cost + total([cell.costs[n] for n in physics]),
+    )
+
+
+# --- 置換 ------------------------------------------------------------------------
+
+
+def rejections(
+    config: Config, net: Net, targets: list[str] | tuple[str, ...]
+) -> list[str]:
+    """置き換えられない区画とその理由 (空なら全部置き換えられる)。"""
+    reasons = []
+    for target in targets:
+        if target not in net.names:
+            reasons.append(f"{target!r}: 適用先 {net.names} に存在しない")
+            continue
+        comp = net.nodes[net.index(target)]
+        if config.in_domain(comp):
+            continue
+        if comp.type.name != config.cell:
+            reasons.append(
+                f"{target!r}: 種類 {comp.type.name!r} ≠ 学習した種類 {config.cell!r}"
+            )
+        else:
+            train = config.train_node()
+            reasons.append(
+                f"{target!r}: params が学習区画 {train.name} と違う\n"
+                f"    train: {train.resolved_params}\n    node: {comp.resolved_params}"
+            )
+    return reasons
+
+
+def applicable(config: Config, series: EvalSeries) -> bool:
+    """系列が挙げた区画を全部置き換えられるか。"""
+    targets = series.replace_targets
+    return bool(targets) and not rejections(config, series.spec.net, targets)
+
+
+def replace(s: Surrogate, run: RunInput, targets) -> RunInput:
+    """targets の区画の型をサロゲートに差し替えた実行入力。一部だけの置換はしない。"""
+    if not targets:
+        raise ValueError("置換する区画を名前で挙げる")
+    if reasons := rejections(s.config, run.net, targets):
+        raise ValueError("置き換えられない区画:\n  " + "\n  ".join(reasons))
+    cell = surrogate_cell(s)
+    nodes = []
+    for node in run.net.nodes:
+        nodes.append(
+            Compartment(node.name, cell, node.params) if node.name in targets else node
+        )
+    return RunInput(run.dt, Net(nodes, run.net.edges), run.stim_idx, run.current)
+
+
+# --- 中身の書き出し --------------------------------------------------------------
+
+
+def summary(s: Surrogate) -> dict[str, Any]:
+    """学習側の指標と、1 刻みの演算コスト (置換後・元・差)。"""
+    metrics: dict[str, Any] = {}
+    for (compressor, rhs), group in zip(s.parts, s.config.groups, strict=True):
+        prefix = "" if len(s.parts) == 1 else "".join(group.gates).lower() + "/"
+        for k, v in {**rhs.metrics(), **compressor.metrics()}.items():
+            metrics[prefix + k] = v
+    surr = surrogate_cell(s).opcost.to_dict()
+    orig = s.config.cell_type.opcost.to_dict()
+    return {
+        **metrics,
+        **{f"cost/surrogate/{k}": v for k, v in surr.items()},
+        **{f"cost/original/{k}": v for k, v in orig.items()},
+        **{f"cost/surr-orig/{k}": surr[k] - orig[k] for k in orig},
+    }
+
+
+@dataclass(frozen=True)
+class CompFit:
+    """学習区画 1 つの、同定器へ渡した列・潜在・再構成の RMSE (時刻ごと)。"""
+
+    x: np.ndarray
+    latent: np.ndarray
+    recon_rmse: np.ndarray
+
+
+def describe(s: Surrogate) -> tuple[dict, dict[int, CompFit]]:
+    """図が読む中身 (model.json) と、学習区画ごとの CompFit。"""
+    config, data = s.config, s.training_data
+    net = config.data.net
+    ids = config.train_ids()
+    per_group = []
+    for (compressor, _), group, offset in zip(
+        s.parts, config.groups, _offsets(config), strict=True
+    ):
+        gates = _group_gates(config, group, data)
+        latents = [np.asarray(compressor.encode(g)) for g in gates]
+        recons = [np.asarray(compressor.decode(jnp.asarray(z))) for z in latents]
+        inputs = _inputs(config, group, compressor, data, offset)
+        per_group.append((gates, latents, recons, inputs))
+    fits = {}
+    for pos, comp_id in enumerate(ids):
+        sq = np.concatenate(
+            [(g[pos] - r[pos]) ** 2 for g, _, r, _ in per_group], axis=1
+        )
+        fits[comp_id] = CompFit(
+            x=np.concatenate([inp.x[pos] for _, _, _, inp in per_group], axis=1),
+            latent=np.concatenate([z[pos] for _, z, _, _ in per_group], axis=1),
+            recon_rmse=np.sqrt(np.mean(sq, axis=1)),
+        )
+    first_compressor, first_rhs = s.parts[0]
+    model: dict[str, Any] = {
+        "closure": first_rhs.describe(),
+        "preprocessor": first_compressor.describe(),
+        "net": {
+            "nodes": [{"name": c.name, "type": c.type.name} for c in net.nodes],
+            "edges": [
+                {"src": e.src, "dst": e.dst, "weight": e.weight} for e in net.edges
+            ],
+            "stim": config.data.stim,
+            "replaceable": [c.name for c in net.nodes if config.in_domain(c)],
+            "train": [net.nodes[i].name for i in ids],
+        },
+        "train_gates": [g for group in config.groups for g in group.gates],
+        "x_names": [n for _, _, _, inp in per_group for n in inp.x_names],
+        "latent_names": latent_names(sum(group.d for group in config.groups)),
+    }
+    if len(s.parts) > 1:
+        model["groups"] = [
+            {
+                "gates": group.gates,
+                "closure": r.describe(),
+                "preprocessor": c.describe(),
+            }
+            for (c, r), group in zip(s.parts, config.groups, strict=True)
+        ]
+    return model, fits

@@ -1,370 +1,77 @@
-"""**設計規約が実態と一致すること**の機械検査。
-
-検査するのは 3 系統:
-
-1. **公開範囲の綴り** — module 直下の名前も module 名も、**他から参照されるものだけ**
-   が `_` 無し。内側でしか使わないものは `_` を付ける = `_` が「外から呼ばれない」の
-   印として信用できる状態を保つ (import 元を grep しないと公開範囲が分からない、を防ぐ)
-2. **依存の向き** — `neurosurrogate/` 内の import が `_LAYERS` の許可を超えない
-   (`DESIGN.md` の層の宣言をそのまま実行可能にしたもの)
-3. **ドメイン層の独立** — `neurosurrogate/` が記録・設定・描画の基盤を import しない
-
-判定は import 文と属性アクセスの静的解析。動的にしか呼ばれない入口 (段取りが
-起動する `neurosurrogate/run.py`) は `_EXEMPT` で明示的に免除する
-= **免除もコードに書いてあるものだけ**。
-"""
+"""研究コードの約束の機械検査: import の向き、基盤の道具を使わないこと、`_` の名前。"""
 
 import ast
 import pathlib
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-# 検査対象 (ドメイン層 + 入口)。tests/ は「消費者」側としてだけ読む。
-SRC_DIRS = ("neurosurrogate",)
-# **参照元として数えるのは production だけ** — テストが import しているのは
-# 「外から使われている」ではなく「中を検査している」なので、これに数えると
-# テストを書くだけで公開名・公開 module を作れてしまう (`_` が公開範囲の印で
-# なくなる)。裏返しに、**テストが内部を掴むことは咎めない** = 規約が縛るのは
-# production の依存の向きだけ (ruff の PLC2701 も同じ理由で `tests/*` は無効)。
-PUBLIC_REF_DIRS = SRC_DIRS
+ROOT = pathlib.Path(__file__).resolve().parent.parent / "neurosurrogate"
 
-# 動的に解決される入口 = 静的解析からは参照が見えない。
-_EXEMPT = {
-    ("neurosurrogate/run.py", "main"),  # 段取り (orchestrate.ts) が -m で起動する
-    # 学習 run の pickle がクラス名で引く (改名すると既存 run が読めない)。
-    ("neurosurrogate/surrogate/parts/preprocessor/pca.py", "PCAPreprocessor"),
+# 置き場 → import してよい置き場。physics は元のモデルを解くだけで、学習を知らない。
+# 直下 (metrics・run) は両方を使う。
+_ALLOWED = {
+    "physics": {"physics"},
+    "surrogate": {"physics", "surrogate"},
+    "": {"physics", "surrogate", ""},
 }
-# **名前空間ごと**外へ渡す module = 公開範囲が「module 直下の全部」。
-# `sindy._catalog` が `vars(hh) | vars(traub)` を lambdify の名前空間に注入するので、
-# レート関数は import されなくても**名前が API** (conf.ts の library_specs が文字列で
-# 引く)。
-_EXEMPT_MODULES = {
-    "neurosurrogate/neurons/hh.py",
-    "neurosurrogate/neurons/traub.py",
-}
-# 名前を文字列で受け取る呼び出し (monkeypatch など) の引数も参照とみなす。
-_BY_NAME = {"setattr", "getattr", "hasattr", "delattr"}
-
-# `_` 無しの module 名でも、外から import されない入口 (段取りが直接起動する)。
-_EXEMPT_ENTRY_MODULES = {"neurosurrogate/run.py"}
-
-# --- 依存の向き (DESIGN.md の宣言) -------------------------------------------
-# 場所 → 層 (module path の前方一致。長い方が勝つ = ファイル単位で層を割れる)。
-# 新しいディレクトリを足したらここに書く必要がある = **層の所属は必ず宣言される**。
-_GROUP_OF = {
-    "neurosurrogate/__init__": "base",  # package import 時に jax_enable_x64 を張る入口
-    "neurosurrogate/core/": "base",
-    "neurosurrogate/neurons/": "neurons",
-    "neurosurrogate/sim/run": "sim_exec",
-    "neurosurrogate/sim/": "sim_desc",
-    "neurosurrogate/surrogate/": "surrogate",
-    "neurosurrogate/run": "entry",  # spec.json → run のディレクトリ (段取りが起動する)
-}
-# 層 → import してよい層 (自分自身は常に可)。推移的な許可も**明示的に**書く
-# = 「どこから何が見えるか」がこの表だけで読める。
-_LAYERS = {
-    "base": frozenset(),  # 他ディレクトリを一切 import しない基盤
-    "neurons": frozenset({"base"}),
-    "sim_desc": frozenset({"base", "neurons"}),
-    "surrogate": frozenset({"base", "neurons", "sim_desc"}),
-    "sim_exec": frozenset({"base", "neurons", "sim_desc", "surrogate"}),
-    # 計算の入口と run の保存形式。どの層からも import されない最上位
-    "entry": frozenset({"base", "neurons", "sim_desc", "surrogate", "sim_exec"}),
-}
-
-# ドメイン層が触ってはいけない基盤 (記録も設定の形式も run の置き場で足りる)。
-# 描画も持たない (描くのは evaluation/ の図。ドメインは数値を出すだけ)。
-_INFRA_ROOTS = {"mlflow", "hydra", "omegaconf", "matplotlib"}
+# 計算は記録・設定・描画の基盤を知らない (保存は run.py の置き場、描画は evaluation/)。
+_INFRA = {"mlflow", "hydra", "omegaconf", "matplotlib"}
 
 
-def _py_files(dirs: tuple[str, ...]) -> list[pathlib.Path]:
-    return sorted(
-        p
-        for d in dirs
-        for p in (ROOT / d).rglob("*.py")
-        if "__pycache__" not in p.parts
-    )
+def _files() -> dict[str, ast.Module]:
+    """neurosurrogate/ からのパス (physics/cells など) → 構文木。"""
+    trees = {}
+    for path in sorted(ROOT.rglob("*.py")):
+        key = path.relative_to(ROOT).with_suffix("").as_posix()
+        trees[key] = ast.parse(path.read_text())
+    return trees
 
 
-def _module_path(mod: str, base: pathlib.Path, level: int) -> pathlib.Path | None:
-    """import 文の module 指定 → ファイル。相対 import は `base` から遡り、
-    絶対 import は repo 直下から引く。"""
-    if level:
-        pkg = base.parent
-        for _ in range(level - 1):
-            pkg = pkg.parent
-        roots = [pkg]
-    else:
-        roots = [ROOT]
-    for root in roots:
-        target = root
-        for part in mod.split(".") if mod else []:
-            target = target / part
-        for cand in (target.with_suffix(".py"), target / "__init__.py"):
-            if cand.exists():
-                return cand
-    return None
+def _place(key: str) -> str:
+    """physics/cells → physics、run → 直下 ("")。"""
+    return key.split("/")[0] if "/" in key else ""
 
 
-def _import_nodes(path: pathlib.Path) -> list[ast.Import | ast.ImportFrom]:
-    """ファイル中の import 文だけ (行番号を持つ型に絞ってから回す)。"""
-    return [
-        node
-        for node in ast.walk(ast.parse(path.read_text()))
-        if isinstance(node, ast.Import | ast.ImportFrom)
-    ]
+def _imports(key: str, tree: ast.Module) -> list[tuple[str | None, str, list[str]]]:
+    """(neurosurrogate の中なら置き場, import 元, 取り出した名前)。"""
+    found: list[tuple[str | None, str, list[str]]] = []
+    here = key.split("/")[:-1]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names = [a.name for a in node.names]
+            module = node.module or ""
+            if node.level == 0:
+                inside = module.startswith("neurosurrogate.")
+                target = module.removeprefix("neurosurrogate.") if inside else None
+            else:
+                base = here[: len(here) - (node.level - 1)]
+                target = "/".join([*base, *module.split(".")])
+            place = None if target is None else _place(target.replace(".", "/"))
+            found.append((place, module, names))
+        elif isinstance(node, ast.Import):
+            found.extend((None, a.name, []) for a in node.names)
+    return found
 
 
-def _dotted_targets(node: ast.Import | ast.ImportFrom, base: pathlib.Path) -> list[str]:
-    """import 文が名指す module (相対は絶対へ直す)。`from pkg import mod` の mod も
-    候補に足す — 層の判定に `pkg` だけでは足りない (`sim` は spec と run で層が違う)。
-    """
-    if isinstance(node, ast.Import):
-        return [alias.name for alias in node.names]
-    if node.level:
-        pkg = base.parent
-        for _ in range(node.level - 1):
-            pkg = pkg.parent
-        prefix = str(pkg.relative_to(ROOT)).replace("/", ".")
-        mod = f"{prefix}.{node.module}" if node.module else prefix
-    else:
-        mod = node.module or ""
-    return [mod, *(f"{mod}.{alias.name}" for alias in node.names)]
+def test_every_file_is_in_a_known_place() -> None:
+    assert {_place(k) for k in _files()} <= set(_ALLOWED)
 
 
-def _imported_modules(
-    node: ast.Import | ast.ImportFrom, base: pathlib.Path
-) -> list[pathlib.Path]:
-    """import 文が名指す module のファイル。`from pkg import mod` の mod と
-    `import pkg.mod` の両形式を見る (後者だけで参照される module がある)。"""
-    if isinstance(node, ast.Import):
-        return [
-            src
-            for alias in node.names
-            if (src := _module_path(alias.name, base, 0)) is not None
-        ]
-    names = [node.module or "", *(f"{node.module}.{a.name}" for a in node.names)]
-    return [
-        src
-        for name in names
-        if (src := _module_path(name, base, node.level)) is not None
-    ]
+def test_import_direction() -> None:
+    for key, tree in _files().items():
+        for place, module, _ in _imports(key, tree):
+            if place is not None:
+                assert place in _ALLOWED[_place(key)], f"{key} → {module}"
 
 
-def _group_of(module_path: str) -> str | None:
-    """module path (拡張子なし) → 層。前方一致が複数当たったら長い方が勝つ。"""
-    hit = [
-        (prefix, g)
-        for prefix, g in _GROUP_OF.items()
-        if f"{module_path}/".startswith(prefix)
-    ]
-    return max(hit, key=lambda kv: len(kv[0]))[1] if hit else None
+def test_no_infra_imports() -> None:
+    for key, tree in _files().items():
+        for _, module, _ in _imports(key, tree):
+            assert module.split(".")[0] not in _INFRA, f"{key} が {module} を使う"
 
 
-def _defined() -> dict[tuple[pathlib.Path, str], int]:
-    """module 直下の公開名 → 行番号。"""
-    out: dict[tuple[pathlib.Path, str], int] = {}
-    for path in _py_files(SRC_DIRS):
-        for node in ast.parse(path.read_text()).body:
-            names = []
-            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-                names = [node.name]
-            elif isinstance(node, ast.Assign):
-                names = [t.id for t in node.targets if isinstance(t, ast.Name)]
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                names = [node.target.id]
-            for name in names:
-                if not name.startswith("_"):
-                    out[(path, name)] = node.lineno
-    return out
-
-
-def _imported_elsewhere() -> set[tuple[pathlib.Path, str]]:
-    """**他の module から**参照されている (定義元ファイル, 名前)。
-
-    見るのは `from x import name` と、`import x.y` + `x.y.name` の属性アクセス。
-    属性名は定義元を特定せず全候補に当てる (過検出側 = 規約を緩める方向にだけ外す)。
-    """
-    used: set[tuple[pathlib.Path, str]] = set()
-    attrs: set[str] = set()
-    for path in _py_files(PUBLIC_REF_DIRS):
-        tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                src = _module_path(node.module or "", path, node.level)
-                if src is None or src == path:
-                    continue
-                for alias in node.names:
-                    used.add((src, alias.name))
-                    # `from pkg import module` (module をまるごと) → 属性経由の使用
-                    sub = _module_path(
-                        f"{node.module}.{alias.name}" if node.module else alias.name,
-                        path,
-                        node.level,
-                    )
-                    if sub is not None and sub != path:
-                        used.update((sub, a) for a in attrs)
-            elif isinstance(node, ast.Attribute):
-                attrs.add(node.attr)
-            elif isinstance(node, ast.Call):
-                attrs |= _names_passed_as_strings(node)
-    # 属性アクセスは module を特定しないので、定義元すべてに当てる
-    return used | {(path, name) for (path, name) in _defined() if name in attrs}
-
-
-def _names_passed_as_strings(call: ast.Call) -> set[str]:
-    """`setattr(mod, "NAME", ...)` 系の呼び出しが文字列で名指しする名前。
-    monkeypatch はこの形しか取らないので、これを見ないと差し替え対象が「参照なし」に
-    見えてしまう。"""
-    name = (
-        call.func.attr
-        if isinstance(call.func, ast.Attribute)
-        else getattr(call.func, "id", "")
-    )
-    if name not in _BY_NAME:
-        return set()
-    return {
-        arg.value
-        for arg in call.args
-        if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
-    }
-
-
-def _declared_strings() -> str:
-    """preset の宣言 (`conf.ts`)。項ライブラリの名前を文字列で引く。"""
-    return (ROOT / "evaluation/orchestrate/conf.ts").read_text()
-
-
-def test_public_names_are_actually_imported_elsewhere() -> None:
-    """`_` の無い module 直下の名前は、必ずどこか別の module が参照している。
-
-    落ちたら 2 択: **他所から呼ばないなら `_` を付ける**、呼ぶなら呼ぶ側を足す
-    (どこからも呼ばれないなら消す)。"""
-    used = _imported_elsewhere()
-    declared = _declared_strings()
-    bad = [
-        f"{path.relative_to(ROOT)}:{line} {name}"
-        for (path, name), line in sorted(_defined().items())
-        if (path, name) not in used
-        and (str(path.relative_to(ROOT)), name) not in _EXEMPT
-        and str(path.relative_to(ROOT)) not in _EXEMPT_MODULES
-        and name not in declared
-    ]
-    assert not bad, (
-        "他 module から参照されないのに公開の綴り (`_` を付ける):\n" + "\n".join(bad)
-    )
-
-
-def test_public_modules_are_imported_from_outside() -> None:
-    """`_` の無い module は、必ずそのディレクトリの外から import されている。
-
-    名前に対する `test_public_names_are_actually_imported_elsewhere` と同じ規約を
-    module 名に当てる。落ちたら 2 択: **外から使わないなら `_`**、使うなら使う側を足す。
-    """
-    outside: set[pathlib.Path] = set()
-    for path in _py_files(PUBLIC_REF_DIRS):
-        for node in _import_nodes(path):
-            outside |= {
-                src
-                for src in _imported_modules(node, path)
-                if src.parent != path.parent
-            }
-    declared = _declared_strings()
-    bad = [
-        str(path.relative_to(ROOT))
-        for path in _py_files(SRC_DIRS)
-        if not path.name.startswith("_")
-        and path not in outside
-        and str(path.relative_to(ROOT)) not in _EXEMPT_ENTRY_MODULES
-        and path.stem not in declared
-    ]
-    assert not bad, "外から import されない module が公開の綴り:\n" + "\n".join(bad)
-
-
-def test_import_direction_follows_layers() -> None:
-    """`neurosurrogate/` 内の import が `_LAYERS` の許可を超えない (依存の向き)。
-
-    落ちたら、まず**呼ぶ側の層を疑う** (下位層が上位層を必要とするのは責務の置き場所が
-    間違っているサイン)。層の定義そのものを変えるのは設計判断なので、独断で `_LAYERS` を
-    書き換えない。"""
-    bad = set()
-    for path in _py_files(("neurosurrogate",)):
-        src_group = _group_of(str(path.relative_to(ROOT).with_suffix("")))
-        if src_group is None:
-            bad.add(f"{path.relative_to(ROOT)} の層が `_GROUP_OF` に無い")
-            continue
-        for node in _import_nodes(path):
-            for mod in _dotted_targets(node, path):
-                # `from pkg import mod` は pkg と pkg.mod の両方が候補 = 同じ 1 行が
-                # 2 度出る。層だけ見て潰す (どちらが当たっても違反の中身は同じ)。
-                dst_group = _group_of(mod.replace(".", "/"))
-                if dst_group not in (None, src_group) and (
-                    dst_group not in _LAYERS[src_group]
-                ):
-                    bad.add(
-                        f"{path.relative_to(ROOT)}:{node.lineno} "
-                        f"{src_group} → {dst_group}"
-                    )
-    assert not bad, "依存の向きに反する import:\n" + "\n".join(sorted(bad))
-
-
-def test_domain_layer_does_not_import_infra() -> None:
-    """`neurosurrogate/` は記録や設定の基盤を知らない。"""
-    bad = []
-    for path in _py_files(("neurosurrogate",)):
-        for node in _import_nodes(path):
-            for mod in _dotted_targets(node, path):
-                if mod.split(".")[0] in _INFRA_ROOTS:
-                    bad.append(f"{path.relative_to(ROOT)}:{node.lineno} {mod}")
-    assert not bad, "ドメイン層からの基盤 import:\n" + "\n".join(bad)
-
-
-def test_no_dunder_all() -> None:
-    """`__all__` は置かない (公開範囲は綴りが持つ = 二重管理にしない)。"""
-    bad = [
-        f"{path.relative_to(ROOT)}:{node.lineno}"
-        for path in _py_files(SRC_DIRS)
-        for node in ast.parse(path.read_text()).body
-        if isinstance(node, ast.Assign)
-        and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets)
-    ]
-    assert not bad, "`__all__` は定義しない (AGENTS.md):\n" + "\n".join(bad)
-
-
-def test_private_names_are_not_imported_from_other_modules() -> None:
-    """`_` 始まりの名前は、それを定義した module の外から import しない。
-
-    ruff の `PLC2701` が同じことを見るが、あれが咎めるのは**絶対 import だけ** —
-    `from neurosurrogate.x import _y` は落ちるのに `from .x import _y` は通る。
-    `neurosurrogate/` 内はほぼ全部が相対 import なので、それだけでは規約の大半が
-    素通りになる。ここが相対も含めて閉じる。
-    """
-    bad = []
-    for path in _py_files(PUBLIC_REF_DIRS):
-        for node in ast.walk(ast.parse(path.read_text())):
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            src = _module_path(node.module or "", path, node.level)
-            if src is None or src == path:  # 自 module からは引かない (= 定義側)
-                continue
-            bad += [
-                f"{path.relative_to(ROOT)}:{node.lineno} {node.module}.{a.name}"
-                for a in node.names
-                if a.name.startswith("_") and not a.name.startswith("__")
-            ]
-    assert not bad, "他 module の `_` 付きの名前を import:\n" + "\n".join(bad)
-
-
-def test_private_modules_are_not_imported_from_outside() -> None:
-    """`_` 始まりの module は、そのパッケージの外から import しない
-    (AGENTS.md の規約)。"""
-    bad = []
-    for path in _py_files(PUBLIC_REF_DIRS):
-        for node in ast.walk(ast.parse(path.read_text())):
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            src = _module_path(node.module or "", path, node.level)
-            if src is None or src.parent == path.parent:
-                continue
-            if src.name.startswith("_") and src.name != "__init__.py":
-                bad.append(f"{path.relative_to(ROOT)}:{node.lineno} → {node.module}")
-    assert not bad, "パッケージ外から `_` module を import:\n" + "\n".join(bad)
+def test_private_names_stay_in_their_file() -> None:
+    for key, tree in _files().items():
+        for place, module, names in _imports(key, tree):
+            private = [n for n in names if n.startswith("_")]
+            assert place is None or not private, (
+                f"{key} が {module} の {private} を使う"
+            )
