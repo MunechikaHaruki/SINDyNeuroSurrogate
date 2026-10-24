@@ -17,18 +17,18 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 
 ### ファイル
 
-`neurosurrogate/` は元のモデルを解く `physics/` と、学習して置き換える `surrogate/` に分け、スパイクの特徴量を取る `spikes.py` と入口の `run.py` を直下に置く。physics は surrogate を import しない (`tests/test_conventions.py` の `_ALLOWED`)。ファイルは上から順に読める関数で書く。
+`neurosurrogate/` は元のモデルを解く `neurosurrogate/physics/` と、学習して置き換える `neurosurrogate/surrogate/` に分け、スパイクの特徴量を取る `spikes.py` と入口の `run.py` を直下に置く。physics は surrogate を import しない (`tests/test_conventions.py` の `_ALLOWED`)。ファイルは上から順に読める関数で書く。
 
 | ファイル | 持つもの |
 | --- | --- |
-| `physics/cells.py` | 区画の式。状態の名前ごとの微分 (`derivs`)、膜電位の式 (`dv`)、初期値、状態ごとの演算コスト。kernel はそこから組む (`physical_cell`)。HH・Traub・passive、Traub19 の区画の定数とネット (`NETS`)。レートの式は隣の `hh.json`・`traub.json` |
-| `physics/currents.py` | 注入電流の名前 → 波形 |
-| `physics/kam.py` | KAM 縮約の ψ 群。学習せず、元の区画の式から ψ ↔ ゲートの写しと dψ/dt を組む。サロゲートの群の圧縮器と右辺 (`kam`) として使い、学習した圧縮と同じ段取りで比べる |
-| `physics/simulate.py` | ネットを解く前進 Euler (`simulate`)、波形の Dataset の読み書き、実験の記述 (`SimSpec`・`EvalSeries`) |
-| `surrogate/compress.py` | 圧縮器 (PCA、AutoEncoder) |
-| `surrogate/sindy.py` | SINDy の項のカタログと、列への束縛、疎回帰 |
-| `surrogate/ude.py` | 潜在の右辺を MLP にし、AutoEncoder と一緒に学習する |
-| `surrogate/model.py` | 設定 (`Config`・`Group`)、学習 (`fit`)、置換に使う区画の型 (`surrogate_cell`)、置換の可否と置換、中身の書き出し |
+| `neurosurrogate/physics/cells.py` | 区画の式。状態の名前ごとの微分 (`derivs`)、膜電位の式 (`dv`)、初期値、状態ごとの演算コスト。kernel はそこから組む (`physical_cell`)。HH・Traub・passive、Traub19 の区画の定数とネット (`NETS`)。レートの式は隣の `hh.json`・`traub.json` |
+| `neurosurrogate/physics/currents.py` | 注入電流の名前 → 波形 |
+| `neurosurrogate/physics/kam.py` | KAM 縮約の ψ 群。学習せず、元の区画の式から ψ ↔ ゲートの写しと dψ/dt を組む。サロゲートの群の圧縮器と右辺 (`kam`) として使い、学習した圧縮と同じ段取りで比べる |
+| `neurosurrogate/physics/simulate.py` | ネットを解く前進 Euler (`simulate`)、波形の Dataset の読み書き、実験の記述 (`SimSpec`・`EvalSeries`) |
+| `neurosurrogate/surrogate/compress.py` | 圧縮器 (PCA、AutoEncoder) |
+| `neurosurrogate/surrogate/sindy.py` | SINDy の項のカタログと、列への束縛、疎回帰 |
+| `neurosurrogate/surrogate/ude.py` | 潜在の右辺を MLP にし、AutoEncoder と一緒に学習する |
+| `neurosurrogate/surrogate/model.py` | 設定 (`Config`・`Group`)、学習 (`fit`)、置換に使う区画の型 (`surrogate_cell`)、置換の可否と置換、中身の書き出し |
 | `spikes.py` | 1 本の波形のスパイクの特徴量 (eFEL)。元のモデルとの比較は図の `evaluation/read/compare.ts` が持つ |
 | `run.py` | 計算の入口。spec.json → run のディレクトリ。run の保存形式を知るのはここだけ |
 
@@ -48,7 +48,7 @@ runs/                                 実験の結果 (Git の外)
 
 保存の単位はモデルと入力の二つ。学習したモデルは `runs/models/<学習のハッシュ>/`、入力 (電流と掃引 =
 系列から置換範囲を除いたもの) ごとの結果は `runs/inputs/<入力のハッシュ>/` の下に、元のモデルなら
-`original/`、置き換えたモデルなら `<モデルの鍵>/` (学習 run のハッシュ + 置換範囲) で置く。1 run = spec.json 1 つで、
+`runs/inputs/<入力のハッシュ>/original/`、置き換えたモデルなら `<モデルの鍵>/` (学習 run のハッシュ + 置換範囲) で置く。1 run = spec.json 1 つで、
 置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。
 run は `runs/` の下のパス (id) で指す。図は Python で描かず、回すのは操作盤の冊 (`evaluation/runs`)、読むのは
 実験の冊 (`evaluation/experiment`。評価の比較と学習 run の中身) で、`runs.ts` を通して、口が宣言から組んだ id で
@@ -78,7 +78,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - spec の 2 種類: `train` は設定 (`surrogate` = `surrogate.Config`)、`sim` は入力 (`input`) とモデル (`model` = `{train, replace_targets}`、
   元のモデルは null)。置換範囲はモデルの側に入るので、置換範囲だけが違う系列は同じ入力のディレクトリに別のモデルとして並ぶ
 - **ハッシュを組むのは TS だけ。** Python は渡された spec とディレクトリを埋めるだけで、学習 run は spec の `model.train`、
-  比べる相手は隣の `original/` で引く (JS と Python で数値の JSON 表記が違うので、鍵を 2 か所で組まない)
+  比べる相手は隣の `<入力のハッシュ>/original/` で引く (JS と Python で数値の JSON 表記が違うので、鍵を 2 か所で組まない)
 - **比べた束 (どの列を並べたか) は残さない。** 図が選び直すたびに描く
 - 形式を変えたら `neurosurrogate/run.py` の `_FORMAT` と `spec.ts` の `FORMAT` を変える。spec に入るので、
   古い形式の run は置き場が合わず回し直される
