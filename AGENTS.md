@@ -11,7 +11,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
 | 何を回すかの宣言（`conf.ts`。preset・系列・実験）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊 `runs` のボタン、エージェントは CLI で、同じ関数を呼ぶ）、操作盤の口（`api.ts`） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | `runs/`（Git の外） |
-| 評価の冊（回して元の系と比べるもの、学習 run を読むもの） | `evaluation/` の直下。図が runs/ を読む口は `evaluation/read/`、Traub の TS シミュレータは `evaluation/traub/`。context-router の `resources/research/` に symlink で入り、研究の文書（51 構成、52 理論、54 結果、55 これから、56 修論、57 監査）と一つの区域に見える |
+| 評価の冊（回して元の系と比べるもの、学習 run を読むもの） | `evaluation/` の直下。図が runs/ を読む口は `evaluation/read/`、Traub の TS シミュレータは `evaluation/traub/`、コードの静的な計測（51.09 の口）は `evaluation/metrics/`。context-router の `resources/research/` に symlink で入り、研究の文書（51 構成、52 理論、54 結果、55 これから、56 修論、57 監査）と一つの区域に見える |
 | 用語、ファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 | 研究コードの手入れのやること（数値も主張も変えないもの。jdex の 55.09） | `todo.md` |
 
