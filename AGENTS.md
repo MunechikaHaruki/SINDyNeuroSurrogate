@@ -18,7 +18,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 ## 持たないもの
 
 - 汎用の方法の説明や教材（HH、縮約法そのもの、統計など）。context-router の jdex が持つ。
-- 結果を読む冊（.svelte）と画面の口。context-router の `projects/research-sindy/` が持つ。
+- 結果を読む冊（.svelte）と画面の口。context-router の `projects/research-master/` が持つ。
 - ポスター、スライド、論文の原稿
 - 修論の計画、期日、週次の進捗、受けた指摘
 - 本人の事実と、進路の判断基準
@@ -28,7 +28,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ## TS
 
-- この repo は冊（.svelte）を持たず、context-router の部品にも依存しない。単独で動く研究コードだけを置く。結果を読む冊（評価の 53、操作盤、計測の 51.09 など）は context-router の `projects/research-sindy/` が持ち、この repo の TS を import して描く。
+- この repo は冊（.svelte）を持たず、context-router の部品にも依存しない。単独で動く研究コードだけを置く。結果を読む冊（評価の 53、操作盤、計測の 51.09 など）は context-router の `projects/research-master/` が持ち、この repo の TS を import して描く。
 - `evaluation/` には TS だけを、役割ごとのディレクトリ（`evaluation/orchestrate/` 何を回すかと段取り、`evaluation/read/` 比べる指標と学習の書き出しの読み方、`evaluation/traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。`evaluation/traub/traub.ts` はレートの式を Python と共有する `neurosurrogate/physics/traub.json` から読む。
 - TS のテスト・ESLint・型は、今は context-router で `bun run --cwd areas/infra/ontology verify`。
 
@@ -49,7 +49,7 @@ bun evaluation/orchestrate/orchestrate.ts list                            # run 
 uv run pytest -q               # 規約、区画の式、サロゲート、neurosurrogate/run.py
 ```
 
-ruff の整形と lint は編集のたび、mypy はターンの終わりに、context-router の hook が走らせる。行数・複雑度・保守性指数は context-router の冊 51.09（`projects/research-sindy/architecture/code-metrics.svelte`）で見る。
+ruff の整形と lint は編集のたび、mypy はターンの終わりに、context-router の hook が走らせる。行数・複雑度・保守性指数は context-router の冊 51.09（`projects/research-master/architecture/code-metrics.svelte`）で見る。
 
 ## Architecture
 
