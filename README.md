@@ -15,7 +15,7 @@
 uv sync
 ```
 
-何を回すかは `evaluation/orchestrate/conf.ts` に書き、学習と評価は操作盤の冊 `evaluation/53.03-runs` のボタンから回す。結果は学習したモデルが `runs/models/`、入力ごとの結果が `runs/inputs/` に入り、同じ条件は回し直さない。`evaluation/` の実験の冊（`53.04-experiment`）が読んで描く。冊は context-router の開発サーバー（`http://127.0.0.1:4321/`）で開く。
+何を回すかは `evaluation/orchestrate/conf.ts` に書き、学習と評価は `bun evaluation/orchestrate/orchestrate.ts` で回す。結果は学習したモデルが `runs/models/`、入力ごとの結果が `runs/inputs/` に入り、同じ条件は回し直さない。
 
 ## Usage
 ![Status](https://img.shields.io/badge/docs-writing-orange)

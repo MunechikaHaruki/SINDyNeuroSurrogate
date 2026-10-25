@@ -29,15 +29,14 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 | `neurosurrogate/surrogate/sindy.py` | SINDy の項のカタログと、列への束縛、疎回帰 |
 | `neurosurrogate/surrogate/ude.py` | 潜在の右辺を MLP にし、AutoEncoder と一緒に学習する |
 | `neurosurrogate/surrogate/model.py` | 設定 (`Config`・`Group`)、学習 (`fit`)、置換に使う区画の型 (`surrogate_cell`)、置換の可否と置換、中身の書き出し |
-| `spikes.py` | 1 本の波形のスパイクの特徴量 (eFEL)。元のモデルとの比較は図の `evaluation/read/compare.ts` が持つ |
+| `spikes.py` | 1 本の波形のスパイクの特徴量 (eFEL)。元のモデルとの比較は TS の `evaluation/read/compare.ts` が持つ |
 | `run.py` | 計算の入口。spec.json → run のディレクトリ。run の保存形式を知るのはここだけ |
 
 ```
 evaluation/orchestrate/conf.ts        何を回すか: preset (群分けを含む)、評価の系列、見比べる組
 evaluation/orchestrate/spec.ts        spec.json の形
 evaluation/orchestrate/orchestrate.ts 段取り: 宣言 → spec.json → ハッシュ → 置き場が無ければ run.py を呼ぶ
-evaluation/orchestrate/api.ts         操作盤の口
-evaluation/read/                      図が runs/ を読む口と、元のモデルと比べる指標 (compare.ts)
+evaluation/read/                      元のモデルと比べる指標 (compare.ts) と、学習の書き出しの読み方 (model-json.ts)
 evaluation/traub/traub.ts             Traub の単一区画の TS シミュレータ
 runs/                                 実験の結果 (Git の外)
 ```
@@ -50,9 +49,9 @@ runs/                                 実験の結果 (Git の外)
 系列から置換範囲を除いたもの) ごとの結果は `runs/inputs/<入力のハッシュ>/` の下に、元のモデルなら
 `runs/inputs/<入力のハッシュ>/original/`、置き換えたモデルなら `<モデルの鍵>/` (学習 run のハッシュ + 置換範囲) で置く。1 run = spec.json 1 つで、
 置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。
-run は `runs/` の下のパス (id) で指す。図は Python で描かず、回すのは操作盤の冊 (`evaluation/runs`)、読むのは
-実験の冊 (`evaluation/experiment`。評価の比較と学習 run の中身) で、`runs.ts` を通して、口が宣言から組んだ id で
-読む。Python が置くのは図に要るデータだけ:
+run は `runs/` の下のパス (id) で指す。図は Python で描かず、回すのは操作盤の冊 (53.03)、読むのは
+実験の冊 (53.04。評価の比較と学習 run の中身) で、どちらも context-router の `projects/research-sindy/` が持ち、
+そこの `runs.ts` を通して、口が宣言から組んだ id で読む。Python が置くのは図に要るデータだけ:
 
 ```
 runs/index.json                全 run の id + meta.json + spec (段取りが書く。図はここから一覧を作る)
@@ -95,7 +94,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - preset は継承しない。各 preset が決める値を全部書き、どの preset でも同じ値 (学習用の電流・刻み・全区画で学習) だけを
   `expand` が埋める。掃引は `d` の配列だけ。`_test_*` はテスト専用の preset で、どの実験にも入れない。
 - 使わなくなった preset と系列は消す。run は消さず、操作盤の一覧に「実験に無い」と出る。
-- 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、evaluation/ の図が持つ。
+- 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、図 (research-sindy の冊) が持つ。
 
 ## 判断基準
 
@@ -106,7 +105,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - **約束はテストで持つ。** 守らせたいことは `tests/` に書き、文章でしか守られない規則を増やさない。テストは 20 秒以内。
 - **数値を変えないリファクタは、新旧の出力を突き合わせる。** 同じ spec を変更前と変更後のコードで回し、run の中身 (学習の書き出し、指標、変数ごとの波形) が一致することを確かめる。
 - **後方互換は取らない。** 保存形式を変えたら `run.py` の `_FORMAT` と `spec.ts` の `FORMAT` を上げ、古い run は学習し直す。互換の shim は入れない。
-- **実行経路を二重に持たない。** 重い計算は `run.py`、段取りは `orchestrate.ts`、描画は evaluation/ の図だけ。
+- **実行経路を二重に持たない。** 重い計算は `run.py`、段取りは `orchestrate.ts`、描画は図 (research-sindy の冊) だけ。
 - **数値の振る舞いが変わる変更は、手を止めて報告する。**
 - **git は明示指示があるときだけ。**
 
