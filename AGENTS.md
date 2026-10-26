@@ -12,7 +12,8 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 何を回すかの宣言（`conf.ts`。preset・系列・実験）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊のボタン、エージェントは CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | `runs/`（Git の外） |
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
-| 用語、ファイルの責務、設計の判断基準、広げるときの前提 | `DESIGN.md` |
+| 用語、設計の判断基準、広げるときの前提 | `DESIGN.md` |
+| ファイルごとの持つものと依存の図（生成物。正本は各ファイルの先頭の docstring。`uv run python tests/test_design.py` で作り直す） | `neurosurrogate/FILES.md` |
 | 研究コードの手入れのやること（数値も主張も変えないもの。jdex の 55.09） | `todo.md` |
 
 ## 持たないもの
@@ -57,4 +58,5 @@ ruff の整形と lint は編集のたび、mypy はターンの終わりに、c
 - `neurosurrogate/` は記録・設定の基盤（MLflow や Hydra）を知らない。run の保存形式を知るのは `run.py` だけ。
 - Python は数値計算（シミュレータ、学習、eFEL のスパイクの特徴量）だけを持ち、元のモデルと比べる指標は TS の `evaluation/read/compare.ts`、段取り（何を回すか、掃引、ハッシュ、重複の回避、run の一覧）は TS が持つ。Python では図を描かない。run の形式は `DESIGN.md`。
 - `tests/test_conventions.py` が落ちたら、テストを緩めずコードを直す。
-- ファイルの責務、設定の形、どちらへ倒すかの判断基準は `DESIGN.md` が持つ。設計に手を入れる前に読む。
+- 設定の形、どちらへ倒すかの判断基準は `DESIGN.md` が持つ。設計に手を入れる前に読む。
+- ファイルの持つものは各ファイルの先頭の docstring に書く。`neurosurrogate/FILES.md` は生成物なので手で書き換えない（`tests/test_design.py` が古いと落ちる）。

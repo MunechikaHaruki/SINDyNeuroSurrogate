@@ -19,50 +19,7 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 
 `neurosurrogate/` は元のモデルを解く `neurosurrogate/physics/` と、学習して置き換える `neurosurrogate/surrogate/` に分け、スパイクの特徴量を取る `spikes.py` と入口の `run.py` を直下に置く。physics は surrogate を import しない (`tests/test_conventions.py` の `_ALLOWED`)。ファイルは上から順に読める関数で書く。
 
-矢印は「import する」向きで、`_ALLOWED` から推移的な辺を除いたもの。
-
-```mermaid
-flowchart RL
-  subgraph physics["physics/"]
-    cells["cells"]
-    currents["currents"]
-    kam["kam"]
-    simulate["simulate"]
-  end
-  subgraph surr["surrogate/"]
-    compress["compress"]
-    sindy["sindy"]
-    ude["ude"]
-    surrogate["model"]
-  end
-  spikes["spikes"]
-  run["run"]
-  simulate --> cells
-  simulate --> currents
-  kam --> cells
-  surrogate --> kam
-  compress --> cells
-  sindy --> cells
-  ude --> compress
-  surrogate --> simulate
-  surrogate --> sindy
-  surrogate --> ude
-  run --> surrogate
-  run --> spikes
-```
-
-| ファイル | 持つもの |
-| --- | --- |
-| `neurosurrogate/physics/cells.py` | 区画の式。状態の名前ごとの微分 (`derivs`)、膜電位の式 (`dv`)、初期値、状態ごとの演算コスト。kernel はそこから組む (`physical_cell`)。HH・Traub・passive、Traub19 の区画の定数とネット (`NETS`)。レートの式は隣の `hh.json`・`traub.json` |
-| `neurosurrogate/physics/currents.py` | 注入電流の名前 → 波形 |
-| `neurosurrogate/physics/kam.py` | KAM 縮約の ψ 群。学習せず、元の区画の式から ψ ↔ ゲートの写しと dψ/dt を組む。サロゲートの群の圧縮器と右辺 (`kam`) として使い、学習した圧縮と同じ段取りで比べる |
-| `neurosurrogate/physics/simulate.py` | ネットを解く前進 Euler (`simulate`)、波形の Dataset の読み書き、実験の記述 (`SimSpec`・`EvalSeries`) |
-| `neurosurrogate/surrogate/compress.py` | 圧縮器 (PCA、AutoEncoder) |
-| `neurosurrogate/surrogate/sindy.py` | SINDy の項のカタログと、列への束縛、疎回帰 |
-| `neurosurrogate/surrogate/ude.py` | 潜在の右辺を MLP にし、AutoEncoder と一緒に学習する |
-| `neurosurrogate/surrogate/model.py` | 設定 (`Config`・`Group`)、学習 (`fit`)、置換に使う区画の型 (`surrogate_cell`)、置換の可否と置換、中身の書き出し |
-| `spikes.py` | 1 本の波形のスパイクの特徴量 (eFEL)。元のモデルとの比較は TS の `evaluation/read/compare.ts` が持つ |
-| `run.py` | 計算の入口。spec.json → run のディレクトリ。run の保存形式を知るのはここだけ |
+ファイルごとの持つものは各ファイルの先頭の docstring が正本で、依存の図と一緒に [neurosurrogate/FILES.md](neurosurrogate/FILES.md) に集めてある (生成物。`uv run python tests/test_design.py` で作り直し、同じテストが古くなっていないかを見る)。
 
 ```
 evaluation/orchestrate/conf.ts        何を回すか: preset (群分けを含む)、評価の系列、見比べる組
@@ -147,7 +104,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - **抽象は浅く保つ。** 抽象は重複を消すためでなく、ずれを防ぐためだけに使う。読む人 (エージェントも本人も初見で読む) が辿る段を増やさない。
 - **変種はデータで書く。** 新しい群分けや区画は設定か表に足し、変種ごとの関数を書かない。並びを手で揃える箇所を作らない。
 - **約束はテストで持つ。** 守らせたいことは `tests/` に書き、文章でしか守られない規則を増やさない。テストは 20 秒以内。
-  今あるのは、physics が surrogate を import しないことと、記録・設定・描画の道具を import しないこと (`tests/test_conventions.py`)、恒等の圧縮と真の右辺を入れたサロゲートがどの群分けでも元のモデルと同じ膜電位になること (`tests/test_surrogate.py`)。
+  今あるのは、physics が surrogate を import しないことと、記録・設定・描画の道具を import しないこと (`tests/test_conventions.py`)、恒等の圧縮と真の右辺を入れたサロゲートがどの群分けでも元のモデルと同じ膜電位になること (`tests/test_surrogate.py`)、どのファイルにも docstring があり、`neurosurrogate/FILES.md` が docstring と import から作り直したものと一致すること (`tests/test_design.py`)。
 - **数値を変えないリファクタは、新旧の出力を突き合わせる。** 同じ spec を変更前と変更後のコードで回し、run の中身 (学習の書き出し、指標、変数ごとの波形) が一致することを確かめる。
 - **後方互換は取らない。** 保存形式を変えたら `run.py` の `_FORMAT` と `spec.ts` の `FORMAT` を上げ、古い run は学習し直す。互換の shim は入れない。
 - **実行経路を二重に持たない。** 重い計算は `run.py`、段取りは `orchestrate.ts`、描画は図 (research-master の冊) だけ。

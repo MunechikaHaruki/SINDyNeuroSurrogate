@@ -1,5 +1,7 @@
 """ネットを解くシミュレータと、波形 (xarray) の形と、実験の記述 (SimSpec・EvalSeries)。
 
+シミュレータは前進 Euler (JAX) の simulate。
+
 波形の Dataset は vars (time × features) と I_ext、I_internal を持つ。features は
 (comp_id, variable, gate) の MultiIndex で、gate=False が電位。並びは全区画の電位の
 あとに、区画ごとの状態が続く。

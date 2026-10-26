@@ -2,6 +2,8 @@
 
 レートの式は隣の hh.json と traub.json が持つ (TS の evaluation/traub/traub.ts も読む)。
 Traub の per-comp 定数は traub.c と代数的に等価。
+区画は HH・Traub・passive と、Traub19 の区画の定数とネット (NETS)。kernel は
+physical_cell が組む。
 """
 
 import json
