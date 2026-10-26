@@ -19,6 +19,38 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 
 `neurosurrogate/` は元のモデルを解く `neurosurrogate/physics/` と、学習して置き換える `neurosurrogate/surrogate/` に分け、スパイクの特徴量を取る `spikes.py` と入口の `run.py` を直下に置く。physics は surrogate を import しない (`tests/test_conventions.py` の `_ALLOWED`)。ファイルは上から順に読める関数で書く。
 
+矢印は「import する」向きで、`_ALLOWED` から推移的な辺を除いたもの。
+
+```mermaid
+flowchart RL
+  subgraph physics["physics/"]
+    cells["cells"]
+    currents["currents"]
+    kam["kam"]
+    simulate["simulate"]
+  end
+  subgraph surr["surrogate/"]
+    compress["compress"]
+    sindy["sindy"]
+    ude["ude"]
+    surrogate["model"]
+  end
+  spikes["spikes"]
+  run["run"]
+  simulate --> cells
+  simulate --> currents
+  kam --> cells
+  surrogate --> kam
+  compress --> cells
+  sindy --> cells
+  ude --> compress
+  surrogate --> simulate
+  surrogate --> sindy
+  surrogate --> ude
+  run --> surrogate
+  run --> spikes
+```
+
 | ファイル | 持つもの |
 | --- | --- |
 | `neurosurrogate/physics/cells.py` | 区画の式。状態の名前ごとの微分 (`derivs`)、膜電位の式 (`dv`)、初期値、状態ごとの演算コスト。kernel はそこから組む (`physical_cell`)。HH・Traub・passive、Traub19 の区画の定数とネット (`NETS`)。レートの式は隣の `hh.json`・`traub.json` |
@@ -41,7 +73,18 @@ evaluation/traub/traub.ts             Traub の単一区画の TS シミュレ�
 runs/                                 実験の結果 (Git の外)
 ```
 
-サロゲートの kernel は一つの汎用関数で、群ごとに潜在を decode して状態を名前で埋め、残りの状態は元の式で微分し、名前で組み直す。初期値は元のモデルの初期値と圧縮器の `gate_inits`、演算コストは群の圧縮器と右辺、膜電位の式、物理の状態のコストの和。群分けを足すのに書くのは設定だけ。
+サロゲートの kernel は一つの汎用関数で、群ごとに潜在を decode して状態を名前で埋め、残りの状態は元の式で微分し、名前で組み直す。
+
+```mermaid
+flowchart LR
+  z["群ごとの潜在 z_k"] -- "decode" --> s["状態（名前 → 値）"]
+  x["群に入らない状態"] --> s
+  s -- "元の式 dv" --> dV["dV/dt"]
+  s -- "元の式 derivs" --> dx["群に入らない状態の微分"]
+  z -- "右辺（SINDy か UDE）" --> dz["dz_k/dt"]
+```
+
+学習は群ごとに、圧縮器を先に当ててから右辺を同定する。群の右辺は自分の潜在と膜電位だけを使い、群の間で潜在を混ぜない。初期値は元のモデルの初期値と圧縮器の `gate_inits`、演算コストは群の圧縮器と右辺、膜電位の式、物理の状態のコストの和。群分けを足すのに書くのは設定だけ。
 
 ### run の置き場
 
@@ -89,7 +132,8 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 
 - 学習の設定も評価の条件も `evaluation/orchestrate/conf.ts` に型付きで書く。YAML の設定ファイルは持たない。
 - 学習の設定 (`surrogate.Config`) は、区画の型 (`cell`)、`form`、学習データ (`data` = `SimSpec`)、群のリスト (`groups`)、学習を絞る区画 (`train_comp`)。
-  群は `gates`・`compressor`・`d`・`rhs` と、それぞれの fit 関数へ `**` で展開する `compressor_params`・`rhs_params`。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
+  群は `gates`・`compressor`・`d`・`rhs` と、それぞれの fit 関数へ `**` で展開する `compressor_params`・`rhs_params`。
+  `gates` は状態の名前 (Traub は M N C A H B S R Q XI、HH は M H N)。`compressor: kam` は学習しない KAM 縮約で、右辺も `kam`、`d` は 1。UDE は AE を一緒に学習するので、圧縮器は AE に限る。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
   既定値は fit 関数の署名だけが持ち、綴り違いは TypeError になる。
 - preset は継承しない。各 preset が決める値を全部書き、どの preset でも同じ値 (学習用の電流・刻み・全区画で学習) だけを
   `expand` が埋める。掃引は `d` の配列だけ。`_test_*` はテスト専用の preset で、どの実験にも入れない。
@@ -103,6 +147,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - **抽象は浅く保つ。** 抽象は重複を消すためでなく、ずれを防ぐためだけに使う。読む人 (エージェントも本人も初見で読む) が辿る段を増やさない。
 - **変種はデータで書く。** 新しい群分けや区画は設定か表に足し、変種ごとの関数を書かない。並びを手で揃える箇所を作らない。
 - **約束はテストで持つ。** 守らせたいことは `tests/` に書き、文章でしか守られない規則を増やさない。テストは 20 秒以内。
+  今あるのは、physics が surrogate を import しないことと、記録・設定・描画の道具を import しないこと (`tests/test_conventions.py`)、恒等の圧縮と真の右辺を入れたサロゲートがどの群分けでも元のモデルと同じ膜電位になること (`tests/test_surrogate.py`)。
 - **数値を変えないリファクタは、新旧の出力を突き合わせる。** 同じ spec を変更前と変更後のコードで回し、run の中身 (学習の書き出し、指標、変数ごとの波形) が一致することを確かめる。
 - **後方互換は取らない。** 保存形式を変えたら `run.py` の `_FORMAT` と `spec.ts` の `FORMAT` を上げ、古い run は学習し直す。互換の shim は入れない。
 - **実行経路を二重に持たない。** 重い計算は `run.py`、段取りは `orchestrate.ts`、描画は図 (research-master の冊) だけ。
