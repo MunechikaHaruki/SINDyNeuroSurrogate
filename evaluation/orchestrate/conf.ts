@@ -26,11 +26,23 @@ function expand(name: string, d: Declared): Train[] {
   const dims = typeof d.d === 'number' ? [d.d] : d.d;
   const runs: Train[] = [];
   for (const dim of dims) {
-    const data: SimSpec = { target: d.target, current_type: 'train', dt: 0.01, current_params: { duration: d.duration } };
+    const data: SimSpec = {
+      target: d.target,
+      current_type: 'train',
+      dt: 0.01,
+      current_params: { duration: d.duration },
+    };
     const groups: Group[] = [];
     for (const gates of d.groups) {
       const rhsParams = d.library_specs === undefined ? (d.rhs_params ?? {}) : { library_specs: d.library_specs };
-      groups.push({ gates: [...gates], compressor: d.compressor, d: dim, rhs: d.rhs ?? 'sindy', compressor_params: d.compressor_params ?? {}, rhs_params: rhsParams });
+      groups.push({
+        gates: [...gates],
+        compressor: d.compressor,
+        d: dim,
+        rhs: d.rhs ?? 'sindy',
+        compressor_params: d.compressor_params ?? {},
+        rhs_params: rhsParams,
+      });
     }
     const config: SurrogateConfig = { cell: d.cell, form: d.form, data, groups, train_comp: null };
     runs.push({ name: dims.length > 1 ? `${name} d=${dim}` : name, config });
@@ -62,19 +74,75 @@ const HH_3 = ['M', 'H', 'N'];
 // NEURO2026 のポスターは、元の式で解く s, r のレート項も入れていた。結果を変えないよう全ゲートを書く。
 const TRAUB_ALL_GATES: LibrarySpec[] = [];
 for (const spec of TRAUB_GATES) TRAUB_ALL_GATES.push(spec.type === 'basis' ? spec : { ...spec, gates: 'msncahrb' });
-// 群ごとに圧縮する（55.01）。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。
-const TRAUB_GROUPED = { cell: 'traub', form: 'hybrid', target: 'traub', duration: 9000, library_specs: TRAUB_GATES } as const;
+// 群ごとに圧縮する（研究の問い grouping-sweep）。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。
+const TRAUB_GROUPED = {
+  cell: 'traub',
+  form: 'hybrid',
+  target: 'traub',
+  duration: 9000,
+  library_specs: TRAUB_GATES,
+} as const;
 // 同じ群を学習せずに KAM 縮約でまとめる基準。式から組むので項ライブラリは持たない。
-const TRAUB_KAM = { cell: 'traub', form: 'hybrid', target: 'traub', duration: 9000, compressor: 'kam', rhs: 'kam', d: 1 } as const;
+const TRAUB_KAM = {
+  cell: 'traub',
+  form: 'hybrid',
+  target: 'traub',
+  duration: 9000,
+  compressor: 'kam',
+  rhs: 'kam',
+  d: 1,
+} as const;
 const HN = ['N', 'H'];
 const AC = ['A', 'C'];
 
 // 19 区画の全軌道で学習する。どこを置換するかは系列（replace_targets）が決める。
 // 1 軌道を 1000 ms にして、総サンプル数を単一区画（9000 ms）と同じくらいにする。
-const TRAUB19 = { cell: 'traub', form: 'hybrid', target: 'traub19', duration: 1000, library_specs: TRAUB_GATES } as const;
+const TRAUB19 = {
+  cell: 'traub',
+  form: 'hybrid',
+  target: 'traub19',
+  duration: 1000,
+  library_specs: TRAUB_GATES,
+} as const;
 // テストは形と有限性だけを見るので電流を 180 ms に縮め、決定的で速い PCA にする。
-const TEST_HH = { cell: 'hh', target: 'hh', duration: 180, groups: [HH_3], compressor: 'pca', library_specs: HH_GATES } as const;
-const TEST_TRAUB = { cell: 'traub', form: 'hybrid', target: 'traub', duration: 180, compressor: 'pca', d: 5, library_specs: TRAUB_GATES } as const;
+const TEST_HH = {
+  cell: 'hh',
+  target: 'hh',
+  duration: 180,
+  groups: [HH_3],
+  compressor: 'pca',
+  library_specs: HH_GATES,
+} as const;
+const TEST_TRAUB = {
+  cell: 'traub',
+  form: 'hybrid',
+  target: 'traub',
+  duration: 180,
+  compressor: 'pca',
+  d: 5,
+  library_specs: TRAUB_GATES,
+} as const;
+
+// 符号のそろう h, n, a, c を群に分ける 14 通り（1 つずつの群は元の式で解く）。式(10)の判定量の小さい順で、traub.ts の psiPartitions が並べるもの。
+const PARTITIONS = ['hn', 'hna', 'ha', 'na', 'hnac', 'hac', 'nac', 'hn_ac', 'ac', 'hnc', 'hc_na', 'hc', 'ha_nc', 'nc'];
+/** 群分けごとに、KAM、PCA（1 本）、AE（1 本）の 3 つの preset を宣言する。名前は sweep_<圧縮器>_<群分け>。 */
+function sweep(): Record<string, Declared> {
+  const declared: Record<string, Declared> = {};
+  for (const key of PARTITIONS) {
+    const groups: string[][] = [];
+    for (const block of key.split('_')) groups.push(block.toUpperCase().split(''));
+    declared[`sweep_kam_${key}`] = { ...TRAUB_KAM, groups };
+    declared[`sweep_pca_${key}`] = { ...TRAUB_GROUPED, groups, compressor: 'pca', d: 1 };
+    declared[`sweep_ae_${key}`] = { ...TRAUB_GROUPED, groups, compressor: 'ae', d: 1 };
+  }
+  return declared;
+}
+/** 群分けの掃引の preset の名前。圧縮器の順に並べる。 */
+function sweepNames(compressors: string[]): string[] {
+  const names: string[] = [];
+  for (const compressor of compressors) for (const key of PARTITIONS) names.push(`sweep_${compressor}_${key}`);
+  return names;
+}
 
 const DECLARED: Record<string, Declared> = {
   // Ca 系（χ, q）だけを元の式で解き、残る 8 ゲートを潜在へ縮める。
@@ -87,11 +155,12 @@ const DECLARED: Record<string, Declared> = {
   // h, n を 1 本へ縮める。PCA の 2 本は 2 → 2 の可逆な変換で、圧縮しないときの基準。
   grouped_hn_pca: { ...TRAUB_GROUPED, groups: [HN], compressor: 'pca', d: [1, 2] },
   grouped_hn_ae: { ...TRAUB_GROUPED, groups: [HN], compressor: 'ae', d: 1 },
-  // {h,n} と {a,c} をそれぞれ 1 本へ縮める（55.01 の 2 段目）。
+  // {h,n} と {a,c} をそれぞれ 1 本へ縮める（群を 2 つにした形）。
   grouped_hn_ac_pca: { ...TRAUB_GROUPED, groups: [HN, AC], compressor: 'pca', d: 1 },
   grouped_hn_ac_ae: { ...TRAUB_GROUPED, groups: [HN, AC], compressor: 'ae', d: 1 },
   kam_hn: { ...TRAUB_KAM, groups: [HN] },
   kam_hn_ac: { ...TRAUB_KAM, groups: [HN, AC] },
+  ...sweep(),
 
   // テスト専用（tests は名前で引く）。どの実験にも入れないので冊には出ない。
   _test_hh_sindy: { ...TEST_HH, form: 'sindy', d: 3 },
@@ -103,7 +172,16 @@ const DECLARED: Record<string, Declared> = {
   _test_traub_hybrid_hn: { ...TEST_TRAUB, groups: [HN], d: 1 },
   // 群を 2 つ持つ形。{h,n} と {a,c} をそれぞれ 1 本へ縮め、残りは元の式。
   _test_traub_two_groups: { ...TEST_TRAUB, groups: [HN, AC], d: 1 },
-  _test_traub_kam: { cell: 'traub', form: 'hybrid', target: 'traub', duration: 180, compressor: 'kam', rhs: 'kam', d: 1, groups: [HN, AC] },
+  _test_traub_kam: {
+    cell: 'traub',
+    form: 'hybrid',
+    target: 'traub',
+    duration: 180,
+    compressor: 'kam',
+    rhs: 'kam',
+    d: 1,
+    groups: [HN, AC],
+  },
   // encoder・decoder と潜在方程式（NN）を同じロスで学習する経路。項ライブラリは持たない。
   _test_traub_ude: {
     cell: 'traub',
@@ -180,6 +258,12 @@ export const EXPERIMENTS: Record<string, Experiment> = {
     presets: ['grouped_hn_ac_pca', 'grouped_hn_ac_ae', 'kam_hn_ac'],
     series: ['traub_somastim'],
   },
+  // 群分けを総当たりで、KAM と群ごとの圧縮 + SINDy を比べる（2026-10-26 の指摘）。
+  // AE は 1 本の学習に 1 分ほどかかるので分ける。
+  grouping_sweep: { presets: sweepNames(['kam', 'pca']), series: ['traub_somastim'] },
+  grouping_sweep_ae: { presets: sweepNames(['ae']), series: ['traub_somastim'] },
+  // 段取りと結果の読み方を確かめるだけの、数秒で回る組。学習しない KAM を 40 ms の 1 点で回す。
+  smoke: { presets: ['kam_hn'], series: ['traub_soma_dc'] },
   latent_dim: {
     presets: ['traub_useMC19CompForTeachingData'],
     series: ['traub19_somastim'],
