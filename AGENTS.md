@@ -43,7 +43,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ```bash
 uv sync                        # 依存導入
-# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (jdex の 54.03) から回すので、本人に CLI を案内しない
+# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (jdex の 54.01) から回すので、本人に CLI を案内しない
 bun evaluation/orchestrate/orchestrate.ts train <preset>...               # 学習。preset は evaluation/orchestrate/conf.ts の PRESETS (掃引は d の配列)
 bun evaluation/orchestrate/orchestrate.ts eval <系列> <preset かハッシュ>...  # 評価。入力を元のモデルと置き換えたモデルで回す。preset の未学習分は学習もする
 bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで preset と系列の一覧、index で index.json を書き直す
