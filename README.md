@@ -15,7 +15,7 @@
 uv sync
 ```
 
-何を回すかは `evaluation/orchestrate/conf.ts` に書き、学習と評価は `bun evaluation/orchestrate/orchestrate.ts` で回す。結果は学習したモデルが `runs/models/`、入力ごとの結果が `runs/inputs/` に入り、同じ条件は回し直さない。
+何を回すかは `evaluation/orchestrate/conf.json` に書き、学習と評価は `bun evaluation/orchestrate/orchestrate.ts` で回す。結果は学習したモデルが `runs/models/`、入力ごとの結果が `runs/inputs/` に入り、同じ条件は回し直さない。
 
 ## Usage
 ![Status](https://img.shields.io/badge/docs-writing-orange)

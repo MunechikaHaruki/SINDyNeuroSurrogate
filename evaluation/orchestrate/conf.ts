@@ -1,6 +1,7 @@
-// この研究で何を回すかの宣言。学習の preset（PRESETS）、評価の系列（SERIES）、見比べる組（EXPERIMENTS）。
-// 段取り（orchestrate.ts）がここから spec.json を組み、Python の計算の入口（neurosurrogate/run.py）へ渡す。形は spec.ts。
-// 綴りの確かめは型と、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。描き方は持たない。
+// この研究で何を回すかの宣言を読む。宣言そのものは隣の conf.json（土台 bases、学習の preset、評価の系列 series、見比べる組 experiments）が持ち、
+// ここは読んで形を確かめ、preset を土台に重ね、掃引を学習 run の列に展開するだけ。段取り（orchestrate.ts）がここから spec.json を組む。形は spec.ts。
+// conf.json の description はその宣言の理由で、spec には入れない。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
+import declaration from './conf.json' with { type: 'json' };
 import type { Experiment, Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from './spec.ts';
 
 /** preset が書く値。既定値は Python の署名が持つので、書くのは preset が決める値だけ。 */
@@ -11,7 +12,7 @@ type Declared = {
   target: string;
   duration: number;
   /** 群。区画の状態の名前で書き、群に入らなかった状態は元の式のまま解く。 */
-  groups: readonly (readonly string[])[];
+  groups: string[][];
   compressor: 'pca' | 'ae' | 'kam';
   /** 群の潜在次元（全群で同じ）。配列なら値ごとに学習 run を 1 本ずつ作る（掃引）。 */
   d: number | number[];
@@ -20,6 +21,64 @@ type Declared = {
   compressor_params?: Record<string, unknown>;
   rhs_params?: Record<string, unknown>;
 };
+
+type Entry = Record<string, unknown>;
+/** preset に書ける鍵（base と description のほか）。 */
+const KEYS = [
+  'cell',
+  'form',
+  'target',
+  'duration',
+  'groups',
+  'compressor',
+  'd',
+  'rhs',
+  'library_specs',
+  'compressor_params',
+  'rhs_params',
+];
+
+function fail(where: string, message: string): never {
+  throw new Error(`conf.json の ${where}：${message}`);
+}
+function isObject(value: unknown): value is Entry {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function isStrings(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(v => typeof v === 'string');
+}
+
+/** 土台に preset を重ね、鍵と値の形を確かめる。土台は一段だけで、土台が別の土台を引くことはない。 */
+function declared(name: string, preset: Entry, bases: Record<string, Entry>): Declared {
+  const where = `presets.${name}`;
+  const merged: Entry = {};
+  if (preset.base !== undefined) {
+    const base = bases[preset.base as string];
+    if (!base) fail(where, `土台 ${String(preset.base)} が bases に無い`);
+    for (const key of Object.keys(base)) if (key !== 'description') merged[key] = base[key];
+  }
+  for (const key of Object.keys(preset)) if (key !== 'base' && key !== 'description') merged[key] = preset[key];
+  for (const key of Object.keys(merged)) if (!KEYS.includes(key)) fail(where, `知らない鍵 ${key}`);
+  if (typeof merged.cell !== 'string' || typeof merged.target !== 'string') fail(where, 'cell と target は文字列');
+  if (merged.form !== 'hybrid' && merged.form !== 'sindy') fail(where, 'form は hybrid か sindy');
+  if (typeof merged.duration !== 'number') fail(where, 'duration は数');
+  if (!Array.isArray(merged.groups) || !merged.groups.every(isStrings)) fail(where, 'groups は状態の名前の配列の配列');
+  if (merged.compressor !== 'pca' && merged.compressor !== 'ae' && merged.compressor !== 'kam')
+    fail(where, 'compressor は pca・ae・kam');
+  const d = merged.d;
+  if (typeof d !== 'number' && !(Array.isArray(d) && d.every(v => typeof v === 'number')))
+    fail(where, 'd は数か数の配列');
+  if (merged.rhs !== undefined && merged.rhs !== 'sindy' && merged.rhs !== 'ude' && merged.rhs !== 'kam')
+    fail(where, 'rhs は sindy・ude・kam');
+  if (
+    merged.library_specs !== undefined &&
+    !(Array.isArray(merged.library_specs) && merged.library_specs.every(s => isObject(s) && typeof s.type === 'string'))
+  )
+    fail(where, 'library_specs は type を持つ物の配列');
+  for (const key of ['compressor_params', 'rhs_params'])
+    if (merged[key] !== undefined && !isObject(merged[key])) fail(where, `${key} は物`);
+  return merged as Declared;
+}
 
 /** 宣言を学習 run の列にする。学習用の電流（train）・刻み・全区画で学習するのは、どの preset でも同じ。 */
 function expand(name: string, d: Declared): Train[] {
@@ -50,222 +109,43 @@ function expand(name: string, d: Declared): Train[] {
   return runs;
 }
 
-const HH_GATES: LibrarySpec[] = [
-  { type: 'hh_gate_forward' },
-  { type: 'hh_gate_backward' },
-  { type: 'hh_gate_forward_product' },
-  { type: 'hh_gate_backward_product' },
-  { type: 'basis' },
-];
-const TRAUB_GATES: LibrarySpec[] = [
-  { type: 'traub_gate_forward' },
-  { type: 'traub_gate_backward' },
-  { type: 'traub_gate_forward_product' },
-  { type: 'traub_gate_backward_product' },
-  { type: 'basis' },
-];
-
-// 群は区画の状態の名前で書く。Traub の状態は M N C A H B S R Q XI、HH は M H N。
-// 群の右辺のレート項は、gates を書かなければ群の状態のものに絞られる（Python の _own_rates）。
-const TRAUB_8 = ['M', 'N', 'C', 'A', 'H', 'B', 'S', 'R']; // 電位だけで動く 8 ゲート。Ca 系（Q, XI）は元の式
-const TRAUB_6 = ['M', 'N', 'C', 'A', 'H', 'B']; // s, r も元の式で解く
-const HH_3 = ['M', 'H', 'N'];
-
-// NEURO2026 のポスターは、元の式で解く s, r のレート項も入れていた。結果を変えないよう全ゲートを書く。
-const TRAUB_ALL_GATES: LibrarySpec[] = [];
-for (const spec of TRAUB_GATES) TRAUB_ALL_GATES.push(spec.type === 'basis' ? spec : { ...spec, gates: 'msncahrb' });
-// 群ごとに圧縮する（研究の問い grouping-sweep）。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。
-const TRAUB_GROUPED = {
-  cell: 'traub',
-  form: 'hybrid',
-  target: 'traub',
-  duration: 9000,
-  library_specs: TRAUB_GATES,
-} as const;
-// 同じ群を学習せずに KAM 縮約でまとめる基準。式から組むので項ライブラリは持たない。
-const TRAUB_KAM = {
-  cell: 'traub',
-  form: 'hybrid',
-  target: 'traub',
-  duration: 9000,
-  compressor: 'kam',
-  rhs: 'kam',
-  d: 1,
-} as const;
-const HN = ['N', 'H'];
-const AC = ['A', 'C'];
-
-// 19 区画の全軌道で学習する。どこを置換するかは系列（replace_targets）が決める。
-// 1 軌道を 1000 ms にして、総サンプル数を単一区画（9000 ms）と同じくらいにする。
-const TRAUB19 = {
-  cell: 'traub',
-  form: 'hybrid',
-  target: 'traub19',
-  duration: 1000,
-  library_specs: TRAUB_GATES,
-} as const;
-// テストは形と有限性だけを見るので電流を 180 ms に縮め、決定的で速い PCA にする。
-const TEST_HH = {
-  cell: 'hh',
-  target: 'hh',
-  duration: 180,
-  groups: [HH_3],
-  compressor: 'pca',
-  library_specs: HH_GATES,
-} as const;
-const TEST_TRAUB = {
-  cell: 'traub',
-  form: 'hybrid',
-  target: 'traub',
-  duration: 180,
-  compressor: 'pca',
-  d: 5,
-  library_specs: TRAUB_GATES,
-} as const;
-
-// 符号のそろう h, n, a, c を群に分ける 14 通り（1 つずつの群は元の式で解く）。式(10)の判定量の小さい順で、traub.ts の psiPartitions が並べるもの。
-const PARTITIONS = ['hn', 'hna', 'ha', 'na', 'hnac', 'hac', 'nac', 'hn_ac', 'ac', 'hnc', 'hc_na', 'hc', 'ha_nc', 'nc'];
-/** 群分けごとに、KAM、PCA（1 本）、AE（1 本）の 3 つの preset を宣言する。名前は sweep_<圧縮器>_<群分け>。 */
-function sweep(): Record<string, Declared> {
-  const declared: Record<string, Declared> = {};
-  for (const key of PARTITIONS) {
-    const groups: string[][] = [];
-    for (const block of key.split('_')) groups.push(block.toUpperCase().split(''));
-    declared[`sweep_kam_${key}`] = { ...TRAUB_KAM, groups };
-    declared[`sweep_pca_${key}`] = { ...TRAUB_GROUPED, groups, compressor: 'pca', d: 1 };
-    declared[`sweep_ae_${key}`] = { ...TRAUB_GROUPED, groups, compressor: 'ae', d: 1 };
-  }
-  return declared;
-}
-/** 群分けの掃引の preset の名前。圧縮器の順に並べる。 */
-function sweepNames(compressors: string[]): string[] {
-  const names: string[] = [];
-  for (const compressor of compressors) for (const key of PARTITIONS) names.push(`sweep_${compressor}_${key}`);
-  return names;
+/** 系列の形を確かめ、description を外す。spec はそのまま Python へ渡す。 */
+function series(name: string, entry: Entry): Series {
+  const where = `series.${name}`;
+  if (!isObject(entry.spec)) fail(where, 'spec は物');
+  if (!isStrings(entry.replace_targets)) fail(where, 'replace_targets は区画の名前の配列');
+  if (entry.param !== null && typeof entry.param !== 'string') fail(where, 'param は文字列か null');
+  if (!Array.isArray(entry.values) || !entry.values.every(v => typeof v === 'number')) fail(where, 'values は数の配列');
+  return {
+    spec: entry.spec as SimSpec,
+    replace_targets: entry.replace_targets,
+    param: entry.param,
+    values: entry.values,
+  };
 }
 
-const DECLARED: Record<string, Declared> = {
-  // Ca 系（χ, q）だけを元の式で解き、残る 8 ゲートを潜在へ縮める。
-  traub_useMC19CompForTeachingData: { ...TRAUB19, groups: [TRAUB_8], compressor: 'pca', d: [6, 7, 8] },
-  // s, r も元の式で解き、残る 6 ゲートを縮める。noCompression は 6 → 6 の可逆な PCA で、圧縮しないときの基準。
-  poster_noCompression: { ...TRAUB19, groups: [TRAUB_6], library_specs: TRAUB_ALL_GATES, compressor: 'pca', d: 6 },
-  poster_traub_pca: { ...TRAUB19, groups: [TRAUB_6], library_specs: TRAUB_ALL_GATES, compressor: 'pca', d: 5 },
-  poster_traub_ae: { ...TRAUB19, groups: [TRAUB_6], library_specs: TRAUB_ALL_GATES, compressor: 'ae', d: 5 },
-
-  // h, n を 1 本へ縮める。PCA の 2 本は 2 → 2 の可逆な変換で、圧縮しないときの基準。
-  grouped_hn_pca: { ...TRAUB_GROUPED, groups: [HN], compressor: 'pca', d: [1, 2] },
-  grouped_hn_ae: { ...TRAUB_GROUPED, groups: [HN], compressor: 'ae', d: 1 },
-  // {h,n} と {a,c} をそれぞれ 1 本へ縮める（群を 2 つにした形）。
-  grouped_hn_ac_pca: { ...TRAUB_GROUPED, groups: [HN, AC], compressor: 'pca', d: 1 },
-  grouped_hn_ac_ae: { ...TRAUB_GROUPED, groups: [HN, AC], compressor: 'ae', d: 1 },
-  kam_hn: { ...TRAUB_KAM, groups: [HN] },
-  kam_hn_ac: { ...TRAUB_KAM, groups: [HN, AC] },
-  ...sweep(),
-
-  // テスト専用（tests は名前で引く）。どの実験にも入れないので冊には出ない。
-  _test_hh_sindy: { ...TEST_HH, form: 'sindy', d: 3 },
-  _test_hh_hybrid: { ...TEST_HH, form: 'hybrid', d: 3 },
-  // AE の経路を踏むだけなので epochs を切り詰める。
-  _test_hh_ae: { ...TEST_HH, form: 'hybrid', compressor: 'ae', d: 2, compressor_params: { epochs: 20 } },
-  _test_traub_hybrid: { ...TEST_TRAUB, groups: [TRAUB_8] },
-  _test_traub_hybrid_sr_physics: { ...TEST_TRAUB, groups: [TRAUB_6], library_specs: TRAUB_ALL_GATES },
-  _test_traub_hybrid_hn: { ...TEST_TRAUB, groups: [HN], d: 1 },
-  // 群を 2 つ持つ形。{h,n} と {a,c} をそれぞれ 1 本へ縮め、残りは元の式。
-  _test_traub_two_groups: { ...TEST_TRAUB, groups: [HN, AC], d: 1 },
-  _test_traub_kam: {
-    cell: 'traub',
-    form: 'hybrid',
-    target: 'traub',
-    duration: 180,
-    compressor: 'kam',
-    rhs: 'kam',
-    d: 1,
-    groups: [HN, AC],
-  },
-  // encoder・decoder と潜在方程式（NN）を同じロスで学習する経路。項ライブラリは持たない。
-  _test_traub_ude: {
-    cell: 'traub',
-    form: 'hybrid',
-    target: 'traub19',
-    duration: 180,
-    groups: [TRAUB_8],
-    compressor: 'ae',
-    d: 3,
-    rhs: 'ude',
-    compressor_params: { epochs: 20 },
-    rhs_params: { epochs: 20, lr: 3.0e-3, window: 20, batch: 16, hidden: 32, depth: 2, w_recon: 1.0, pull: 20.0 },
-  },
+const raw = declaration as unknown as {
+  bases: Record<string, Entry>;
+  presets: Record<string, Entry>;
+  series: Record<string, Entry>;
+  experiments: Record<string, Entry>;
 };
 
 /** 学習の preset。名前 → 学習 run の列（掃引しない preset は 1 本）。 */
 export const PRESETS: Record<string, Train[]> = {};
-for (const name of Object.keys(DECLARED)) PRESETS[name] = expand(name, DECLARED[name]);
-
-const DT = 0.01;
-/** 刺激前の静穏と本体の長さ（ms）。掃引する値は Python の EvalSeries が点ごとに埋める。 */
-const STIM = { silence_duration: 10.0, duration: 300.0 };
-// traub19 の全区画（soma は 8 番）。置換する範囲は宣言で綴り、形態から導かない。
-const TRAUB19_ALL = [
-  ...['c00', 'c01', 'c02', 'c03', 'c04', 'c05', 'c06', 'c07'],
-  'soma',
-  ...['c09', 'c10', 'c11', 'c12', 'c13', 'c14', 'c15', 'c16', 'c17', 'c18'],
-];
-/** 0 から 10 µA/cm² を 5 点 */
-const VALUES = [0, 2.5, 5, 7.5, 10];
-const SOMASTIM: SimSpec = { target: 'traub19', current_type: 'lin&steady', dt: DT, current_params: STIM, stim: 'soma' };
-// c09 は soma の隣の apical の近位樹状突起で、電流が soma へ確実に伝わる。
-const DENDSTIM: SimSpec = { ...SOMASTIM, stim: 'c09' };
+for (const name of Object.keys(raw.presets)) PRESETS[name] = expand(name, declared(name, raw.presets[name], raw.bases));
 
 /** 評価の系列。名前 → 掃引。 */
-export const SERIES: Record<string, Series> = {
-  // 単一区画の素の応答。テストが使う。
-  traub_soma_dc: {
-    spec: {
-      target: 'traub',
-      current_type: 'lin&steady',
-      dt: DT,
-      current_params: { silence_duration: 10.0, duration: 40.0, value: 3.0 },
-      stim: 'soma',
-    },
-    replace_targets: ['soma'],
-    param: null,
-    values: [],
-  },
-  // 単一区画を soma への定常電流で掃引する。
-  traub_somastim: {
-    spec: { target: 'traub', current_type: 'lin&steady', dt: DT, current_params: STIM, stim: 'soma' },
-    replace_targets: ['soma'],
-    param: 'value',
-    values: VALUES,
-  },
-  traub19_somastim: { spec: SOMASTIM, replace_targets: ['soma'], param: 'value', values: VALUES },
-  traub19_dendstim: { spec: DENDSTIM, replace_targets: ['soma'], param: 'value', values: VALUES },
-  // somastim と置換範囲だけが違う。教師データの範囲（19 区画）と置換範囲を揃えた条件。
-  traub19_somastim_allcomp: { spec: SOMASTIM, replace_targets: TRAUB19_ALL, param: 'value', values: VALUES },
-};
+export const SERIES: Record<string, Series> = {};
+for (const name of Object.keys(raw.series)) SERIES[name] = series(name, raw.series[name]);
 
-/** 見比べる組。冊はここから選ぶ。 */
-export const EXPERIMENTS: Record<string, Experiment> = {
-  poster: {
-    presets: ['poster_noCompression', 'poster_traub_pca', 'poster_traub_ae'],
-    series: ['traub19_somastim', 'traub19_dendstim', 'traub19_somastim_allcomp'],
-  },
-  grouped_hn: {
-    presets: ['grouped_hn_pca', 'grouped_hn_ae', 'kam_hn'],
-    series: ['traub_somastim'],
-  },
-  grouped_hn_ac: {
-    presets: ['grouped_hn_ac_pca', 'grouped_hn_ac_ae', 'kam_hn_ac'],
-    series: ['traub_somastim'],
-  },
-  // 群分けを総当たりで、KAM と群ごとの圧縮 + SINDy を比べる（2026-10-26 の指摘）。
-  // AE は 1 本の学習に 1 分ほどかかるので分ける。
-  grouping_sweep: { presets: sweepNames(['kam', 'pca']), series: ['traub_somastim'] },
-  grouping_sweep_ae: { presets: sweepNames(['ae']), series: ['traub_somastim'] },
-  // 段取りと結果の読み方を確かめるだけの、数秒で回る組。学習しない KAM を 40 ms の 1 点で回す。
-  smoke: { presets: ['kam_hn'], series: ['traub_soma_dc'] },
-  latent_dim: {
-    presets: ['traub_useMC19CompForTeachingData'],
-    series: ['traub19_somastim'],
-  },
-};
+/** 見比べる組。冊はここから選ぶ。preset と系列は宣言にあるものだけ。 */
+export const EXPERIMENTS: Record<string, Experiment> = {};
+for (const name of Object.keys(raw.experiments)) {
+  const entry = raw.experiments[name];
+  const where = `experiments.${name}`;
+  if (!isStrings(entry.presets) || !isStrings(entry.series)) fail(where, 'presets と series は名前の配列');
+  for (const preset of entry.presets) if (!(preset in PRESETS)) fail(where, `preset ${preset} が presets に無い`);
+  for (const name of entry.series) if (!(name in SERIES)) fail(where, `系列 ${name} が series に無い`);
+  EXPERIMENTS[name] = { presets: entry.presets, series: entry.series };
+}
