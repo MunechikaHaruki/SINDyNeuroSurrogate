@@ -1,8 +1,8 @@
-// この研究で何を回すかの宣言を読む。宣言そのものは隣の conf.json（土台 bases、学習の preset、評価の系列 series、見比べる組 experiments）が持ち、
+// 回せるものの宣言を読む。宣言そのものは隣の conf.json（土台 bases、学習の preset、評価の系列 series）が持ち、
 // ここは読んで形を確かめ、preset を土台に重ね、掃引を学習 run の列に展開するだけ。段取り（orchestrate.ts）がここから spec.json を組む。形は spec.ts。
 // conf.json の description はその宣言の理由で、spec には入れない。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
 import declaration from './conf.json' with { type: 'json' };
-import type { Experiment, Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from './spec.ts';
+import type { Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from './spec.ts';
 
 /** preset が書く値。既定値は Python の署名が持つので、書くのは preset が決める値だけ。 */
 type Declared = {
@@ -128,7 +128,6 @@ const raw = declaration as unknown as {
   bases: Record<string, Entry>;
   presets: Record<string, Entry>;
   series: Record<string, Entry>;
-  experiments: Record<string, Entry>;
 };
 
 /** 学習の preset。名前 → 学習 run の列（掃引しない preset は 1 本）。 */
@@ -138,14 +137,3 @@ for (const name of Object.keys(raw.presets)) PRESETS[name] = expand(name, declar
 /** 評価の系列。名前 → 掃引。 */
 export const SERIES: Record<string, Series> = {};
 for (const name of Object.keys(raw.series)) SERIES[name] = series(name, raw.series[name]);
-
-/** 見比べる組。冊はここから選ぶ。preset と系列は宣言にあるものだけ。 */
-export const EXPERIMENTS: Record<string, Experiment> = {};
-for (const name of Object.keys(raw.experiments)) {
-  const entry = raw.experiments[name];
-  const where = `experiments.${name}`;
-  if (!isStrings(entry.presets) || !isStrings(entry.series)) fail(where, 'presets と series は名前の配列');
-  for (const preset of entry.presets) if (!(preset in PRESETS)) fail(where, `preset ${preset} が presets に無い`);
-  for (const name of entry.series) if (!(name in SERIES)) fail(where, `系列 ${name} が series に無い`);
-  EXPERIMENTS[name] = { presets: entry.presets, series: entry.series };
-}

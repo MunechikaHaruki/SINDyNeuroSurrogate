@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXPERIMENTS, PRESETS, SERIES } from './conf.ts';
+import { PRESETS, SERIES } from './conf.ts';
 import { canonical, dirOf, hashOf, jobs, simSpec, trainSpec } from './orchestrate.ts';
 
 test('the key does not depend on the order the spec was written in', () => {
@@ -31,13 +31,6 @@ test('a sweep gives one differently configured run per point', () => {
   const runs = PRESETS.traub_useMC19CompForTeachingData;
   expect(runs.map(r => r.config.groups[0].d)).toEqual([6, 7, 8]);
   expect(new Set(runs.map(r => hashOf(trainSpec(r.config)))).size).toBe(3);
-});
-
-test('every experiment names declared presets and series', () => {
-  for (const experiment of Object.values(EXPERIMENTS)) {
-    for (const preset of experiment.presets) expect(PRESETS).toHaveProperty(preset);
-    for (const series of experiment.series) expect(SERIES).toHaveProperty(series);
-  }
 });
 
 test('a job is running while its pid lives, done on exit code 0, and failed otherwise', () => {

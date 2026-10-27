@@ -55,7 +55,7 @@ export type Series = {
 /** 学習 run 1 本の宣言。name は図に出す名前で、同一性には入らない。 */
 export type Train = { name: string; config: SurrogateConfig };
 
-/** 見比べる preset と系列の組。 */
+/** 見比べる preset と系列の組。宣言は使う側が持ち、status に渡す。 */
 export type Experiment = { presets: string[]; series: string[] };
 
 /** spec の形式の版。neurosurrogate/run.py の _FORMAT と揃える。spec に入るので、変えると鍵が変わり古い run は回し直される。 */

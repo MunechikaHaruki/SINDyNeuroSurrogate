@@ -22,8 +22,8 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EXPERIMENTS, PRESETS, SERIES } from './conf.ts';
-import { FORMAT, type ExperimentStatus, type IndexEntry, type Input, type Job, type JobState, type RunStatus, type Series, type Spec, type State, type Status, type SurrogateConfig } from './spec.ts';
+import { PRESETS, SERIES } from './conf.ts';
+import { FORMAT, type Experiment, type ExperimentStatus, type IndexEntry, type Input, type Job, type JobState, type RunStatus, type Series, type Spec, type State, type Status, type SurrogateConfig } from './spec.ts';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
 /** 既定の run の置き場 */
@@ -265,8 +265,7 @@ function pairState(runs: string, job: Job, parts: State[], replaced: State[]): S
 }
 
 /** 実験 1 つの preset・系列・組の、ハッシュと状態。 */
-function experimentStatus(runs: string, name: string): ExperimentStatus {
-  const experiment = EXPERIMENTS[name];
+function experimentStatus(runs: string, name: string, experiment: Experiment): ExperimentStatus {
   const result: ExperimentStatus = { name, presets: [], series: [], pairs: [] };
   for (const series of experiment.series) result.series.push({ series, original: runStatus(runs, simSpec(seriesOf(series), null), series) });
   for (const preset of experiment.presets) {
@@ -291,11 +290,11 @@ function experimentStatus(runs: string, name: string): ExperimentStatus {
   return result;
 }
 
-/** 宣言した実験ごとの状態と、操作盤から起こした仕事。 */
-export function status(runs: string): Status {
-  const experiments: ExperimentStatus[] = [];
-  for (const name of Object.keys(EXPERIMENTS)) experiments.push(experimentStatus(runs, name));
-  return { experiments, jobs: jobs(runs) };
+/** 渡された実験（見比べる preset と系列の組。持つのは使う側）ごとの状態と、操作盤から起こした仕事。 */
+export function status(runs: string, experiments: Record<string, Experiment>): Status {
+  const result: ExperimentStatus[] = [];
+  for (const name of Object.keys(experiments)) result.push(experimentStatus(runs, name, experiments[name]));
+  return { experiments: result, jobs: jobs(runs) };
 }
 
 /** 段取りを切り離した子プロセスで起こしてすぐ返す（開発サーバーが落ちても道連れにしない）。同じ組が回っていれば起こさない。 */
