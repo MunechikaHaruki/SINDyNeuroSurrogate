@@ -46,6 +46,34 @@ def _equivalent(steady, x: np.ndarray, low: float, high: float) -> np.ndarray:
     return np.asarray((lo + hi) / 2)
 
 
+def criterion(cell: str, gates: list[str], params: Any) -> float:
+    """群の式(10) の左辺 |Σ_j α_j k_j − k_i| / Σ_j k_j の最大 (Kepler 1992)。区画の初期の静止状態で読む。
+
+    α_j = D_j / Σ D は式(6) の重み、D_j = (∂(dV/dt)/∂x_j) x̄_j'(V) は感度、k_j = α + β は緩和の速さ。1 本の群は 0。
+    """
+    if len(gates) < 2:
+        return 0.0
+    c = CELLS[cell]
+    assert c.dv is not None and c.derivs is not None
+    init = c.inits(params)
+    v = init[0]
+    s = dict(zip(c.states, init[1:], strict=True))
+    sensitivities, speeds = [], []
+    for gate in gates:
+
+        def current(x, gate=gate):
+            return c.dv(params, 0.0, v, {**s, gate: x})
+
+        slope = jax.grad(_steady(cell, gate, params))(jnp.asarray(v))
+        sensitivities.append(float(jax.grad(current)(jnp.asarray(s[gate])) * slope))
+        opening = c.derivs[gate](params, v, {gate: jnp.zeros(())})
+        closing = c.derivs[gate](params, v, {gate: jnp.ones(())})
+        speeds.append(float(opening - closing))
+    weights = [d / sum(sensitivities) for d in sensitivities]
+    mean = sum(w * k for w, k in zip(weights, speeds, strict=True))
+    return max(abs(mean - k) / sum(speeds) for k in speeds)
+
+
 class KamCompressor:
     """群のゲート ↔ ψ。encode は各ゲートの等価電位の平均 (射影と初期値に使う)。"""
 
@@ -72,7 +100,10 @@ class KamCompressor:
         return jnp.stack(steadies, axis=-1)
 
     def metrics(self) -> dict[str, float]:
-        return {f"kam/{k}": v for k, v in self.reconstruction.items()}
+        return {
+            **{f"kam/{k}": v for k, v in self.reconstruction.items()},
+            "kam/criterion": criterion(self.cell, self.gates, self.params),
+        }
 
     def describe(self) -> dict[str, Any]:
         return {"kind": "kam", "gates": self.gates}

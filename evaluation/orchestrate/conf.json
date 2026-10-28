@@ -1,7 +1,7 @@
 {
   "bases": {
     "traub_grouped": {
-      "description": "群ごとに圧縮する（研究の問い grouping-sweep）。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。",
+      "description": "群ごとに圧縮する（研究の実験 reproduce）。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。",
       "cell": "traub",
       "form": "hybrid",
       "target": "traub",
