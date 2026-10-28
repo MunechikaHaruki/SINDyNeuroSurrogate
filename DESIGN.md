@@ -22,7 +22,7 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 ファイルごとの持つものは各ファイルの先頭の docstring が正本で、依存の図と一緒に [neurosurrogate/FILES.md](neurosurrogate/FILES.md) に集めてある (生成物。`uv run python tests/test_design.py` で作り直し、同じテストが古くなっていないかを見る)。
 
 ```
-evaluation/orchestrate/conf.json      回せるもの: 土台、preset (群分けを含む)、評価の系列 (conf.ts が読んで確かめ、掃引を展開する)。見比べる組は使う側が持ち、status に渡す
+evaluation/orchestrate/conf.json      回せるもの: 縮約の仕方、テスト専用の学習、評価の系列 (conf.ts が読んで確かめ、仕方に群分けを重ねて学習を組む)。回す組は使う側が持ち、status に渡す
 evaluation/orchestrate/spec.ts        spec.json の形
 evaluation/orchestrate/orchestrate.ts 段取り: 宣言 → spec.json → ハッシュ → 置き場が無ければ run.py を呼ぶ
 evaluation/read/                      元のモデルと比べる指標 (compare.ts) と、学習の書き出しの読み方 (model-json.ts)
@@ -87,14 +87,13 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 
 ### 設定ファイル
 
-- 学習の設定も評価の条件も `evaluation/orchestrate/conf.json` に書く。preset は土台 (bases) を一段だけ名前で引き、差分を書く。群分けの総当たりも生成せず一行ずつ書き下す。`conf.ts` は読んで形を確かめ、土台を重ね、掃引を run に展開するだけで、宣言の値は持たない。YAML の設定ファイルは持たない。
+- 学習の設定も評価の条件も `evaluation/orchestrate/conf.json` に書く。学習 run は 縮約の仕方 (`methods`) × 群分け で決まり、名前は `<仕方>_<群分け>` (`kam_hn`、`pca_hn_ac`)。群分けは群をゲートの小文字の名前でつなぎ、群どうしを `_` で区切る。学習 run を一本ずつ書き下さず、`conf.ts` が名前から組む。`conf.ts` は読んで形を確かめ、仕方に群分けを重ねるだけで、宣言の値は持たない。YAML の設定ファイルは持たない。
 - 学習の設定 (`surrogate.Config`) は、区画の型 (`cell`)、`form`、学習データ (`data` = `SimSpec`)、群のリスト (`groups`)、学習を絞る区画 (`train_comp`)。
   群は `gates`・`compressor`・`d`・`rhs` と、それぞれの fit 関数へ `**` で展開する `compressor_params`・`rhs_params`。
   `gates` は状態の名前 (Traub は M N C A H B S R Q XI、HH は M H N)。`compressor: kam` は学習しない KAM 縮約で、右辺も `kam`、`d` は 1。UDE は AE を一緒に学習するので、圧縮器は AE に限る。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
   既定値は fit 関数の署名だけが持ち、綴り違いは TypeError になる。
-- 土台は一段だけで、土台が別の土台を引くことはない。preset は土台に無い値と土台から変える値だけを書き、どの preset でも同じ値 (学習用の電流・刻み・全区画で学習) だけを
-  `expand` が埋める。宣言を選んだ理由は各宣言の `description` に書き、spec には入れない。掃引は `d` の配列だけ。`_test_*` はテスト専用の preset で、どの実験にも入れない。
-- 使わなくなった preset と系列は消す。run は消さず、操作盤の一覧に「実験に無い」と出る。
+- どの学習でも同じ値 (学習用の電流・刻み・全区画で学習) は `conf.ts` が埋める。宣言を選んだ理由は各宣言の `description` に書き、spec には入れない。`tests` の `_test_*` はテスト専用の学習で、仕方に差分を重ねて書き、どの実験にも入れない。
+- 使わなくなった仕方と系列は消す。run は消さず、操作盤の一覧に「実験に無い」と出る。
 - 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、図 (research-master の冊) が持つ。
 
 ## 判断基準

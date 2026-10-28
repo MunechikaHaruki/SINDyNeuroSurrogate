@@ -9,7 +9,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（`neurosurrogate/physics/` 元のモデルを解く、`neurosurrogate/surrogate/` 学習して置き換える、直下にスパイクの特徴量 `spikes.py` と入口 `run.py`） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
-| 何を回すかの宣言（`conf.json`。土台・preset・系列・実験。`conf.ts` が読んで展開する）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊のボタン、エージェントは CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
+| 何を回すかの宣言（`conf.json`。縮約の仕方・テスト専用の学習・系列。`conf.ts` が読み、学習 run を `<仕方>_<群分け>` の名前から組む）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊のボタン、エージェントは CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | `runs/`（Git の外） |
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
 | 用語、設計の判断基準、広げるときの前提 | `DESIGN.md` |
@@ -44,9 +44,9 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 ```bash
 uv sync                        # 依存導入
 # 学習と評価の CLI はエージェント用。本人は操作盤の冊 (jdex の 53.01) から回すので、本人に CLI を案内しない
-bun evaluation/orchestrate/orchestrate.ts train <preset>...               # 学習。preset は evaluation/orchestrate/conf.json の presets (掃引は d の配列)
-bun evaluation/orchestrate/orchestrate.ts eval <系列> <preset かハッシュ>...  # 評価。入力を元のモデルと置き換えたモデルで回す。preset の未学習分は学習もする
-bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで preset と系列の一覧、index で index.json を書き直す
+bun evaluation/orchestrate/orchestrate.ts train <学習 run>...             # 学習。学習 run は <仕方>_<群分け> (kam_hn、pca_hn_ac) か tests の名前
+bun evaluation/orchestrate/orchestrate.ts eval <系列> <学習 run かハッシュ>...  # 評価。入力を元のモデルと置き換えたモデルで回す。未学習なら学習もする
+bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで仕方・テスト・系列の一覧、index で index.json を書き直す
 uv run pytest -q               # 規約、区画の式、サロゲート、neurosurrogate/run.py
 ```
 

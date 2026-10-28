@@ -52,11 +52,11 @@ export type Series = {
   values: number[];
 };
 
-/** 学習 run 1 本の宣言。name は図に出す名前で、同一性には入らない。 */
+/** 学習 run 1 本の宣言。name は学習 run の名前（`<仕方>_<群分け>` かテストの名前）で、同一性には入らない。 */
 export type Train = { name: string; config: SurrogateConfig };
 
-/** 見比べる preset と系列の組。宣言は使う側が持ち、status に渡す。 */
-export type Experiment = { presets: string[]; series: string[] };
+/** 回す学習 run（名前）と系列の組の並び。宣言は使う側が持ち、status に渡す。 */
+export type Experiment = { pairs: { model: string; series: string }[] };
 
 /** spec の形式の版。neurosurrogate/run.py の _FORMAT と揃える。spec に入るので、変えると鍵が変わり古い run は回し直される。 */
 export const FORMAT = 6;
@@ -76,19 +76,19 @@ export type IndexEntry = { id: string; kind: 'train' | 'original' | 'replaced'; 
 
 /** run 1 本、または組がいまどこまで回っているか。unreplaceable は置換できないと分かった組。 */
 export type State = 'done' | 'running' | 'todo' | 'unreplaceable';
-/** 操作盤のボタンが起こす仕事。 */
-export type Job = { action: 'train'; preset: string } | { action: 'eval'; series: string; preset: string };
+/** 操作盤のボタンが起こす仕事。model は学習 run の名前。 */
+export type Job = { action: 'train'; model: string } | { action: 'eval'; series: string; model: string };
 /** 操作盤から起こした仕事 1 つ。failed は終了コードが 0 でないか、終わりを書かずに消えたもの。log はログの末尾の行。 */
 export type JobState = { job: Job; started: string; state: 'running' | 'done' | 'failed'; log: string[] };
 
-/** 宣言した run 1 本（学習なら掃引の 1 点）の名前・場所・状態。id は runs/ の下のパスで、図はここを読む。 */
+/** 宣言した run 1 本の名前・場所・状態。id は runs/ の下のパスで、図はここを読む。 */
 export type RunStatus = { name: string; id: string; state: State };
-/** 実験 1 つの状態。preset の runs は掃引の点の順、組の runs はその preset の runs と同じ順。 */
+/** 実験 1 つの状態。学習 run、系列の元のモデル、組（系列 × 学習 run の置換系）を宣言の順に並べる。state は起こした仕事も見た状態。 */
 export type ExperimentStatus = {
   name: string;
-  presets: { preset: string; state: State; runs: RunStatus[] }[];
+  models: { model: string; state: State; run: RunStatus }[];
   series: { series: string; original: RunStatus }[];
-  pairs: { series: string; preset: string; state: State; runs: RunStatus[] }[];
+  pairs: { series: string; model: string; state: State; run: RunStatus }[];
 };
 /** 実験ごとの状態と、起こした仕事。操作盤の口（api.ts）が返す。 */
 export type Status = { experiments: ExperimentStatus[]; jobs: JobState[] };

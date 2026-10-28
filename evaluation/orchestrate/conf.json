@@ -1,20 +1,6 @@
 {
-  "bases": {
-    "traub_grouped": {
-      "description": "群ごとに圧縮する（研究の実験 reproduce）。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。",
-      "cell": "traub",
-      "form": "hybrid",
-      "target": "traub",
-      "duration": 9000,
-      "library_specs": [
-        {"type": "traub_gate_forward"},
-        {"type": "traub_gate_backward"},
-        {"type": "traub_gate_forward_product"},
-        {"type": "traub_gate_backward_product"},
-        {"type": "basis"}
-      ]
-    },
-    "traub_kam": {
+  "methods": {
+    "kam": {
       "description": "同じ群を学習せずに KAM 縮約でまとめる基準。式から組むので項ライブラリは持たない。",
       "cell": "traub",
       "form": "hybrid",
@@ -24,184 +10,211 @@
       "rhs": "kam",
       "d": 1
     },
-    "traub19": {
-      "description": "19 区画の全軌道で学習する。どこを置換するかは系列（replace_targets）が決める。1 軌道を 1000 ms にして、総サンプル数を単一区画（9000 ms）と同じくらいにする。",
-      "cell": "traub",
-      "form": "hybrid",
-      "target": "traub19",
-      "duration": 1000,
-      "library_specs": [
-        {"type": "traub_gate_forward"},
-        {"type": "traub_gate_backward"},
-        {"type": "traub_gate_forward_product"},
-        {"type": "traub_gate_backward_product"},
-        {"type": "basis"}
-      ]
-    },
-    "traub19_poster": {
-      "description": "NEURO2026 のポスターの形。s, r も元の式で解き、残る 6 ゲートを縮める。ポスターは元の式で解く s, r のレート項も入れていたので、結果を変えないよう全ゲートの項を書く。",
-      "cell": "traub",
-      "form": "hybrid",
-      "target": "traub19",
-      "duration": 1000,
-      "groups": [["M", "N", "C", "A", "H", "B"]],
-      "library_specs": [
-        {"type": "traub_gate_forward", "gates": "msncahrb"},
-        {"type": "traub_gate_backward", "gates": "msncahrb"},
-        {"type": "traub_gate_forward_product", "gates": "msncahrb"},
-        {"type": "traub_gate_backward_product", "gates": "msncahrb"},
-        {"type": "basis"}
-      ]
-    },
-    "test_hh": {
-      "description": "テストは形と有限性だけを見るので電流を 180 ms に縮め、決定的で速い PCA にする。",
-      "cell": "hh",
-      "target": "hh",
-      "duration": 180,
-      "groups": [["M", "H", "N"]],
-      "compressor": "pca",
-      "library_specs": [
-        {"type": "hh_gate_forward"},
-        {"type": "hh_gate_backward"},
-        {"type": "hh_gate_forward_product"},
-        {"type": "hh_gate_backward_product"},
-        {"type": "basis"}
-      ]
-    },
-    "test_traub": {
-      "description": "テスト用の Traub 単一区画。電流を 180 ms に縮め、PCA で 5 本へ縮める。",
+    "pca": {
+      "description": "群ごとに PCA で潜在へ縮め、右辺を SINDy で同定する。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。",
       "cell": "traub",
       "form": "hybrid",
       "target": "traub",
-      "duration": 180,
-      "compressor": "pca",
-      "d": 5,
+      "duration": 9000,
       "library_specs": [
-        {"type": "traub_gate_forward"},
-        {"type": "traub_gate_backward"},
-        {"type": "traub_gate_forward_product"},
-        {"type": "traub_gate_backward_product"},
-        {"type": "basis"}
-      ]
-    }
-  },
-  "presets": {
-    "traub_useMC19CompForTeachingData": {
-      "description": "Ca 系（χ, q）だけを元の式で解き、残る 8 ゲートを潜在へ縮める。",
-      "base": "traub19",
-      "groups": [["M", "N", "C", "A", "H", "B", "S", "R"]],
-      "compressor": "pca",
-      "d": [6, 7, 8]
-    },
-    "poster_noCompression": {"description": "6 → 6 の可逆な PCA で、圧縮しないときの基準。", "base": "traub19_poster", "compressor": "pca", "d": 6},
-    "poster_traub_pca": {"base": "traub19_poster", "compressor": "pca", "d": 5},
-    "poster_traub_ae": {"base": "traub19_poster", "compressor": "ae", "d": 5},
-    "grouped_hn_pca": {
-      "description": "h, n を 1 本へ縮める。PCA の 2 本は 2 → 2 の可逆な変換で、圧縮しないときの基準。",
-      "base": "traub_grouped",
-      "groups": [["N", "H"]],
-      "compressor": "pca",
-      "d": [1, 2]
-    },
-    "grouped_hn_ae": {"base": "traub_grouped", "groups": [["N", "H"]], "compressor": "ae", "d": 1},
-    "grouped_hn_ac_pca": {
-      "description": "{h,n} と {a,c} をそれぞれ 1 本へ縮める（群を 2 つにした形）。",
-      "base": "traub_grouped",
-      "groups": [["N", "H"], ["A", "C"]],
+        {
+          "type": "traub_gate_forward"
+        },
+        {
+          "type": "traub_gate_backward"
+        },
+        {
+          "type": "traub_gate_forward_product"
+        },
+        {
+          "type": "traub_gate_backward_product"
+        },
+        {
+          "type": "basis"
+        }
+      ],
       "compressor": "pca",
       "d": 1
     },
-    "grouped_hn_ac_ae": {"base": "traub_grouped", "groups": [["N", "H"], ["A", "C"]], "compressor": "ae", "d": 1},
-    "kam_hn": {"base": "traub_kam", "groups": [["N", "H"]]},
-    "kam_hn_ac": {"base": "traub_kam", "groups": [["N", "H"], ["A", "C"]]},
-    "sweep_kam_hn": {"base": "traub_kam", "groups": [["H", "N"]]},
-    "sweep_pca_hn": {"base": "traub_grouped", "groups": [["H", "N"]], "compressor": "pca", "d": 1},
-    "sweep_ae_hn": {"base": "traub_grouped", "groups": [["H", "N"]], "compressor": "ae", "d": 1},
-    "sweep_kam_hna": {"base": "traub_kam", "groups": [["H", "N", "A"]]},
-    "sweep_pca_hna": {"base": "traub_grouped", "groups": [["H", "N", "A"]], "compressor": "pca", "d": 1},
-    "sweep_ae_hna": {"base": "traub_grouped", "groups": [["H", "N", "A"]], "compressor": "ae", "d": 1},
-    "sweep_kam_ha": {"base": "traub_kam", "groups": [["H", "A"]]},
-    "sweep_pca_ha": {"base": "traub_grouped", "groups": [["H", "A"]], "compressor": "pca", "d": 1},
-    "sweep_ae_ha": {"base": "traub_grouped", "groups": [["H", "A"]], "compressor": "ae", "d": 1},
-    "sweep_kam_na": {"base": "traub_kam", "groups": [["N", "A"]]},
-    "sweep_pca_na": {"base": "traub_grouped", "groups": [["N", "A"]], "compressor": "pca", "d": 1},
-    "sweep_ae_na": {"base": "traub_grouped", "groups": [["N", "A"]], "compressor": "ae", "d": 1},
-    "sweep_kam_hnac": {"base": "traub_kam", "groups": [["H", "N", "A", "C"]]},
-    "sweep_pca_hnac": {"base": "traub_grouped", "groups": [["H", "N", "A", "C"]], "compressor": "pca", "d": 1},
-    "sweep_ae_hnac": {"base": "traub_grouped", "groups": [["H", "N", "A", "C"]], "compressor": "ae", "d": 1},
-    "sweep_kam_hac": {"base": "traub_kam", "groups": [["H", "A", "C"]]},
-    "sweep_pca_hac": {"base": "traub_grouped", "groups": [["H", "A", "C"]], "compressor": "pca", "d": 1},
-    "sweep_ae_hac": {"base": "traub_grouped", "groups": [["H", "A", "C"]], "compressor": "ae", "d": 1},
-    "sweep_kam_nac": {"base": "traub_kam", "groups": [["N", "A", "C"]]},
-    "sweep_pca_nac": {"base": "traub_grouped", "groups": [["N", "A", "C"]], "compressor": "pca", "d": 1},
-    "sweep_ae_nac": {"base": "traub_grouped", "groups": [["N", "A", "C"]], "compressor": "ae", "d": 1},
-    "sweep_kam_hn_ac": {"base": "traub_kam", "groups": [["H", "N"], ["A", "C"]]},
-    "sweep_pca_hn_ac": {"base": "traub_grouped", "groups": [["H", "N"], ["A", "C"]], "compressor": "pca", "d": 1},
-    "sweep_ae_hn_ac": {"base": "traub_grouped", "groups": [["H", "N"], ["A", "C"]], "compressor": "ae", "d": 1},
-    "sweep_kam_ac": {"base": "traub_kam", "groups": [["A", "C"]]},
-    "sweep_pca_ac": {"base": "traub_grouped", "groups": [["A", "C"]], "compressor": "pca", "d": 1},
-    "sweep_ae_ac": {"base": "traub_grouped", "groups": [["A", "C"]], "compressor": "ae", "d": 1},
-    "sweep_kam_hnc": {"base": "traub_kam", "groups": [["H", "N", "C"]]},
-    "sweep_pca_hnc": {"base": "traub_grouped", "groups": [["H", "N", "C"]], "compressor": "pca", "d": 1},
-    "sweep_ae_hnc": {"base": "traub_grouped", "groups": [["H", "N", "C"]], "compressor": "ae", "d": 1},
-    "sweep_kam_hc_na": {"base": "traub_kam", "groups": [["H", "C"], ["N", "A"]]},
-    "sweep_pca_hc_na": {"base": "traub_grouped", "groups": [["H", "C"], ["N", "A"]], "compressor": "pca", "d": 1},
-    "sweep_ae_hc_na": {"base": "traub_grouped", "groups": [["H", "C"], ["N", "A"]], "compressor": "ae", "d": 1},
-    "sweep_kam_hc": {"base": "traub_kam", "groups": [["H", "C"]]},
-    "sweep_pca_hc": {"base": "traub_grouped", "groups": [["H", "C"]], "compressor": "pca", "d": 1},
-    "sweep_ae_hc": {"base": "traub_grouped", "groups": [["H", "C"]], "compressor": "ae", "d": 1},
-    "sweep_kam_ha_nc": {"base": "traub_kam", "groups": [["H", "A"], ["N", "C"]]},
-    "sweep_pca_ha_nc": {"base": "traub_grouped", "groups": [["H", "A"], ["N", "C"]], "compressor": "pca", "d": 1},
-    "sweep_ae_ha_nc": {"base": "traub_grouped", "groups": [["H", "A"], ["N", "C"]], "compressor": "ae", "d": 1},
-    "sweep_kam_nc": {"base": "traub_kam", "groups": [["N", "C"]]},
-    "sweep_pca_nc": {"base": "traub_grouped", "groups": [["N", "C"]], "compressor": "pca", "d": 1},
-    "sweep_ae_nc": {"base": "traub_grouped", "groups": [["N", "C"]], "compressor": "ae", "d": 1},
-    "_test_hh_sindy": {"description": "テスト専用（tests は名前で引く）。どの実験にも入れないので冊には出ない。", "base": "test_hh", "form": "sindy", "d": 3},
-    "_test_hh_hybrid": {"base": "test_hh", "form": "hybrid", "d": 3},
-    "_test_hh_ae": {
-      "description": "AE の経路を踏むだけなので epochs を切り詰める。",
-      "base": "test_hh",
-      "form": "hybrid",
-      "compressor": "ae",
-      "d": 2,
-      "compressor_params": {"epochs": 20}
-    },
-    "_test_traub_hybrid": {"base": "test_traub", "groups": [["M", "N", "C", "A", "H", "B", "S", "R"]]},
-    "_test_traub_hybrid_sr_physics": {
-      "base": "test_traub",
-      "groups": [["M", "N", "C", "A", "H", "B"]],
-      "library_specs": [
-        {"type": "traub_gate_forward", "gates": "msncahrb"},
-        {"type": "traub_gate_backward", "gates": "msncahrb"},
-        {"type": "traub_gate_forward_product", "gates": "msncahrb"},
-        {"type": "traub_gate_backward_product", "gates": "msncahrb"},
-        {"type": "basis"}
-      ]
-    },
-    "_test_traub_hybrid_hn": {"base": "test_traub", "groups": [["N", "H"]], "d": 1},
-    "_test_traub_two_groups": {"description": "群を 2 つ持つ形。{h,n} と {a,c} をそれぞれ 1 本へ縮め、残りは元の式。", "base": "test_traub", "groups": [["N", "H"], ["A", "C"]], "d": 1},
-    "_test_traub_kam": {
+    "ae": {
+      "description": "群ごとに AutoEncoder で潜在へ縮め、右辺を SINDy で同定する。学習データは pca と同じ。",
       "cell": "traub",
       "form": "hybrid",
       "target": "traub",
+      "duration": 9000,
+      "library_specs": [
+        {
+          "type": "traub_gate_forward"
+        },
+        {
+          "type": "traub_gate_backward"
+        },
+        {
+          "type": "traub_gate_forward_product"
+        },
+        {
+          "type": "traub_gate_backward_product"
+        },
+        {
+          "type": "basis"
+        }
+      ],
+      "compressor": "ae",
+      "d": 1
+    }
+  },
+  "tests": {
+    "_test_hh_sindy": {
+      "description": "テストは形と有限性だけを見るので電流を 180 ms に縮め、決定的で速い PCA にする（_test_ はどれもテスト専用で、tests が名前で引く）。",
+      "method": "pca",
+      "grouping": "mhn",
+      "cell": "hh",
+      "target": "hh",
       "duration": 180,
-      "compressor": "kam",
-      "rhs": "kam",
-      "d": 1,
-      "groups": [["N", "H"], ["A", "C"]]
+      "library_specs": [
+        {
+          "type": "hh_gate_forward"
+        },
+        {
+          "type": "hh_gate_backward"
+        },
+        {
+          "type": "hh_gate_forward_product"
+        },
+        {
+          "type": "hh_gate_backward_product"
+        },
+        {
+          "type": "basis"
+        }
+      ],
+      "form": "sindy",
+      "d": 3
+    },
+    "_test_hh_hybrid": {
+      "method": "pca",
+      "grouping": "mhn",
+      "cell": "hh",
+      "target": "hh",
+      "duration": 180,
+      "library_specs": [
+        {
+          "type": "hh_gate_forward"
+        },
+        {
+          "type": "hh_gate_backward"
+        },
+        {
+          "type": "hh_gate_forward_product"
+        },
+        {
+          "type": "hh_gate_backward_product"
+        },
+        {
+          "type": "basis"
+        }
+      ],
+      "d": 3
+    },
+    "_test_hh_ae": {
+      "description": "AE の経路を踏むだけなので epochs を切り詰める。",
+      "method": "ae",
+      "grouping": "mhn",
+      "cell": "hh",
+      "target": "hh",
+      "duration": 180,
+      "library_specs": [
+        {
+          "type": "hh_gate_forward"
+        },
+        {
+          "type": "hh_gate_backward"
+        },
+        {
+          "type": "hh_gate_forward_product"
+        },
+        {
+          "type": "hh_gate_backward_product"
+        },
+        {
+          "type": "basis"
+        }
+      ],
+      "d": 2,
+      "compressor_params": {
+        "epochs": 20
+      }
+    },
+    "_test_traub_hybrid": {
+      "method": "pca",
+      "grouping": "mncahbsr",
+      "duration": 180,
+      "d": 5
+    },
+    "_test_traub_hybrid_sr_physics": {
+      "method": "pca",
+      "grouping": "mncahb",
+      "duration": 180,
+      "d": 5,
+      "library_specs": [
+        {
+          "type": "traub_gate_forward",
+          "gates": "msncahrb"
+        },
+        {
+          "type": "traub_gate_backward",
+          "gates": "msncahrb"
+        },
+        {
+          "type": "traub_gate_forward_product",
+          "gates": "msncahrb"
+        },
+        {
+          "type": "traub_gate_backward_product",
+          "gates": "msncahrb"
+        },
+        {
+          "type": "basis"
+        }
+      ]
+    },
+    "_test_traub_hybrid_hn": {
+      "method": "pca",
+      "grouping": "nh",
+      "duration": 180
+    },
+    "_test_traub_two_groups": {
+      "description": "群を 2 つ持つ形。{h,n} と {a,c} をそれぞれ 1 本へ縮め、残りは元の式。",
+      "method": "pca",
+      "grouping": "nh_ac",
+      "duration": 180
+    },
+    "_test_traub_kam": {
+      "method": "kam",
+      "grouping": "nh_ac",
+      "duration": 180
     },
     "_test_traub_ude": {
       "description": "encoder・decoder と潜在方程式（NN）を同じロスで学習する経路。項ライブラリは持たない。",
-      "cell": "traub",
-      "form": "hybrid",
+      "method": "ae",
+      "grouping": "mncahbsr",
       "target": "traub19",
       "duration": 180,
-      "groups": [["M", "N", "C", "A", "H", "B", "S", "R"]],
-      "compressor": "ae",
       "d": 3,
       "rhs": "ude",
-      "compressor_params": {"epochs": 20},
-      "rhs_params": {"epochs": 20, "lr": 0.003, "window": 20, "batch": 16, "hidden": 32, "depth": 2, "w_recon": 1.0, "pull": 20.0}
+      "compressor_params": {
+        "epochs": 20
+      },
+      "rhs_params": {
+        "epochs": 20,
+        "lr": 0.003,
+        "window": 20,
+        "batch": 16,
+        "hidden": 32,
+        "depth": 2,
+        "w_recon": 1.0,
+        "pull": 20.0
+      }
     }
   },
   "series": {
@@ -211,60 +224,204 @@
         "target": "traub",
         "current_type": "lin&steady",
         "dt": 0.01,
-        "current_params": {"silence_duration": 10.0, "duration": 40.0, "value": 3.0},
+        "current_params": {
+          "silence_duration": 10.0,
+          "duration": 40.0,
+          "value": 3.0
+        },
         "stim": "soma"
       },
-      "replace_targets": ["soma"],
+      "replace_targets": [
+        "soma"
+      ],
       "param": null,
       "values": []
     },
     "traub_somastim": {
       "description": "単一区画を soma への定常電流で 0 から 10 µA/cm² の 5 点で掃引する。刺激前の静穏と本体の長さは ms で、掃引する値は Python の EvalSeries が点ごとに埋める。",
-      "spec": {"target": "traub", "current_type": "lin&steady", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 300.0}, "stim": "soma"},
-      "replace_targets": ["soma"],
+      "spec": {
+        "target": "traub",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10.0,
+          "duration": 300.0
+        },
+        "stim": "soma"
+      },
+      "replace_targets": [
+        "soma"
+      ],
       "param": "value",
-      "values": [0, 2.5, 5, 7.5, 10]
+      "values": [
+        0,
+        2.5,
+        5,
+        7.5,
+        10
+      ]
     },
     "traub_release": {
       "description": "単一区画を soma への負の電流で 100 ms 押さえてから 0 に戻す。押さえる強さを掃引する。遅いゲート（h、a、c）と平衡点の外を試す（物差しの入力）。",
-      "spec": {"target": "traub", "current_type": "release", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 300.0, "hold": 100.0}, "stim": "soma"},
-      "replace_targets": ["soma"],
+      "spec": {
+        "target": "traub",
+        "current_type": "release",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10.0,
+          "duration": 300.0,
+          "hold": 100.0
+        },
+        "stim": "soma"
+      },
+      "replace_targets": [
+        "soma"
+      ],
       "param": "value",
-      "values": [-2.5, -5, -7.5, -10]
+      "values": [
+        -2.5,
+        -5,
+        -7.5,
+        -10
+      ]
     },
     "traub_poisson": {
       "description": "単一区画の soma へ、種を固定した Poisson 過程のシナプス電流を入れ、入力の頻度を掃引する。発火の時刻が入力で決まるので Γ が本来想定する入力（物差しの入力）。",
-      "spec": {"target": "traub", "current_type": "random&poisson_synapse", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 1000.0, "amplitude": 20.0, "seed": 0}, "stim": "soma"},
-      "replace_targets": ["soma"],
+      "spec": {
+        "target": "traub",
+        "current_type": "random&poisson_synapse",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10.0,
+          "duration": 1000.0,
+          "amplitude": 20.0,
+          "seed": 0
+        },
+        "stim": "soma"
+      },
+      "replace_targets": [
+        "soma"
+      ],
       "param": "rate",
-      "values": [20, 40, 80, 160]
+      "values": [
+        20,
+        40,
+        80,
+        160
+      ]
     },
     "traub19_somastim": {
-      "spec": {"target": "traub19", "current_type": "lin&steady", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 300.0}, "stim": "soma"},
-      "replace_targets": ["soma"],
+      "spec": {
+        "target": "traub19",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10.0,
+          "duration": 300.0
+        },
+        "stim": "soma"
+      },
+      "replace_targets": [
+        "soma"
+      ],
       "param": "value",
-      "values": [0, 2.5, 5, 7.5, 10]
+      "values": [
+        0,
+        2.5,
+        5,
+        7.5,
+        10
+      ]
     },
     "traub19_paper_somastim": {
       "description": "traub19_somastim と寸法だけが違う。basal と apical の寸法を原著 p.637 どおりにした traub19_paper（todo.md）。",
-      "spec": {"target": "traub19_paper", "current_type": "lin&steady", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 300.0}, "stim": "soma"},
-      "replace_targets": ["soma"],
+      "spec": {
+        "target": "traub19_paper",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10.0,
+          "duration": 300.0
+        },
+        "stim": "soma"
+      },
+      "replace_targets": [
+        "soma"
+      ],
       "param": "value",
-      "values": [0, 2.5, 5, 7.5, 10]
+      "values": [
+        0,
+        2.5,
+        5,
+        7.5,
+        10
+      ]
     },
     "traub19_dendstim": {
       "description": "c09 は soma の隣の apical の近位樹状突起で、電流が soma へ確実に伝わる。",
-      "spec": {"target": "traub19", "current_type": "lin&steady", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 300.0}, "stim": "c09"},
-      "replace_targets": ["soma"],
+      "spec": {
+        "target": "traub19",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10.0,
+          "duration": 300.0
+        },
+        "stim": "c09"
+      },
+      "replace_targets": [
+        "soma"
+      ],
       "param": "value",
-      "values": [0, 2.5, 5, 7.5, 10]
+      "values": [
+        0,
+        2.5,
+        5,
+        7.5,
+        10
+      ]
     },
     "traub19_somastim_allcomp": {
       "description": "somastim と置換範囲だけが違う。教師データの範囲（19 区画）と置換範囲を揃えた条件。traub19 の全区画（soma は 8 番）は宣言で綴り、形態から導かない。",
-      "spec": {"target": "traub19", "current_type": "lin&steady", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 300.0}, "stim": "soma"},
-      "replace_targets": ["c00", "c01", "c02", "c03", "c04", "c05", "c06", "c07", "soma", "c09", "c10", "c11", "c12", "c13", "c14", "c15", "c16", "c17", "c18"],
+      "spec": {
+        "target": "traub19",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10.0,
+          "duration": 300.0
+        },
+        "stim": "soma"
+      },
+      "replace_targets": [
+        "c00",
+        "c01",
+        "c02",
+        "c03",
+        "c04",
+        "c05",
+        "c06",
+        "c07",
+        "soma",
+        "c09",
+        "c10",
+        "c11",
+        "c12",
+        "c13",
+        "c14",
+        "c15",
+        "c16",
+        "c17",
+        "c18"
+      ],
       "param": "value",
-      "values": [0, 2.5, 5, 7.5, 10]
+      "values": [
+        0,
+        2.5,
+        5,
+        7.5,
+        10
+      ]
     }
   }
 }

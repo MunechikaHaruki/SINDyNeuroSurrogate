@@ -2,9 +2,9 @@
 // 置き場は学習が runs/models/<ハッシュ>/、入力 × モデルが runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/。
 // 同じ spec は同じ置き場になるので、ディレクトリがあれば回さない。回したあとは runs/index.json（図が読む run の一覧）を書き直す。
 // 入口は二つで、どちらもここの関数を呼ぶ。本人は操作盤の冊のボタン（api.ts）、エージェントはこの CLI。人は CLI を使わない。
-//   bun evaluation/orchestrate/orchestrate.ts train <preset>...
-//   … eval <系列> <preset かハッシュ>...
-//   … index | spec <preset> | series | list
+//   bun evaluation/orchestrate/orchestrate.ts train <学習 run>...        学習 run は <仕方>_<群分け>（kam_hn）かテストの名前
+//   … eval <系列> <学習 run かハッシュ>...
+//   … index | spec <学習 run> | series | list
 // --runs <dir> で置き場を変えられる。--job <鍵> は操作盤から起こしたときに launch が付け、終わりを .jobs/<鍵>.exit に書く。
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -22,7 +22,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PRESETS, SERIES } from './conf.ts';
+import { METHODS, SERIES, TEST_NAMES, trainOf } from './conf.ts';
 import { FORMAT, type Experiment, type ExperimentStatus, type IndexEntry, type Input, type Job, type JobState, type RunStatus, type Series, type Spec, type State, type Status, type SurrogateConfig } from './spec.ts';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
@@ -140,45 +140,40 @@ function ensure(runs: string, spec: Spec, name: string): string | undefined {
   return id;
 }
 
-function presetOf(name: string) {
-  const runs = PRESETS[name];
-  if (!runs) throw new Error(`preset ${name} が無い（${Object.keys(PRESETS).join(', ')}）`);
-  return runs;
-}
-
 function seriesOf(name: string): Series {
   const series = SERIES[name];
   if (!series) throw new Error(`系列 ${name} が無い（${Object.keys(SERIES).join(', ')}）`);
   return series;
 }
 
-/** 学習 run を指す引数（preset 名か、ハッシュかその先頭）→ 学習 run のハッシュと名前。preset は無ければ学習する。 */
-function trainRuns(runs: string, selector: string): { hash: string; name: string }[] {
-  if (selector in PRESETS)
-    return presetOf(selector).map(t => {
-      ensure(runs, trainSpec(t.config), t.name);
-      return { hash: hashOf(trainSpec(t.config)), name: t.name };
-    });
+/** 学習 run を指す引数（学習 run の名前か、ハッシュかその先頭）→ 学習 run のハッシュと名前。名前なら、無ければ学習する。 */
+function trainRun(runs: string, selector: string): { hash: string; name: string } {
+  if (!/^[0-9a-f]+$/.test(selector)) {
+    const t = trainOf(selector);
+    ensure(runs, trainSpec(t.config), t.name);
+    return { hash: hashOf(trainSpec(t.config)), name: t.name };
+  }
   const hits = scan(runs).filter(e => e.kind === 'train' && e.id.startsWith(`models/${selector}`));
   if (hits.length !== 1) throw new Error(`学習 run ${selector} が ${hits.length} 本に当たる`);
-  return [{ hash: hits[0].id.slice('models/'.length), name: hits[0].name }];
+  return { hash: hits[0].id.slice('models/'.length), name: hits[0].name };
 }
 
-/** preset の学習 run を全部用意する。 */
-export function train(runs: string, preset: string): void {
-  for (const t of presetOf(preset)) ensure(runs, trainSpec(t.config), t.name);
+/** 学習 run を用意する。 */
+export function train(runs: string, model: string): void {
+  const t = trainOf(model);
+  ensure(runs, trainSpec(t.config), t.name);
   writeIndex(runs);
 }
 
-/** 系列を元のモデルと、選んだ学習 run（preset かハッシュ）で置き換えたモデルで回す。置換できない学習 run は回さない。 */
+/** 系列を元のモデルと、選んだ学習 run（名前かハッシュ）で置き換えたモデルで回す。置換できない学習 run は回さない。 */
 export function evaluate(runs: string, name: string, selectors: string[]): void {
   const series = seriesOf(name);
   ensure(runs, simSpec(series, null), name);
   writeIndex(runs);
-  for (const selector of selectors)
-    for (const t of trainRuns(runs, selector))
-      if (ensure(runs, simSpec(series, t.hash), `${name} × ${t.name}`) === undefined)
-        console.log(`${t.name} は ${name} を置換できないので回さない`);
+  for (const selector of selectors) {
+    const t = trainRun(runs, selector);
+    if (ensure(runs, simSpec(series, t.hash), `${name} × ${t.name}`) === undefined) console.log(`${t.name} は ${name} を置換できないので回さない`);
+  }
   writeIndex(runs);
 }
 
@@ -256,41 +251,31 @@ function runStatus(runs: string, spec: Spec, name: string): RunStatus {
   return { name, id, state: runState(runs, id) };
 }
 
-/** 組の状態。置換系がどれか回っていれば計算中、全部が置換できなければ置換できない、全部そろえば済み。 */
-function pairState(runs: string, job: Job, parts: State[], replaced: State[]): State {
-  if (jobRunning(runs, job) || parts.includes('running')) return 'running';
-  if (replaced.every(s => s === 'unreplaceable')) return 'unreplaceable';
-  if (replaced.every(s => s === 'done' || s === 'unreplaceable')) return 'done';
-  return 'todo';
-}
-
-/** 実験 1 つの preset・系列・組の、ハッシュと状態。 */
+/** 実験 1 つの学習 run・系列・組の、置き場と状態。起こした仕事が回っていれば計算中にする。 */
 function experimentStatus(runs: string, name: string, experiment: Experiment): ExperimentStatus {
-  const result: ExperimentStatus = { name, presets: [], series: [], pairs: [] };
-  for (const series of experiment.series) result.series.push({ series, original: runStatus(runs, simSpec(seriesOf(series), null), series) });
-  for (const preset of experiment.presets) {
-    const trains: RunStatus[] = [];
-    const hashes: string[] = [];
-    for (const t of presetOf(preset)) {
-      trains.push(runStatus(runs, trainSpec(t.config), t.name));
-      hashes.push(hashOf(trainSpec(t.config)));
+  const result: ExperimentStatus = { name, models: [], series: [], pairs: [] };
+  for (const { model, series } of experiment.pairs) {
+    let found = result.models.find(m => m.model === model);
+    if (!found) {
+      const run = runStatus(runs, trainSpec(trainOf(model).config), model);
+      const state = jobRunning(runs, { action: 'train', model }) ? 'running' : run.state;
+      found = { model, state, run };
+      result.models.push(found);
     }
-    const trainStates = trains.map(t => t.state);
-    let state: State = trainStates.every(s => s === 'done') ? 'done' : 'todo';
-    if (jobRunning(runs, { action: 'train', preset }) || trainStates.includes('running')) state = 'running';
-    result.presets.push({ preset, state, runs: trains });
-    for (const entry of result.series) {
-      const replaced: RunStatus[] = [];
-      trains.forEach((t, i) => replaced.push(runStatus(runs, simSpec(seriesOf(entry.series), hashes[i]), t.name)));
-      const states = replaced.map(r => r.state);
-      const job: Job = { action: 'eval', series: entry.series, preset };
-      result.pairs.push({ series: entry.series, preset, state: pairState(runs, job, [entry.original.state, ...trainStates, ...states], states), runs: replaced });
+    let original = result.series.find(s => s.series === series)?.original;
+    if (!original) {
+      original = runStatus(runs, simSpec(seriesOf(series), null), series);
+      result.series.push({ series, original });
     }
+    const run = runStatus(runs, simSpec(seriesOf(series), hashOf(trainSpec(trainOf(model).config))), model);
+    const parts = [original.state, found.run.state, run.state];
+    const state = jobRunning(runs, { action: 'eval', series, model }) || parts.includes('running') ? 'running' : run.state;
+    result.pairs.push({ series, model, state, run });
   }
   return result;
 }
 
-/** 渡された実験（見比べる preset と系列の組。持つのは使う側）ごとの状態と、操作盤から起こした仕事。 */
+/** 渡された実験（回す学習 run と系列の組。持つのは使う側）ごとの状態と、操作盤から起こした仕事。 */
 export function status(runs: string, experiments: Record<string, Experiment>): Status {
   const result: ExperimentStatus[] = [];
   for (const name of Object.keys(experiments)) result.push(experimentStatus(runs, name, experiments[name]));
@@ -299,14 +284,14 @@ export function status(runs: string, experiments: Record<string, Experiment>): S
 
 /** 段取りを切り離した子プロセスで起こしてすぐ返す（開発サーバーが落ちても道連れにしない）。同じ組が回っていれば起こさない。 */
 export function launch(runs: string, job: Job): boolean {
-  presetOf(job.preset);
+  trainOf(job.model);
   if (job.action === 'eval') seriesOf(job.series);
   if (jobRunning(runs, job)) return false;
   mkdirSync(jobDir(runs), { recursive: true });
   rmSync(jobFile(runs, job, 'exit'), { force: true });
   writeFileSync(jobFile(runs, job, 'json'), JSON.stringify({ job, started: new Date().toISOString() }));
   const log = openSync(jobFile(runs, job, 'log'), 'w');
-  const args = job.action === 'train' ? ['train', job.preset] : ['eval', job.series, job.preset];
+  const args = job.action === 'train' ? ['train', job.model] : ['eval', job.series, job.model];
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...args, '--runs', runs, '--job', digest(job)], {
     cwd: REPO,
     detached: true,
@@ -343,14 +328,14 @@ function main(argv: string[]): void {
 
 function command(runs: string, argv: string[]): void {
   const [name, ...rest] = argv;
-  if (name === 'spec') console.log(JSON.stringify(presetOf(rest[0]).map(t => t.config)));
+  if (name === 'spec') console.log(JSON.stringify(trainOf(rest[0]).config));
   else if (name === 'series') console.log(JSON.stringify(SERIES));
   else if (name === 'list')
     for (const e of scan(runs)) console.log(`${e.id} ${e.kind.padEnd(8)} ${e.created} ${e.name}`);
-  else if (name === 'train') for (const preset of rest) train(runs, preset);
+  else if (name === 'train') for (const model of rest) train(runs, model);
   else if (name === 'eval') evaluate(runs, rest[0], rest.slice(1));
   else if (name === 'index') writeIndex(runs);
-  else console.log(`preset: ${Object.keys(PRESETS).join(' ')}\n系列: ${Object.keys(SERIES).join(' ')}`);
+  else console.log(`仕方: ${Object.keys(METHODS).join(' ')}（学習 run は <仕方>_<群分け>）\nテスト: ${TEST_NAMES.join(' ')}\n系列: ${Object.keys(SERIES).join(' ')}`);
 }
 
 if (import.meta.main) main(process.argv.slice(2));

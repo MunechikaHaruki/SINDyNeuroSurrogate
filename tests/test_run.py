@@ -12,7 +12,7 @@ from typing import cast
 
 import numpy as np
 import pytest
-from test_surrogate import preset_config
+from test_surrogate import declared_config
 
 from neurosurrogate import run
 from neurosurrogate.physics.simulate import EvalSeries, potential, simulate
@@ -21,7 +21,7 @@ from neurosurrogate.physics.simulate import EvalSeries, potential, simulate
 def _series() -> dict:
     """学習と同じ入力を**さらに短く**した 2 点の掃引。見たいのは保存と読込の往復で
     あって波形の質ではないので、シミュ長は最小で足りる。"""
-    spec = preset_config("_test_hh_sindy")["data"]
+    spec = declared_config("_test_hh_sindy")["data"]
     return {
         "spec": {**spec, "stim": "soma"},
         "replace_targets": ["soma"],
@@ -51,7 +51,7 @@ _MODEL = {"train": "T", "replace_targets": ["soma"]}
 def runs(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """学習 1 本と、1 つの入力を元のモデルと置き換えたモデルで回した runs/。"""
     tmp = tmp_path_factory.mktemp("runs")
-    train = {"kind": "train", "surrogate": preset_config("_test_hh_sindy")}
+    train = {"kind": "train", "surrogate": declared_config("_test_hh_sindy")}
     _put(tmp, "models/T", train)
     _put(tmp, "inputs/I/original", _sim(_series(), None))
     _put(tmp, "inputs/I/R", _sim(_series(), _MODEL))

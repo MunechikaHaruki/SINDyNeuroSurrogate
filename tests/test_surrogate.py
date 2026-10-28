@@ -1,4 +1,4 @@
-"""サロゲートの学習・置換・書き出し。preset と系列は conf.ts の宣言を段取りから読む。"""
+"""サロゲートの学習・置換・書き出し。テスト専用の学習と系列は conf.ts の宣言を段取りから読む。"""
 
 import json
 import subprocess
@@ -39,16 +39,16 @@ def _declared(*args: str) -> Any:
 
 
 @cache
-def preset_config(preset: str) -> dict:
-    """preset の先頭の学習 run の設定。"""
-    config: dict = _declared("spec", preset)[0]
+def declared_config(name: str) -> dict:
+    """宣言した学習 run の設定。"""
+    config: dict = _declared("spec", name)
     return config
 
 
 @cache
-def fit_preset(preset: str) -> Surrogate:
-    """テスト専用の preset を学習する (決定的なので使い回す)。"""
-    return fit(preset_config(preset))
+def fit_declared(name: str) -> Surrogate:
+    """テスト専用の学習を回す (決定的なので使い回す)。"""
+    return fit(declared_config(name))
 
 
 def _dc(target: str, value: float = 3.0, duration: float = 40.0) -> SimSpec:
@@ -140,11 +140,11 @@ def test_any_grouping_with_exact_parts_reproduces_the_original(cell, groups) -> 
     np.testing.assert_allclose(replaced, original, rtol=0, atol=1e-9)
 
 
-# --- 宣言した preset の学習 ------------------------------------------------------
+# --- 宣言したテスト専用の学習 ------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "preset",
+    "name",
     [
         "_test_hh_sindy",
         "_test_hh_hybrid",
@@ -156,9 +156,9 @@ def test_any_grouping_with_exact_parts_reproduces_the_original(cell, groups) -> 
         "_test_traub_kam",
     ],
 )
-def test_presets_fit_and_replace_finitely(preset: str) -> None:
+def test_declared_fit_and_replace_finitely(name: str) -> None:
     """学習した入力で置き換えて回すと有限に走る (短い学習の質までは見ない)。"""
-    s = fit_preset(preset)
+    s = fit_declared(name)
     run = replace(s, s.config.data.run_input(), ["soma"])
     assert np.isfinite(potential(simulate(run), 0)).all()
     cell = surrogate_cell(s)
@@ -169,7 +169,7 @@ def test_presets_fit_and_replace_finitely(preset: str) -> None:
 
 
 def test_library_gates_keep_only_those_rates() -> None:
-    rhs = fit_preset("_test_traub_hybrid_hn").parts[0][1]
+    rhs = fit_declared("_test_traub_hybrid_hn").parts[0][1]
     assert isinstance(rhs, SINDy)
     rates = {str(f.func) for e in rhs.feature_exprs for f in e.atoms(AppliedUndef)}
     assert rates == {"alpha_n_traub", "beta_n_traub", "alpha_h_traub", "beta_h_traub"}
@@ -177,7 +177,7 @@ def test_library_gates_keep_only_those_rates() -> None:
 
 def test_each_group_keeps_only_its_own_rates() -> None:
     """gates を書かなければ、群の右辺のレート項は群の状態のものだけになる。"""
-    (_, first), (_, second) = fit_preset("_test_traub_two_groups").parts
+    (_, first), (_, second) = fit_declared("_test_traub_two_groups").parts
     for rhs, gates in [(first, "nh"), (second, "ac")]:
         assert isinstance(rhs, SINDy)
         rates = {str(f.func) for e in rhs.feature_exprs for f in e.atoms(AppliedUndef)}
@@ -186,7 +186,7 @@ def test_each_group_keeps_only_its_own_rates() -> None:
 
 def test_two_groups_keep_their_latents_apart() -> None:
     """群の右辺は自分の潜在と V だけを使い、潜在の名前は通し番号。"""
-    s = fit_preset("_test_traub_two_groups")
+    s = fit_declared("_test_traub_two_groups")
     (_, first), (_, second) = s.parts
     assert [str(t) for t in first.targets] == ["z1"]
     assert [str(t) for t in second.targets] == ["z2"]
@@ -196,7 +196,7 @@ def test_two_groups_keep_their_latents_apart() -> None:
 
 def test_kam_keeps_the_rest_state_and_the_spike_count() -> None:
     """KAM は静止状態で ψ = V かつ動かず、DC 入力で元のモデルと同じ回数発火する。"""
-    s = fit_preset("_test_traub_kam")
+    s = fit_declared("_test_traub_kam")
     spec = _dc("traub", value=5.0, duration=100.0)
     rest = CELLS["traub"].inits(spec.net.nodes[0].resolved_params)
     for (compressor, rhs), group in zip(s.parts, s.config.groups, strict=True):
@@ -219,7 +219,7 @@ def test_kam_keeps_the_rest_state_and_the_spike_count() -> None:
 
 
 def test_config_rejects_bad_groups() -> None:
-    base = preset_config("_test_traub_hybrid")
+    base = declared_config("_test_traub_hybrid")
     group = base["groups"][0]
     for groups, message in [
         ([{**group, "gates": ["X"]}], "無い状態"),
@@ -238,7 +238,7 @@ def test_config_rejects_bad_groups() -> None:
 
 
 def test_ude_updates_the_autoencoder() -> None:
-    s = fit_preset("_test_traub_ude")
+    s = fit_declared("_test_traub_ude")
     ae, rhs = s.parts[0]
     assert isinstance(ae, AE) and isinstance(rhs, UDE)
     gates = s.training_data["vars"].sel(gate=True, comp_id=0).to_numpy()[:, :8]
@@ -252,7 +252,7 @@ def test_ude_updates_the_autoencoder() -> None:
 
 def test_hybrid_transplants_to_every_traub19_compartment() -> None:
     """hybrid は params を入力で受けるので、密度の違う全区画へ当てられる。"""
-    s = fit_preset("_test_traub_hybrid_hn")
+    s = fit_declared("_test_traub_hybrid_hn")
     net = NETS["traub19"]
     assert rejections(s.config, net, net.names) == []
     spec = SimSpec(target="traub19", current_type="train", dt=0.01)
@@ -261,8 +261,8 @@ def test_hybrid_transplants_to_every_traub19_compartment() -> None:
 
 
 def test_rejections_name_each_target_and_reason() -> None:
-    sindy = fit_preset("_test_hh_sindy")  # form=sindy は params が一致する区画だけ
-    traub = fit_preset("_test_traub_hybrid")
+    sindy = fit_declared("_test_hh_sindy")  # form=sindy は params が一致する区画だけ
+    traub = fit_declared("_test_traub_hybrid")
     assert "存在しない" in rejections(sindy.config, NETS["hh"], ["nowhere"])[0]
     assert "種類" in rejections(traub.config, NETS["hh"], ["soma"])[0]
     hh_series = EvalSeries(_dc("hh"), ("soma",))
@@ -273,7 +273,7 @@ def test_rejections_name_each_target_and_reason() -> None:
 
 
 def test_replace_swaps_only_the_named_compartments() -> None:
-    s = fit_preset("_test_traub_hybrid")
+    s = fit_declared("_test_traub_hybrid")
     run = replace(
         s,
         SimSpec(target="traub19", current_type="train", dt=0.01).run_input(),
@@ -288,7 +288,7 @@ def test_replace_swaps_only_the_named_compartments() -> None:
 
 
 def test_description_survives_reload_and_lines_up(tmp_path: Path) -> None:
-    s = fit_preset("_test_hh_sindy")
+    s = fit_declared("_test_hh_sindy")
     s.save(tmp_path)
     reloaded = Surrogate.load(tmp_path)
     assert reloaded.config == s.config
@@ -310,14 +310,14 @@ def test_description_survives_reload_and_lines_up(tmp_path: Path) -> None:
 
 
 def test_two_groups_describe_every_group() -> None:
-    model, fits = describe(fit_preset("_test_traub_two_groups"))
+    model, fits = describe(fit_declared("_test_traub_two_groups"))
     assert [g["gates"] for g in model["groups"]] == [["N", "H"], ["A", "C"]]
     assert model["x_names"] == model["latent_names"] == ["z1", "z2"]
     assert fits[0].latent.shape[1] == 2
 
 
 def test_summary_counts_the_decode_and_the_physics() -> None:
-    s = fit_preset("_test_traub_hybrid_hn")
+    s = fit_declared("_test_traub_hybrid_hn")
     result = summary(s)
     assert {"nnz", "pca/reconstruction_mse", "cost/surr-orig/mul"} <= set(result)
     compressor, rhs = s.parts[0]
