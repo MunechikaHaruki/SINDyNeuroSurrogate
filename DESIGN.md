@@ -50,7 +50,7 @@ flowchart LR
 `runs/inputs/<入力のハッシュ>/original/`、置き換えたモデルなら `<モデルの鍵>/` (学習 run のハッシュ + 置換範囲) で置く。1 run = spec.json 1 つで、
 置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。
 run は `runs/` の下のパス (id) で指す。図は Python で描かず、回すのは操作盤の冊 (53.01)、読むのは
-実験の冊 (54.03。評価の比較と学習 run の中身) で、どちらも context-router の `projects/research-master/` が持ち、
+評価の冊 (54.02 が列を重ねた比較、54.01 が学習 run 1 本と中身) で、どちらも context-router の `projects/research-master/` が持ち、
 そこの `runs.ts` を通して、口が宣言から組んだ id で読む。Python が置くのは図に要るデータだけ:
 
 ```

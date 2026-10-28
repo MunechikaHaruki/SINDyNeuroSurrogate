@@ -14,7 +14,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
 | 用語、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 | ファイルごとの持つものと依存の図（生成物。正本は各ファイルの先頭の docstring。`uv run python tests/test_design.py` で作り直す） | `neurosurrogate/FILES.md` |
-| 研究コードの手入れのやること（数値も主張も変えないものと、原著とずれている箇所。jdex の 53.06） | `todo.md` |
+| 研究コードの手入れのやること（数値も主張も変えないものと、原著とずれている箇所。jdex の 53.05） | `todo.md` |
 
 ## 持たないもの
 
