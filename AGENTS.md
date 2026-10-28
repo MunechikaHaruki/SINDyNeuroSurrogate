@@ -14,7 +14,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
 | 用語、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 | ファイルごとの持つものと依存の図（生成物。正本は各ファイルの先頭の docstring。`uv run python tests/test_design.py` で作り直す） | `neurosurrogate/FILES.md` |
-| 研究コードの手入れのやること（数値も主張も変えないもの。jdex の 54.09） | `todo.md` |
+| 研究コードの手入れのやること（数値も主張も変えないものと、原著とずれている箇所。jdex の 53.06） | `todo.md` |
 
 ## 持たないもの
 
@@ -29,7 +29,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ## TS
 
-- この repo は冊（.svelte）を持たず、context-router の部品にも依存しない。単独で動く研究コードだけを置く。結果を読む冊（評価の 53、操作盤、計測の 51.09 など）は context-router の `projects/research-master/` が持ち、この repo の TS を import して描く。
+- この repo は冊（.svelte）を持たず、context-router の部品にも依存しない。単独で動く研究コードだけを置く。結果を読む冊（評価の 53、操作盤、計測の 59.02 など）は context-router の `projects/research-master/` が持ち、この repo の TS を import して描く。
 - `evaluation/` には TS だけを、役割ごとのディレクトリ（`evaluation/orchestrate/` 何を回すかと段取り、`evaluation/read/` 比べる指標と学習の書き出しの読み方、`evaluation/traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。`evaluation/traub/traub.ts` はレートの式を Python と共有する `neurosurrogate/physics/traub.json` から読む。
 - TS のテスト・ESLint・型は、今は context-router で `bun run --cwd areas/infra/ontology verify`。
 
@@ -43,14 +43,14 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ```bash
 uv sync                        # 依存導入
-# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (jdex の 54.01) から回すので、本人に CLI を案内しない
+# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (jdex の 53.01) から回すので、本人に CLI を案内しない
 bun evaluation/orchestrate/orchestrate.ts train <preset>...               # 学習。preset は evaluation/orchestrate/conf.json の presets (掃引は d の配列)
 bun evaluation/orchestrate/orchestrate.ts eval <系列> <preset かハッシュ>...  # 評価。入力を元のモデルと置き換えたモデルで回す。preset の未学習分は学習もする
 bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで preset と系列の一覧、index で index.json を書き直す
 uv run pytest -q               # 規約、区画の式、サロゲート、neurosurrogate/run.py
 ```
 
-ruff の整形と lint は編集のたび、mypy はターンの終わりに、context-router の hook が走らせる。行数・複雑度・保守性指数は context-router の冊 51.09（`projects/research-master/frontend/architecture/code-metrics.svelte`）で見る。
+ruff の整形と lint は編集のたび、mypy はターンの終わりに、context-router の hook が走らせる。行数・複雑度・保守性指数は context-router の冊 59.02（`projects/research-master/frontend/meta/code-metrics.svelte`）で見る。
 
 ## Architecture
 

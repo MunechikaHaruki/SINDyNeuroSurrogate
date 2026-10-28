@@ -49,8 +49,8 @@ flowchart LR
 系列から置換範囲を除いたもの) ごとの結果は `runs/inputs/<入力のハッシュ>/` の下に、元のモデルなら
 `runs/inputs/<入力のハッシュ>/original/`、置き換えたモデルなら `<モデルの鍵>/` (学習 run のハッシュ + 置換範囲) で置く。1 run = spec.json 1 つで、
 置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。
-run は `runs/` の下のパス (id) で指す。図は Python で描かず、回すのは操作盤の冊 (54.01)、読むのは
-実験の冊 (55.03。評価の比較と学習 run の中身) で、どちらも context-router の `projects/research-master/` が持ち、
+run は `runs/` の下のパス (id) で指す。図は Python で描かず、回すのは操作盤の冊 (53.01)、読むのは
+実験の冊 (54.03。評価の比較と学習 run の中身) で、どちらも context-router の `projects/research-master/` が持ち、
 そこの `runs.ts` を通して、口が宣言から組んだ id で読む。Python が置くのは図に要るデータだけ:
 
 ```
@@ -124,16 +124,3 @@ Kepler-Abbott-Marder 縮約を Traub の単一区画から Multi-Compartment と
 ### solver との組み合わせ
 
 - m を膜電位へ吸収する縮約と Rush–Larsen は、どちらも m の刻みの制約を外す。組み合わせても刻みの得は掛け算にならない。
-
-## Python と TS のニューロン設定
-
-ニューロン固有の設定（パラメータと、指数・シグモイド・線形×指数の三つの形に収まるレート）だけを一つの JSON に置き、Python と TS が読む。
-JSON は Python のパッケージの中の `neurosurrogate/physics/<モデル>.json` に置き、Python はパッケージの中だけで完結する。TS は `evaluation/traub/traub.ts` から `traub.json` を import する（HH は TS 側に実装が無いので Python だけが読む）。今はレート（HH は 6 本、Traub は m・h・n・a・b・s の 12 本）と Traub の基準電位だけで、密度などのパラメータはまだ両方に手書きしている。レートの演算コストも JSON の形から導く。
-シミュレータ本体と三つの形の関数は両方で手書きする。形に収まらない c・r・q のレートは両方で手書きし、共通の基準値のテストで見張る。
-重い計算と保存は Python、段取りは TS、描画は Svelte が runs/ から読む。
-
-## 原著とずれている箇所
-
-- Traub19 の basal と apical の寸法が原著と逆（2026-09-28 原著 p.637 で確認）。原著は apical（10 区画）が 2.89 µm・120 µm・2188 µm²、basilar（8 区画）が 2.42 µm・110 µm・1673 µm²。
-  コードは index 0..7 に apical の寸法、9..18 に basilar の寸法を入れている。φ（7769 と 5941）の比 1.308 は面積比 2188/1673 と一致し、φ は原著どおり 1..8 が basilar。
-  参考にした snsbook の code/part1/multi/traub.c も同じく逆で、そこから引き継いだ。逆のままだと入力区画（原著 3・15）と basal・soma・apical の添字がずれる。

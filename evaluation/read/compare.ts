@@ -170,3 +170,36 @@ export function crossingDiff(original: Crossings, model: Crossings): CrossingDif
     lastShift: n > 0 ? Math.abs(model.times[n - 1] - original.times[n - 1]) : null,
   };
 }
+
+/** Γ の許容幅 Δ [ms]（2026-10-27 に決めた物差し）。 */
+export const COINCIDENCE_WINDOW = 2;
+
+/** coincidence factor Γ（Kistler et al. 1997）。±Δ 以内で一致した発火の数を偶然の一致で補正する。1 が完全一致、0 が偶然と同じ。
+ * どちらにも発火が無ければ決まらないので null。ν は置き換えたモデルの発火率、duration は波形の長さ [ms]。 */
+export function coincidence(original: number[], model: number[], duration: number, delta = COINCIDENCE_WINDOW): number | null {
+  if (original.length + model.length === 0) return null;
+  let matched = 0;
+  let j = 0;
+  for (const t of original) {
+    while (j < model.length && model[j] < t - delta) j++;
+    if (j < model.length && model[j] <= t + delta) {
+      matched++;
+      j++;
+    }
+  }
+  const nu = model.length / duration;
+  const expected = 2 * nu * delta * original.length;
+  return (matched - expected) / (0.5 * (original.length + model.length)) / (1 - 2 * nu * delta);
+}
+
+/** 発火率 [Hz]。duration は数える区間の長さ [ms]。f–I 曲線の 1 点。 */
+export function rate(times: number[], duration: number): number {
+  return (times.length / duration) * 1000;
+}
+
+/** 発火の始まり（rheobase）。掃引の値を小さい順に見て、初めて発火した値。どこでも発火しなければ null。 */
+export function rheobase(values: number[], counts: number[]): number | null {
+  const order = values.map((_, i) => i).sort((a, b) => values[a] - values[b]);
+  const first = order.find((i) => counts[i] > 0);
+  return first === undefined ? null : values[first];
+}

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { compare, crossingDiff, crossings, diverged, type Spikes } from './compare.ts';
+import { coincidence, compare, crossingDiff, crossings, diverged, rate, rheobase, type Spikes } from './compare.ts';
 
 /** 山を 2 つ持つ波形（dt = 0.5 ms で 2 ms の窓は ±4 点）。 */
 const v = new Float64Array([
@@ -52,4 +52,19 @@ test('crossings count upward passes through 0 mV with their peaks, and the diff 
   expect(shifted).toEqual({ times: [3], peaks: [20] });
   expect(crossingDiff(found, shifted)).toEqual({ count: [2, 1], peak: -10, lastShift: 0.5 });
   expect(crossingDiff(found, { times: [], peaks: [] })).toEqual({ count: [2, 0], peak: null, lastShift: null });
+});
+
+test('coincidence is 1 for the same spikes, near 0 for unrelated ones, and null with no spikes', () => {
+  expect(coincidence([10, 50, 90], [10, 50, 90], 100)).toBeCloseTo(1);
+  expect(coincidence([10, 50, 90], [11.5, 51, 88.5], 100)).toBeCloseTo(1);
+  expect(coincidence([10, 50, 90], [30, 70], 100)).toBeLessThan(0);
+  expect(coincidence([], [], 100)).toBeNull();
+  expect(coincidence([10], [], 100)).toBe(0);
+});
+
+test('rate and rheobase read the f–I curve of a sweep', () => {
+  expect(rate([1, 2, 3], 300)).toBeCloseTo(10);
+  expect(rheobase([0, 2.5, 5], [0, 0, 4])).toBe(5);
+  expect(rheobase([5, 0], [1, 0])).toBe(5);
+  expect(rheobase([0, 2.5], [0, 0])).toBeNull();
 });

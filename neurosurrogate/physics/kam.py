@@ -4,7 +4,7 @@
 dψ/dt = Σ_i D_i ẋ_i / Σ_j D_j x̄_j'(ψ)、D_i = ∂(dV/dt)/∂x_i で動かす (Kepler 1992 の
 式(6)の重みで ẋ_i を等価電位の速さへ写したもの)。φ 群 (膜電位への吸収) は扱わない。
 サロゲートの群の圧縮器と右辺 (kam) として使い、学習した圧縮と同じ段取りで比べる。
-導き方は context-router の冊 52.01、対話的に動かす版は evaluation/traub/traub.ts。
+導き方は context-router の冊 51.01、対話的に動かす版は evaluation/traub/traub.ts。
 """
 
 from typing import Any

@@ -257,6 +257,16 @@ def _generate_step(values: list, step_duration: int):
 
 
 @_current_generator
+def _generate_release(value: float = -5.0, hold: float = 100.0):
+    """過分極からの解放。最初の hold [ms] を value [μA/cm²] (負) で押さえ、そのあと 0 に戻す。"""
+
+    def apply(active: np.ndarray, dt: float) -> None:
+        active[: int(hold / dt)] = value
+
+    return apply
+
+
+@_current_generator
 def _add_white_noise(sigma: float = 0.1):
     """既存の電流にガウスホワイトノイズを加算する。sigma [μA/cm²]"""
 
@@ -291,6 +301,7 @@ _OTHER_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     "train": train,
     "_traub_soma_dc": _traub_soma_dc,
     "step": _generate_step,
+    "release": _generate_release,
     "noise": _add_white_noise,
 }
 

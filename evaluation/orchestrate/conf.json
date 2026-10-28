@@ -225,8 +225,29 @@
       "param": "value",
       "values": [0, 2.5, 5, 7.5, 10]
     },
+    "traub_release": {
+      "description": "単一区画を soma への負の電流で 100 ms 押さえてから 0 に戻す。押さえる強さを掃引する。遅いゲート（h、a、c）と平衡点の外を試す（物差しの入力）。",
+      "spec": {"target": "traub", "current_type": "release", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 300.0, "hold": 100.0}, "stim": "soma"},
+      "replace_targets": ["soma"],
+      "param": "value",
+      "values": [-2.5, -5, -7.5, -10]
+    },
+    "traub_poisson": {
+      "description": "単一区画の soma へ、種を固定した Poisson 過程のシナプス電流を入れ、入力の頻度を掃引する。発火の時刻が入力で決まるので Γ が本来想定する入力（物差しの入力）。",
+      "spec": {"target": "traub", "current_type": "random&poisson_synapse", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 1000.0, "amplitude": 20.0, "seed": 0}, "stim": "soma"},
+      "replace_targets": ["soma"],
+      "param": "rate",
+      "values": [20, 40, 80, 160]
+    },
     "traub19_somastim": {
       "spec": {"target": "traub19", "current_type": "lin&steady", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 300.0}, "stim": "soma"},
+      "replace_targets": ["soma"],
+      "param": "value",
+      "values": [0, 2.5, 5, 7.5, 10]
+    },
+    "traub19_paper_somastim": {
+      "description": "traub19_somastim と寸法だけが違う。basal と apical の寸法を原著 p.637 どおりにした traub19_paper（todo.md）。",
+      "spec": {"target": "traub19_paper", "current_type": "lin&steady", "dt": 0.01, "current_params": {"silence_duration": 10.0, "duration": 300.0}, "stim": "soma"},
       "replace_targets": ["soma"],
       "param": "value",
       "values": [0, 2.5, 5, 7.5, 10]

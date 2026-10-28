@@ -518,16 +518,26 @@ def traub19_params(i: int) -> TraubParams:
     )
 
 
-def _g_axial(i: int) -> float:
+def _g_axial(i: int, rad: list[float], length: list[float]) -> float:
     """区画 i と i+1 の間の軸方向 conductance [μS]。"""
-    r_i = _RI * _LEN[i] / (math.pi * _RAD[i] ** 2)
-    r_ip1 = _RI * _LEN[i + 1] / (math.pi * _RAD[i + 1] ** 2)
+    r_i = _RI * length[i] / (math.pi * rad[i] ** 2)
+    r_ip1 = _RI * length[i + 1] / (math.pi * rad[i + 1] ** 2)
     return 2.0 / (r_i + r_ip1)
 
 
-def _traub19() -> Net:
-    nodes = [Compartment(traub19_name(i), TRAUB, traub19_params(i)) for i in range(19)]
-    edges = [Edge(traub19_name(i), traub19_name(i + 1), _g_axial(i)) for i in range(18)]
+def _swap_dendrites(values: list[float]) -> list[float]:
+    """basal (0..7) と apical (9..18) の寸法を入れ替える。原著 p.637 の割り当て (todo.md)。"""
+    return [values[-1]] * TRAUB19_SOMA + [values[TRAUB19_SOMA]] + [values[0]] * (18 - TRAUB19_SOMA)
+
+
+def _traub19(paper: bool = False) -> Net:
+    """paper は寸法を原著どおりにした版。既定は traub.c から引き継いだ逆の割り当て。"""
+    rad, length, area = (_swap_dendrites(x) for x in (_RAD, _LEN, _AREA)) if paper else (_RAD, _LEN, _AREA)
+    nodes = []
+    for i in range(19):
+        params = traub19_params(i)._replace(phi_area=_PHI[i] * area[i], area=area[i])
+        nodes.append(Compartment(traub19_name(i), TRAUB, params))
+    edges = [Edge(traub19_name(i), traub19_name(i + 1), _g_axial(i, rad, length)) for i in range(18)]
     return Net(nodes, edges)
 
 
@@ -536,4 +546,5 @@ NETS: dict[str, Net] = {
     "hh": Net([Compartment("soma", HH)], []),
     "traub": Net([Compartment("soma", TRAUB)], []),
     "traub19": _traub19(),
+    "traub19_paper": _traub19(paper=True),
 }
