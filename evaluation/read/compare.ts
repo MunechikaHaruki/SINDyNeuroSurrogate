@@ -174,8 +174,9 @@ export function crossingDiff(original: Crossings, model: Crossings): CrossingDif
 /** Γ の許容幅 Δ [ms]（2026-10-27 に決めた物差し）。 */
 export const COINCIDENCE_WINDOW = 2;
 
-/** coincidence factor Γ（Kistler et al. 1997）。±Δ 以内で一致した発火の数を偶然の一致で補正する。1 が完全一致、0 が偶然と同じ。
- * どちらにも発火が無ければ決まらないので null。ν は置き換えたモデルの発火率、duration は波形の長さ [ms]。 */
+/** coincidence factor Γ（Kistler et al. 1997 の式(4.1)、https://doi.org/10.1162/neco.1997.9.5.1015）。±Δ 以内で一致した発火の数を偶然の一致で補正する。
+ * 1 が完全一致、0 が偶然と同じ。全体を幅 2Δ のビン K 個に分け、偶然の一致を N_model N_original / K、正規化を 1 − N_original / K とする。
+ * どちらにも発火が無ければ決まらないので null。duration は波形の長さ [ms]。 */
 export function coincidence(original: number[], model: number[], duration: number, delta = COINCIDENCE_WINDOW): number | null {
   if (original.length + model.length === 0) return null;
   let matched = 0;
@@ -187,9 +188,10 @@ export function coincidence(original: number[], model: number[], duration: numbe
       j++;
     }
   }
-  const nu = model.length / duration;
-  const expected = 2 * nu * delta * original.length;
-  return (matched - expected) / (0.5 * (original.length + model.length)) / (1 - 2 * nu * delta);
+  const bins = duration / (2 * delta);
+  const expected = (model.length * original.length) / bins;
+  const normalization = 1 - original.length / bins;
+  return (matched - expected) / (0.5 * (original.length + model.length)) / normalization;
 }
 
 /** 発火率 [Hz]。duration は数える区間の長さ [ms]。f–I 曲線の 1 点。 */

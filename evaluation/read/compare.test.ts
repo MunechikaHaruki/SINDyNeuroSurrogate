@@ -62,6 +62,18 @@ test('coincidence is 1 for the same spikes, near 0 for unrelated ones, and null 
   expect(coincidence([10], [], 100)).toBe(0);
 });
 
+test('coincidence follows Kistler et al. 1997 eq. (4.1) when the rates differ', () => {
+  // 10 s で元 300 回、置き換え 450 回、一致 280 回。K = 2500、Γ = (280 − 450·300/2500) / 375 / (1 − 300/2500)
+  const original: number[] = [];
+  const model: number[] = [];
+  for (let i = 0; i < 300; i++) original.push(10 + i * 33);
+  for (let i = 0; i < 280; i++) model.push(10 + i * 33);
+  for (let i = 0; i < 170; i++) model.push(26.5 + i * 33);
+  model.sort((a, b) => a - b);
+  const expected = (280 - (450 * 300) / 2500) / (0.5 * (300 + 450)) / (1 - 300 / 2500);
+  expect(coincidence(original, model, 10000)).toBeCloseTo(expected, 6);
+});
+
 test('rate and rheobase read the f–I curve of a sweep', () => {
   expect(rate([1, 2, 3], 300)).toBeCloseTo(10);
   expect(rheobase([0, 2.5, 5], [0, 0, 4])).toBe(5);
