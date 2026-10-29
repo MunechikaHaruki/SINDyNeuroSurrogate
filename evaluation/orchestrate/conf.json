@@ -310,6 +310,31 @@
         160
       ]
     },
+    "traub_kistler": {
+      "description": "単一区画の soma へ、Kistler 1997 の 3.1 と同じ揺らぐ電流（2 ms ごとに平均 0 のガウス乱数を引いて線形補間）を入れ、標準偏差を掃引する。原著の Γ と同じ条件の物差しの入力。Traub は HH より発火しにくいので σ は原著（2.25〜4）より大きい。",
+      "spec": {
+        "target": "traub",
+        "current_type": "random&kistler",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10.0,
+          "duration": 2000.0,
+          "mean": 0.0,
+          "seed": 0
+        },
+        "stim": "soma"
+      },
+      "replace_targets": [
+        "soma"
+      ],
+      "param": "sigma",
+      "values": [
+        10,
+        15,
+        20,
+        30
+      ]
+    },
     "traub19_somastim": {
       "spec": {
         "target": "traub19",

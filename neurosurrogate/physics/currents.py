@@ -228,10 +228,26 @@ def _generate_poisson_synapse(
     return apply
 
 
+@_current_generator
+def _generate_kistler(sigma: float = 3.0, mean: float = 0.0, seed: int = 0):
+    """Kistler 1997 (doi:10.1162/neco.1997.9.5.1015) 3.1 の揺らぐ電流。2 ms ごとに
+    平均 mean・標準偏差 sigma のガウス乱数を引き、間を線形補間する。mean/sigma [μA/cm²]"""
+
+    def apply(active: np.ndarray, dt: float) -> None:
+        rng = np.random.default_rng(seed)
+        t = np.arange(len(active)) * dt
+        knots = np.arange(0.0, t[-1] + 2.0 + 1e-9, 2.0)
+        values = mean + sigma * rng.standard_normal(len(knots))
+        active[:] = np.interp(t, knots, values)
+
+    return apply
+
+
 _RANDOM_FUNC: dict[str, Callable[..., Callable[[float], np.ndarray]]] = {
     "random": _generate_rand_pulse,
     "random&discretized": _generate_discretized,
     "random&poisson_synapse": _generate_poisson_synapse,
+    "random&kistler": _generate_kistler,
 }
 
 
@@ -320,6 +336,7 @@ PARAM_UNITS: dict[str, str] = {
     "baseline": "μA/cm²",
     "max_val": "μA/cm²",
     "sigma": "μA/cm²",
+    "mean": "μA/cm²",
     "frequency": "Hz",
     "f_start": "Hz",
     "f_stop": "Hz",
