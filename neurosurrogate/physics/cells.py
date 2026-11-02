@@ -526,7 +526,7 @@ def _g_axial(i: int, rad: list[float], length: list[float]) -> float:
 
 
 def _swap_dendrites(values: list[float]) -> list[float]:
-    """basal (0..7) と apical (9..18) の寸法を入れ替える。原著 p.637 の割り当て (todo.md)。"""
+    """basal (0..7) と apical (9..18) の寸法を入れ替える。原著 p.637 の割り当て。"""
     return [values[-1]] * TRAUB19_SOMA + [values[TRAUB19_SOMA]] + [values[0]] * (18 - TRAUB19_SOMA)
 
 

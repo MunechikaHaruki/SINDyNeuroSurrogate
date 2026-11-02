@@ -82,7 +82,7 @@
       }
     },
     "traub19_paper_somastim": {
-      "description": "traub19_somastim と寸法だけが違う。basal と apical の寸法を原著 p.637 どおりにした traub19_paper（todo.md）。",
+      "description": "traub19_somastim と寸法だけが違う。basal と apical の寸法を原著 p.637 どおりにした traub19_paper。",
       "target": "traub19_paper",
       "duration": 300.0,
       "sweep": {
