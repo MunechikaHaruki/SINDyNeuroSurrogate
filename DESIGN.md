@@ -60,12 +60,12 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 
 ### 設定ファイル
 
-- 学習の設定も評価の条件も `conf.json` に書く。学習 run は 縮約の仕方 (`methods`) × 群分け で決まり、名前は `<仕方>_<群分け>` (`kam_hn`、`pca_hn_ac`)。群分けは群をゲートの小文字の名前でつなぎ、群どうしを `_` で区切る。学習 run を一本ずつ書き下さず、`conf.ts` が名前から組む。`conf.ts` は読んで形を確かめ、仕方に群分けを重ねるだけで、宣言の値は持たない。YAML の設定ファイルは持たない。
+- 学習の設定も評価の条件も `conf.json` に書く。学習 run は 縮約の仕方 (`methods`) × 群分け で決まり、名前は `<仕方>_<群分け>` (`kam_hn`、`pca_hn_ac`)。群分けは群をゲートの小文字の名前でつなぎ、群どうしを `_` で区切る。学習 run を一本ずつ書き下さず、`conf.ts` が名前から組む。`conf.json` には既定と違う値だけを書き、`conf.ts` が既定を埋めて形を確かめ、仕方に群分けを重ねる。YAML の設定ファイルは持たない。
 - 学習の設定 (`surrogate.Config`) は、区画の型 (`cell`)、`form`、学習データ (`data` = `SimSpec`)、群のリスト (`groups`)、学習を絞る区画 (`train_comp`)。
   群は `gates`・`compressor`・`d`・`rhs` と、それぞれの fit 関数へ `**` で展開する `compressor_params`・`rhs_params`。
   `gates` は状態の名前 (Traub は M N C A H B S R Q XI、HH は M H N)。`compressor: kam` は学習しない KAM 縮約で、右辺も `kam`、`d` は 1。UDE は AE を一緒に学習するので、圧縮器は AE に限る。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
   既定値は fit 関数の署名だけが持ち、綴り違いは TypeError になる。
-- どの学習でも同じ値 (学習用の電流・刻み・全区画で学習) は `conf.ts` が埋める。宣言を選んだ理由は各宣言の `description` に書き、spec には入れない。`tests` の `_test_*` はテスト専用の学習で、仕方に差分を重ねて書き、どの実験にも入れない。
+- 既定 (細胞は Traub、教師は細胞と同じ、圧縮は仕方の名前、右辺は KAM なら KAM でほかは SINDy、項ライブラリは細胞のゲートの項と `basis`、系列は単一区画の soma への定常電流で soma を置き換える) と、どの学習でも同じ値 (学習用の電流・刻み・全区画で学習) は `conf.ts` が埋める。宣言を選んだ理由は各宣言の `description` に書き、spec には入れない。テスト専用の学習 `_test_*` は conf.json に入れず `evaluation/orchestrate/test-trains.ts` に TS の辞書で書き、仕方に差分を重ね、どの実験にも入れない。
 - 使わなくなった仕方と系列は消す。run は消さず、`list` の一覧に残る。
 - 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、読む側 (repo の外の図) が持つ。
 

@@ -1,423 +1,104 @@
 {
   "methods": {
     "kam": {
-      "description": "同じ群を学習せずに KAM 縮約でまとめる基準。式から組むので項ライブラリは持たない。",
-      "cell": "traub",
-      "form": "hybrid",
-      "target": "traub",
-      "duration": 9000,
-      "compressor": "kam",
-      "rhs": "kam",
-      "d": 1
+      "description": "同じ群を学習せずに KAM 縮約でまとめる基準。式から組むので項ライブラリは持たない。"
     },
     "pca": {
-      "description": "群ごとに PCA で潜在へ縮め、右辺を SINDy で同定する。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。",
-      "cell": "traub",
-      "form": "hybrid",
-      "target": "traub",
-      "duration": 9000,
-      "library_specs": [
-        {
-          "type": "traub_gate_forward"
-        },
-        {
-          "type": "traub_gate_backward"
-        },
-        {
-          "type": "traub_gate_forward_product"
-        },
-        {
-          "type": "traub_gate_backward_product"
-        },
-        {
-          "type": "basis"
-        }
-      ],
-      "compressor": "pca",
-      "d": 1
+      "description": "群ごとに PCA で潜在へ縮め、右辺を SINDy で同定する。単一区画の軌道で学習し、電流は 19 区画の学習（1000 ms × 19）と同じくらいのサンプル数にする。"
     },
     "ae": {
-      "description": "群ごとに AutoEncoder で潜在へ縮め、右辺を SINDy で同定する。学習データは pca と同じ。",
-      "cell": "traub",
-      "form": "hybrid",
-      "target": "traub",
-      "duration": 9000,
-      "library_specs": [
-        {
-          "type": "traub_gate_forward"
-        },
-        {
-          "type": "traub_gate_backward"
-        },
-        {
-          "type": "traub_gate_forward_product"
-        },
-        {
-          "type": "traub_gate_backward_product"
-        },
-        {
-          "type": "basis"
-        }
-      ],
-      "compressor": "ae",
-      "d": 1
-    }
-  },
-  "tests": {
-    "_test_hh_sindy": {
-      "description": "テストは形と有限性だけを見るので電流を 180 ms に縮め、決定的で速い PCA にする（_test_ はどれもテスト専用で、tests が名前で引く）。",
-      "method": "pca",
-      "grouping": "mhn",
-      "cell": "hh",
-      "target": "hh",
-      "duration": 180,
-      "library_specs": [
-        {
-          "type": "hh_gate_forward"
-        },
-        {
-          "type": "hh_gate_backward"
-        },
-        {
-          "type": "hh_gate_forward_product"
-        },
-        {
-          "type": "hh_gate_backward_product"
-        },
-        {
-          "type": "basis"
-        }
-      ],
-      "form": "sindy",
-      "d": 3
-    },
-    "_test_hh_hybrid": {
-      "method": "pca",
-      "grouping": "mhn",
-      "cell": "hh",
-      "target": "hh",
-      "duration": 180,
-      "library_specs": [
-        {
-          "type": "hh_gate_forward"
-        },
-        {
-          "type": "hh_gate_backward"
-        },
-        {
-          "type": "hh_gate_forward_product"
-        },
-        {
-          "type": "hh_gate_backward_product"
-        },
-        {
-          "type": "basis"
-        }
-      ],
-      "d": 3
-    },
-    "_test_hh_ae": {
-      "description": "AE の経路を踏むだけなので epochs を切り詰める。",
-      "method": "ae",
-      "grouping": "mhn",
-      "cell": "hh",
-      "target": "hh",
-      "duration": 180,
-      "library_specs": [
-        {
-          "type": "hh_gate_forward"
-        },
-        {
-          "type": "hh_gate_backward"
-        },
-        {
-          "type": "hh_gate_forward_product"
-        },
-        {
-          "type": "hh_gate_backward_product"
-        },
-        {
-          "type": "basis"
-        }
-      ],
-      "d": 2,
-      "compressor_params": {
-        "epochs": 20
-      }
-    },
-    "_test_traub_hybrid": {
-      "method": "pca",
-      "grouping": "mncahbsr",
-      "duration": 180,
-      "d": 5
-    },
-    "_test_traub_hybrid_sr_physics": {
-      "method": "pca",
-      "grouping": "mncahb",
-      "duration": 180,
-      "d": 5,
-      "library_specs": [
-        {
-          "type": "traub_gate_forward",
-          "gates": "msncahrb"
-        },
-        {
-          "type": "traub_gate_backward",
-          "gates": "msncahrb"
-        },
-        {
-          "type": "traub_gate_forward_product",
-          "gates": "msncahrb"
-        },
-        {
-          "type": "traub_gate_backward_product",
-          "gates": "msncahrb"
-        },
-        {
-          "type": "basis"
-        }
-      ]
-    },
-    "_test_traub_hybrid_hn": {
-      "method": "pca",
-      "grouping": "nh",
-      "duration": 180
-    },
-    "_test_traub_two_groups": {
-      "description": "群を 2 つ持つ形。{h,n} と {a,c} をそれぞれ 1 本へ縮め、残りは元の式。",
-      "method": "pca",
-      "grouping": "nh_ac",
-      "duration": 180
-    },
-    "_test_traub_kam": {
-      "method": "kam",
-      "grouping": "nh_ac",
-      "duration": 180
-    },
-    "_test_traub_ude": {
-      "description": "encoder・decoder と潜在方程式（NN）を同じロスで学習する経路。項ライブラリは持たない。",
-      "method": "ae",
-      "grouping": "mncahbsr",
-      "target": "traub19",
-      "duration": 180,
-      "d": 3,
-      "rhs": "ude",
-      "compressor_params": {
-        "epochs": 20
-      },
-      "rhs_params": {
-        "epochs": 20,
-        "lr": 0.003,
-        "window": 20,
-        "batch": 16,
-        "hidden": 32,
-        "depth": 2,
-        "w_recon": 1.0,
-        "pull": 20.0
-      }
+      "description": "群ごとに AutoEncoder で潜在へ縮め、右辺を SINDy で同定する。学習データは pca と同じ。"
     }
   },
   "series": {
-    "traub_soma_dc": {
-      "description": "単一区画の素の応答。テストが使う。",
-      "spec": {
-        "target": "traub",
-        "current_type": "lin&steady",
-        "dt": 0.01,
-        "current_params": {
-          "silence_duration": 10.0,
-          "duration": 40.0,
-          "value": 3.0
-        },
-        "stim": "soma"
-      },
-      "replace_targets": [
-        "soma"
-      ],
-      "param": null,
-      "values": []
-    },
     "traub_somastim": {
       "description": "単一区画を soma への定常電流で 0 から 10 µA/cm² の 5 点で掃引する。刺激前の静穏と本体の長さは ms で、掃引する値は Python の EvalSeries が点ごとに埋める。",
-      "spec": {
-        "target": "traub",
-        "current_type": "lin&steady",
-        "dt": 0.01,
-        "current_params": {
-          "silence_duration": 10.0,
-          "duration": 300.0
-        },
-        "stim": "soma"
-      },
-      "replace_targets": [
-        "soma"
-      ],
-      "param": "value",
-      "values": [
-        0,
-        2.5,
-        5,
-        7.5,
-        10
-      ]
+      "duration": 300.0,
+      "sweep": {
+        "value": [
+          0,
+          2.5,
+          5,
+          7.5,
+          10
+        ]
+      }
     },
     "traub_release": {
       "description": "単一区画を soma への負の電流で 100 ms 押さえてから 0 に戻す。押さえる強さを掃引する。遅いゲート（h、a、c）と平衡点の外を試す（物差しの入力）。",
-      "spec": {
-        "target": "traub",
-        "current_type": "release",
-        "dt": 0.01,
-        "current_params": {
-          "silence_duration": 10.0,
-          "duration": 300.0,
-          "hold": 100.0
-        },
-        "stim": "soma"
-      },
-      "replace_targets": [
-        "soma"
-      ],
-      "param": "value",
-      "values": [
-        -2.5,
-        -5,
-        -7.5,
-        -10
-      ]
+      "current": "release",
+      "duration": 300.0,
+      "hold": 100.0,
+      "sweep": {
+        "value": [
+          -2.5,
+          -5,
+          -7.5,
+          -10
+        ]
+      }
     },
     "traub_poisson": {
       "description": "単一区画の soma へ、種を固定した Poisson 過程のシナプス電流を入れ、入力の頻度を掃引する。発火の時刻が入力で決まるので Γ が本来想定する入力（物差しの入力）。",
-      "spec": {
-        "target": "traub",
-        "current_type": "random&poisson_synapse",
-        "dt": 0.01,
-        "current_params": {
-          "silence_duration": 10.0,
-          "duration": 1000.0,
-          "amplitude": 20.0,
-          "seed": 0
-        },
-        "stim": "soma"
-      },
-      "replace_targets": [
-        "soma"
-      ],
-      "param": "rate",
-      "values": [
-        20,
-        40,
-        80,
-        160
-      ]
+      "current": "random&poisson_synapse",
+      "duration": 1000.0,
+      "amplitude": 20.0,
+      "seed": 0,
+      "sweep": {
+        "rate": [
+          20,
+          40,
+          80,
+          160
+        ]
+      }
     },
     "traub_kistler": {
       "description": "単一区画の soma へ、Kistler 1997 の 3.1 と同じ揺らぐ電流（2 ms ごとに平均 0 のガウス乱数を引いて線形補間）を入れ、標準偏差を掃引する。原著の Γ と同じ条件の物差しの入力。Traub は HH より発火しにくいので σ は原著（2.25〜4）より大きい。",
-      "spec": {
-        "target": "traub",
-        "current_type": "random&kistler",
-        "dt": 0.01,
-        "current_params": {
-          "silence_duration": 10.0,
-          "duration": 2000.0,
-          "mean": 0.0,
-          "seed": 0
-        },
-        "stim": "soma"
-      },
-      "replace_targets": [
-        "soma"
-      ],
-      "param": "sigma",
-      "values": [
-        10,
-        15,
-        20,
-        30
-      ]
+      "current": "random&kistler",
+      "duration": 2000.0,
+      "mean": 0.0,
+      "seed": 0,
+      "sweep": {
+        "sigma": [
+          10,
+          15,
+          20,
+          30
+        ]
+      }
     },
     "traub19_somastim": {
-      "spec": {
-        "target": "traub19",
-        "current_type": "lin&steady",
-        "dt": 0.01,
-        "current_params": {
-          "silence_duration": 10.0,
-          "duration": 300.0
-        },
-        "stim": "soma"
-      },
-      "replace_targets": [
-        "soma"
-      ],
-      "param": "value",
-      "values": [
-        0,
-        2.5,
-        5,
-        7.5,
-        10
-      ]
+      "target": "traub19",
+      "duration": 300.0,
+      "sweep": {
+        "value": [
+          0,
+          2.5,
+          5,
+          7.5,
+          10
+        ]
+      }
     },
     "traub19_paper_somastim": {
       "description": "traub19_somastim と寸法だけが違う。basal と apical の寸法を原著 p.637 どおりにした traub19_paper（todo.md）。",
-      "spec": {
-        "target": "traub19_paper",
-        "current_type": "lin&steady",
-        "dt": 0.01,
-        "current_params": {
-          "silence_duration": 10.0,
-          "duration": 300.0
-        },
-        "stim": "soma"
-      },
-      "replace_targets": [
-        "soma"
-      ],
-      "param": "value",
-      "values": [
-        0,
-        2.5,
-        5,
-        7.5,
-        10
-      ]
-    },
-    "traub19_dendstim": {
-      "description": "c09 は soma の隣の apical の近位樹状突起で、電流が soma へ確実に伝わる。",
-      "spec": {
-        "target": "traub19",
-        "current_type": "lin&steady",
-        "dt": 0.01,
-        "current_params": {
-          "silence_duration": 10.0,
-          "duration": 300.0
-        },
-        "stim": "c09"
-      },
-      "replace_targets": [
-        "soma"
-      ],
-      "param": "value",
-      "values": [
-        0,
-        2.5,
-        5,
-        7.5,
-        10
-      ]
+      "target": "traub19_paper",
+      "duration": 300.0,
+      "sweep": {
+        "value": [
+          0,
+          2.5,
+          5,
+          7.5,
+          10
+        ]
+      }
     },
     "traub19_somastim_allcomp": {
       "description": "somastim と置換範囲だけが違う。教師データの範囲（19 区画）と置換範囲を揃えた条件。traub19 の全区画（soma は 8 番）は宣言で綴り、形態から導かない。",
-      "spec": {
-        "target": "traub19",
-        "current_type": "lin&steady",
-        "dt": 0.01,
-        "current_params": {
-          "silence_duration": 10.0,
-          "duration": 300.0
-        },
-        "stim": "soma"
-      },
+      "target": "traub19",
+      "duration": 300.0,
       "replace_targets": [
         "c00",
         "c01",
@@ -439,14 +120,15 @@
         "c17",
         "c18"
       ],
-      "param": "value",
-      "values": [
-        0,
-        2.5,
-        5,
-        7.5,
-        10
-      ]
+      "sweep": {
+        "value": [
+          0,
+          2.5,
+          5,
+          7.5,
+          10
+        ]
+      }
     }
   }
 }
