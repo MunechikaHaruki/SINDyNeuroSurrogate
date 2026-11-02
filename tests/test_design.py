@@ -1,6 +1,6 @@
 """neurosurrogate/FILES.md を docstring と import から作り、置いてあるものと照らす。
 
-`uv run python tests/test_design.py` で作り直す (context-router の hook が呼ぶ)。
+`uv run python tests/test_design.py` で作り直す。
 """
 
 import ast

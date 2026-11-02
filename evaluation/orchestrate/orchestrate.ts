@@ -1,11 +1,11 @@
 // 段取り: conf.ts の宣言から spec.json を組み、ハッシュで決めた置き場を Python の計算の入口（neurosurrogate/run.py）で埋める。
 // 置き場は学習が runs/models/<ハッシュ>/、入力 × モデルが runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/。
 // 同じ spec は同じ置き場になるので、ディレクトリがあれば回さない。回したあとは runs/index.json（図が読む run の一覧）を書き直す。
-// 入口は二つで、どちらもここの関数を呼ぶ。本人は操作盤の冊のボタン（api.ts）、エージェントはこの CLI。人は CLI を使わない。
+// 入口は二つで、どちらもここの関数を呼ぶ。外の画面は export した関数を、手元ではこの CLI を使う。
 //   bun evaluation/orchestrate/orchestrate.ts train <学習 run>...        学習 run は <仕方>_<群分け>（kam_hn）かテストの名前
 //   … eval <系列> <学習 run かハッシュ>...
 //   … index | spec <学習 run> | series | list
-// --runs <dir> で置き場を変えられる。--job <鍵> は操作盤から起こしたときに launch が付け、終わりを .jobs/<鍵>.exit に書く。
+// --runs <dir> で置き場を変えられる。--job <鍵> は外の画面から起こしたときに launch が付け、終わりを .jobs/<鍵>.exit に書く。
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -177,9 +177,9 @@ export function evaluate(runs: string, name: string, selectors: string[]): void 
   writeIndex(runs);
 }
 
-// ---- 操作盤のボタンから回す ----
+// ---- 外の画面から回す ----
 
-/** 操作盤に見せるログの末尾の行数 */
+/** 外の画面に返すログの末尾の行数 */
 const LOG_TAIL = 30;
 
 /** pid のプロセスが生きているか。 */
@@ -198,7 +198,7 @@ function running(partial: string): boolean {
   return existsSync(file) && alive(Number(readFileSync(file, 'utf8')));
 }
 
-/** 操作盤から起こした段取りの置き場 runs/.jobs/。仕事の鍵は {何を, どれを} のハッシュで、同じ組は同じ鍵になる。 */
+/** 外の画面から起こした段取りの置き場 runs/.jobs/。仕事の鍵は {何を, どれを} のハッシュで、同じ組は同じ鍵になる。 */
 function jobDir(runs: string): string {
   return join(runs, '.jobs');
 }
@@ -219,7 +219,7 @@ function tail(file: string, n: number): string[] {
   return lines.slice(Math.max(0, lines.length - n));
 }
 
-/** 操作盤から起こした仕事を新しい順に。<鍵>.json が仕事、.exit が終了コード、それが無くて .pid が生きていれば計算中。 */
+/** 外の画面から起こした仕事を新しい順に。<鍵>.json が仕事、.exit が終了コード、それが無くて .pid が生きていれば計算中。 */
 export function jobs(runs: string): JobState[] {
   const dir = jobDir(runs);
   if (!existsSync(dir)) return [];
@@ -275,7 +275,7 @@ function experimentStatus(runs: string, name: string, experiment: Experiment): E
   return result;
 }
 
-/** 渡された実験（回す学習 run と系列の組。持つのは使う側）ごとの状態と、操作盤から起こした仕事。 */
+/** 渡された実験（回す学習 run と系列の組。持つのは使う側）ごとの状態と、外の画面から起こした仕事。 */
 export function status(runs: string, experiments: Record<string, Experiment>): Status {
   const result: ExperimentStatus[] = [];
   for (const name of Object.keys(experiments)) result.push(experimentStatus(runs, name, experiments[name]));
@@ -314,7 +314,7 @@ function main(argv: string[]): void {
   const runs = dir ? resolve(dir) : RUNS;
   const job = option(argv, '--job');
   if (!job) return command(runs, argv);
-  // 操作盤から起こされた。落ちても終了コードを残し、操作盤が失敗として出せるようにする。
+  // 外の画面から起こされた。落ちても終了コードを残し、失敗として返せるようにする。
   let code = 0;
   try {
     command(runs, argv);

@@ -1,6 +1,6 @@
 # 設計
 
-研究コードの設計に手を入れる前に読む。用語、ファイルの責務、どちらへ倒すかの判断基準と、これから広げるときの前提を持つ。
+研究コードの設計に手を入れる前に読む。用語、run と設定の形式、どちらへ倒すかの判断基準を持つ。ファイルごとの責務は各ファイルの docstring と [neurosurrogate/FILES.md](neurosurrogate/FILES.md) にある。
 
 ## 用語
 
@@ -13,45 +13,14 @@
 **物理の状態 (physics)**:
 hybrid で群に入らなかった状態。元のモデルの微分の式 (`CellType.derivs`) で解く。
 
-## 構成
+**kernel**:
+サロゲートの 1 刻みは一つの汎用関数で、群ごとに潜在を decode して状態を名前で埋め、残りの状態は元の式で微分し、名前で組み直す。学習は群ごとに、圧縮器を先に当ててから右辺を同定する。群の右辺は自分の潜在と膜電位だけを使い、群の間で潜在を混ぜない。初期値は元のモデルの初期値と圧縮器の `gate_inits`、演算コストは群の圧縮器と右辺、膜電位の式、物理の状態のコストの和。群分けを足すのに書くのは設定だけ。
 
-### ファイル
-
-`neurosurrogate/` は元のモデルを解く `neurosurrogate/physics/` と、学習して置き換える `neurosurrogate/surrogate/` に分け、スパイクの特徴量を取る `spikes.py` と入口の `run.py` を直下に置く。physics は surrogate を import しない (`tests/test_conventions.py` の `_ALLOWED`)。ファイルは上から順に読める関数で書く。
-
-ファイルごとの持つものは各ファイルの先頭の docstring が正本で、依存の図と一緒に [neurosurrogate/FILES.md](neurosurrogate/FILES.md) に集めてある (生成物。`uv run python tests/test_design.py` で作り直し、同じテストが古くなっていないかを見る)。
-
-```
-evaluation/orchestrate/conf.json      回せるもの: 縮約の仕方、テスト専用の学習、評価の系列 (conf.ts が読んで確かめ、仕方に群分けを重ねて学習を組む)。回す組は使う側が持ち、status に渡す
-evaluation/orchestrate/spec.ts        spec.json の形
-evaluation/orchestrate/orchestrate.ts 段取り: 宣言 → spec.json → ハッシュ → 置き場が無ければ run.py を呼ぶ
-evaluation/read/                      元のモデルと比べる指標 (compare.ts) と、学習の書き出しの読み方 (model-json.ts)
-evaluation/traub/traub.ts             Traub の単一区画の TS シミュレータ
-runs/                                 実験の結果 (Git の外)
-```
-
-サロゲートの kernel は一つの汎用関数で、群ごとに潜在を decode して状態を名前で埋め、残りの状態は元の式で微分し、名前で組み直す。
-
-```mermaid
-flowchart LR
-  z["群ごとの潜在 z_k"] -- "decode" --> s["状態（名前 → 値）"]
-  x["群に入らない状態"] --> s
-  s -- "元の式 dv" --> dV["dV/dt"]
-  s -- "元の式 derivs" --> dx["群に入らない状態の微分"]
-  z -- "右辺（SINDy か UDE）" --> dz["dz_k/dt"]
-```
-
-学習は群ごとに、圧縮器を先に当ててから右辺を同定する。群の右辺は自分の潜在と膜電位だけを使い、群の間で潜在を混ぜない。初期値は元のモデルの初期値と圧縮器の `gate_inits`、演算コストは群の圧縮器と右辺、膜電位の式、物理の状態のコストの和。群分けを足すのに書くのは設定だけ。
+## 形式
 
 ### run の置き場
 
-保存の単位はモデルと入力の二つ。学習したモデルは `runs/models/<学習のハッシュ>/`、入力 (電流と掃引 =
-系列から置換範囲を除いたもの) ごとの結果は `runs/inputs/<入力のハッシュ>/` の下に、元のモデルなら
-`runs/inputs/<入力のハッシュ>/original/`、置き換えたモデルなら `<モデルの鍵>/` (学習 run のハッシュ + 置換範囲) で置く。1 run = spec.json 1 つで、
-置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。
-run は `runs/` の下のパス (id) で指す。図は Python で描かず、回すのは操作盤の冊 (51.01)、読むのは
-評価の冊 (51.03 が列を重ねた比較、51.02 が学習 run 1 本と中身) で、どちらも context-router の `projects/research-master/` が持ち、
-そこの `runs.ts` を通して、口が宣言から組んだ id で読む。Python が置くのは図に要るデータだけ:
+保存の単位は学習したモデル (`runs/models/<学習のハッシュ>/`) と入力 (`runs/inputs/<入力のハッシュ>/`) の二つで、入力の下に元のモデル (`<入力のハッシュ>/original/`) と置き換えたモデル (`<入力のハッシュ>/<モデルの鍵>/`、学習 run のハッシュ + 置換範囲) を置く。1 run = spec.json 1 つで、置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。図は Python で描かず、Python が置くのは図に要るデータだけ:
 
 ```
 runs/index.json                全 run の id + meta.json + spec (段取りが書く。図はここから一覧を作る)
@@ -83,7 +52,11 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
   古い形式の run は置き場が合わず回し直される
 - **記録した run を描画が書き換えない**: 図は読むだけ
 - JSON に nan は書かない (null)。JS の JSON が読めないため
-- **書きかけと印**: `<置き場>.partial/` は書きかけで、中の `pid` が書いているプロセス (生きていれば計算中、死んでいれば残骸として次に片付ける。同じ run を二つのプロセスが書かないよう、生きた書き手がいれば run.py は終了コード 4 で退き、段取りは終わるのを待つ)。`<置き場>.unreplaceable` は置換できないと分かったモデルの印 (置換できるかは Python だけが知るので答えを覚える)。`.jobs/<組のハッシュ>.{json,pid,log,exit}` は操作盤のボタンが起こした段取りの中身・pid・ログ・終了コード (同じ組の二重起動を pid で弾き、終了コードが 0 でないか書かずに消えたものを失敗として操作盤に出す)
+- **書きかけと印**: `<置き場>.partial/` は書きかけで、中の `pid` が書いているプロセス (生きていれば計算中、死んでいれば残骸として次に片付ける。同じ run を二つのプロセスが書かないよう、生きた書き手がいれば run.py は終了コード 4 で退き、段取りは終わるのを待つ)。`<置き場>.unreplaceable` は置換できないと分かったモデルの印 (置換できるかは Python だけが知るので答えを覚える)。`.jobs/<組のハッシュ>.{json,pid,log,exit}` は外の画面が `--job` で起こした段取りの中身・pid・ログ・終了コード (同じ組の二重起動を pid で弾き、終了コードが 0 でないか書かずに消えたものを失敗として返す)
+
+### レートの式
+
+ゲートのレート α, β は `neurosurrogate/physics/<モデル>.json` に 1 本 1 行で書き、Python (`cells.py`) と TS (`evaluation/traub/traub.ts`、Traub だけ) が同じ行から同じ式を組む。ほとんどは `rate(u) = A f(z)`、`z = (θ - u) / s` の形で、`f` は `exp` (e^z)、`sigmoid` (1 / (1 + e^z))、`linexp` (z / (e^z - 1)) のどれか。`u` は原著の基準電位からの電位 (Traub は V + 60、HH は静止電位から)。JSON には `f` の名前と `A`・`theta`・`s` だけを書く (例: Traub の m の開くレートは `"alpha": { "form": "linexp", "A": 1.28, "theta": 13.1, "s": 4.0 }`)。レートの演算コストもこの形から導く。c・r (電位で場合分けし、β を α との差で置く) と Ca で動く q はこの形に収まらない。
 
 ### 設定ファイル
 
@@ -93,8 +66,8 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
   `gates` は状態の名前 (Traub は M N C A H B S R Q XI、HH は M H N)。`compressor: kam` は学習しない KAM 縮約で、右辺も `kam`、`d` は 1。UDE は AE を一緒に学習するので、圧縮器は AE に限る。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
   既定値は fit 関数の署名だけが持ち、綴り違いは TypeError になる。
 - どの学習でも同じ値 (学習用の電流・刻み・全区画で学習) は `conf.ts` が埋める。宣言を選んだ理由は各宣言の `description` に書き、spec には入れない。`tests` の `_test_*` はテスト専用の学習で、仕方に差分を重ねて書き、どの実験にも入れない。
-- 使わなくなった仕方と系列は消す。run は消さず、操作盤の一覧に「実験に無い」と出る。
-- 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、図 (research-master の冊) が持つ。
+- 使わなくなった仕方と系列は消す。run は消さず、`list` の一覧に残る。
+- 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、読む側 (repo の外の図) が持つ。
 
 ## 判断基準
 
@@ -106,20 +79,6 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
   今あるのは、physics が surrogate を import しないことと、記録・設定・描画の道具を import しないこと (`tests/test_conventions.py`)、恒等の圧縮と真の右辺を入れたサロゲートがどの群分けでも元のモデルと同じ膜電位になること (`tests/test_surrogate.py`)、どのファイルにも docstring があり、`neurosurrogate/FILES.md` が docstring と import から作り直したものと一致すること (`tests/test_design.py`)。
 - **数値を変えないリファクタは、新旧の出力を突き合わせる。** 同じ spec を変更前と変更後のコードで回し、run の中身 (学習の書き出し、指標、変数ごとの波形) が一致することを確かめる。
 - **後方互換は取らない。** 保存形式を変えたら `run.py` の `_FORMAT` と `spec.ts` の `FORMAT` を上げ、古い run は学習し直す。互換の shim は入れない。
-- **実行経路を二重に持たない。** 重い計算は `run.py`、段取りは `orchestrate.ts`、描画は図 (research-master の冊) だけ。
+- **実行経路を二重に持たない。** 重い計算は `run.py`、段取りは `orchestrate.ts`、描画は repo の外の図だけ。
 - **数値の振る舞いが変わる変更は、手を止めて報告する。**
 - **git は明示指示があるときだけ。**
-
-## KAM 縮約を単一区画の外へ広げるときの前提
-
-Kepler-Abbott-Marder 縮約を Traub の単一区画から Multi-Compartment と solver へ広げるときに守ること。
-
-### Multi-Compartment
-
-- 縮約後も膜電位を残す（φ 群の重み α₀=1）。区画間の結合式をそのまま使える。
-- 群分けは区画ごとに確かめ直す。g_Na=g_DR=0 の区画では h,n が電流に効かないので群から除く。
-- 伝播が保たれるかは元の系との比較で見る。
-
-### solver との組み合わせ
-
-- m を膜電位へ吸収する縮約と Rush–Larsen は、どちらも m の刻みの制約を外す。組み合わせても刻みの得は掛け算にならない。

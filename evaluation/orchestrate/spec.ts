@@ -1,4 +1,4 @@
-// run の spec.json の形と、段取り・操作盤の口・図が受け渡す型。何を回すかの宣言は conf.ts。
+// run の spec.json の形と、段取りと外の画面・図が受け渡す型。何を回すかの宣言は conf.ts。
 // node や bun に依存しない（ブラウザで動く runs.ts も import する）。
 
 /** 1 回のシミュレーションの仕様（Python の SimSpec）。 */
@@ -76,9 +76,9 @@ export type IndexEntry = { id: string; kind: 'train' | 'original' | 'replaced'; 
 
 /** run 1 本、または組がいまどこまで回っているか。unreplaceable は置換できないと分かった組。 */
 export type State = 'done' | 'running' | 'todo' | 'unreplaceable';
-/** 操作盤のボタンが起こす仕事。model は学習 run の名前。 */
+/** 外の画面が起こす仕事。model は学習 run の名前。 */
 export type Job = { action: 'train'; model: string } | { action: 'eval'; series: string; model: string };
-/** 操作盤から起こした仕事 1 つ。failed は終了コードが 0 でないか、終わりを書かずに消えたもの。log はログの末尾の行。 */
+/** 外の画面から起こした仕事 1 つ。failed は終了コードが 0 でないか、終わりを書かずに消えたもの。log はログの末尾の行。 */
 export type JobState = { job: Job; started: string; state: 'running' | 'done' | 'failed'; log: string[] };
 
 /** 宣言した run 1 本の名前・場所・状態。id は runs/ の下のパスで、図はここを読む。 */
@@ -90,5 +90,5 @@ export type ExperimentStatus = {
   series: { series: string; original: RunStatus }[];
   pairs: { series: string; model: string; state: State; run: RunStatus }[];
 };
-/** 実験ごとの状態と、起こした仕事。操作盤の口（api.ts）が返す。 */
+/** 実験ごとの状態と、起こした仕事。外の画面が status で受け取る。 */
 export type Status = { experiments: ExperimentStatus[]; jobs: JobState[] };

@@ -9,16 +9,16 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（`neurosurrogate/physics/` 元のモデルを解く、`neurosurrogate/surrogate/` 学習して置き換える、直下にスパイクの特徴量 `spikes.py` と入口 `run.py`） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
-| 何を回すかの宣言（`conf.json`。縮約の仕方・テスト専用の学習・系列。`conf.ts` が読み、学習 run を `<仕方>_<群分け>` の名前から組む）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。本人は操作盤の冊のボタン、エージェントは CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
+| 何を回すかの宣言（`conf.json`。縮約の仕方・テスト専用の学習・系列。`conf.ts` が読み、学習 run を `<仕方>_<群分け>` の名前から組む）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。外の画面は export した関数、手元では CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | `runs/`（Git の外） |
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
-| 用語、設計の判断基準、広げるときの前提 | `DESIGN.md` |
+| 用語、run と設定の形式、設計の判断基準 | `DESIGN.md` |
 | ファイルごとの持つものと依存の図（生成物。正本は各ファイルの先頭の docstring。`uv run python tests/test_design.py` で作り直す） | `neurosurrogate/FILES.md` |
 
 ## 持たないもの
 
-- 汎用の方法の説明や教材（HH、縮約法そのもの、統計など）。context-router の jdex が持つ。
-- 結果を読む冊（.svelte）と画面の口。context-router の `projects/research-master/` が持つ。
+- 汎用の方法の説明や教材（HH、縮約法そのもの、統計など）
+- 結果を読む図と画面
 - ポスター、スライド、論文の原稿
 - 修論の計画、期日、週次の進捗、受けた指摘
 - 本人の事実と、進路の判断基準
@@ -28,9 +28,9 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ## TS
 
-- この repo は冊（.svelte）を持たず、context-router の部品にも依存しない。単独で動く研究コードだけを置く。結果を読む冊（評価の 53、操作盤、計測の 59.02 など）は context-router の `projects/research-master/` が持ち、この repo の TS を import して描く。
+- この repo は図や画面を持たず、外の部品に依存しない。単独で動く研究コードだけを置く。結果を読む図は repo の外に置き、この repo の TS を import して描く。
 - `evaluation/` には TS だけを、役割ごとのディレクトリ（`evaluation/orchestrate/` 何を回すかと段取り、`evaluation/read/` 比べる指標と学習の書き出しの読み方、`evaluation/traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。`evaluation/traub/traub.ts` はレートの式を Python と共有する `neurosurrogate/physics/traub.json` から読む。
-- TS のテスト・ESLint・型は、今は context-router で `bun run --cwd areas/infra/ontology verify`。
+- TS のテストは `bun test evaluation`。
 
 ## Coding Standards
 
@@ -42,14 +42,14 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ```bash
 uv sync                        # 依存導入
-# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (jdex の 51.01) から回すので、本人に CLI を案内しない
+# 学習と評価
 bun evaluation/orchestrate/orchestrate.ts train <学習 run>...             # 学習。学習 run は <仕方>_<群分け> (kam_hn、pca_hn_ac) か tests の名前
 bun evaluation/orchestrate/orchestrate.ts eval <系列> <学習 run かハッシュ>...  # 評価。入力を元のモデルと置き換えたモデルで回す。未学習なら学習もする
 bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで仕方・テスト・系列の一覧、index で index.json を書き直す
 uv run pytest -q               # 規約、区画の式、サロゲート、neurosurrogate/run.py
 ```
 
-ruff の整形と lint は編集のたび、mypy はターンの終わりに、context-router の hook が走らせる。行数・複雑度・保守性指数は context-router の冊 59.02（`projects/research-master/frontend/meta/code-metrics.svelte`）で見る。
+整形と lint は `uv run ruff format` と `uv run ruff check`、型は `uv run mypy`。
 
 ## Architecture
 
