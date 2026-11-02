@@ -1,6 +1,6 @@
 """区画の式。状態の名前ごとに微分の式を持ち、kernel・初期値・演算コストはそこから組む。
 
-レートの式は隣の hh.json と traub.json が持つ (TS の evaluation/traub/traub.ts も読む)。
+レートの式と単一区画のパラメータは隣の hh.json と traub.json が持つ (TS の evaluation/traub/traub.ts も読む)。
 Traub の per-comp 定数は traub.c と代数的に等価。
 区画は HH・Traub・passive と、Traub19 の区画の定数とネット (NETS)。kernel は
 physical_cell が組む。
@@ -329,22 +329,29 @@ _dq = _gate_ode(_alpha_q, _beta_q)  # Ca 濃度 XI で駆動される AHP ゲー
 _inf_q = _inf(_alpha_q, _beta_q)
 
 
+_TRAUB_E = _TRAUB["reversal"]
+_TRAUB_G = _TRAUB["conductance"]
+
+
 class TraubParams(NamedTuple):
-    Cm: float = 3.0
-    Beta: float = 0.075
-    V_LEAK: float = -60.0
-    V_Na: float = 115.0 - 60.0
-    V_Ca: float = 140.0 - 60.0
-    V_K: float = -15.0 - 60.0
-    # soma-like defaults (traub.c index 8 相当)
-    g_leak: float = 0.1
-    g_Na: float = 30.0
-    g_Ca: float = 4.0
-    g_K_DR: float = 15.0
-    g_K_A: float = 5.0
-    g_K_AHP: float = 0.8
-    g_K_C: float = 10.0
-    phi_area: float = 17402.0 * 3.320e-5  # phi * area
+    """既定値は単一区画 (soma) のもので、traub.json が持つ。
+
+    traub19 は区画ごとの密度と寸法だけを上書きする。"""
+
+    Cm: float = _TRAUB["capacitance"]
+    Beta: float = _TRAUB["calcium_decay"]
+    V_LEAK: float = TRAUB_V_LEAK
+    V_Na: float = _TRAUB_E["Na"]
+    V_Ca: float = _TRAUB_E["Ca"]
+    V_K: float = _TRAUB_E["K"]
+    g_leak: float = _TRAUB_G["L"]
+    g_Na: float = _TRAUB_G["Na"]
+    g_Ca: float = _TRAUB_G["Ca"]
+    g_K_DR: float = _TRAUB_G["DR"]
+    g_K_A: float = _TRAUB_G["A"]
+    g_K_AHP: float = _TRAUB_G["AHP"]
+    g_K_C: float = _TRAUB_G["C"]
+    phi_area: float = _TRAUB["phi"] * _TRAUB["soma_area"]  # phi * area
     # 表面積 [cm^2]。軸索 coupling (絶対量 [μA]) を密度にする除数。1.0 は単一区画用。
     area: float = 1.0
 
@@ -527,17 +534,28 @@ def _g_axial(i: int, rad: list[float], length: list[float]) -> float:
 
 def _swap_dendrites(values: list[float]) -> list[float]:
     """basal (0..7) と apical (9..18) の寸法を入れ替える。原著 p.637 の割り当て。"""
-    return [values[-1]] * TRAUB19_SOMA + [values[TRAUB19_SOMA]] + [values[0]] * (18 - TRAUB19_SOMA)
+    return (
+        [values[-1]] * TRAUB19_SOMA
+        + [values[TRAUB19_SOMA]]
+        + [values[0]] * (18 - TRAUB19_SOMA)
+    )
 
 
 def _traub19(paper: bool = False) -> Net:
     """paper は寸法を原著どおりにした版。既定は traub.c から引き継いだ逆の割り当て。"""
-    rad, length, area = (_swap_dendrites(x) for x in (_RAD, _LEN, _AREA)) if paper else (_RAD, _LEN, _AREA)
+    rad, length, area = (
+        (_swap_dendrites(x) for x in (_RAD, _LEN, _AREA))
+        if paper
+        else (_RAD, _LEN, _AREA)
+    )
     nodes = []
     for i in range(19):
         params = traub19_params(i)._replace(phi_area=_PHI[i] * area[i], area=area[i])
         nodes.append(Compartment(traub19_name(i), TRAUB, params))
-    edges = [Edge(traub19_name(i), traub19_name(i + 1), _g_axial(i, rad, length)) for i in range(18)]
+    edges = [
+        Edge(traub19_name(i), traub19_name(i + 1), _g_axial(i, rad, length))
+        for i in range(18)
+    ]
     return Net(nodes, edges)
 
 

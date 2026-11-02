@@ -30,7 +30,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 ## TS
 
 - この repo は図や画面を持たず、外の部品に依存しない。単独で動く研究コードだけを置く。結果を読む図は repo の外に置き、この repo の TS を import して描く。
-- `evaluation/` には TS だけを、役割ごとのディレクトリ（`evaluation/orchestrate/` 何を回すかと段取り、`evaluation/read/` 比べる指標と学習の書き出しの読み方、`evaluation/traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。`evaluation/traub/traub.ts` はレートの式を Python と共有する `neurosurrogate/physics/traub.json` から読む。
+- `evaluation/` には TS だけを、役割ごとのディレクトリ（`evaluation/orchestrate/` 何を回すかと段取り、`evaluation/read/` 比べる指標と学習の書き出しの読み方、`evaluation/traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。`evaluation/traub/traub.ts` はレートの式と単一区画のパラメータを Python と共有する `neurosurrogate/physics/traub.json` から読む。
 - TS のテストは `bun test evaluation`。
 
 ## Coding Standards

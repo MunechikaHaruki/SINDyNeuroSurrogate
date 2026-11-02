@@ -1,6 +1,6 @@
 // Traub 単一区画の 11 状態系と、Kepler–Abbott–Marder 法で任意の群分けにまとめた縮約系。DOM に触らない。
 // 節は原著の順：Traub の元の系 → §2 等価電位 → §3 重みと整合性条件 → §6 縮約後の運動方程式 → 積分と比較。
-// Traub の密度パラメータ: SINDyNeuroSurrogate 290ee405b8d0。三つの形に収まるレートは Python と共有する traub.json から読む。
+// 単一区画のパラメータと、三つの形に収まるレートは Python と共有する traub.json から読む。
 //
 // 読み手は本人なので、式と 1 対 1 に読めることを速さや短さより優先する。
 // 状態は名前で読み書きし（Gates、Full、Reduced）、番号の並びは状態ベクトルとの出入口にだけ置く。
@@ -29,12 +29,12 @@ export type Sample = { time: number; state: number[] };
 export const duration = 500;
 const warmup = 200;
 const sampleStep = 0.1;
-const capacitance = 3;
-const kappa = 17402 * 3.32e-5;
+const capacitance = spec.capacitance;
+const kappa = spec.phi * spec.soma_area;
 /** 最大コンダクタンス（mS/cm²）。 */
-const g = { L: 0.1, Na: 30, Ca: 4, DR: 15, A: 5, AHP: 0.8, C: 10 };
-/** 逆転電位（mV）。 */
-const E = { L: -60, Na: 55, Ca: 80, K: -75 };
+const g = spec.conductance;
+/** 逆転電位（mV）。リークは静止電位。 */
+const E = { L: spec.v_rest, Na: spec.reversal.Na, Ca: spec.reversal.Ca, K: spec.reversal.K };
 
 // ---- 状態ベクトルとの出入口 ----
 // odex は number[] しか扱えないので、番号と名前の対応はこの四つの関数だけが持つ。

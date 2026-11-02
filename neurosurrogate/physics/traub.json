@@ -1,5 +1,11 @@
 {
   "v_rest": -60.0,
+  "capacitance": 3.0,
+  "calcium_decay": 0.075,
+  "reversal": { "Na": 55.0, "Ca": 80.0, "K": -75.0 },
+  "conductance": { "L": 0.1, "Na": 30.0, "Ca": 4.0, "DR": 15.0, "A": 5.0, "AHP": 0.8, "C": 10.0 },
+  "phi": 17402.0,
+  "soma_area": 3.32e-5,
   "rates": {
     "m": {
       "alpha": { "form": "linexp", "A": 1.28, "theta": 13.1, "s": 4.0 },

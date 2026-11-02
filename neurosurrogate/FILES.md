@@ -41,7 +41,7 @@ flowchart RL
 区画の式。状態の名前ごとに微分の式を持ち、kernel・初期値・演算コストはそこから組む。
 
 ```text
-レートの式は隣の hh.json と traub.json が持つ (TS の evaluation/traub/traub.ts も読む)。
+レートの式と単一区画のパラメータは隣の hh.json と traub.json が持つ (TS の evaluation/traub/traub.ts も読む)。
 Traub の per-comp 定数は traub.c と代数的に等価。
 区画は HH・Traub・passive と、Traub19 の区画の定数とネット (NETS)。kernel は
 physical_cell が組む。
