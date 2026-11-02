@@ -14,7 +14,6 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
 | 用語、設計の判断基準、広げるときの前提 | `DESIGN.md` |
 | ファイルごとの持つものと依存の図（生成物。正本は各ファイルの先頭の docstring。`uv run python tests/test_design.py` で作り直す） | `neurosurrogate/FILES.md` |
-| 研究コードの手入れのやること（数値も主張も変えないものと、原著とずれている箇所。jdex の 53.05） | `todo.md` |
 
 ## 持たないもの
 
@@ -43,7 +42,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 ```bash
 uv sync                        # 依存導入
-# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (jdex の 53.01) から回すので、本人に CLI を案内しない
+# 学習と評価の CLI はエージェント用。本人は操作盤の冊 (jdex の 51.01) から回すので、本人に CLI を案内しない
 bun evaluation/orchestrate/orchestrate.ts train <学習 run>...             # 学習。学習 run は <仕方>_<群分け> (kam_hn、pca_hn_ac) か tests の名前
 bun evaluation/orchestrate/orchestrate.ts eval <系列> <学習 run かハッシュ>...  # 評価。入力を元のモデルと置き換えたモデルで回す。未学習なら学習もする
 bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで仕方・テスト・系列の一覧、index で index.json を書き直す
