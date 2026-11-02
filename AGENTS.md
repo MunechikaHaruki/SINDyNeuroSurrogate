@@ -9,7 +9,8 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（`neurosurrogate/physics/` 元のモデルを解く、`neurosurrogate/surrogate/` 学習して置き換える、直下にスパイクの特徴量 `spikes.py` と入口 `run.py`） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
-| 何を回すかの宣言（`conf.json`。縮約の仕方・テスト専用の学習・系列。`conf.ts` が読み、学習 run を `<仕方>_<群分け>` の名前から組む）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。外の画面は export した関数、手元では CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
+| 何を回すかの宣言（縮約の仕方・テスト専用の学習・系列。`evaluation/orchestrate/conf.ts` が読み、学習 run を `<仕方>_<群分け>` の名前から組む） | `conf.json` |
+| 宣言の読み込み（`conf.ts`）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。外の画面は export した関数、手元では CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | `runs/`（Git の外） |
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
 | 用語、run と設定の形式、設計の判断基準 | `DESIGN.md` |

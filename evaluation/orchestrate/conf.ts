@@ -1,8 +1,8 @@
-// 回せるものの宣言を読む。宣言そのものは隣の conf.json（縮約の仕方 methods、テスト専用の学習 tests、評価の系列 series）が持つ。
+// 回せるものの宣言を読む。宣言そのものは repo の根の conf.json（縮約の仕方 methods、テスト専用の学習 tests、評価の系列 series）が持つ。
 // 学習 run は 縮約の仕方 × 群分け で決まり、名前は `<仕方>_<群分け>`（`kam_hn`、`pca_hn_ac`）。群分けは群をゲートの小文字の名前でつなぎ、群どうしを _ で区切る。
 // ここは読んで形を確かめ、仕方に群分けを重ねて学習の設定を組むだけ。段取り（orchestrate.ts）がここから spec.json を組む。形は spec.ts。
 // conf.json の description はその宣言の理由で、spec には入れない。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
-import declaration from './conf.json' with { type: 'json' };
+import declaration from '../../conf.json' with { type: 'json' };
 import type { Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from './spec.ts';
 
 /** 仕方が書く値。既定値は Python の署名が持つので、書くのは仕方が決める値だけ。 */
