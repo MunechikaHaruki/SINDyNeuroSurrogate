@@ -10,3 +10,7 @@ graphify-out/
 **/.DS_Store
 # 実験の結果 (evaluation/orchestrate/orchestrate.ts が runs/<ハッシュ>/ に置く)
 runs/
+# remote.sh が送ったコードの版
+.code-version
+# evaluation/ の TS の依存 (package.json と bun.lock が固定する)
+node_modules/

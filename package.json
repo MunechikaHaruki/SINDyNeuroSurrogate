@@ -1,0 +1,8 @@
+{
+  "name": "sindy-neuro-surrogate-evaluation",
+  "private": true,
+  "description": "evaluation/ の TS が使う依存（Traub の TS シミュレータの ODE ソルバー）",
+  "dependencies": {
+    "odex": "3.0.0-rc.4"
+  }
+}
