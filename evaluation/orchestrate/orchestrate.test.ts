@@ -9,9 +9,10 @@ test('the key does not depend on the order the spec was written in', () => {
   expect(canonical({ b: 1, a: { d: [1, { f: 2, e: 3 }], c: null } })).toBe(
     '{"a":{"c":null,"d":[1,{"e":3,"f":2}]},"b":1}',
   );
-  const config = trainOf('_test_hh_sindy').config;
+  const train = trainOf('_test_hh_sindy');
+  const { config } = train;
   const reordered = { train_comp: config.train_comp, groups: config.groups, data: config.data, form: config.form, cell: config.cell };
-  expect(hashOf(trainSpec(reordered))).toBe(hashOf(trainSpec(config)));
+  expect(hashOf(trainSpec({ name: train.name, config: reordered }))).toBe(hashOf(trainSpec(train)));
 });
 
 test('series that differ only in what they replace share the input directory but not the model', () => {
@@ -24,7 +25,7 @@ test('series that differ only in what they replace share the input directory but
   for (const dir of [dirOf(simSpec(soma, 't')), dirOf(simSpec(all, 't')), dirOf(simSpec(soma, 'u'))]) expect(dir.startsWith(input)).toBe(true);
   expect(dirOf(simSpec(soma, 't'))).not.toBe(dirOf(simSpec(all, 't')));
   expect(dirOf(simSpec(soma, 't'))).not.toBe(dirOf(simSpec(soma, 'u')));
-  expect(dirOf(trainSpec(trainOf('_test_hh_sindy').config))).toMatch(/^models\/[0-9a-f]{12}$/);
+  expect(dirOf(trainSpec(trainOf('_test_hh_sindy')))).toMatch(/^models\/[0-9a-f]{12}$/);
 });
 
 test('a model is a method laid over a grouping', () => {
@@ -32,7 +33,8 @@ test('a model is a method laid over a grouping', () => {
   const kam = trainOf('kam_hn_ac').config;
   expect(kam.groups.map(g => [g.gates, g.compressor, g.rhs, g.d])).toEqual([[['H', 'N'], 'kam', 'kam', 1], [['A', 'C'], 'kam', 'kam', 1]]);
   expect(trainOf('pca_hn').config.groups[0].rhs_params.library_specs?.length).toBeGreaterThan(0);
-  expect(hashOf(trainSpec(trainOf('pca_hn').config))).not.toBe(hashOf(trainSpec(trainOf('ae_hn').config)));
+  expect(hashOf(trainSpec(trainOf('pca_hn')))).not.toBe(hashOf(trainSpec(trainOf('ae_hn'))));
+  expect([trainSpec(trainOf('ae_hn')).device, trainSpec(trainOf('_test_hh_ae')).device]).toEqual(['gpu', 'cpu']);
   expect(() => trainOf('xyz_hn')).toThrow();
   expect(() => groupsOf('hn_a')).toThrow();
 });

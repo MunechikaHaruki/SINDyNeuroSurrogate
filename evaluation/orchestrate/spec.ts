@@ -59,7 +59,10 @@ export type Train = { name: string; config: SurrogateConfig };
 export type Experiment = { pairs: { model: string; series: string }[] };
 
 /** spec の形式の版。neurosurrogate/run.py の _FORMAT と揃える。spec に入るので、変えると鍵が変わり古い run は回し直される。 */
-export const FORMAT = 6;
+export const FORMAT = 7;
+
+/** 回す backend。同じ spec でも計算の順序が変わって結果がずれるので、spec に入れて run を分ける。 */
+export type Device = 'cpu' | 'gpu';
 
 /** 入力：電流と掃引。系列から置換範囲を除いたもので、同じ入力の結果は一つのディレクトリにまとまる。 */
 export type Input = Omit<Series, 'replace_targets'>;
@@ -68,11 +71,14 @@ export type Model = { train: string; replace_targets: string[] };
 
 /** run.py に渡す spec.json。学習は runs/models/ に、入力 × モデルは runs/inputs/<入力>/ に置く。model が null なら元のモデル。 */
 export type Spec =
-  | { format: number; kind: 'train'; surrogate: SurrogateConfig }
-  | { format: number; kind: 'sim'; input: Input; model: Model | null };
+  | { format: number; device: Device; kind: 'train'; surrogate: SurrogateConfig }
+  | { format: number; device: Device; kind: 'sim'; input: Input; model: Model | null };
+
+/** 回した環境（run.py が meta.json に書く。同一性に入らない）。code と image は段取りが渡した版。 */
+export type RunEnv = { backend: string; device: string; jax: string; python: string; host: string; code: string | null; image: string | null };
 
 /** run の一覧の 1 行（runs/index.json）。id は runs/ の下のパス、kind は run.py が meta.json に書く種類。 */
-export type IndexEntry = { id: string; kind: 'train' | 'original' | 'replaced'; name: string; created: string; unit?: string; spec: Spec };
+export type IndexEntry = { id: string; kind: 'train' | 'original' | 'replaced'; name: string; created: string; unit?: string; env: RunEnv; spec: Spec };
 
 /** run 1 本、または組がいまどこまで回っているか。unreplaceable は置換できないと分かった組。 */
 export type State = 'done' | 'running' | 'todo' | 'unreplaceable';

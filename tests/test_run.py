@@ -33,7 +33,7 @@ def _series() -> dict:
 def _put(tmp: Path, place: str, spec: dict) -> Path:
     """spec を回して runs/<place>/ を埋める。"""
     path = tmp / f"{place.replace('/', '_')}.json"
-    path.write_text(json.dumps({"format": run._FORMAT, **spec}))
+    path.write_text(json.dumps({"format": run._FORMAT, "device": "cpu", **spec}))
     run._run(path, tmp / "runs" / place, place)
     return tmp / "runs" / place
 

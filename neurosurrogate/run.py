@@ -15,10 +15,15 @@ spec の種類は 2 つ (`kind`):
           置き換えたモデルは段取りが組んだ鍵の名前。`train` は
           `runs/models/` の学習 run を指す
 
+どちらも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
+入れ、JAX の backend が合わなければ回さない (backend は呼ぶ側が JAX_PLATFORMS で選ぶ)。
+gpu でも GPU を使うのは AE の学習だけで、シミュレーションは CPU で回す。
+
 書くもの (図が読む形。`.f64` は little-endian の float64 を並べただけ、
 JSON の nan は null):
 
-    spec.json  meta.json (kind = train / original / replaced, name, created, 掃引の単位)
+    spec.json  meta.json (kind = train / original / replaced, name, created, 掃引の単位,
+               env = 回した環境: backend、device、jax と python の版、host、コードとイメージの版)
     train      surrogate/ (config.json + parts.joblib)、summary.json (学習側の指標)、
                description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
                description/fit/<comp_id>/{x,latent,recon_rmse}.f64
@@ -43,13 +48,16 @@ import json
 import logging
 import math
 import os
+import platform
 import shutil
 import sys
+import time
 from collections.abc import Hashable, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import jax
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -72,9 +80,10 @@ from .surrogate.model import (
     summary,
 )
 
-_FORMAT = 6  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
+_FORMAT = 7  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
+_CLAIM_GRACE = 60.0  # [s] 書きかけを作ってから pid を置くまでの猶予 (これより古く pid の無いものは残骸)
 _DIVERGE_V = 1e3  # |V| [mV] の発散の閾値 (生理的な範囲は ±200 程度)
 _logger = logging.getLogger(__name__)
 
@@ -290,6 +299,49 @@ def _writer_alive(partial: Path) -> bool:
     return True
 
 
+def _claim(partial: Path, name: str) -> None:
+    """書きかけの置き場を作って pid を置く。生きた書き手か、作られたばかりで pid をまだ置いていない書き手が
+    いれば退く (同じ元のモデルを二つの評価が同時に回すとき、相手の書きかけを消さない)。残骸だけを片付けて取り直す。"""
+    for _ in range(2):
+        try:
+            partial.mkdir(parents=True)
+        except FileExistsError:
+            try:
+                fresh = not (partial / "pid").exists() and time.time() - partial.stat().st_mtime < _CLAIM_GRACE
+            except FileNotFoundError:  # 相手が書き終えて名前を変えた
+                continue
+            if _writer_alive(partial) or fresh:
+                print(f"{name} は別のプロセスが書いている")
+                sys.exit(_RUNNING)
+            shutil.rmtree(partial, ignore_errors=True)
+            continue
+        (partial / "pid").write_text(str(os.getpid()))
+        return
+    sys.exit(_RUNNING)
+
+
+def _check_device(spec: dict) -> None:
+    """spec の device (cpu か gpu) と、この JAX の backend が合うか。選ぶのは呼ぶ側 (JAX_PLATFORMS)。
+    gpu の学習でも、1 細胞を順に進めるシミュレーションは CPU が速いので既定を CPU にし、GPU は AE の学習だけが使う。"""
+    if jax.default_backend() != spec["device"]:
+        raise ValueError(f"spec は {spec['device']} で回す run だが、JAX の backend は {jax.default_backend()}")
+    if spec["device"] == "gpu":
+        jax.config.update("jax_default_device", jax.devices("cpu")[0])
+
+
+def _env() -> dict:
+    """回した環境 (同一性に入らない)。コードとイメージの版は段取りが環境変数で渡す。"""
+    return {
+        "backend": jax.default_backend(),
+        "device": jax.devices()[0].device_kind,
+        "jax": jax.__version__,
+        "python": platform.python_version(),
+        "host": os.environ.get("SINDY_HOST", platform.node()),
+        "code": os.environ.get("SINDY_CODE"),
+        "image": os.environ.get("SINDY_IMAGE"),
+    }
+
+
 def _run(spec_path: Path, root: Path, name: str) -> None:
     """spec を回して `root` を埋める。`root` があれば回さない。"""
     if root.exists():
@@ -298,16 +350,9 @@ def _run(spec_path: Path, root: Path, name: str) -> None:
     spec = json.loads(spec_path.read_text())
     if spec.get("format") != _FORMAT:
         raise ValueError(f"spec の形式 {spec.get('format')} は {_FORMAT} でない")
+    _check_device(spec)
     partial = root.with_name(f"{root.name}.partial")
-    if _writer_alive(partial):
-        print(f"{root.name} は別のプロセスが書いている")
-        sys.exit(_RUNNING)
-    shutil.rmtree(partial, ignore_errors=True)
-    try:
-        partial.mkdir(parents=True)
-    except FileExistsError:
-        sys.exit(_RUNNING)
-    (partial / "pid").write_text(str(os.getpid()))
+    _claim(partial, root.name)
     try:
         (partial / "spec.json").write_text(spec_path.read_text())
         extra = _KINDS[spec["kind"]](partial, spec)
@@ -315,6 +360,7 @@ def _run(spec_path: Path, root: Path, name: str) -> None:
             "kind": _kind(spec),
             "name": name,
             "created": datetime.now().isoformat(timespec="seconds"),
+            "env": _env(),
             **extra,
         }
         _write_json(partial / "meta.json", meta)

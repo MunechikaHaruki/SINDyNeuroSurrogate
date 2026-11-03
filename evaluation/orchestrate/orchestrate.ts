@@ -23,11 +23,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { METHODS, SERIES, TEST_NAMES, trainOf } from './conf.ts';
-import { FORMAT, type Experiment, type ExperimentStatus, type IndexEntry, type Input, type Job, type JobState, type RunStatus, type Series, type Spec, type State, type Status, type SurrogateConfig } from './spec.ts';
+import { FORMAT, type Device, type Experiment, type ExperimentStatus, type IndexEntry, type Input, type Job, type JobState, type RunStatus, type Series, type Spec, type State, type Status, type Train } from './spec.ts';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
-/** 既定の run の置き場 */
-export const RUNS = join(REPO, 'runs');
+/** 既定の run の置き場。計算する機械のイメージは SINDY_RUNS で載せた場所を指す。 */
+export const RUNS = process.env.SINDY_RUNS ?? join(REPO, 'runs');
 /** run.py が「置換できない」で返す終了コード */
 const NOT_REPLACEABLE = 3;
 /** run.py が「同じ run を別のプロセスが回している」で返す終了コード */
@@ -52,8 +52,13 @@ export function hashOf(spec: Spec): string {
   return digest(spec);
 }
 
-export function trainSpec(config: SurrogateConfig): Spec {
-  return { format: FORMAT, kind: 'train', surrogate: config };
+/** 学習は GPU（AE の学習が速い）、テストの学習は GPU の無い機械でも回るよう CPU。 */
+function trainDevice(train: Train): Device {
+  return train.name.startsWith('_test_') ? 'cpu' : 'gpu';
+}
+
+export function trainSpec(train: Train): Spec {
+  return { format: FORMAT, device: trainDevice(train), kind: 'train', surrogate: train.config };
 }
 
 /** 系列の入力（電流と掃引）。置換範囲はモデルの側に入る。 */
@@ -62,16 +67,16 @@ export function inputOf(series: Series): Input {
   return input;
 }
 
-/** 系列を学習 run（ハッシュ）で置き換えて回す spec。train が null なら元のモデル。 */
+/** 系列を学習 run（ハッシュ）で置き換えて回す spec。train が null なら元のモデル。1 細胞を順に進めるので CPU（GPU は 1 刻みの命令の往復で遅い）。 */
 export function simSpec(series: Series, train: string | null): Spec {
   const model = train === null ? null : { train, replace_targets: series.replace_targets };
-  return { format: FORMAT, kind: 'sim', input: inputOf(series), model };
+  return { format: FORMAT, device: 'cpu', kind: 'sim', input: inputOf(series), model };
 }
 
 /** spec の置き場（runs/ の下のパス）。置換範囲だけが違う系列は同じ入力のディレクトリに並ぶ。 */
 export function dirOf(spec: Spec): string {
   if (spec.kind === 'train') return `models/${hashOf(spec)}`;
-  const input = digest({ format: spec.format, input: spec.input });
+  const input = digest({ format: spec.format, device: spec.device, input: spec.input });
   return `inputs/${input}/${spec.model === null ? 'original' : digest(spec.model)}`;
 }
 
@@ -101,6 +106,20 @@ export function writeIndex(runs: string): void {
   if (existsSync(runs)) writeFileSync(join(runs, 'index.json'), JSON.stringify(scan(runs)));
 }
 
+/** Python の計算の入口を起こすコマンド。計算する機械のイメージは venv の python を SINDY_PYTHON で渡す。 */
+const PYTHON = process.env.SINDY_PYTHON?.split(' ') ?? ['uv', 'run', 'python'];
+
+/** 回すコードの版。計算する機械へ送ったコード（.git が無い）は remote.sh が .code-version に書き、手元では git から組む。書きかけなら差分（未追跡のファイルは名前と中身）のハッシュを足す。 */
+function codeVersion(): string {
+  const sent = join(REPO, '.code-version');
+  if (!existsSync(join(REPO, '.git')) && existsSync(sent)) return readFileSync(sent, 'utf8').trim();
+  const git = (...args: string[]) => Bun.spawnSync(['git', ...args], { cwd: REPO }).stdout.toString();
+  const head = git('rev-parse', '--short=12', 'HEAD').trim();
+  let diff = git('diff', 'HEAD');
+  for (const file of git('ls-files', '-z', '--others', '--exclude-standard').split('\0').filter(Boolean)) diff += `${file}\n${readFileSync(join(REPO, file), 'utf8')}`;
+  return diff === '' ? head : `${head}+${createHash('sha1').update(diff).digest('hex').slice(0, 12)}`;
+}
+
 /** 置換できないと分かった組の印。置換できるかは Python だけが知るので、一度聞いた答えを置き場の隣に覚えておく。 */
 function unreplaceableMark(runs: string, id: string): string {
   return join(runs, `${id}.unreplaceable`);
@@ -122,8 +141,10 @@ function ensure(runs: string, spec: Spec, name: string): string | undefined {
   const file = join(mkdtempSync(join(tmpdir(), 'spec-')), 'spec.json');
   writeFileSync(file, JSON.stringify(spec, null, 2));
   console.log(`${id} ${name}: 回す`);
-  const { exitCode } = Bun.spawnSync(['uv', 'run', 'python', '-m', 'neurosurrogate.run', file, root, '--name', name], {
+  const env = { ...process.env, JAX_PLATFORMS: spec.device === 'gpu' ? 'cuda,cpu' : 'cpu', SINDY_CODE: codeVersion() };
+  const { exitCode } = Bun.spawnSync([...PYTHON, '-m', 'neurosurrogate.run', file, root, '--name', name], {
     cwd: REPO,
+    env,
     stdio: ['inherit', 'inherit', 'inherit'],
   });
   if (exitCode === NOT_REPLACEABLE) {
@@ -150,8 +171,8 @@ function seriesOf(name: string): Series {
 function trainRun(runs: string, selector: string): { hash: string; name: string } {
   if (!/^[0-9a-f]+$/.test(selector)) {
     const t = trainOf(selector);
-    ensure(runs, trainSpec(t.config), t.name);
-    return { hash: hashOf(trainSpec(t.config)), name: t.name };
+    ensure(runs, trainSpec(t), t.name);
+    return { hash: hashOf(trainSpec(t)), name: t.name };
   }
   const hits = scan(runs).filter(e => e.kind === 'train' && e.id.startsWith(`models/${selector}`));
   if (hits.length !== 1) throw new Error(`学習 run ${selector} が ${hits.length} 本に当たる`);
@@ -161,7 +182,7 @@ function trainRun(runs: string, selector: string): { hash: string; name: string 
 /** 学習 run を用意する。 */
 export function train(runs: string, model: string): void {
   const t = trainOf(model);
-  ensure(runs, trainSpec(t.config), t.name);
+  ensure(runs, trainSpec(t), t.name);
   writeIndex(runs);
 }
 
@@ -257,7 +278,7 @@ function experimentStatus(runs: string, name: string, experiment: Experiment): E
   for (const { model, series } of experiment.pairs) {
     let found = result.models.find(m => m.model === model);
     if (!found) {
-      const run = runStatus(runs, trainSpec(trainOf(model).config), model);
+      const run = runStatus(runs, trainSpec(trainOf(model)), model);
       const state = jobRunning(runs, { action: 'train', model }) ? 'running' : run.state;
       found = { model, state, run };
       result.models.push(found);
@@ -267,7 +288,7 @@ function experimentStatus(runs: string, name: string, experiment: Experiment): E
       original = runStatus(runs, simSpec(seriesOf(series), null), series);
       result.series.push({ series, original });
     }
-    const run = runStatus(runs, simSpec(seriesOf(series), hashOf(trainSpec(trainOf(model).config))), model);
+    const run = runStatus(runs, simSpec(seriesOf(series), hashOf(trainSpec(trainOf(model)))), model);
     const parts = [original.state, found.run.state, run.state];
     const state = jobRunning(runs, { action: 'eval', series, model }) || parts.includes('running') ? 'running' : run.state;
     result.pairs.push({ series, model, state, run });

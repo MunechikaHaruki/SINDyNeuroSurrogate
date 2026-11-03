@@ -168,14 +168,21 @@ def _ae_loss(params, x):
     return jnp.mean((x - x_hat) ** 2)
 
 
+def _fit_device() -> jax.Device:
+    """AE を学習する device。全データを一度に流すので、GPU があれば GPU で回す。"""
+    gpus = [device for device in jax.devices() if device.platform == "gpu"]
+    return gpus[0] if gpus else jax.devices()[0]
+
+
 def fit_ae(gates: np.ndarray, d: int, *, epochs: int = 1000, lr: float = 3e-2) -> AE:
     """標準化したゲートで、再構成誤差を Adam で下げる。乱数種は固定。"""
     x = np.asarray(gates, dtype=np.float32)
     mean = x.mean(axis=0)
     std = x.std(axis=0) + 1e-8
-    x_norm = jnp.array((x - mean) / std)
+    device = _fit_device()
+    x_norm = jax.device_put((x - mean) / std, device)
 
-    params = _ae_init(x.shape[1], d, jax.random.PRNGKey(0))
+    params = jax.device_put(_ae_init(x.shape[1], d, jax.random.PRNGKey(0)), device)
     optimizer = optax.adam(lr)
     opt_state = optimizer.init(params)
 

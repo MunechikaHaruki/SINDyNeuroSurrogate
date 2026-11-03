@@ -138,10 +138,15 @@ spec の種類は 2 つ (`kind`):
           置き換えたモデルは段取りが組んだ鍵の名前。`train` は
           `runs/models/` の学習 run を指す
 
+どちらも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
+入れ、JAX の backend が合わなければ回さない (backend は呼ぶ側が JAX_PLATFORMS で選ぶ)。
+gpu でも GPU を使うのは AE の学習だけで、シミュレーションは CPU で回す。
+
 書くもの (図が読む形。`.f64` は little-endian の float64 を並べただけ、
 JSON の nan は null):
 
-    spec.json  meta.json (kind = train / original / replaced, name, created, 掃引の単位)
+    spec.json  meta.json (kind = train / original / replaced, name, created, 掃引の単位,
+               env = 回した環境: backend、device、jax と python の版、host、コードとイメージの版)
     train      surrogate/ (config.json + parts.joblib)、summary.json (学習側の指標)、
                description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
                description/fit/<comp_id>/{x,latent,recon_rmse}.f64
