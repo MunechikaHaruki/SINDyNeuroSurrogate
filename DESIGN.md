@@ -23,9 +23,10 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 保存の単位は学習したモデル (`runs/models/<学習のハッシュ>/`) と入力 (`runs/inputs/<入力のハッシュ>/`) の二つで、入力の下に元のモデル (`<入力のハッシュ>/original/`) と置き換えたモデル (`<入力のハッシュ>/<モデルの鍵>/`、学習 run のハッシュ + 置換範囲) を置く。1 run = spec.json 1 つで、置き場は spec から決まる (`orchestrate.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。図は Python で描かず、Python が置くのは図に要るデータだけ:
 
 ```
-runs/index.json                全 run の id + meta.json + spec (段取りが書く。図はここから一覧を作る)
+runs/index.json                全 run の id + meta.json + spec (段取りが書く。図は API の index から一覧を作る)
 <run>/  spec.json              回した条件 (format = 形式の版, kind, ...)
-        meta.json              kind (train / original / replaced), name (図に出す名前。同一性に入らない), created, unit (掃引の単位)
+        meta.json              kind (train / original / replaced), name (図に出す名前。同一性に入らない), created, unit (掃引の単位),
+                               env (回した backend・device・jax と python の版・host・コードとイメージの版。同一性に入らない)
 models/<ハッシュ>/  surrogate/                config.json + parts.joblib (群ごとの圧縮器と右辺)
                     summary.json              surrogate.summary (学習側の指標)
                     description/model.json    右辺と圧縮器の中身 (describe)、ネット、列の名前。群が 2 つ以上なら groups に群ごとの中身
@@ -43,6 +44,7 @@ waves/<点>/comp<id>.f64    その comp の変数 (features の並び順)。変�
 waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 ```
 
+- spec はどちらも `device` (`cpu` か `gpu`) を持つ。同じ条件でも計算の順序が変わって結果がずれるので、同一性に入れる。学習は `gpu` (GPU を使うのは AE の学習だけ)、評価とテストの学習は `cpu`。決めるのは `orchestrate.ts` の `trainSpec` と `simSpec`
 - spec の 2 種類: `train` は設定 (`surrogate` = `surrogate.Config`)、`sim` は入力 (`input`) とモデル (`model` = `{train, replace_targets}`、
   元のモデルは null)。置換範囲はモデルの側に入るので、置換範囲だけが違う系列は同じ入力のディレクトリに別のモデルとして並ぶ
 - **ハッシュを組むのは TS だけ。** Python は渡された spec とディレクトリを埋めるだけで、学習 run は spec の `model.train`、
@@ -79,6 +81,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
   今あるのは、physics が surrogate を import しないことと、記録・設定・描画の道具を import しないこと (`tests/test_conventions.py`)、恒等の圧縮と真の右辺を入れたサロゲートがどの群分けでも元のモデルと同じ膜電位になること (`tests/test_surrogate.py`)、どのファイルにも docstring があり、`neurosurrogate/FILES.md` が docstring と import から作り直したものと一致すること (`tests/test_design.py`)。
 - **数値を変えないリファクタは、新旧の出力を突き合わせる。** 同じ spec を変更前と変更後のコードで回し、run の中身 (学習の書き出し、指標、変数ごとの波形) が一致することを確かめる。
 - **後方互換は取らない。** 保存形式を変えたら `run.py` の `_FORMAT` と `spec.ts` の `FORMAT` を上げ、古い run は学習し直す。互換の shim は入れない。
-- **実行経路を二重に持たない。** 重い計算は `run.py`、段取りは `orchestrate.ts`、描画は repo の外の図だけ。
+- **実行経路を二重に持たない。** 重い計算は `run.py`、段取りは `orchestrate.ts`、結果を小さくして返すのは `evaluation/serve/serve.ts`、描画は repo の外の図だけ。
+- **波形は回線に出さない。** runs は計算する機械に置いたまま、図は API に間引いた線と指標を頼む。帯域の細い回線（テザリング）でも回る量に保つ。
 - **数値の振る舞いが変わる変更は、手を止めて報告する。**
 - **git は明示指示があるときだけ。**
