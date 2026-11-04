@@ -42,7 +42,7 @@ flowchart RL
 
 ```text
 レートの式と単一区画のパラメータは隣の hh.json と traub.json が持つ (TS の evaluation/traub/traub.ts も読む)。
-Traub の per-comp 定数は traub.c と代数的に等価。
+Traub19 の区画ごとの密度・φ・寸法は原著 (Traub et al. 1991) の表 3 と p.637 どおり。
 区画は HH・Traub・passive と、Traub19 の区画の定数とネット (NETS)。kernel は
 physical_cell が組む。
 ```

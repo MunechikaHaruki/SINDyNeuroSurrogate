@@ -81,20 +81,6 @@
         ]
       }
     },
-    "traub19_paper_somastim": {
-      "description": "traub19_somastim と寸法だけが違う。basal と apical の寸法を原著 p.637 どおりにした traub19_paper。",
-      "target": "traub19_paper",
-      "duration": 300.0,
-      "sweep": {
-        "value": [
-          0,
-          2.5,
-          5,
-          7.5,
-          10
-        ]
-      }
-    },
     "traub19_somastim_allcomp": {
       "description": "somastim と置換範囲だけが違う。教師データの範囲（19 区画）と置換範囲を揃えた条件。traub19 の全区画（soma は 8 番）は宣言で綴り、形態から導かない。",
       "target": "traub19",

@@ -1,7 +1,7 @@
 """区画の式。状態の名前ごとに微分の式を持ち、kernel・初期値・演算コストはそこから組む。
 
 レートの式と単一区画のパラメータは隣の hh.json と traub.json が持つ (TS の evaluation/traub/traub.ts も読む)。
-Traub の per-comp 定数は traub.c と代数的に等価。
+Traub19 の区画ごとの密度・φ・寸法は原著 (Traub et al. 1991) の表 3 と p.637 どおり。
 区画は HH・Traub・passive と、Traub19 の区画の定数とネット (NETS)。kernel は
 physical_cell が組む。
 """
@@ -490,7 +490,7 @@ class Net:
         return self._index[name]
 
 
-# --- Traub 19 区画 (traub.c の per-comp 定数) ------------------------------------
+# --- Traub 19 区画 (原著の表 3 と p.637) ----------------------------------------
 
 _G_NA = [0.0, 0.0, 0.0, 0.0, 0.0, 20.0, 0.0, 15.0, 30.0, 15.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # noqa: E501  # fmt: skip
 _G_K_DR = [0.0, 0.0, 0.0, 0.0, 0.0, 20.0, 0.0, 5.0, 15.0, 5.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # noqa: E501  # fmt: skip
@@ -499,9 +499,11 @@ _G_K_C = [0.0, 5.0, 5.0, 10.0, 10.0, 10.0, 5.0, 20.0, 10.0, 20.0, 5.0, 15.0, 15.
 _G_K_AHP = [0.0] + [0.8] * 17 + [0.0]
 _G_CA = [0.0, 5.0, 5.0, 12.0, 12.0, 12.0, 5.0, 8.0, 4.0, 8.0, 5.0, 17.0, 17.0, 17.0, 10.0, 10.0, 5.0, 5.0, 0.0]  # noqa: E501  # fmt: skip
 _PHI = [7769.0] * 7 + [34530.0, 17402.0, 26404.0] + [5941.0] * 9
-_RAD = [2.89e-4] * 8 + [4.23e-4] + [2.42e-4] * 10
-_LEN = [1.20e-2] * 8 + [1.25e-2] + [1.10e-2] * 10
-_AREA = [2.188e-5] * 8 + [3.320e-5] + [1.673e-5] * 10
+# 寸法は原著 p.637。basilar（0..7）は 2.42 µm・110 µm・1673 µm²、
+# apical（9..18）は 2.89 µm・120 µm・2188 µm²
+_RAD = [2.42e-4] * 8 + [4.23e-4] + [2.89e-4] * 10
+_LEN = [1.10e-2] * 8 + [1.25e-2] + [1.20e-2] * 10
+_AREA = [1.673e-5] * 8 + [3.320e-5] + [2.188e-5] * 10
 _RI = 0.1  # KΩ·cm
 TRAUB19_SOMA = 8
 
@@ -532,28 +534,10 @@ def _g_axial(i: int, rad: list[float], length: list[float]) -> float:
     return 2.0 / (r_i + r_ip1)
 
 
-def _swap_dendrites(values: list[float]) -> list[float]:
-    """basal (0..7) と apical (9..18) の寸法を入れ替える。原著 p.637 の割り当て。"""
-    return (
-        [values[-1]] * TRAUB19_SOMA
-        + [values[TRAUB19_SOMA]]
-        + [values[0]] * (18 - TRAUB19_SOMA)
-    )
-
-
-def _traub19(paper: bool = False) -> Net:
-    """paper は寸法を原著どおりにした版。既定は traub.c から引き継いだ逆の割り当て。"""
-    rad, length, area = (
-        (_swap_dendrites(x) for x in (_RAD, _LEN, _AREA))
-        if paper
-        else (_RAD, _LEN, _AREA)
-    )
-    nodes = []
-    for i in range(19):
-        params = traub19_params(i)._replace(phi_area=_PHI[i] * area[i], area=area[i])
-        nodes.append(Compartment(traub19_name(i), TRAUB, params))
+def _traub19() -> Net:
+    nodes = [Compartment(traub19_name(i), TRAUB, traub19_params(i)) for i in range(19)]
     edges = [
-        Edge(traub19_name(i), traub19_name(i + 1), _g_axial(i, rad, length))
+        Edge(traub19_name(i), traub19_name(i + 1), _g_axial(i, _RAD, _LEN))
         for i in range(18)
     ]
     return Net(nodes, edges)
@@ -564,5 +548,4 @@ NETS: dict[str, Net] = {
     "hh": Net([Compartment("soma", HH)], []),
     "traub": Net([Compartment("soma", TRAUB)], []),
     "traub19": _traub19(),
-    "traub19_paper": _traub19(paper=True),
 }

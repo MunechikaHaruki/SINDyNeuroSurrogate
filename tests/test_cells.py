@@ -79,3 +79,10 @@ def test_i_internal_divides_the_coupling_by_the_receiving_area() -> None:
     expected[:, net.index(_SPEC.stim)] += _SPEC.current()
     assert np.allclose(ds["I_internal"].to_numpy(), expected)
     assert np.allclose(ds["I_ext"].to_numpy(), _SPEC.current())
+
+
+def test_traub19_dimensions_follow_the_paper() -> None:
+    """原著 p.637：basilar（0..7）は 2.42 µm・110 µm・1673 µm²、apical（9..18）は 2.89 µm・120 µm・2188 µm²。"""
+    areas = [traub19_params(i).area for i in range(19)]
+    assert areas[:TRAUB19_SOMA] == [1.673e-5] * 8
+    assert areas[TRAUB19_SOMA + 1 :] == [2.188e-5] * 10
