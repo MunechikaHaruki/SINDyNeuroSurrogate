@@ -58,9 +58,11 @@ Kepler–Abbott–Marder の縮約。群のゲートを 1 本の等価電位 ψ 
 ```text
 学習せず、元の区画の式から組む。群のゲートは定常値 x̄_i(ψ) で作り直し、ψ は
 dψ/dt = Σ_i D_i ẋ_i / Σ_j D_j x̄_j'(ψ)、D_i = ∂(dV/dt)/∂x_i で動かす (Kepler 1992 の
-式(6)の重みで ẋ_i を等価電位の速さへ写したもの)。φ 群 (膜電位への吸収) は扱わない。
+式(6)の重みで ẋ_i を等価電位の速さへ写したもの)。φ 群 (膜電位への吸収) のゲートは
+状態を持たず、V での定常値 x̄_i(V) に置く (重み α₀ = 1。φ 群を速いゲートとみなす)。
 サロゲートの群の圧縮器と右辺 (kam) として使い、学習した圧縮と同じ段取りで比べる。
-導き方は Kepler, Abbott & Marder 1992 (https://doi.org/10.1007/BF00197717)、対話的に動かす版は evaluation/traub/traub.ts。
+導き方は Kepler, Abbott & Marder 1992 (https://doi.org/10.1007/BF00197717)、
+対話的に動かす版は evaluation/traub/traub.ts。
 ```
 
 ## physics/simulate.py

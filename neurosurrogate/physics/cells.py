@@ -67,6 +67,7 @@ class CellType:
     derivs: dict[str, Callable] | None = None  # 名前 → (p, v, s) → d/dt
     costs: dict[str, OpCost] | None = None  # 名前 → その状態を物理で解くコスト
     dv_cost: OpCost | None = None
+    rates: dict[str, OpCost] | None = None  # 電位だけのゲート → レートの組のコスト
 
 
 def physical_cell(
@@ -78,6 +79,7 @@ def physical_cell(
     inits: Callable[[Any], list[float]],
     costs: dict[str, OpCost],
     dv_cost: OpCost,
+    rates: dict[str, OpCost],
 ) -> CellType:
     """物理の式から区画の型を組む。kernel は全状態を名前で微分する。"""
 
@@ -96,6 +98,7 @@ def physical_cell(
         derivs=derivs,
         costs=costs,
         dv_cost=dv_cost,
+        rates=rates,
     )
 
 
@@ -232,6 +235,7 @@ HH = physical_cell(
     derivs={g.upper(): _hh_gate(g) for g in "mhn"},
     inits=_hh_inits,
     costs={g.upper(): _rate_pair_cost(g, "hh") + _GATE_ODE_COST for g in "mhn"},
+    rates={g.upper(): _rate_pair_cost(g, "hh") for g in "mhn"},
     dv_cost=(
         OpCost(pm=1)  # 反転電位
         + OpCost(pm=3, mul=5) * 2  # Na, K 電流
@@ -419,6 +423,7 @@ TRAUB = physical_cell(
         "Q": OpCost(pm=2, mul=3),  # dQ = α_q·(1 − Q) − β_q·Q (min と定数は無視)
         "XI": OpCost(pm=1, mul=4) + OpCost(pm=1, mul=2),  # i_ca と dXI
     },
+    rates={g: _rate_pair_cost(g.lower(), "traub") for g in _TRAUB_GATES},
     dv_cost=(
         OpCost(pm=1, mul=1)  # i_leak
         + OpCost(pm=1, mul=4)  # i_na

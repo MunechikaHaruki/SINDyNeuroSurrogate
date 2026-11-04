@@ -8,6 +8,18 @@
     },
     "ae": {
       "description": "群ごとに AutoEncoder で潜在へ縮め、右辺を SINDy で同定する。学習データは pca と同じ。"
+    },
+    "kamm": {
+      "description": "kam に加えて、m を膜電位へ吸収する（KAM の φ 群、α₀ = 1）。m は状態を持たず、V での定常値に置く。",
+      "compressor": "kam",
+      "absorb": ["M"]
+    },
+    "poster": {
+      "description": "NEURO2026 で発表した形。AutoEncoder で潜在 5 本へ縮め、右辺を SINDy で同定する。全ゲートを 1 群（mhnabc）にして使う。19 区画の軌道（1000 ms × 19）で学習する。",
+      "compressor": "ae",
+      "d": 5,
+      "target": "traub19",
+      "duration": 1000
     }
   },
   "series": {
@@ -114,6 +126,15 @@
           7.5,
           10
         ]
+      }
+    },
+    "traub19_somastim_nadr": {
+      "description": "somastim と置換範囲だけが違う。Na と DR を持つ 5 区画（soma と、その両隣の 7・9、5・11）を置き換える。h と n はほかの区画では電流に効かず、KAM の重みが決まらない。区画は宣言で綴る。",
+      "target": "traub19",
+      "duration": 300.0,
+      "replace_targets": ["c05", "c07", "soma", "c09", "c11"],
+      "sweep": {
+        "value": [0, 2.5, 5, 7.5, 10]
       }
     }
   }

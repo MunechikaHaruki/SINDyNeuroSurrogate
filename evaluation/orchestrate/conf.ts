@@ -20,6 +20,8 @@ type Declared = {
   library_specs?: LibrarySpec[];
   compressor_params?: Record<string, unknown>;
   rhs_params?: Record<string, unknown>;
+  /** 膜電位へ吸収するゲート（大文字の状態の名前、`["M"]`）。 */
+  absorb?: string[];
 };
 
 type Entry = Record<string, unknown>;
@@ -35,6 +37,7 @@ const KEYS = [
   'library_specs',
   'compressor_params',
   'rhs_params',
+  'absorb',
 ];
 
 function fail(where: string, message: string): never {
@@ -87,6 +90,10 @@ function declared(where: string, entry: Entry): Declared {
     !(Array.isArray(entry.library_specs) && entry.library_specs.every(s => isObject(s) && typeof s.type === 'string'))
   )
     fail(where, 'library_specs は type を持つ物の配列');
+  if (entry.absorb !== undefined &&
+    !(Array.isArray(entry.absorb) && entry.absorb.length > 0 && entry.absorb.every(g => typeof g === 'string')))
+    fail(where, 'absorb は状態の名前の空でない配列');
+  if (entry.absorb !== undefined && entry.form !== 'hybrid') fail(where, 'absorb は hybrid だけ');
   for (const key of ['compressor_params', 'rhs_params'])
     if (entry[key] !== undefined && !isObject(entry[key])) fail(where, `${key} は物`);
   return entry as Declared;
@@ -119,6 +126,8 @@ function train(name: string, d: Declared, grouping: string): Train {
   };
   const rhs = d.rhs;
   const groups: Group[] = [];
+  const shared = groupsOf(grouping).flat().filter(g => d.absorb?.includes(g));
+  if (shared.length > 0) throw new Error(`${name} は ${shared.join('・')} を群と吸収の両方に入れている`);
   for (const gates of groupsOf(grouping)) {
     groups.push({
       gates,
@@ -136,6 +145,7 @@ function train(name: string, d: Declared, grouping: string): Train {
     data,
     groups,
     train_comp: null,
+    ...(d.absorb === undefined ? {} : { absorbed: d.absorb }),
   };
   return { name, config };
 }

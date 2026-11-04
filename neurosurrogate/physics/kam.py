@@ -2,9 +2,11 @@
 
 学習せず、元の区画の式から組む。群のゲートは定常値 x̄_i(ψ) で作り直し、ψ は
 dψ/dt = Σ_i D_i ẋ_i / Σ_j D_j x̄_j'(ψ)、D_i = ∂(dV/dt)/∂x_i で動かす (Kepler 1992 の
-式(6)の重みで ẋ_i を等価電位の速さへ写したもの)。φ 群 (膜電位への吸収) は扱わない。
+式(6)の重みで ẋ_i を等価電位の速さへ写したもの)。φ 群 (膜電位への吸収) のゲートは
+状態を持たず、V での定常値 x̄_i(V) に置く (重み α₀ = 1。φ 群を速いゲートとみなす)。
 サロゲートの群の圧縮器と右辺 (kam) として使い、学習した圧縮と同じ段取りで比べる。
-導き方は Kepler, Abbott & Marder 1992 (https://doi.org/10.1007/BF00197717)、対話的に動かす版は evaluation/traub/traub.ts。
+導き方は Kepler, Abbott & Marder 1992 (https://doi.org/10.1007/BF00197717)、
+対話的に動かす版は evaluation/traub/traub.ts。
 """
 
 from typing import Any
@@ -33,6 +35,23 @@ def _steady(cell: str, gate: str, p):
     return steady
 
 
+def absorbed(cell: str, gates: list[str], p, v) -> dict:
+    """φ 群のゲートを膜電位 v での定常値にする (状態の名前 → 値)。"""
+    return {gate: _steady(cell, gate, p)(v) for gate in gates}
+
+
+def absorbed_cost(cell: str, gates: list[str]) -> OpCost:
+    """φ 群の演算コスト: ゲートごとに v でのレートの組と x̄ の割り算。"""
+    return total([_steady_cost(cell, g) for g in gates])
+
+
+def _steady_cost(cell: str, gate: str) -> OpCost:
+    """x̄ = α/(α+β) の演算コスト。ゲートの ODE は解かないので数えない。"""
+    rates = CELLS[cell].rates
+    assert rates is not None
+    return rates[gate] + OpCost(pm=1, div=1)
+
+
 def _equivalent(steady, x: np.ndarray, low: float, high: float) -> np.ndarray:
     """等価電位 v = x̄⁻¹(x) を二分法で。値域の外の x は端に寄る。"""
     lo = np.full_like(x, low)
@@ -47,9 +66,12 @@ def _equivalent(steady, x: np.ndarray, low: float, high: float) -> np.ndarray:
 
 
 def criterion(cell: str, gates: list[str], params: Any) -> float:
-    """群の式(10) の左辺 |Σ_j α_j k_j − k_i| / Σ_j k_j の最大 (Kepler 1992)。区画の初期の静止状態で読む。
+    """群の式(10) の左辺 |Σ_j α_j k_j − k_i| / Σ_j k_j の最大 (Kepler 1992)。
 
-    α_j = D_j / Σ D は式(6) の重み、D_j = (∂(dV/dt)/∂x_j) x̄_j'(V) は感度、k_j = α + β は緩和の速さ。1 本の群は 0。
+    区画の初期の静止状態で読む。
+
+    α_j = D_j / Σ D は式(6) の重み、D_j = (∂(dV/dt)/∂x_j) x̄_j'(V) は感度、
+    k_j = α + β は緩和の速さ。1 本の群は 0。
     """
     if len(gates) < 2:
         return 0.0
@@ -110,9 +132,7 @@ class KamCompressor:
 
     def opcost(self) -> OpCost:
         """decode: ゲートごとに ψ でのレートの組と x̄ の割り算。"""
-        costs = CELLS[self.cell].costs
-        assert costs is not None
-        return total([costs[g] + OpCost(pm=1, div=1) for g in self.gates])
+        return total([_steady_cost(self.cell, g) for g in self.gates])
 
 
 class KamRhs:

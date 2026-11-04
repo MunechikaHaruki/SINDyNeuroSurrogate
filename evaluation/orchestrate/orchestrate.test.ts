@@ -37,6 +37,9 @@ test('a model is a method laid over a grouping', () => {
   expect([trainSpec(trainOf('ae_hn')).device, trainSpec(trainOf('_test_hh_ae')).device]).toEqual(['gpu', 'cpu']);
   expect(() => trainOf('xyz_hn')).toThrow();
   expect(() => groupsOf('hn_a')).toThrow();
+  expect(trainOf('kamm_hn').config.absorbed).toEqual(['M']);
+  expect('absorbed' in trainOf('kam_hn').config).toBe(false);
+  expect(() => trainOf('kamm_mh')).toThrow();
 });
 
 test('a job is running while its pid lives, done on exit code 0, and failed otherwise', () => {

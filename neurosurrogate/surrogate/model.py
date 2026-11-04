@@ -18,7 +18,7 @@ import numpy as np
 import xarray as xr
 
 from ..physics.cells import CELLS, CellType, Compartment, Net, total
-from ..physics.kam import KamCompressor, KamRhs
+from ..physics.kam import KamCompressor, KamRhs, absorbed, absorbed_cost
 from ..physics.simulate import (
     EvalSeries,
     RunInput,
@@ -56,6 +56,8 @@ class Config:
     data: SimSpec  # 学習データを取るシミュレーション
     groups: list[Group]
     train_comp: str | None = None  # 学習を 1 区画へ絞る名前 (None は同じ型の全区画)
+    # 膜電位へ吸収するゲート (KAM の φ 群)。V での定常値に置き、状態を持たない
+    absorbed: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Config":
@@ -65,6 +67,7 @@ class Config:
             data=SimSpec.from_dict(d["data"]),
             groups=[Group(**g) for g in d["groups"]],
             train_comp=d.get("train_comp"),
+            absorbed=d.get("absorbed", []),
         )
         config._check()
         return config
@@ -76,14 +79,21 @@ class Config:
             "data": self.data.to_dict(),
             "groups": [g.__dict__ for g in self.groups],
             "train_comp": self.train_comp,
+            **({"absorbed": self.absorbed} if self.absorbed else {}),
         }
 
     def _check(self) -> None:
         learned = [g for group in self.groups for g in group.gates]
-        if unknown := [g for g in learned if g not in self.cell_type.states]:
+        removed = learned + self.absorbed
+        if unknown := [g for g in removed if g not in self.cell_type.states]:
             raise ValueError(f"{self.cell} に無い状態: {unknown}")
-        if len(set(learned)) != len(learned):
-            raise ValueError(f"群が重なっている: {learned}")
+        if len(set(removed)) != len(removed):
+            raise ValueError(f"群と吸収が重なっている: {removed}")
+        voltage = self.cell_type.rates or {}
+        if outside := [g for g in self.absorbed if g not in voltage]:
+            raise ValueError(f"電位だけで動くゲートでないと吸収できない: {outside}")
+        if self.absorbed and self.form != "hybrid":
+            raise ValueError("膜電位への吸収は hybrid だけ")
         for group in self.groups:
             if group.rhs == "ude" and group.compressor != "ae":
                 raise ValueError("ude は encoder・decoder を更新するので compressor=ae")
@@ -104,8 +114,8 @@ class Config:
     @property
     def physics(self) -> list[str]:
         """元の式のまま解く状態 (型の states の並び)。"""
-        learned = {g for group in self.groups for g in group.gates}
-        return [n for n in self.cell_type.states if n not in learned]
+        removed = {g for group in self.groups for g in group.gates} | set(self.absorbed)
+        return [n for n in self.cell_type.states if n not in removed]
 
     def positions(self, group: Group) -> list[int]:
         """群の状態の、型の states での位置。"""
@@ -309,9 +319,10 @@ def surrogate_cell(s: Surrogate) -> CellType:
             (group.gates, start, start + group.d, compressor.decode, _rhs_fn(rhs))
         )
     n_latent = sum(group.d for group in config.groups)
+    name_of, phi = cell.name, config.absorbed
 
     def hybrid_kernel(p, u, v, x):
-        s = {}
+        s = absorbed(name_of, phi, p, v)
         for gates, a, b, decode, _ in blocks:
             values = decode(x[a:b])
             for j, gate in enumerate(gates):
@@ -338,7 +349,10 @@ def surrogate_cell(s: Surrogate) -> CellType:
         param_cls=cell.param_cls,
         states=latent_names(n_latent) + physics,
         inits=inits,
-        opcost=learned + cell.dv_cost + total([cell.costs[n] for n in physics]),
+        opcost=learned
+        + cell.dv_cost
+        + total([cell.costs[n] for n in physics])
+        + absorbed_cost(name_of, phi),
     )
 
 

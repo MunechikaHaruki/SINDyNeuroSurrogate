@@ -40,6 +40,8 @@ export type SurrogateConfig = {
   groups: Group[];
   /** 学習を 1 区画へ絞る名前。null は同じ型の全区画。 */
   train_comp: string | null;
+  /** 膜電位へ吸収するゲート（KAM の φ 群、α₀ = 1）。V での定常値に置き、状態を持たない。書かなければ無い。 */
+  absorbed?: string[];
 };
 
 /** 1 回の掃引実験（Python の EvalSeries）。param が null なら単発（点 1 つ）。 */

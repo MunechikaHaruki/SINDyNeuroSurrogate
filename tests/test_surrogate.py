@@ -1,4 +1,7 @@
-"""サロゲートの学習・置換・書き出し。テスト専用の学習と系列は conf.ts の宣言を段取りから読む。"""
+"""サロゲートの学習・置換・書き出し。
+
+テスト専用の学習と系列は conf.ts の宣言を段取りから読む。
+"""
 
 import json
 import subprocess
@@ -12,6 +15,7 @@ import pytest
 from sympy.core.function import AppliedUndef
 
 from neurosurrogate.physics.cells import CELLS, NETS, OpCost
+from neurosurrogate.physics.kam import absorbed
 from neurosurrogate.physics.simulate import EvalSeries, SimSpec, potential, simulate
 from neurosurrogate.spikes import FEATURES, spike_features
 from neurosurrogate.surrogate.compress import AE, fit_ae
@@ -216,6 +220,43 @@ def test_kam_keeps_the_rest_state_and_the_spike_count() -> None:
     original = potential(simulate(spec.run_input()), 0)
     reduced = potential(simulate(replace(s, spec.run_input(), ["soma"])), 0)
     assert count(original) > 0 and count(reduced) == count(original)
+
+
+def test_absorbed_gate_follows_the_membrane_and_drops_its_state() -> None:
+    """m を膜電位へ吸収すると状態が 1 つ減り、初期値では元と同じ dV/dt で ψ は動かず、
+    DC 入力で発火する。"""
+    config = {**declared_config("_test_traub_kam"), "absorbed": ["M"]}
+    s = fit(config)
+    assert "M" not in s.config.physics
+    cell, full = surrogate_cell(s), CELLS["traub"]
+    assert len(cell.states) == len(full.states) - 1 - sum(
+        len(g.gates) - 1 for g in s.config.groups
+    )
+    spec = _dc("traub", value=5.0, duration=100.0)
+    p = spec.net.nodes[0].resolved_params
+    init = cell.inits(p)
+    dv, dx = cell.kernel(p, 0.0, init[0], jnp.asarray(init[1:]))
+    rest = full.inits(p)
+    dv_full, _ = full.kernel(p, 0.0, rest[0], jnp.asarray(rest[1:]))
+    assert float(dv) == pytest.approx(float(dv_full), abs=1e-6)
+    assert np.asarray(dx) == pytest.approx(0.0, abs=1e-6)
+    moved = dict(zip(full.states, rest[1:], strict=True)) | absorbed(
+        "traub", ["M"], p, -30.0
+    )
+    dv_moved, _ = cell.kernel(p, 0.0, -30.0, jnp.asarray(init[1:]))
+    dv_full, _ = full.kernel(
+        p, 0.0, -30.0, jnp.asarray([moved[n] for n in full.states])
+    )
+    assert float(dv_moved) == pytest.approx(float(dv_full), rel=1e-5)
+    kept = surrogate_cell(fit(declared_config("_test_traub_kam"))).opcost
+    steady = full.rates["M"] + OpCost(pm=1, div=1)  # type: ignore[index]
+    assert cell.opcost + full.costs["M"] == kept + steady  # type: ignore[index]
+    reduced = potential(simulate(replace(s, spec.run_input(), ["soma"])), 0)
+    assert int(np.sum((reduced[:-1] < 0) & (reduced[1:] >= 0))) > 0
+    with pytest.raises(ValueError, match="重なって"):
+        Config.from_dict({**config, "absorbed": [s.config.groups[0].gates[0]]})
+    with pytest.raises(ValueError, match="電位だけ"):
+        Config.from_dict({**config, "absorbed": ["XI"]})
 
 
 def test_config_rejects_bad_groups() -> None:
