@@ -1,8 +1,8 @@
-// 段取り: conf.ts の宣言から spec.json を組み、ハッシュで決めた置き場を Python の計算の入口（neurosurrogate/run.py）で埋める。
+// 段取り: 実験（experiments/experiments.ts の解決済みの学習 run と系列）から spec.json を組み、ハッシュで決めた置き場を Python の計算の入口（neurosurrogate/run.py）で埋める。
 // 置き場は学習が runs/models/<ハッシュ>/、入力 × モデルが runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/。
 // 同じ spec は同じ置き場になるので、ディレクトリがあれば回さない。回したあとは runs/index.json（図が読む run の一覧）を書き直す。
 // 入口は二つで、どちらもここの関数を呼ぶ。外の画面は export した関数を、手元ではこの CLI を使う。
-//   bun evaluation/orchestrate/orchestrate.ts train <学習 run>...        学習 run は <仕方>_<群分け>（kam_hn）かテストの名前
+//   bun evaluation/orchestrate/orchestrate.ts train <学習 run>...        学習 run は実験の中の名前（kam_hn）かテストの名前
 //   … eval <系列> <学習 run かハッシュ>...
 //   … index | spec <学習 run> | series | list
 // --runs <dir> で置き場を変えられる。--job <鍵> は外の画面から起こしたときに launch が付け、終わりを .jobs/<鍵>.exit に書く。
@@ -22,7 +22,8 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { METHODS, SERIES, TEST_NAMES, trainOf } from './conf.ts';
+import { METHOD_NAMES, TESTS } from './conf.ts';
+import { SERIES, TRAINS, seriesOf, trainOf } from '../../experiments/experiments.ts';
 import { FORMAT, type Device, type Experiment, type ExperimentStatus, type IndexEntry, type Input, type Job, type JobState, type RunStatus, type Series, type Spec, type State, type Status, type Train } from './spec.ts';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
@@ -159,12 +160,6 @@ function ensure(runs: string, spec: Spec, name: string): string | undefined {
   }
   if (exitCode !== 0) throw new Error(`${id} ${name}: run.py が ${exitCode} で落ちた`);
   return id;
-}
-
-function seriesOf(name: string): Series {
-  const series = SERIES[name];
-  if (!series) throw new Error(`系列 ${name} が無い（${Object.keys(SERIES).join(', ')}）`);
-  return series;
 }
 
 /** 学習 run を指す引数（学習 run の名前か、ハッシュかその先頭）→ 学習 run のハッシュと名前。名前なら、無ければ学習する。 */
@@ -356,7 +351,10 @@ function command(runs: string, argv: string[]): void {
   else if (name === 'train') for (const model of rest) train(runs, model);
   else if (name === 'eval') evaluate(runs, rest[0], rest.slice(1));
   else if (name === 'index') writeIndex(runs);
-  else console.log(`仕方: ${Object.keys(METHODS).join(' ')}（学習 run は <仕方>_<群分け>）\nテスト: ${TEST_NAMES.join(' ')}\n系列: ${Object.keys(SERIES).join(' ')}`);
+  else
+    console.log(
+      `仕方のプリセット: ${METHOD_NAMES.join(' ')}\n学習 run（実験とテスト）: ${Object.keys(TRAINS).join(' ')}\nテスト: ${Object.keys(TESTS).join(' ')}\n系列: ${Object.keys(SERIES).join(' ')}`,
+    );
 }
 
 if (import.meta.main) main(process.argv.slice(2));

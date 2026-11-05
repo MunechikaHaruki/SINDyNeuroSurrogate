@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { groupings, type Row } from './common.ts';
-import { CLAIMS, EXPERIMENTS, pairsOf } from './experiments.ts';
+import { build } from './parts.ts';
+import { CLAIMS, EXPERIMENTS } from './experiments.ts';
 
 const row = (grouping: string, method: string, gammas: (number | null)[], extra: Partial<Row> = {}): Row => ({
   grouping,
@@ -62,7 +63,9 @@ test('every claim reads only series and groupings its experiment runs', () => {
   for (const e of EXPERIMENTS)
     for (const c of e.claims) {
       for (const name of c.series)
-        expect(e.series, `実験 ${e.id} の主張 ${c.name} が読む系列 ${name} を実験が回さない`).toContain(name);
+        expect(Object.keys(e.series), `実験 ${e.id} の主張 ${c.name} が読む系列 ${name} を実験が回さない`).toContain(
+          name,
+        );
       for (const g of c.groupings ?? [])
         expect(e.groupings, `実験 ${e.id} の主張 ${c.name} の群分け ${g} を回さない`).toContain(g);
     }
@@ -75,9 +78,30 @@ test('descriptions and claims carry no measured numbers', () => {
   }
 });
 
-test('an experiment runs the product of its groupings, methods and series', () => {
-  const { pairs } = pairsOf({ groupings: ['hn', 'ac'], methods: ['kam', 'pca'], series: ['s'] });
-  expect(pairs.map(p => `${p.model}×${p.series}`)).toEqual(['kam_hn×s', 'kam_ac×s', 'pca_hn×s', 'pca_ac×s']);
+test('an experiment runs the product of its methods, groupings and series, and a method can override its preset', () => {
+  const plan = build(
+    'test',
+    {
+      id: 't',
+      description: 'test',
+      groupings: ['hn', 'ac'],
+      methods: ['kam', { name: 'pca2', from: 'pca', d: 2 }],
+      series: ['traub_somastim'],
+    },
+    {},
+  );
+  expect(plan.pairs.map(p => `${p.model}×${p.series}`)).toEqual([
+    'kam_hn×traub_somastim',
+    'kam_ac×traub_somastim',
+    'pca2_hn×traub_somastim',
+    'pca2_ac×traub_somastim',
+  ]);
+  expect(plan.models.map(m => [m.method, m.grouping, m.train.config.groups[0].d])).toEqual([
+    ['kam', 'hn', 1],
+    ['kam', 'ac', 1],
+    ['pca2', 'hn', 2],
+    ['pca2', 'ac', 2],
+  ]);
 });
 
 test('a sweep spans every grouping of its gates', () => {

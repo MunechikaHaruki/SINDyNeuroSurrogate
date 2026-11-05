@@ -1,6 +1,6 @@
 // 実験の共通の部品。実験の形（回す組と、回す前に書いた主張と判定）と、判定が使う値の読み方・線・三値の論理。
-// 実験そのものは分類ごとのディレクトリ（mc/ 拡張、sweep/ 改良の探索、property/ 性質の発見）の experiments.json と checks.ts が持ち、experiments.ts が並べる。
-import { partsOf } from '../evaluation/orchestrate/conf.ts';
+// 実験そのものは主題ごとのディレクトリ（mc/ 拡張、sweep/ 改良の探索、property/ 性質の発見）の experiments.json・schema.ts・checks.ts が持ち、experiments.ts が並べる。
+import type { Series, Train } from '../evaluation/orchestrate/spec.ts';
 
 /** Γ で「発火の時刻まで合う」とみなす線。 */
 export const GAMMA_LINE = 0.9;
@@ -29,13 +29,19 @@ export type Claim = {
   judge: Judge;
 };
 
-/** 実験。description は何を回して何を見るかの一文（Markdown）。groupings × methods × series が回す run の直積で、series は宣言の series と主張が読む系列を合わせたもの。判定の無い実験は claims が空。 */
+/** 学習 run 1 本。name は実験の中の名前（`<仕方の名前>_<群分け>`）、method と grouping は判定と図が列を引く名前。 */
+export type Model = { name: string; method: string; grouping: string; train: Train };
+
+/** 解決済みの実験。description は何を回して何を見るかの一文（Markdown）。学習 run と系列を値で持ち、pairs が回す組（学習 run の名前 × 系列の名前）。
+ * groupings と methods は画面が絞り込みに使う名前の並び。判定の無い実験は claims が空。 */
 export type Plan = {
   id: string;
   description: string;
   groupings: string[];
   methods: string[];
-  series: string[];
+  models: Model[];
+  series: Record<string, Series>;
+  pairs: { model: string; series: string }[];
   claims: Claim[];
 };
 
@@ -102,8 +108,8 @@ export function none(found: string[], unknown: string[]): Pick<Judgement, 'value
 }
 export const groupingsOf = (rows: Row[]) => [...new Set(rows.map(r => r.grouping))];
 
-/** 置き換えた列 1 本。run は置き換えた run、model は学習 run の名前。 */
-export type Column = { run: string; model: string };
+/** 置き換えた列 1 本。run は置き換えた run、method と grouping は学習 run の仕方と群分けの名前。 */
+export type Column = { run: string; method: string; grouping: string };
 
 /** 系列の列を判定の値にする。values は掃引の値、crossings は列の run ごとの点ごとの Γ と発火の回数（元, モデル）。 */
 export function rowsOf(
@@ -120,7 +126,7 @@ export function rowsOf(
       gammas.push(p.gamma);
       counts.push(p.count);
     }
-    rows.push({ ...partsOf(column.model), values, gammas, counts });
+    rows.push({ method: column.method, grouping: column.grouping, values, gammas, counts });
   }
   return rows;
 }

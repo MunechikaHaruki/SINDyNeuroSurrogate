@@ -1,59 +1,56 @@
-// 回せるものを組む。値はすべて repo の根の presets.json（既定 defaults、縮約の仕方 methods、評価の系列 series）が持ち、ここは既定を混ぜて形を確かめるだけで値を持たない。テスト専用の学習はテストの都合なので presets.json に入れず、隣の test-trains.ts が持つ。
-// 学習 run は 縮約の仕方 × 群分け で決まり、名前は `<仕方>_<群分け>`（`kam_hn`、`pca_hn_ac`）。群分けは群をゲートの小文字の名前でつなぎ、群どうしを _ で区切る。
-// ここは読んで形を確かめ、仕方に群分けを重ねて学習の設定を組むだけ。段取り（orchestrate.ts）がここから spec.json を組む。形は spec.ts。
-// presets.json の仕方と系列は既定と違う値だけを書く。値から決まる既定（教師は細胞、圧縮は仕方の名前、右辺は圧縮から、項ライブラリは細胞から）だけはここが導く。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
+// 回せるものを組む部品。値はすべて repo の根の presets.json（既定 defaults、縮約の仕方 methods、評価の系列 series）が持ち、ここは値を持たない。
+// 実験（experiments/<主題>/schema.ts）は仕方と系列をプリセットの名前か、プリセットからの差分 `{ from, ...差分 }` で指し、ここの関数で学習 run と系列にする。
+// 混ぜる順は defaults → プリセット → 差分で、書かなかった欄だけ値から導く（教師は細胞、圧縮は仕方の名前、右辺は圧縮から、項ライブラリは細胞から）。
+// テスト専用の学習は presets.json に入れず、隣の test-trains.ts が持つ。形は spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
+import { z } from 'zod';
 import declaration from '../../presets.json' with { type: 'json' };
 import { TEST_DECLARATIONS } from './test-trains.ts';
 import type { Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from './spec.ts';
 
+type Entry = Record<string, unknown>;
 const raw = declaration as unknown as {
   defaults: { method: Entry & { dt: number }; series: Entry & { dt: number } };
   methods: Record<string, Entry>;
   series: Record<string, Entry>;
 };
 
-/** 仕方が持つ値。既定値は Python の署名が持つので、書くのは仕方が決める値だけ。 */
-type Declared = {
-  cell: string;
-  form: 'hybrid' | 'sindy';
-  /** 教師データを取るモデルと、学習用の電流の長さ（ms）。 */
-  target: string;
-  duration: number;
-  compressor: 'pca' | 'ae' | 'kam';
-  /** 群の潜在次元（全群で同じ）。 */
-  d: number;
-  rhs: 'sindy' | 'ude' | 'kam';
-  library_specs?: LibrarySpec[];
-  compressor_params?: Record<string, unknown>;
-  rhs_params?: Record<string, unknown>;
-  /** 膜電位へ吸収するゲート（大文字の状態の名前、`["M"]`）。 */
-  absorb?: string[];
-};
+/** 仕方の値の形。既定値は Python の署名が持つので、書くのは仕方が決める値だけ。 */
+const Method = z
+  .strictObject({
+    cell: z.string(),
+    form: z.enum(['hybrid', 'sindy']),
+    /** 教師データを取るモデルと、学習用の電流の長さ（ms）。 */
+    target: z.string(),
+    duration: z.number(),
+    compressor: z.enum(['pca', 'ae', 'kam']),
+    /** 群の潜在次元（全群で同じ）。 */
+    d: z.number(),
+    rhs: z.enum(['sindy', 'ude', 'kam']),
+    library_specs: z.array(z.looseObject({ type: z.string(), gates: z.string().optional() })).optional(),
+    compressor_params: z.record(z.string(), z.unknown()).optional(),
+    rhs_params: z.record(z.string(), z.unknown()).optional(),
+    /** 膜電位へ吸収するゲート（大文字の状態の名前、`["M"]`）。 */
+    absorb: z.array(z.string()).nonempty().optional(),
+  })
+  .refine(m => m.absorb === undefined || m.form === 'hybrid', 'absorb は hybrid だけ');
+export type Declared = z.infer<typeof Method>;
 
-type Entry = Record<string, unknown>;
-/** 仕方に書ける鍵。テストはこれを仕方に重ねて上書きする。 */
-const KEYS = [
-  'cell',
-  'form',
-  'target',
-  'duration',
-  'compressor',
-  'd',
-  'rhs',
-  'library_specs',
-  'compressor_params',
-  'rhs_params',
-  'absorb',
-];
+/** 仕方か系列の指し方。プリセットの名前か、プリセットからの差分。 */
+export const Ref = z.union([z.string(), z.looseObject({ from: z.string() })]);
+export type Ref = z.infer<typeof Ref>;
 
-function fail(where: string, message: string): never {
-  throw new Error(`presets.json の ${where}：${message}`);
+/** 形の誤りを、どこの何かが分かる一文にする。 */
+function parsed<T>(schema: z.ZodType<T>, where: string, value: unknown): T {
+  const result = schema.safeParse(value);
+  if (!result.success) throw new Error(`${where}：${z.prettifyError(result.error)}`);
+  return result.data;
 }
-function isObject(value: unknown): value is Entry {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-function isStrings(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(v => typeof v === 'string');
+
+/** 指し方をプリセットの名前と差分に分ける。 */
+function split(ref: Ref, presets: Record<string, Entry>, kind: string): { from: string; diff: Entry } {
+  const { from, ...diff } = typeof ref === 'string' ? { from: ref } : ref;
+  if (!presets[from]) throw new Error(`${kind} ${from} が presets.json に無い（${Object.keys(presets).join(', ')}）`);
+  return { from, diff };
 }
 
 /** 細胞のゲートの項（レートとその積）に定数と電位の項を足した、既定の項ライブラリ。 */
@@ -62,48 +59,22 @@ function libraryOf(cell: string): LibrarySpec[] {
   return [...gates.map(g => ({ type: `${cell}_${g}` })), { type: 'basis' }];
 }
 
-/** 書かれなかった値を既定で埋める。細胞は Traub、教師は細胞と同じ、圧縮は仕方の名前、右辺は KAM なら KAM でほかは SINDy。 */
-function filled(method: string, entry: Entry): Entry {
+/** 仕方を値にする。defaults → プリセット → 差分の順に重ね、書かなかった欄を導く。 */
+export function methodOf(ref: Ref): Declared {
+  const { from, diff } = split(ref, raw.methods, '仕方');
   const { dt: _dt, ...defaults } = raw.defaults.method;
-  entry = { ...defaults, ...entry };
-  const cell = entry.cell;
-  const compressor = entry.compressor ?? method;
+  const entry: Entry = { ...defaults, ...raw.methods[from], ...diff };
+  const cell = String(entry.cell);
+  const compressor = entry.compressor ?? from;
   const rhs = entry.rhs ?? (compressor === 'kam' ? 'kam' : 'sindy');
-  const library = rhs === 'sindy' ? { library_specs: entry.library_specs ?? libraryOf(String(cell)) } : {};
-  return {
+  const library = rhs === 'sindy' ? { library_specs: entry.library_specs ?? libraryOf(cell) } : {};
+  return parsed(Method, `仕方 ${JSON.stringify(ref)}`, {
     ...entry,
-    cell,
     target: entry.target ?? cell,
     compressor,
     rhs,
     ...library,
-  };
-}
-
-/** 鍵と値の形を確かめる。 */
-function declared(where: string, entry: Entry): Declared {
-  for (const key of Object.keys(entry)) if (!KEYS.includes(key)) fail(where, `知らない鍵 ${key}`);
-  if (typeof entry.cell !== 'string' || typeof entry.target !== 'string') fail(where, 'cell と target は文字列');
-  if (entry.form !== 'hybrid' && entry.form !== 'sindy') fail(where, 'form は hybrid か sindy');
-  if (typeof entry.duration !== 'number') fail(where, 'duration は数');
-  if (entry.compressor !== 'pca' && entry.compressor !== 'ae' && entry.compressor !== 'kam')
-    fail(where, 'compressor は pca・ae・kam');
-  if (typeof entry.d !== 'number') fail(where, 'd は数');
-  if (entry.rhs !== 'sindy' && entry.rhs !== 'ude' && entry.rhs !== 'kam') fail(where, 'rhs は sindy・ude・kam');
-  if (
-    entry.library_specs !== undefined &&
-    !(Array.isArray(entry.library_specs) && entry.library_specs.every(s => isObject(s) && typeof s.type === 'string'))
-  )
-    fail(where, 'library_specs は type を持つ物の配列');
-  if (
-    entry.absorb !== undefined &&
-    !(Array.isArray(entry.absorb) && entry.absorb.length > 0 && entry.absorb.every(g => typeof g === 'string'))
-  )
-    fail(where, 'absorb は状態の名前の空でない配列');
-  if (entry.absorb !== undefined && entry.form !== 'hybrid') fail(where, 'absorb は hybrid だけ');
-  for (const key of ['compressor_params', 'rhs_params'])
-    if (entry[key] !== undefined && !isObject(entry[key])) fail(where, `${key} は物`);
-  return entry as Declared;
+  });
 }
 
 /** 群分けの名前（`hn_ac`）を状態の名前の群（[['H','N'],['A','C']]）にする。 */
@@ -116,31 +87,27 @@ export function groupsOf(grouping: string): string[][] {
   return groups;
 }
 
-/** 宣言と群分けを学習 run にする。学習用の電流（train）・刻み・全区画で学習するのは、どの学習でも同じ。 */
-function train(name: string, d: Declared, grouping: string): Train {
+/** 仕方と群分けを学習 run にする。学習用の電流（train）・刻み・全区画で学習するのは、どの学習でも同じ。name は表示の名前で、同一性には入らない。 */
+export function trainFrom(name: string, d: Declared, grouping: string): Train {
   const data: SimSpec = {
     target: d.target,
     current_type: 'train',
     dt: raw.defaults.method.dt,
     current_params: { duration: d.duration },
   };
-  const rhs = d.rhs;
-  const groups: Group[] = [];
   const shared = groupsOf(grouping)
     .flat()
     .filter(g => d.absorb?.includes(g));
   if (shared.length > 0) throw new Error(`${name} は ${shared.join('・')} を群と吸収の両方に入れている`);
-  for (const gates of groupsOf(grouping)) {
-    groups.push({
-      gates,
-      compressor: d.compressor,
-      d: d.d,
-      rhs,
-      compressor_params: d.compressor_params ?? {},
-      rhs_params:
-        rhs === 'sindy' && d.library_specs !== undefined ? { library_specs: d.library_specs } : (d.rhs_params ?? {}),
-    });
-  }
+  const groups: Group[] = groupsOf(grouping).map(gates => ({
+    gates,
+    compressor: d.compressor,
+    d: d.d,
+    rhs: d.rhs,
+    compressor_params: d.compressor_params ?? {},
+    rhs_params:
+      d.rhs === 'sindy' && d.library_specs !== undefined ? { library_specs: d.library_specs } : (d.rhs_params ?? {}),
+  }));
   const config: SurrogateConfig = {
     cell: d.cell,
     form: d.form,
@@ -152,76 +119,46 @@ function train(name: string, d: Declared, grouping: string): Train {
   return { name, config };
 }
 
-/** 縮約の仕方。名前 → 宣言。 */
-export const METHODS: Record<string, Declared> = {};
-for (const name of Object.keys(raw.methods))
-  METHODS[name] = declared(`methods.${name}`, filled(name, raw.methods[name]));
-
-/** テスト専用の学習 run。電流は 180 ms に縮める。 */
-const TESTS: Record<string, Train> = {};
-for (const name of Object.keys(TEST_DECLARATIONS)) {
-  const { method, grouping, ...rest } = TEST_DECLARATIONS[name];
-  if (typeof method !== 'string' || !raw.methods[method])
-    fail(`tests.${name}`, `仕方 ${String(method)} が methods に無い`);
-  if (typeof grouping !== 'string') fail(`tests.${name}`, 'grouping は群分けの名前');
-  const entry = filled(method, {
-    ...raw.methods[method],
-    duration: 180,
-    ...rest,
-  });
-  TESTS[name] = train(name, declared(`tests.${name}`, entry), grouping);
-}
-export const TEST_NAMES = Object.keys(TESTS);
-
-/** 仕方と群分けの学習 run の名前（`kam_hn`）。 */
-export function modelOf(method: string, grouping: string): string {
-  return `${method}_${grouping}`;
-}
-
-/** 学習 run の名前を仕方と群分けに分ける。 */
-export function partsOf(name: string): { method: string; grouping: string } {
-  const cut = name.indexOf('_');
-  return { method: name.slice(0, cut), grouping: name.slice(cut + 1) };
-}
-
-/** 学習 run の名前（`<仕方>_<群分け>` かテストの名前）を学習 run にする。知らない名前は投げる。 */
-export function trainOf(name: string): Train {
-  if (TESTS[name]) return TESTS[name];
-  const { method, grouping } = partsOf(name);
-  if (!METHODS[method]) throw new Error(`学習 ${name} の仕方が methods（${Object.keys(METHODS).join(', ')}）に無い`);
-  return train(name, METHODS[method], grouping);
-}
-
 /** 系列の鍵（ほかの鍵は電流のパラメータ）。 */
 const SERIES_KEYS = ['target', 'current', 'stim', 'replace_targets', 'sweep', 'dt'];
+const SeriesShape = z.looseObject({
+  target: z.string(),
+  current: z.string(),
+  stim: z.string(),
+  replace_targets: z.array(z.string()).nonempty(),
+  dt: z.number(),
+  /** { 掃引する電流のパラメータ: 値の配列 } の 1 組。 */
+  sweep: z.record(z.string(), z.array(z.number())).refine(s => Object.keys(s).length === 1, 'sweep は 1 組'),
+});
 
-/** 系列の形を確かめ、presets.json の既定を埋めて掃引にする。既定にない鍵は電流のパラメータ。 */
-function series(name: string, given: Entry): Series {
-  const where = `series.${name}`;
-  const entry: Entry = { ...raw.defaults.series, ...given };
+/** 系列を掃引にする。defaults → プリセット → 差分の順に重ね、既定にない鍵は電流のパラメータにする。 */
+export function seriesFrom(ref: Ref): Series {
+  const { from, diff } = split(ref, raw.series, '系列');
+  const entry = parsed(SeriesShape, `系列 ${JSON.stringify(ref)}`, {
+    ...raw.defaults.series,
+    ...raw.series[from],
+    ...diff,
+  });
   const current: Entry = {};
   for (const key of Object.keys(entry)) if (!SERIES_KEYS.includes(key)) current[key] = entry[key];
-  const replace = entry.replace_targets;
-  if (!isStrings(replace)) fail(where, 'replace_targets は区画の名前の配列');
-  if (!isObject(entry.sweep) || Object.keys(entry.sweep).length !== 1)
-    fail(where, 'sweep は { 掃引する電流のパラメータ: 値の配列 } の 1 組');
-  const [[param, sweep]] = Object.entries(entry.sweep);
-  if (!Array.isArray(sweep) || !sweep.every(v => typeof v === 'number')) fail(where, 'sweep の値は数の配列');
-  const spec = {
+  const [[param, values]] = Object.entries(entry.sweep);
+  const spec: SimSpec = {
     target: entry.target,
     current_type: entry.current,
     dt: entry.dt,
     current_params: current,
     stim: entry.stim,
-  };
-  return {
-    spec: spec as SimSpec,
-    replace_targets: replace,
-    param,
-    values: sweep,
-  };
+  } as SimSpec;
+  return { spec, replace_targets: entry.replace_targets, param, values };
 }
 
-/** 評価の系列。名前 → 掃引。 */
-export const SERIES: Record<string, Series> = {};
-for (const name of Object.keys(raw.series)) SERIES[name] = series(name, raw.series[name]);
+/** プリセットの系列。名前 → 掃引。手元の CLI で名前から回すときに引く。 */
+export const PRESET_SERIES: Record<string, Series> = {};
+for (const name of Object.keys(raw.series)) PRESET_SERIES[name] = seriesFrom(name);
+/** プリセットの仕方の名前。 */
+export const METHOD_NAMES = Object.keys(raw.methods);
+
+/** テスト専用の学習 run。仕方に差分を重ね、電流は 180 ms に縮める。 */
+export const TESTS: Record<string, Train> = {};
+for (const [name, { method, grouping, ...rest }] of Object.entries(TEST_DECLARATIONS))
+  TESTS[name] = trainFrom(name, methodOf({ from: String(method), duration: 180, ...rest }), String(grouping));

@@ -5,8 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { RUNS, launch, scan, status } from '../orchestrate/orchestrate.ts';
-import { SERIES } from '../orchestrate/conf.ts';
-import { EXPERIMENTS, EXPERIMENT_RUNS } from '../../experiments/experiments.ts';
+import { EXPERIMENTS, EXPERIMENT_RUNS, MODELS, seriesOf } from '../../experiments/experiments.ts';
 import { FORMAT, type ExperimentStatus, type IndexEntry, type Job } from '../orchestrate/spec.ts';
 import { rowsOf, type Claim, type Column, type Judgement, type Row } from '../../experiments/common.ts';
 import { coincidence, compare, crossingDiff, crossings, type PairMetrics, type SpikesFile } from '../read/compare.ts';
@@ -162,9 +161,9 @@ export function handlers(runs: string): Handlers {
     const columns: Column[] = [];
     for (const pair of found.pairs) {
       if (pair.series !== name || pair.run.state !== 'done') continue;
-      columns.push({ run: pair.run.id, model: pair.model });
+      columns.push({ run: pair.run.id, method: MODELS[pair.model].method, grouping: MODELS[pair.model].grouping });
     }
-    const request = { original: original.id, columns: columns.map(c => c.run), comp: SERIES[name].replace_targets[0] };
+    const request = { original: original.id, columns: columns.map(c => c.run), comp: seriesOf(name).replace_targets[0] };
     return rowsOf(columns, entry.spec.input.values, seriesMetrics(request).crossings);
   }
 

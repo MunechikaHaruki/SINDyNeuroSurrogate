@@ -2,16 +2,22 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SERIES, groupsOf, trainOf } from './conf.ts';
+import { PRESET_SERIES as SERIES, TESTS, groupsOf, methodOf, trainFrom } from './conf.ts';
 import { canonical, dirOf, hashOf, jobs, simSpec, trainSpec } from './orchestrate.ts';
 
 test('the key does not depend on the order the spec was written in', () => {
   expect(canonical({ b: 1, a: { d: [1, { f: 2, e: 3 }], c: null } })).toBe(
     '{"a":{"c":null,"d":[1,{"e":3,"f":2}]},"b":1}',
   );
-  const train = trainOf('_test_hh_sindy');
+  const train = TESTS._test_hh_sindy;
   const { config } = train;
-  const reordered = { train_comp: config.train_comp, groups: config.groups, data: config.data, form: config.form, cell: config.cell };
+  const reordered = {
+    train_comp: config.train_comp,
+    groups: config.groups,
+    data: config.data,
+    form: config.form,
+    cell: config.cell,
+  };
   expect(hashOf(trainSpec({ name: train.name, config: reordered }))).toBe(hashOf(trainSpec(train)));
 });
 
@@ -22,24 +28,40 @@ test('series that differ only in what they replace share the input directory but
   expect(original).toMatch(/^inputs\/[0-9a-f]{12}\/original$/);
   expect(dirOf(simSpec(all, null))).toBe(original);
   const input = original.slice(0, -'original'.length);
-  for (const dir of [dirOf(simSpec(soma, 't')), dirOf(simSpec(all, 't')), dirOf(simSpec(soma, 'u'))]) expect(dir.startsWith(input)).toBe(true);
+  for (const dir of [dirOf(simSpec(soma, 't')), dirOf(simSpec(all, 't')), dirOf(simSpec(soma, 'u'))])
+    expect(dir.startsWith(input)).toBe(true);
   expect(dirOf(simSpec(soma, 't'))).not.toBe(dirOf(simSpec(all, 't')));
   expect(dirOf(simSpec(soma, 't'))).not.toBe(dirOf(simSpec(soma, 'u')));
-  expect(dirOf(trainSpec(trainOf('_test_hh_sindy')))).toMatch(/^models\/[0-9a-f]{12}$/);
+  expect(dirOf(trainSpec(TESTS._test_hh_sindy))).toMatch(/^models\/[0-9a-f]{12}$/);
 });
 
 test('a model is a method laid over a grouping', () => {
-  expect(groupsOf('hn_ac')).toEqual([['H', 'N'], ['A', 'C']]);
-  const kam = trainOf('kam_hn_ac').config;
-  expect(kam.groups.map(g => [g.gates, g.compressor, g.rhs, g.d])).toEqual([[['H', 'N'], 'kam', 'kam', 1], [['A', 'C'], 'kam', 'kam', 1]]);
-  expect(trainOf('pca_hn').config.groups[0].rhs_params.library_specs?.length).toBeGreaterThan(0);
-  expect(hashOf(trainSpec(trainOf('pca_hn')))).not.toBe(hashOf(trainSpec(trainOf('ae_hn'))));
-  expect([trainSpec(trainOf('ae_hn')).device, trainSpec(trainOf('_test_hh_ae')).device]).toEqual(['gpu', 'cpu']);
-  expect(() => trainOf('xyz_hn')).toThrow();
+  expect(groupsOf('hn_ac')).toEqual([
+    ['H', 'N'],
+    ['A', 'C'],
+  ]);
+  const kam = trainFrom('kam_hn_ac', methodOf('kam'), 'hn_ac').config;
+  expect(kam.groups.map(g => [g.gates, g.compressor, g.rhs, g.d])).toEqual([
+    [['H', 'N'], 'kam', 'kam', 1],
+    [['A', 'C'], 'kam', 'kam', 1],
+  ]);
+  expect(trainFrom('pca_hn', methodOf('pca'), 'hn').config.groups[0].rhs_params.library_specs?.length).toBeGreaterThan(
+    0,
+  );
+  expect(hashOf(trainSpec(trainFrom('pca_hn', methodOf('pca'), 'hn')))).not.toBe(
+    hashOf(trainSpec(trainFrom('ae_hn', methodOf('ae'), 'hn'))),
+  );
+  expect([trainSpec(trainFrom('ae_hn', methodOf('ae'), 'hn')).device, trainSpec(TESTS._test_hh_ae).device]).toEqual([
+    'gpu',
+    'cpu',
+  ]);
+  expect(() => methodOf('xyz')).toThrow();
+  expect(trainFrom('d2', methodOf({ from: 'pca', d: 2 }), 'hn').config.groups[0].d).toBe(2);
+  expect(() => methodOf({ from: 'pca', d: 'two' })).toThrow();
   expect(() => groupsOf('hn_a')).toThrow();
-  expect(trainOf('kamm_hn').config.absorbed).toEqual(['M']);
-  expect('absorbed' in trainOf('kam_hn').config).toBe(false);
-  expect(() => trainOf('kamm_mh')).toThrow();
+  expect(trainFrom('kamm_hn', methodOf('kamm'), 'hn').config.absorbed).toEqual(['M']);
+  expect('absorbed' in trainFrom('kam_hn', methodOf('kam'), 'hn').config).toBe(false);
+  expect(() => trainFrom('kamm_mh', methodOf('kamm'), 'mh')).toThrow();
 });
 
 test('a job is running while its pid lives, done on exit code 0, and failed otherwise', () => {

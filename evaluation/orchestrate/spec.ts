@@ -54,7 +54,7 @@ export type Series = {
   values: number[];
 };
 
-/** 学習 run 1 本の宣言。name は学習 run の名前（`<仕方>_<群分け>` かテストの名前）で、同一性には入らない。 */
+/** 学習 run 1 本の宣言。name は学習 run の名前（実験の中の `<仕方の名前>_<群分け>` かテストの名前）で、同一性には入らない。 */
 export type Train = { name: string; config: SurrogateConfig };
 
 /** 回す学習 run（名前）と系列の組の並び。宣言は使う側が持ち、status に渡す。 */

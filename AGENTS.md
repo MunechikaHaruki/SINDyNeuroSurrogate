@@ -9,10 +9,10 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（`neurosurrogate/physics/` 元のモデルを解く、`neurosurrogate/surrogate/` 学習して置き換える、直下にスパイクの特徴量 `spikes.py` と入口 `run.py`） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
-| 回せるもののプリセット（既定 `defaults`、縮約の仕方 `methods`、系列 `series` の値をすべて持つ。テスト専用の学習は `evaluation/orchestrate/test-trains.ts` が持つ。`evaluation/orchestrate/conf.ts` が既定を混ぜ、学習 run を `<仕方>_<群分け>` の名前から組む） | `presets.json` |
-| 宣言の読み込み（`conf.ts`）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。外の画面は export した関数、手元では CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
+| 回せるもののプリセット（既定 `defaults`、縮約の仕方 `methods`、系列 `series` の値をすべて持つ。テスト専用の学習は `evaluation/orchestrate/test-trains.ts` が持つ。`evaluation/orchestrate/conf.ts` がプリセットと差分を混ぜて学習 run と系列にする部品を持つ） | `presets.json` |
+| プリセットを混ぜる部品（`conf.ts`）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。外の画面は export した関数、手元では CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | 計算する機械の `~/sindy/runs/`（手元の runs は `remote.sh fetch` で持ってきた写しだけで、どちらも Git の外） |
-| 実験。分類（`experiments/mc/` 拡張、`experiments/sweep/` 改良の探索、`experiments/property/` 性質の発見）ごとに、宣言 `experiments.json`（プリセットの名前で組む回す組と、回す前に書いた主張。回す系列は `series` と主張が読む系列を合わせたもの）と判定 `checks.ts`（`experiments/mc/` は判定を持たない）。共通の部品と線 `GAMMA_LINE` は `common.ts`、並びと形の確かめは `experiments.ts` | `experiments/` |
+| 実験。分類（`experiments/mc/` 拡張、`experiments/sweep/` 改良の探索、`experiments/property/` 性質の発見）ごとに、宣言 `experiments.json`、その形 `schema.ts`（主題が自由に決め、解決済みの実験を返す）、判定 `checks.ts`（`experiments/mc/` は判定を持たない）。主題が使う部品は `parts.ts`、共通の型と線 `GAMMA_LINE` は `common.ts`、並べて名前で引けるようにするのは `experiments.ts` | `experiments/` |
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、波形の切り分けと間引き `waves.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
 | runs の隣で結果を小さい JSON にして返す API（`serve.ts`）と口の形（`api.ts`） | `evaluation/serve/` |
 | 計算する機械のイメージ（ベースと道具は digest、Python の依存は `uv.lock`、TS の依存は `bun.lock` で固定） | `Dockerfile` |
@@ -63,7 +63,7 @@ SINDY_HOST=<host> ./remote.sh test                # テストを向こうで回�
 SINDY_HOST=<host> ./remote.sh fetch <run の id>   # run を手元の runs/ へ持ってくる
 uv sync                        # 手元の依存導入（テストと、テストの学習の評価は手元でも回る。gpu の学習 spec は GPU の機械でしか回らない）
 # 学習と評価
-bun evaluation/orchestrate/orchestrate.ts train <学習 run>...             # 学習。学習 run は <仕方>_<群分け> (kam_hn、pca_hn_ac) か tests の名前
+bun evaluation/orchestrate/orchestrate.ts train <学習 run>...             # 学習。学習 run は実験の中の名前 (kam_hn) か tests の名前
 bun evaluation/orchestrate/orchestrate.ts eval <系列> <学習 run かハッシュ>...  # 評価。入力を元のモデルと置き換えたモデルで回す。未学習なら学習もする
 bun evaluation/orchestrate/orchestrate.ts list                            # run の一覧。引数なしで仕方・テスト・系列の一覧、index で index.json を書き直す
 uv run pytest -q               # 規約、区画の式、サロゲート、neurosurrogate/run.py

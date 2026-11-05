@@ -6,10 +6,13 @@
       "name": "sindy-neuro-surrogate-evaluation",
       "dependencies": {
         "odex": "3.0.0-rc.4",
+        "zod": "4.6.7",
       },
     },
   },
   "packages": {
     "odex": ["odex@3.0.0-rc.4", "", {}, "sha512-NPpR3eFHUJWQWYT9VParetnYF2bVe1p9iel1PHk2PLGgOdfXd7tr67XJi6x6fVzDmoKnUv1e9AtRtdwLxg2Z2Q=="],
+
+    "zod": ["zod@4.6.7", "", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
   }
 }
