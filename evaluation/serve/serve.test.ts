@@ -74,3 +74,12 @@ test('only json and f64 inside runs can be read, and unknown ops are refused', a
   expect((await post('shell', {})).status).toBe(404);
   expect((await post('launch', { job: { action: 'rm' } })).status).toBe(400);
 });
+
+test('every declared claim gets a judgement, or the reason it cannot be judged yet', async () => {
+  const { EXPERIMENTS } = await import('../orchestrate/conf.ts');
+  const reply = (await (await post('claims', {})).json()) as { check: string; rows: unknown; error?: string }[];
+  let count = 0;
+  for (const e of EXPERIMENTS) count += e.claims.length;
+  expect(reply).toHaveLength(count);
+  for (const c of reply) expect(c.rows !== null || typeof c.error === 'string').toBe(true);
+});

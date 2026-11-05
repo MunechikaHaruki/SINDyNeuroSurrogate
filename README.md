@@ -16,6 +16,7 @@ flowchart LR
       orch["段取り<br/>orchestrate/"]
       serve["結果を返す API<br/>serve/"]
       read["指標と間引き<br/>read/"]
+      judge["主張の判定<br/>judge/"]
     end
     subgraph py["neurosurrogate/（Python）"]
       entry["計算の入口<br/>run.py"]
@@ -33,6 +34,7 @@ flowchart LR
   orch -- "一覧 index.json" --> runs
   runs --> serve
   read --> serve
+  judge --> serve
   serve -- "間引いた線と指標（JSON）" --> view
   view -- "回す仕事" --> serve
   serve --> orch
@@ -95,7 +97,7 @@ flowchart LR
 | --- | --- | --- |
 | 実験の条件（spec.json） | TS（段取り） | Python |
 | 実験の結果（runs/） | Python | TS（API） |
-| 間引いた線と指標（API の JSON。口の形は `evaluation/serve/api.ts`） | TS（API） | 画面 |
+| 間引いた線と指標と主張の判定（API の JSON。口の形は `evaluation/serve/api.ts`） | TS（API） | 画面 |
 | ゲートのレートの式（physics/ の JSON） | 人 | Python と TS |
 
 形式の細部と設計の判断基準は [DESIGN.md](DESIGN.md)、ファイルごとの役割は [neurosurrogate/FILES.md](neurosurrogate/FILES.md) にある。

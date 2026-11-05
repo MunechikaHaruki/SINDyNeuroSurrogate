@@ -5,11 +5,13 @@
 import { readFileSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { RUNS, launch, scan, status } from '../orchestrate/orchestrate.ts';
-import { FORMAT, type Job } from '../orchestrate/spec.ts';
+import { EXPERIMENTS, EXPERIMENT_RUNS, SERIES, type Claim } from '../orchestrate/conf.ts';
+import { FORMAT, type ExperimentStatus, type IndexEntry, type Job } from '../orchestrate/spec.ts';
+import { CHECKS, rowsOf, type Column, type Judgement, type Row } from '../judge/checks.ts';
 import { coincidence, compare, crossingDiff, crossings, type PairMetrics, type SpikesFile } from '../read/compare.ts';
 import { histogram, type Bin } from '../read/model-json.ts';
 import { decimate, path, variablesOf, type Point, type WaveMeta } from '../read/waves.ts';
-import type { Api, ArrayRef, CrossingRow, SeriesMetrics, SeriesRequest } from './api.ts';
+import type { Api, ArrayRef, ClaimJudgement, CrossingRow, SeriesMetrics, SeriesRequest } from './api.ts';
 
 const PORT = Number(process.env.SINDY_PORT ?? 8787);
 /** 覚えておく .f64 の合計の上限 [バイト]。超えたら古く使ったものから忘れる。 */
@@ -142,9 +144,53 @@ export function handlers(runs: string): Handlers {
     return values.map(array => histogram(array, low, high, bins));
   }
 
+  /** 実験の系列 1 つを、置き換えて回し終えた列ごとの判定の値にする。元のモデルをまだ回していなければ投げる。 */
+  function table(index: IndexEntry[], found: ExperimentStatus, name: string, comp: string | undefined): Row[] {
+    const original = found.series.find(s => s.series === name)?.original;
+    const entry = index.find(r => r.id === original?.id);
+    if (!original || !entry || entry.spec.kind !== 'sim') throw new Error(`${found.name} の ${name} の元のモデルをまだ回していない`);
+    const columns: Column[] = [];
+    for (const pair of found.pairs) {
+      if (pair.series !== name || pair.run.state !== 'done') continue;
+      const train = found.models.find(m => m.model === pair.model)!.run;
+      columns.push({ run: pair.run.id, model: pair.model, summary: json<Record<string, number | null>>(train.id, 'summary.json') });
+    }
+    const request = { original: original.id, columns: columns.map(c => c.run), comp: comp ?? SERIES[name].replace_targets[0] };
+    return rowsOf(columns, entry.spec.input.values, seriesMetrics(request).crossings);
+  }
+
+  /** 主張 1 つを判定する。 */
+  function judge(index: IndexEntry[], found: ExperimentStatus, claim: Claim): Judgement[] {
+    const check = CHECKS[claim.check];
+    if (!check) throw new Error(`判定 ${claim.check} が無い`);
+    const tables: Row[][] = [];
+    for (const { name, comp } of check.series) tables.push(table(index, found, name, comp));
+    return check.judge(tables, claim.groupings);
+  }
+
+  /** conf.json の実験の主張ごとの判定。判定できない主張は理由を添える。 */
+  function claims(): ClaimJudgement[] {
+    const index = scan(runs);
+    const current = status(runs, EXPERIMENT_RUNS);
+    const list: ClaimJudgement[] = [];
+    for (const e of EXPERIMENTS) {
+      const found = current.experiments.find(x => x.name === e.id)!;
+      for (const c of e.claims) {
+        const base = { experiment: e.id, claim: c.claim, check: c.check };
+        try {
+          list.push({ ...base, rows: judge(index, found, c) });
+        } catch (err) {
+          list.push({ ...base, rows: null, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    }
+    return list;
+  }
+
   return {
     index: () => scan(runs).filter(e => e.spec.format === FORMAT),
-    status: body => status(runs, body.experiments),
+    status: () => status(runs, EXPERIMENT_RUNS),
+    claims,
     launch: body => ({ started: launch(runs, checkJob(body.job)) }),
     json: body => json(body.run, body.path),
     traces: body => body.requests.map(r => compact(decimate(column(r.array), r.t0, r.dt, r.start, r.end, r.buckets))),

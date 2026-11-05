@@ -12,7 +12,9 @@
     "kamm": {
       "description": "kam に加えて、m を膜電位へ吸収する（KAM の φ 群、α₀ = 1）。m は状態を持たず、V での定常値に置く。",
       "compressor": "kam",
-      "absorb": ["M"]
+      "absorb": [
+        "M"
+      ]
     },
     "poster": {
       "description": "NEURO2026 で発表した形。AutoEncoder で潜在 5 本へ縮め、右辺を SINDy で同定する。全ゲートを 1 群（mhnabc）にして使う。19 区画の軌道（1000 ms × 19）で学習する。",
@@ -132,10 +134,119 @@
       "description": "somastim と置換範囲だけが違う。Na と DR を持つ 5 区画（soma と、その両隣の 7・9、5・11）を置き換える。h と n はほかの区画では電流に効かず、KAM の重みが決まらない。区画は宣言で綴る。",
       "target": "traub19",
       "duration": 300.0,
-      "replace_targets": ["c05", "c07", "soma", "c09", "c11"],
+      "replace_targets": [
+        "c05",
+        "c07",
+        "soma",
+        "c09",
+        "c11"
+      ],
       "sweep": {
-        "value": [0, 2.5, 5, 7.5, 10]
+        "value": [
+          0,
+          2.5,
+          5,
+          7.5,
+          10
+        ]
       }
+    }
+  },
+  "experiments": {
+    "reproduce": {
+      "description": "単一区画の Traub モデルで、ゲート h, n, a, c の全部の群分けを KAM・PCA・AE で縮約し、定常電流の掃引で元のモデルの発火をどこまで再現するかを比べる。物差しは coincidence factor Γ（±Δ 以内で一致した発火の数を、偶然の一致を引いて正規化したもの。[Kistler et al. 1997](https://doi.org/10.1152/jn.1997.77.5.2390)）。",
+      "gates": [
+        "h",
+        "n",
+        "a",
+        "c"
+      ],
+      "methods": [
+        "kam",
+        "kamm",
+        "pca",
+        "ae"
+      ],
+      "series": [
+        "traub_somastim",
+        "traub_kistler"
+      ],
+      "claims": [
+        {
+          "claim": "単一区画で、KAM・PCA・AE のどれでも発火の時刻まで合うのは a と c をまとめる組だけで、KAM は n を h 以外のゲートとまとめると時刻が合わなくなる。",
+          "check": "ac-only"
+        },
+        {
+          "claim": "m を膜電位へ吸収すると、吸収しなければ時刻まで合っていた組でも、発火の回数の差は一つ以内のまま、時刻が合わなくなる。",
+          "check": "absorb-m",
+          "groupings": [
+            "ac",
+            "ha",
+            "hc",
+            "hac"
+          ]
+        }
+      ]
+    },
+    "fidelity": {
+      "description": "hn をまとめた KAM・PCA・AE が、定常電流の外の入力（過分極からの解放、Poisson のシナプス入力、Kistler 1997 の揺らぐ電流）でも元のモデルの発火を再現するかを、定常電流と同じ物差しで比べる。",
+      "groupings": [
+        "hn"
+      ],
+      "methods": [
+        "kam",
+        "pca",
+        "ae"
+      ],
+      "series": [
+        "traub_somastim",
+        "traub_release",
+        "traub_poisson",
+        "traub_kistler"
+      ],
+      "claims": [
+        {
+          "claim": "hn をまとめた縮約は、どの仕方でも Kistler 1997 の揺らぐ電流のほうが定常電流より元の発火の時刻に合う。最も強い揺らぎで時刻まで合うのは KAM だけである。",
+          "check": "fluctuating-input"
+        }
+      ]
+    },
+    "extend": {
+      "description": "hn をまとめた KAM を Traub の 19 区画に当て、群分けと再現が保てるかを見る。",
+      "groupings": [
+        "hn"
+      ],
+      "methods": [
+        "kam"
+      ],
+      "series": [
+        "traub19_somastim",
+        "traub19_somastim_nadr"
+      ],
+      "claims": [
+        {
+          "claim": "hn をまとめた KAM は、19 区画のうち Na と DR を持つ 5 区画を置き換えると、soma だけを置き換えるより soma の発火の時刻が元に合う。",
+          "check": "nadr-better"
+        }
+      ]
+    },
+    "poster": {
+      "description": "NEURO2026 で発表した形（6 ゲートを 1 つの AutoEncoder で潜在 5 本へ縮め、右辺を SINDy で同定する。19 区画の軌道で学習する）を今の研究コードで回し直し、19 区画の soma を置き換えて発表時の結果と比べる。",
+      "groupings": [
+        "mhnabc"
+      ],
+      "methods": [
+        "poster"
+      ],
+      "series": [
+        "traub19_somastim"
+      ],
+      "claims": [
+        {
+          "claim": "全ゲートを一つの AutoEncoder で縮める NEURO2026 の形は、係数の半分超が非零で、1 刻みの演算が元より増え、刺激の無いときの発火の時刻が合わない。",
+          "check": "poster-shape"
+        }
+      ]
     }
   }
 }

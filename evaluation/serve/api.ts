@@ -2,7 +2,8 @@
 // 波形は回線に出さない。返すのは run の小さい JSON（meta.json・spikes.json・summary.json・model.json）と、間引いた線・軌跡・分布・指標だけ。
 import type { Bin } from '../read/model-json.ts';
 import type { CrossingDiff, PairMetrics } from '../read/compare.ts';
-import type { Experiment, IndexEntry, Job, Status } from '../orchestrate/spec.ts';
+import type { IndexEntry, Job, Status } from '../orchestrate/spec.ts';
+import type { Judgement } from '../judge/checks.ts';
 import type { Point } from '../read/waves.ts';
 
 /** run の中の .f64 の 1 列。file は run の下のパス、変数ごとに n 個ずつ続いて並んだうちの column 番目。 */
@@ -22,12 +23,17 @@ export type SeriesMetrics = {
   times: { original: number[][]; columns: Record<string, number[][]> };
 };
 
+/** 主張 1 つの判定。rows は判定の行、判定できなければ null と理由。 */
+export type ClaimJudgement = { experiment: string; claim: string; check: string; rows: Judgement[] | null; error?: string };
+
 /** 口ごとの受け取りと返事。 */
 export type Api = {
   /** 今の形式の run の一覧（新しい順）。 */
   index: { body: Record<string, never>; reply: IndexEntry[] };
-  /** 宣言した実験ごとの状態と、起こした仕事。 */
-  status: { body: { experiments: Record<string, Experiment> }; reply: Status };
+  /** conf.json の実験ごとの状態と、起こした仕事。 */
+  status: { body: Record<string, never>; reply: Status };
+  /** conf.json の実験の主張ごとの判定。実験の順、主張の順。 */
+  claims: { body: Record<string, never>; reply: ClaimJudgement[] };
   /** 学習か評価を切り離して回す。同じ組が回っていれば起こさない。 */
   launch: { body: { job: Job }; reply: { started: boolean } };
   /** run の中の .json 1 つ。 */

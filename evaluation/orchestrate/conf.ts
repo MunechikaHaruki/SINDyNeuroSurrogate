@@ -1,10 +1,10 @@
-// 回せるものの宣言を読む。宣言そのものは repo の根の conf.json（縮約の仕方 methods、評価の系列 series）が持つ。テスト専用の学習はテストの都合なので conf.json に入れず、隣の test-trains.ts が持つ。
+// 回せるものの宣言を読む。宣言そのものは repo の根の conf.json（縮約の仕方 methods、評価の系列 series、実験 experiments）が持つ。テスト専用の学習はテストの都合なので conf.json に入れず、隣の test-trains.ts が持つ。
 // 学習 run は 縮約の仕方 × 群分け で決まり、名前は `<仕方>_<群分け>`（`kam_hn`、`pca_hn_ac`）。群分けは群をゲートの小文字の名前でつなぎ、群どうしを _ で区切る。
 // ここは読んで形を確かめ、仕方に群分けを重ねて学習の設定を組むだけ。段取り（orchestrate.ts）がここから spec.json を組む。形は spec.ts。
 // conf.json は既定と違う値だけを書き、既定はここが埋める。description はその宣言の理由で、spec には入れない。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
 import declaration from '../../conf.json' with { type: 'json' };
 import { TEST_DECLARATIONS } from './test-trains.ts';
-import type { Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from './spec.ts';
+import type { Experiment, Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from './spec.ts';
 
 /** 仕方が持つ値。既定値は Python の署名が持つので、書くのは仕方が決める値だけ。 */
 type Declared = {
@@ -153,6 +153,7 @@ function train(name: string, d: Declared, grouping: string): Train {
 const raw = declaration as unknown as {
   methods: Record<string, Entry>;
   series: Record<string, Entry>;
+  experiments: Record<string, Entry>;
 };
 
 /** 縮約の仕方。名前 → 宣言。 */
@@ -227,3 +228,79 @@ function series(name: string, entry: Entry): Series {
 /** 評価の系列。名前 → 掃引。 */
 export const SERIES: Record<string, Series> = {};
 for (const name of Object.keys(raw.series)) SERIES[name] = series(name, raw.series[name]);
+
+/** ゲートの群分けを全部並べる。2 つ以上のゲートを入れた群だけを名前にし（例 hn_ac）、全部が 1 つずつの分け方は除く。減らす状態の少ない順、同じなら名前の順。 */
+export function groupings(gates: string[]): string[] {
+  let partitions: string[][][] = [[]];
+  for (const gate of gates) {
+    const next: string[][][] = [];
+    for (const blocks of partitions) {
+      for (let i = 0; i < blocks.length; i++) next.push(blocks.map((b, j) => (j === i ? [...b, gate] : b)));
+      next.push([...blocks, [gate]]);
+    }
+    partitions = next;
+  }
+  const list: { name: string; reduced: number }[] = [];
+  for (const blocks of partitions) {
+    const groups = blocks.filter(b => b.length > 1);
+    if (groups.length === 0) continue;
+    let reduced = 0;
+    for (const g of groups) reduced += g.length - 1;
+    list.push({ name: groups.map(g => g.join('')).join('_'), reduced });
+  }
+  list.sort((x, y) => x.reduced - y.reduced || x.name.localeCompare(y.name));
+  return list.map(g => g.name);
+}
+
+/** 主張 1 つ。check は判定の名前（evaluation/judge/checks.ts）、groupings は判定を絞る群分け（省けば実験の全部）。 */
+export type Claim = { claim: string; check: string; groupings?: string[] };
+/** 実験。description は何を回すかの一文（Markdown）。groupings × methods × series が回す run の直積で、claims は回す前に書いた主張と判定。 */
+export type Plan = { id: string; description: string; groupings: string[]; methods: string[]; series: string[]; claims: Claim[] };
+
+/** 実験の鍵。群分けは gates（全部の群分け）か groupings（名前を並べる）のどちらか一方で書く。 */
+const EXPERIMENT_KEYS = ['description', 'gates', 'groupings', 'methods', 'series', 'claims'];
+
+/** 主張の形を確かめる。 */
+function claimOf(where: string, entry: unknown): Claim {
+  if (!isObject(entry)) fail(where, '主張は物');
+  for (const key of Object.keys(entry)) if (!['claim', 'check', 'groupings'].includes(key)) fail(where, `知らない鍵 ${key}`);
+  if (typeof entry.claim !== 'string') fail(where, 'claim は文字列');
+  if (typeof entry.check !== 'string') fail(where, 'check は判定の名前');
+  if (entry.groupings !== undefined && !isStrings(entry.groupings)) fail(where, 'groupings は群分けの名前の配列');
+  return entry as Claim;
+}
+
+/** 実験の形を確かめ、群分けを名前の並びにする。仕方と系列は宣言にあるものだけ。 */
+function plan(id: string, entry: Entry): Plan {
+  const where = `experiments.${id}`;
+  for (const key of Object.keys(entry)) if (!EXPERIMENT_KEYS.includes(key)) fail(where, `知らない鍵 ${key}`);
+  if (typeof entry.description !== 'string') fail(where, 'description は文字列');
+  if (!isStrings(entry.methods)) fail(where, 'methods は縮約の仕方の配列');
+  if (!isStrings(entry.series)) fail(where, 'series は系列の名前の配列');
+  for (const method of entry.methods) if (!(method in METHODS)) fail(where, `仕方 ${method} が methods に無い`);
+  for (const name of entry.series) if (!(name in SERIES)) fail(where, `系列 ${name} が series に無い`);
+  let names: string[];
+  if (isStrings(entry.gates) && entry.groupings === undefined) names = groupings(entry.gates);
+  else if (isStrings(entry.groupings) && entry.gates === undefined) names = entry.groupings;
+  else fail(where, 'gates（全部の群分け）か groupings（群分けの名前）のどちらか一方を書く');
+  if (!Array.isArray(entry.claims) || entry.claims.length === 0) fail(where, 'claims は主張の空でない配列');
+  const claims: Claim[] = [];
+  for (let k = 0; k < entry.claims.length; k++) claims.push(claimOf(`${where}.claims[${k}]`, entry.claims[k]));
+  return { id, description: entry.description, groupings: names, methods: entry.methods, series: entry.series, claims };
+}
+
+/** 実験。書いた順。 */
+export const EXPERIMENTS: Plan[] = [];
+for (const id of Object.keys(raw.experiments)) EXPERIMENTS.push(plan(id, raw.experiments[id]));
+
+/** 実験の回す学習 run と系列の組。仕方の順、群分けの順、系列の順。 */
+export function pairsOf(e: Pick<Plan, 'groupings' | 'methods' | 'series'>): Experiment {
+  const pairs: Experiment['pairs'] = [];
+  for (const method of e.methods)
+    for (const grouping of e.groupings) for (const series of e.series) pairs.push({ model: modelOf(method, grouping), series });
+  return { pairs };
+}
+
+/** 実験の id → 回す組。段取りの状態（status）が読む。 */
+export const EXPERIMENT_RUNS: Record<string, Experiment> = {};
+for (const e of EXPERIMENTS) EXPERIMENT_RUNS[e.id] = pairsOf(e);

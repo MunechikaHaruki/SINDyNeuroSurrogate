@@ -68,6 +68,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
   `gates` は状態の名前 (Traub は M N C A H B S R Q XI、HH は M H N)。`compressor: kam` は学習しない KAM 縮約で、右辺も `kam`、`d` は 1。UDE は AE を一緒に学習するので、圧縮器は AE に限る。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
   既定値は fit 関数の署名だけが持ち、綴り違いは TypeError になる。
 - 既定 (細胞は Traub、教師は細胞と同じ、圧縮は仕方の名前、右辺は KAM なら KAM でほかは SINDy、項ライブラリは細胞のゲートの項と `basis`、系列は単一区画の soma への定常電流で soma を置き換える) と、どの学習でも同じ値 (学習用の電流・刻み・全区画で学習) は `conf.ts` が埋める。宣言を選んだ理由は各宣言の `description` に書き、spec には入れない。テスト専用の学習 `_test_*` は conf.json に入れず `evaluation/orchestrate/test-trains.ts` に TS の辞書で書き、仕方に差分を重ね、どの実験にも入れない。
+- 実験 (`experiments`) は回す組 (群分け × 仕方 × 系列) と、回す前に書いた主張と判定の名前 (`claims`) を持つ。判定は `evaluation/judge/checks.ts` が名前ごとに持ち、API の `claims` が runs から判定して返す。主張と判定の線は結果を見てから書かない。
 - 使わなくなった仕方と系列は消す。run は消さず、`list` の一覧に残る。
 - 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、読む側 (repo の外の図) が持つ。
 
