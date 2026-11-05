@@ -1,0 +1,47 @@
+{
+  "reproduce": {
+    "description": "単一区画の Traub モデルで、ゲート h, n, a, c の全部の群分けを KAM・PCA・AE で縮約し、定常電流の掃引で元のモデルの発火をどこまで再現するかを比べる。物差しは coincidence factor Γ（±Δ 以内で一致した発火の数を、偶然の一致を引いて正規化したもの。[Kistler et al. 1997](https://doi.org/10.1152/jn.1997.77.5.2390)）。",
+    "gates": [
+      "h",
+      "n",
+      "a",
+      "c"
+    ],
+    "methods": [
+      "kam",
+      "kamm",
+      "pca",
+      "ae"
+    ],
+    "series": [
+      "traub_somastim",
+      "traub_kistler"
+    ],
+    "claims": [
+      {
+        "name": "ac-only",
+        "claim": "単一区画で、KAM・PCA・AE のどれでも発火の時刻まで合うのは a と c をまとめる組だけで、KAM は n を h 以外のゲートとまとめると時刻が合わなくなる。",
+        "series": [
+          {
+            "name": "traub_somastim"
+          }
+        ]
+      },
+      {
+        "name": "absorb-m",
+        "claim": "m を膜電位へ吸収すると、吸収しなければ時刻まで合っていた組でも、発火の回数の差は一つ以内のまま、時刻が合わなくなる。",
+        "series": [
+          {
+            "name": "traub_somastim"
+          }
+        ],
+        "groupings": [
+          "ac",
+          "ha",
+          "hc",
+          "hac"
+        ]
+      }
+    ]
+  }
+}

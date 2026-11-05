@@ -75,7 +75,7 @@ case ${1:-} in
   test)
     up
     docker exec -e JAX_PLATFORMS=cpu "$name" /venv/bin/python -m pytest -q -p no:cacheprovider
-    docker exec "$name" bun test evaluation
+    docker exec "$name" bun test evaluation experiments
     ;;
   fetch)
     run=${2:?run の id（runs/ の下のパス）}

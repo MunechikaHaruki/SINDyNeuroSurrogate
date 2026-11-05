@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import { EXPERIMENTS, groupings, pairsOf } from '../orchestrate/conf.ts';
-import { CHECKS, type Row } from './checks.ts';
+import { groupings, type Row } from './common.ts';
+import { CLAIMS, EXPERIMENTS, pairsOf } from './experiments.ts';
 
 const row = (grouping: string, method: string, gammas: (number | null)[], extra: Partial<Row> = {}): Row => ({
   grouping,
@@ -12,7 +12,7 @@ const row = (grouping: string, method: string, gammas: (number | null)[], extra:
   ...extra,
 });
 const oks = (name: string, tables: Row[][], groupings?: string[]) =>
-  CHECKS[name].judge(tables, groupings).map(j => j.ok);
+  CLAIMS[name].judge(tables, groupings).map(j => j.ok);
 
 const ac = [row('ac', 'kam', [0.98]), row('ac', 'pca', [0.91]), row('ac', 'ae', [1])];
 const hn = [row('hn', 'kam', [1]), row('hn', 'pca', [0.1]), row('hn', 'ae', [1])];
@@ -78,13 +78,13 @@ test('poster-shape compares every kind of operation and finds the unstimulated p
 /** 測った数値の書き方。説明と主張には書かず、判定が runs から出す。 */
 const MEASURED = /\d\s*(mV|ms|µA|%|回)/;
 
-test('every claim names a check that reads only series its experiment runs', () => {
+test('every claim reads only series and groupings its experiment runs', () => {
   for (const e of EXPERIMENTS)
     for (const c of e.claims) {
-      expect(CHECKS[c.check], `実験 ${e.id} の判定 ${c.check} が checks.ts に無い`).toBeDefined();
-      for (const { name } of CHECKS[c.check].series)
-        expect(e.series, `実験 ${e.id} の判定 ${c.check} が読む系列 ${name} を実験が回さない`).toContain(name);
-      for (const g of c.groupings ?? []) expect(e.groupings, `実験 ${e.id} の判定 ${c.check} の群分け ${g} を回さない`).toContain(g);
+      for (const { name } of c.series)
+        expect(e.series, `実験 ${e.id} の主張 ${c.name} が読む系列 ${name} を実験が回さない`).toContain(name);
+      for (const g of c.groupings ?? [])
+        expect(e.groupings, `実験 ${e.id} の主張 ${c.name} の群分け ${g} を回さない`).toContain(g);
     }
 });
 

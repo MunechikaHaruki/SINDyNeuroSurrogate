@@ -76,7 +76,7 @@ test('only json and f64 inside runs can be read, and unknown ops are refused', a
 });
 
 test('every declared claim gets a judgement, or the reason it cannot be judged yet', async () => {
-  const { EXPERIMENTS } = await import('../orchestrate/conf.ts');
+  const { EXPERIMENTS } = await import('../../experiments/experiments.ts');
   const reply = (await (await post('claims', {})).json()) as { check: string; rows: unknown; error?: string }[];
   let count = 0;
   for (const e of EXPERIMENTS) count += e.claims.length;

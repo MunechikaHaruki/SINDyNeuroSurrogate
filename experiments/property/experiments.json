@@ -1,0 +1,33 @@
+{
+  "fidelity": {
+    "description": "hn をまとめた KAM・PCA・AE が、定常電流の外の入力（過分極からの解放、Poisson のシナプス入力、Kistler 1997 の揺らぐ電流）でも元のモデルの発火を再現するかを、定常電流と同じ物差しで比べる。",
+    "groupings": [
+      "hn"
+    ],
+    "methods": [
+      "kam",
+      "pca",
+      "ae"
+    ],
+    "series": [
+      "traub_somastim",
+      "traub_release",
+      "traub_poisson",
+      "traub_kistler"
+    ],
+    "claims": [
+      {
+        "name": "fluctuating-input",
+        "claim": "hn をまとめた縮約は、どの仕方でも Kistler 1997 の揺らぐ電流のほうが定常電流より元の発火の時刻に合う。最も強い揺らぎで時刻まで合うのは KAM だけである。",
+        "series": [
+          {
+            "name": "traub_somastim"
+          },
+          {
+            "name": "traub_kistler"
+          }
+        ]
+      }
+    ]
+  }
+}

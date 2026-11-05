@@ -5,9 +5,10 @@
 import { readFileSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { RUNS, launch, scan, status } from '../orchestrate/orchestrate.ts';
-import { EXPERIMENTS, EXPERIMENT_RUNS, SERIES, type Claim } from '../orchestrate/conf.ts';
+import { SERIES } from '../orchestrate/conf.ts';
+import { EXPERIMENTS, EXPERIMENT_RUNS } from '../../experiments/experiments.ts';
 import { FORMAT, type ExperimentStatus, type IndexEntry, type Job } from '../orchestrate/spec.ts';
-import { CHECKS, rowsOf, type Column, type Judgement, type Row } from '../judge/checks.ts';
+import { rowsOf, type Claim, type Column, type Judgement, type Row } from '../../experiments/common.ts';
 import { coincidence, compare, crossingDiff, crossings, type PairMetrics, type SpikesFile } from '../read/compare.ts';
 import { histogram, type Bin } from '../read/model-json.ts';
 import { decimate, path, variablesOf, type Point, type WaveMeta } from '../read/waves.ts';
@@ -161,14 +162,12 @@ export function handlers(runs: string): Handlers {
 
   /** 主張 1 つを判定する。 */
   function judge(index: IndexEntry[], found: ExperimentStatus, claim: Claim): Judgement[] {
-    const check = CHECKS[claim.check];
-    if (!check) throw new Error(`判定 ${claim.check} が無い`);
     const tables: Row[][] = [];
-    for (const { name, comp } of check.series) tables.push(table(index, found, name, comp));
-    return check.judge(tables, claim.groupings);
+    for (const { name, comp } of claim.series) tables.push(table(index, found, name, comp));
+    return claim.judge(tables, claim.groupings);
   }
 
-  /** conf.json の実験の主張ごとの判定。判定できない主張は理由を添える。 */
+  /** 実験の主張ごとの判定。判定できない主張は理由を添える。 */
   function claims(): ClaimJudgement[] {
     const index = scan(runs);
     const current = status(runs, EXPERIMENT_RUNS);
@@ -176,7 +175,7 @@ export function handlers(runs: string): Handlers {
     for (const e of EXPERIMENTS) {
       const found = current.experiments.find(x => x.name === e.id)!;
       for (const c of e.claims) {
-        const base = { experiment: e.id, claim: c.claim, check: c.check };
+        const base = { experiment: e.id, claim: c.claim, check: c.name };
         try {
           list.push({ ...base, rows: judge(index, found, c) });
         } catch (err) {

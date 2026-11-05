@@ -16,8 +16,8 @@ flowchart LR
       orch["段取り<br/>orchestrate/"]
       serve["結果を返す API<br/>serve/"]
       read["指標と間引き<br/>read/"]
-      judge["主張の判定<br/>judge/"]
     end
+    exp["実験と主張の判定<br/>experiments/"]
     subgraph py["neurosurrogate/（Python）"]
       entry["計算の入口<br/>run.py"]
       surr["surrogate/<br/>学習して置き換える"]
@@ -34,7 +34,7 @@ flowchart LR
   orch -- "一覧 index.json" --> runs
   runs --> serve
   read --> serve
-  judge --> serve
+  exp --> serve
   serve -- "間引いた線と指標（JSON）" --> view
   view -- "回す仕事" --> serve
   serve --> orch

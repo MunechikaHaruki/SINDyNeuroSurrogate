@@ -9,10 +9,10 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（`neurosurrogate/physics/` 元のモデルを解く、`neurosurrogate/surrogate/` 学習して置き換える、直下にスパイクの特徴量 `spikes.py` と入口 `run.py`） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
-| 何を回すかの宣言（縮約の仕方・系列・実験。実験は回す組と、回す前に書いた主張と判定の名前を持つ。テスト専用の学習は `evaluation/orchestrate/test-trains.ts` が持つ。`evaluation/orchestrate/conf.ts` が読み、学習 run を `<仕方>_<群分け>` の名前から組む） | `conf.json` |
+| 何を回すかの宣言（縮約の仕方・系列。テスト専用の学習は `evaluation/orchestrate/test-trains.ts` が持つ。`evaluation/orchestrate/conf.ts` が読み、学習 run を `<仕方>_<群分け>` の名前から組む） | `conf.json` |
 | 宣言の読み込み（`conf.ts`）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。外の画面は export した関数、手元では CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | 計算する機械の `~/sindy/runs/`（手元の runs は `remote.sh fetch` で持ってきた写しだけで、どちらも Git の外） |
-| 主張の判定（判定の名前ごとに読む系列と、値・線・成り立つか。線 `GAMMA_LINE` もここ） | `evaluation/judge/` |
+| 実験。分類（`experiments/mc/` 拡張、`experiments/sweep/` 改良の探索、`experiments/property/` 性質の発見）ごとに、宣言 `experiments.json`（回す組と、回す前に書いた主張）と判定 `checks.ts`。共通の部品と線 `GAMMA_LINE` は `common.ts`、並びと形の確かめは `experiments.ts` | `experiments/` |
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、波形の切り分けと間引き `waves.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
 | runs の隣で結果を小さい JSON にして返す API（`serve.ts`）と口の形（`api.ts`） | `evaluation/serve/` |
 | 計算する機械のイメージ（ベースと道具は digest、Python の依存は `uv.lock`、TS の依存は `bun.lock` で固定） | `Dockerfile` |
@@ -35,8 +35,9 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 ## TS
 
 - この repo は図や画面を持たず、外の部品に依存しない。単独で動く研究コードだけを置く。結果を読む図は repo の外に置き、この repo の TS を import して描く。
-- `evaluation/` には TS だけを、役割ごとのディレクトリ（`evaluation/orchestrate/` 何を回すかと段取り、`evaluation/read/` 比べる指標と学習の書き出しの読み方、`evaluation/judge/` 主張の判定、`evaluation/serve/` 結果を返す API、`evaluation/traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。`evaluation/traub/traub.ts` はレートの式と単一区画のパラメータを Python と共有する `neurosurrogate/physics/traub.json` から読む。
-- TS のテストは `bun test evaluation`（依存は `bun install`）。
+- `evaluation/` には TS だけを、役割ごとのディレクトリ（`evaluation/orchestrate/` 何を回すかと段取り、`evaluation/read/` 比べる指標と学習の書き出しの読み方、`evaluation/serve/` 結果を返す API、`evaluation/traub/` TS シミュレータ）に番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。`evaluation/traub/traub.ts` はレートの式と単一区画のパラメータを Python と共有する `neurosurrogate/physics/traub.json` から読む。
+- 実験は repo の根の `experiments/` に、宣言の JSON と判定の TS を分類ごとのディレクトリで並べる（conf.json と同じ宣言の層なので `evaluation/` に入れない）。
+- TS のテストは `bun test evaluation experiments`（依存は `bun install`）。
 
 ## Coding Standards
 
