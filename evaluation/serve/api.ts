@@ -23,8 +23,8 @@ export type SeriesMetrics = {
   times: { original: number[][]; columns: Record<string, number[][]> };
 };
 
-/** 主張 1 つの判定。check は主張の名前、rows は判定の行、判定できなければ null と理由。 */
-export type ClaimJudgement = { experiment: string; claim: string; check: string; rows: Judgement[] | null; error?: string };
+/** 主張 1 つの判定。name は主張の名前、rows は判定の行、判定できなければ null と理由。 */
+export type ClaimJudgement = { experiment: string; claim: string; name: string; rows: Judgement[] | null; error?: string };
 
 /** 口ごとの受け取りと返事。 */
 export type Api = {

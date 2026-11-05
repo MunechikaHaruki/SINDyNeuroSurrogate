@@ -73,16 +73,19 @@ export const EXPERIMENTS: Plan[] = [];
 export const CLAIMS: Record<string, Claim> = {};
 for (const category of CATEGORIES) {
   if (!isObject(category.declaration)) fail(`${category.name}/experiments.json`, '実験の id → 実験 の物');
+  const own = new Set<string>();
   for (const id of Object.keys(category.declaration)) {
+    if (EXPERIMENTS.some(e => e.id === id)) fail(`${category.name}/experiments.json`, `実験の id ${id} がほかの分類と重なる`);
     const plan = planOf(`${category.name}/experiments.json の ${id}`, id, category.declaration[id], category.judges);
     for (const c of plan.claims) {
+      own.add(c.name);
       if (c.name in CLAIMS) fail(`${category.name}/experiments.json の ${id}`, `主張の名前 ${c.name} が重なる`);
       CLAIMS[c.name] = c;
     }
     EXPERIMENTS.push(plan);
   }
   for (const name of Object.keys(category.judges))
-    if (!(name in CLAIMS)) fail(`${category.name}/checks.ts`, `判定 ${name} に当たる主張が experiments.json に無い`);
+    if (!own.has(name)) fail(`${category.name}/checks.ts`, `判定 ${name} に当たる主張が experiments.json に無い`);
 }
 
 /** 実験の回す学習 run と系列の組。仕方の順、群分けの順、系列の順。 */

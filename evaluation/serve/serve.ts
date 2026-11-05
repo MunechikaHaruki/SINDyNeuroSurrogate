@@ -175,7 +175,7 @@ export function handlers(runs: string): Handlers {
     for (const e of EXPERIMENTS) {
       const found = current.experiments.find(x => x.name === e.id)!;
       for (const c of e.claims) {
-        const base = { experiment: e.id, claim: c.claim, check: c.name };
+        const base = { experiment: e.id, claim: c.claim, name: c.name };
         try {
           list.push({ ...base, rows: judge(index, found, c) });
         } catch (err) {
