@@ -75,7 +75,7 @@ test('poster-shape compares every kind of operation and finds the unstimulated p
   expect(oks('nadr-better', [[row('hn', 'kam', [0.6])], [row('hn', 'kam', [0.9])]])).toEqual([true]);
 });
 
-/** 測った数値の書き方。説明と主張には書かず、判定が runs から出す。 */
+/** 測った数値の書き方。主張には書かず、判定が runs から出す。 */
 const MEASURED = /\d\s*(mV|ms|µA|%|回)/;
 
 test('every claim reads only series and groupings its experiment runs', () => {
@@ -88,10 +88,10 @@ test('every claim reads only series and groupings its experiment runs', () => {
     }
 });
 
-test('descriptions and claims carry no measured numbers', () => {
+test('claims carry no measured numbers', () => {
   for (const e of EXPERIMENTS) {
-    const text = [e.description, ...e.claims.map(c => c.claim)].join(' ');
-    expect(text, `実験 ${e.id} の説明か主張に測った数値がある（判定が出す）`).not.toMatch(MEASURED);
+    const text = e.claims.map(c => c.claim).join(' ');
+    expect(text, `実験 ${e.id} の主張に測った数値がある（判定が出す）`).not.toMatch(MEASURED);
   }
 });
 

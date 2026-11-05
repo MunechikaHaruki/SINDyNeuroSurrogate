@@ -12,7 +12,7 @@
 flowchart LR
   subgraph machine["計算する機械（Dockerfile のイメージ）"]
     subgraph ts["evaluation/（TS）"]
-      conf["宣言<br/>conf.json"]
+      conf["プリセット<br/>presets.json"]
       orch["段取り<br/>orchestrate/"]
       serve["結果を返す API<br/>serve/"]
       read["指標と間引き<br/>read/"]

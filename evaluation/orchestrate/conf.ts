@@ -1,10 +1,16 @@
-// 回せるものの宣言を読む。宣言そのものは repo の根の conf.json（縮約の仕方 methods、評価の系列 series）が持つ。テスト専用の学習はテストの都合なので conf.json に入れず、隣の test-trains.ts が持つ。
+// 回せるものを組む。値はすべて repo の根の presets.json（既定 defaults、縮約の仕方 methods、評価の系列 series）が持ち、ここは既定を混ぜて形を確かめるだけで値を持たない。テスト専用の学習はテストの都合なので presets.json に入れず、隣の test-trains.ts が持つ。
 // 学習 run は 縮約の仕方 × 群分け で決まり、名前は `<仕方>_<群分け>`（`kam_hn`、`pca_hn_ac`）。群分けは群をゲートの小文字の名前でつなぎ、群どうしを _ で区切る。
 // ここは読んで形を確かめ、仕方に群分けを重ねて学習の設定を組むだけ。段取り（orchestrate.ts）がここから spec.json を組む。形は spec.ts。
-// conf.json は既定と違う値だけを書き、既定はここが埋める。description はその宣言の理由で、spec には入れない。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
-import declaration from '../../conf.json' with { type: 'json' };
+// presets.json の仕方と系列は既定と違う値だけを書く。値から決まる既定（教師は細胞、圧縮は仕方の名前、右辺は圧縮から、項ライブラリは細胞から）だけはここが導く。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
+import declaration from '../../presets.json' with { type: 'json' };
 import { TEST_DECLARATIONS } from './test-trains.ts';
 import type { Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from './spec.ts';
+
+const raw = declaration as unknown as {
+  defaults: { method: Entry & { dt: number }; series: Entry & { dt: number } };
+  methods: Record<string, Entry>;
+  series: Record<string, Entry>;
+};
 
 /** 仕方が持つ値。既定値は Python の署名が持つので、書くのは仕方が決める値だけ。 */
 type Declared = {
@@ -25,7 +31,7 @@ type Declared = {
 };
 
 type Entry = Record<string, unknown>;
-/** 仕方に書ける鍵（description のほか）。テストはこれを仕方に重ねて上書きする。 */
+/** 仕方に書ける鍵。テストはこれを仕方に重ねて上書きする。 */
 const KEYS = [
   'cell',
   'form',
@@ -41,7 +47,7 @@ const KEYS = [
 ];
 
 function fail(where: string, message: string): never {
-  throw new Error(`conf.json の ${where}：${message}`);
+  throw new Error(`presets.json の ${where}：${message}`);
 }
 function isObject(value: unknown): value is Entry {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -58,14 +64,13 @@ function libraryOf(cell: string): LibrarySpec[] {
 
 /** 書かれなかった値を既定で埋める。細胞は Traub、教師は細胞と同じ、圧縮は仕方の名前、右辺は KAM なら KAM でほかは SINDy。 */
 function filled(method: string, entry: Entry): Entry {
-  const cell = entry.cell ?? 'traub';
+  const { dt: _dt, ...defaults } = raw.defaults.method;
+  entry = { ...defaults, ...entry };
+  const cell = entry.cell;
   const compressor = entry.compressor ?? method;
   const rhs = entry.rhs ?? (compressor === 'kam' ? 'kam' : 'sindy');
   const library = rhs === 'sindy' ? { library_specs: entry.library_specs ?? libraryOf(String(cell)) } : {};
   return {
-    form: 'hybrid',
-    duration: 9000,
-    d: 1,
     ...entry,
     cell,
     target: entry.target ?? cell,
@@ -90,20 +95,15 @@ function declared(where: string, entry: Entry): Declared {
     !(Array.isArray(entry.library_specs) && entry.library_specs.every(s => isObject(s) && typeof s.type === 'string'))
   )
     fail(where, 'library_specs は type を持つ物の配列');
-  if (entry.absorb !== undefined &&
-    !(Array.isArray(entry.absorb) && entry.absorb.length > 0 && entry.absorb.every(g => typeof g === 'string')))
+  if (
+    entry.absorb !== undefined &&
+    !(Array.isArray(entry.absorb) && entry.absorb.length > 0 && entry.absorb.every(g => typeof g === 'string'))
+  )
     fail(where, 'absorb は状態の名前の空でない配列');
   if (entry.absorb !== undefined && entry.form !== 'hybrid') fail(where, 'absorb は hybrid だけ');
   for (const key of ['compressor_params', 'rhs_params'])
     if (entry[key] !== undefined && !isObject(entry[key])) fail(where, `${key} は物`);
   return entry as Declared;
-}
-
-/** description を外した値。 */
-function values(entry: Entry): Entry {
-  const list: Entry = {};
-  for (const key of Object.keys(entry)) if (key !== 'description') list[key] = entry[key];
-  return list;
 }
 
 /** 群分けの名前（`hn_ac`）を状態の名前の群（[['H','N'],['A','C']]）にする。 */
@@ -121,12 +121,14 @@ function train(name: string, d: Declared, grouping: string): Train {
   const data: SimSpec = {
     target: d.target,
     current_type: 'train',
-    dt: 0.01,
+    dt: raw.defaults.method.dt,
     current_params: { duration: d.duration },
   };
   const rhs = d.rhs;
   const groups: Group[] = [];
-  const shared = groupsOf(grouping).flat().filter(g => d.absorb?.includes(g));
+  const shared = groupsOf(grouping)
+    .flat()
+    .filter(g => d.absorb?.includes(g));
   if (shared.length > 0) throw new Error(`${name} は ${shared.join('・')} を群と吸収の両方に入れている`);
   for (const gates of groupsOf(grouping)) {
     groups.push({
@@ -150,15 +152,10 @@ function train(name: string, d: Declared, grouping: string): Train {
   return { name, config };
 }
 
-const raw = declaration as unknown as {
-  methods: Record<string, Entry>;
-  series: Record<string, Entry>;
-};
-
 /** 縮約の仕方。名前 → 宣言。 */
 export const METHODS: Record<string, Declared> = {};
 for (const name of Object.keys(raw.methods))
-  METHODS[name] = declared(`methods.${name}`, filled(name, values(raw.methods[name])));
+  METHODS[name] = declared(`methods.${name}`, filled(name, raw.methods[name]));
 
 /** テスト専用の学習 run。電流は 180 ms に縮める。 */
 const TESTS: Record<string, Train> = {};
@@ -168,7 +165,7 @@ for (const name of Object.keys(TEST_DECLARATIONS)) {
     fail(`tests.${name}`, `仕方 ${String(method)} が methods に無い`);
   if (typeof grouping !== 'string') fail(`tests.${name}`, 'grouping は群分けの名前');
   const entry = filled(method, {
-    ...values(raw.methods[method]),
+    ...raw.methods[method],
     duration: 180,
     ...rest,
   });
@@ -196,25 +193,26 @@ export function trainOf(name: string): Train {
 }
 
 /** 系列の鍵（ほかの鍵は電流のパラメータ）。 */
-const SERIES_KEYS = ['description', 'target', 'current', 'stim', 'replace_targets', 'sweep'];
+const SERIES_KEYS = ['target', 'current', 'stim', 'replace_targets', 'sweep', 'dt'];
 
-/** 系列の形を確かめ、既定を埋めて掃引にする。既定は Traub の単一区画、定常電流、刻み 0.01 ms、刺激前の静穏 10 ms、soma に入れて soma を置き換える。 */
-function series(name: string, entry: Entry): Series {
+/** 系列の形を確かめ、presets.json の既定を埋めて掃引にする。既定にない鍵は電流のパラメータ。 */
+function series(name: string, given: Entry): Series {
   const where = `series.${name}`;
-  const current: Entry = { silence_duration: 10.0 };
+  const entry: Entry = { ...raw.defaults.series, ...given };
+  const current: Entry = {};
   for (const key of Object.keys(entry)) if (!SERIES_KEYS.includes(key)) current[key] = entry[key];
-  const replace = entry.replace_targets ?? ['soma'];
+  const replace = entry.replace_targets;
   if (!isStrings(replace)) fail(where, 'replace_targets は区画の名前の配列');
   if (!isObject(entry.sweep) || Object.keys(entry.sweep).length !== 1)
     fail(where, 'sweep は { 掃引する電流のパラメータ: 値の配列 } の 1 組');
   const [[param, sweep]] = Object.entries(entry.sweep);
   if (!Array.isArray(sweep) || !sweep.every(v => typeof v === 'number')) fail(where, 'sweep の値は数の配列');
   const spec = {
-    target: entry.target ?? 'traub',
-    current_type: entry.current ?? 'lin&steady',
-    dt: 0.01,
+    target: entry.target,
+    current_type: entry.current,
+    dt: entry.dt,
     current_params: current,
-    stim: entry.stim ?? 'soma',
+    stim: entry.stim,
   };
   return {
     spec: spec as SimSpec,
@@ -227,4 +225,3 @@ function series(name: string, entry: Entry): Series {
 /** 評価の系列。名前 → 掃引。 */
 export const SERIES: Record<string, Series> = {};
 for (const name of Object.keys(raw.series)) SERIES[name] = series(name, raw.series[name]);
-

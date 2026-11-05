@@ -1,5 +1,6 @@
-// 実験を並べる。分類ごとのディレクトリ（sweep/ 改良の探索、property/ 性質の発見、mc/ 拡張）の experiments.json（宣言）と checks.ts（判定）を読み、
-// 形と、仕方と系列が conf.json にあるかと、主張ごとに判定があるかを確かめて一つの並びにし、段取りの状態（status）に渡す回す組を組む。主張の判定は API の claims が runs から出す。
+// 実験を並べる。主題ごとのディレクトリ（sweep/ 改良の探索、property/ 性質の発見、mc/ 拡張）の experiments.json（宣言）と checks.ts（判定）を読み、
+// 形と、仕方と系列が presets.json にあるかと、主張ごとに判定があるかを確かめて一つの並びにし、段取りの状態（status）に渡す回す組を組む。主張の判定は API の claims が runs から出す。
+// 宣言は実験 id → { gates（全部の群分け）か groupings, methods, claims: 主張の名前 → { on: 読む系列, groupings?, comp?, claim } }。回す系列は主張の on を合わせたもの。
 import { METHODS, SERIES, modelOf } from '../evaluation/orchestrate/conf.ts';
 import type { Experiment } from '../evaluation/orchestrate/spec.ts';
 import { groupings, type Claim, type Judge, type Plan } from './common.ts';
@@ -30,41 +31,46 @@ function isStrings(value: unknown): value is string[] {
 }
 
 /** 主張の形を確かめ、同じ名前の判定を付ける。 */
-function claimOf(where: string, entry: unknown, judges: Record<string, Judge>): Claim {
+function claimOf(where: string, name: string, entry: unknown, judges: Record<string, Judge>): Claim {
   if (!isObject(entry)) fail(where, '主張は物');
   for (const key of Object.keys(entry))
-    if (!['name', 'claim', 'series', 'groupings'].includes(key)) fail(where, `知らない鍵 ${key}`);
-  if (typeof entry.name !== 'string') fail(where, 'name は主張の名前');
+    if (!['on', 'groupings', 'comp', 'claim'].includes(key)) fail(where, `知らない鍵 ${key}`);
   if (typeof entry.claim !== 'string') fail(where, 'claim は文字列');
-  if (!Array.isArray(entry.series) || entry.series.length === 0) fail(where, 'series は判定が読む系列の空でない配列');
-  for (const s of entry.series)
-    if (!isObject(s) || typeof s.name !== 'string' || (s.comp !== undefined && typeof s.comp !== 'string'))
-      fail(where, 'series の要素は { name, comp? }');
+  if (!isStrings(entry.on) || entry.on.length === 0) fail(where, 'on は判定が読む系列の空でない配列');
   if (entry.groupings !== undefined && !isStrings(entry.groupings)) fail(where, 'groupings は群分けの名前の配列');
-  const judge = judges[entry.name];
-  if (!judge) fail(where, `主張 ${entry.name} の判定が checks.ts に無い`);
-  return { ...(entry as Omit<Claim, 'judge'>), judge };
+  if (entry.comp !== undefined && typeof entry.comp !== 'string') fail(where, 'comp は区画の名前');
+  const comp = entry.comp as string | undefined;
+  const judge = judges[name];
+  if (!judge) fail(where, `主張 ${name} の判定が checks.ts に無い`);
+  return {
+    name,
+    claim: entry.claim,
+    series: entry.on.map(s => (comp === undefined ? { name: s } : { name: s, comp })),
+    ...(entry.groupings === undefined ? {} : { groupings: entry.groupings }),
+    judge,
+  };
 }
 
-/** 実験の形を確かめ、群分けを名前の並びにする。仕方と系列は conf.json にあるものだけ。 */
+/** 実験の形を確かめ、群分けを名前の並びにする。仕方と系列は presets.json にあるものだけ。 */
 function planOf(where: string, id: string, entry: unknown, judges: Record<string, Judge>): Plan {
   if (!isObject(entry)) fail(where, '実験は物');
   for (const key of Object.keys(entry))
-    if (!['description', 'gates', 'groupings', 'methods', 'series', 'claims'].includes(key))
-      fail(where, `知らない鍵 ${key}`);
-  if (typeof entry.description !== 'string') fail(where, 'description は文字列');
+    if (!['gates', 'groupings', 'methods', 'claims'].includes(key)) fail(where, `知らない鍵 ${key}`);
   if (!isStrings(entry.methods)) fail(where, 'methods は縮約の仕方の配列');
-  if (!isStrings(entry.series)) fail(where, 'series は系列の名前の配列');
-  for (const method of entry.methods) if (!(method in METHODS)) fail(where, `仕方 ${method} が conf.json に無い`);
-  for (const name of entry.series) if (!(name in SERIES)) fail(where, `系列 ${name} が conf.json に無い`);
+  for (const method of entry.methods) if (!(method in METHODS)) fail(where, `仕方 ${method} が presets.json に無い`);
   let names: string[];
-  if (isStrings(entry.gates) && entry.groupings === undefined) names = groupings(entry.gates);
+  if (typeof entry.gates === 'string' && entry.groupings === undefined) names = groupings([...entry.gates]);
   else if (isStrings(entry.groupings) && entry.gates === undefined) names = entry.groupings;
-  else fail(where, 'gates（全部の群分け）か groupings（群分けの名前）のどちらか一方を書く');
-  if (!Array.isArray(entry.claims) || entry.claims.length === 0) fail(where, 'claims は主張の空でない配列');
+  else fail(where, 'gates（全部の群分けを組むゲートの並び）か groupings（群分けの名前）のどちらか一方を書く');
+  if (!isObject(entry.claims) || Object.keys(entry.claims).length === 0)
+    fail(where, 'claims は主張の名前 → 主張 の空でない物');
   const claims: Claim[] = [];
-  for (let k = 0; k < entry.claims.length; k++) claims.push(claimOf(`${where}.claims[${k}]`, entry.claims[k], judges));
-  return { id, description: entry.description, groupings: names, methods: entry.methods, series: entry.series, claims };
+  for (const [name, c] of Object.entries(entry.claims))
+    claims.push(claimOf(`${where}.claims.${name}`, name, c, judges));
+  const series: string[] = [];
+  for (const c of claims) for (const { name } of c.series) if (!series.includes(name)) series.push(name);
+  for (const name of series) if (!(name in SERIES)) fail(where, `系列 ${name} が presets.json に無い`);
+  return { id, groupings: names, methods: entry.methods, series, claims };
 }
 
 /** 実験。分類の順、分類の中は書いた順。 */
@@ -75,7 +81,8 @@ for (const category of CATEGORIES) {
   if (!isObject(category.declaration)) fail(`${category.name}/experiments.json`, '実験の id → 実験 の物');
   const own = new Set<string>();
   for (const id of Object.keys(category.declaration)) {
-    if (EXPERIMENTS.some(e => e.id === id)) fail(`${category.name}/experiments.json`, `実験の id ${id} がほかの分類と重なる`);
+    if (EXPERIMENTS.some(e => e.id === id))
+      fail(`${category.name}/experiments.json`, `実験の id ${id} がほかの分類と重なる`);
     const plan = planOf(`${category.name}/experiments.json の ${id}`, id, category.declaration[id], category.judges);
     for (const c of plan.claims) {
       own.add(c.name);

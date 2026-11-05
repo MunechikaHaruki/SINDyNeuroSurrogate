@@ -30,10 +30,9 @@ export type Claim = {
   judge: Judge;
 };
 
-/** 実験。description は何を回すかの一文（Markdown）。groupings × methods × series が回す run の直積。 */
+/** 実験。groupings × methods × series が回す run の直積で、series は主張が読む系列を合わせたもの。 */
 export type Plan = {
   id: string;
-  description: string;
   groupings: string[];
   methods: string[];
   series: string[];
