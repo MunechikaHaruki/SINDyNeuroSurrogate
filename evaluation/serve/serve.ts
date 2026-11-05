@@ -70,7 +70,14 @@ export function handlers(runs: string): Handlers {
   function column(ref: ArrayRef): Float64Array {
     const all = f64(ref.run, ref.file);
     const { column: at, n } = ref;
-    if (!Number.isInteger(at) || at < 0 || !Number.isInteger(n) || n <= 0 || all.length % n !== 0 || all.length < (at + 1) * n)
+    if (
+      !Number.isInteger(at) ||
+      at < 0 ||
+      !Number.isInteger(n) ||
+      n <= 0 ||
+      all.length % n !== 0 ||
+      all.length < (at + 1) * n
+    )
       throw new Error(`${ref.run}/${ref.file}（${all.length} 個）に ${at} 列目（${n} 点ずつ）が無い`);
     return all.subarray(ref.column * ref.n, (ref.column + 1) * ref.n);
   }
@@ -97,7 +104,8 @@ export function handlers(runs: string): Handlers {
     if (hit) return hit;
     const meta = json<WaveMeta>(request.original, 'waves/meta.json');
     const compId = meta.names ? meta.names[request.comp] : 0;
-    if (compId === undefined) throw new Error(`${request.original} に区画 ${request.comp} が無い（${Object.keys(meta.names!).join('、')}）`);
+    if (compId === undefined)
+      throw new Error(`${request.original} に区画 ${request.comp} が無い（${Object.keys(meta.names!).join('、')}）`);
     const original = meta.n.map((_, k) => voltage(request.original, meta, k, compId));
     const originalSpikes = json<SpikesFile>(request.original, 'spikes.json')[request.comp];
     const result: SeriesMetrics = {
@@ -146,24 +154,24 @@ export function handlers(runs: string): Handlers {
   }
 
   /** 実験の系列 1 つを、置き換えて回し終えた列ごとの判定の値にする。元のモデルをまだ回していなければ投げる。 */
-  function table(index: IndexEntry[], found: ExperimentStatus, name: string, comp: string | undefined): Row[] {
+  function table(index: IndexEntry[], found: ExperimentStatus, name: string): Row[] {
     const original = found.series.find(s => s.series === name)?.original;
     const entry = index.find(r => r.id === original?.id);
-    if (!original || !entry || entry.spec.kind !== 'sim') throw new Error(`${found.name} の ${name} の元のモデルをまだ回していない`);
+    if (!original || !entry || entry.spec.kind !== 'sim')
+      throw new Error(`${found.name} の ${name} の元のモデルをまだ回していない`);
     const columns: Column[] = [];
     for (const pair of found.pairs) {
       if (pair.series !== name || pair.run.state !== 'done') continue;
-      const train = found.models.find(m => m.model === pair.model)!.run;
-      columns.push({ run: pair.run.id, model: pair.model, summary: json<Record<string, number | null>>(train.id, 'summary.json') });
+      columns.push({ run: pair.run.id, model: pair.model });
     }
-    const request = { original: original.id, columns: columns.map(c => c.run), comp: comp ?? SERIES[name].replace_targets[0] };
+    const request = { original: original.id, columns: columns.map(c => c.run), comp: SERIES[name].replace_targets[0] };
     return rowsOf(columns, entry.spec.input.values, seriesMetrics(request).crossings);
   }
 
   /** 主張 1 つを判定する。 */
   function judge(index: IndexEntry[], found: ExperimentStatus, claim: Claim): Judgement[] {
     const tables: Row[][] = [];
-    for (const { name, comp } of claim.series) tables.push(table(index, found, name, comp));
+    for (const name of claim.series) tables.push(table(index, found, name));
     return claim.judge(tables, claim.groupings);
   }
 
@@ -207,7 +215,8 @@ export function server(runs: string): (request: Request) => Promise<Response> {
     if (request.method !== 'POST') return new Response('POST だけ受ける', { status: 405 });
     if (!Object.hasOwn(ops, op)) return new Response(`知らない口 ${op}`, { status: 404 });
     // JSON だけ受ける。ブラウザで開いた他のサイトが text/plain の POST で仕事を起こせないよう、preflight の要る形に限る
-    if (!request.headers.get('content-type')?.startsWith('application/json')) return new Response('JSON だけ受ける', { status: 415 });
+    if (!request.headers.get('content-type')?.startsWith('application/json'))
+      return new Response('JSON だけ受ける', { status: 415 });
     try {
       const body = await request.json();
       return Response.json((ops[op as keyof Api] as (body: unknown) => unknown)(body));

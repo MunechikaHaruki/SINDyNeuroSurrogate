@@ -15,24 +15,24 @@ export type Row = {
   values: number[];
   gammas: (number | null)[];
   counts: [number, number][];
-  summary: Record<string, number | null>;
 };
 
 /** 判定。系列ごとの列（主張の series の順）と、主張が絞る群分けで判定する。 */
 export type Judge = (tables: Row[][], groupings?: string[]) => Judgement[];
 
-/** 主張 1 つ。name は判定と図が引く名前、series は判定が読む系列（comp を書かなければ系列の置き換える最初の区画）、groupings は判定を絞る群分け。 */
+/** 主張 1 つ。name は判定と図が引く名前、series は判定が読む系列（区画は系列の置き換える最初の区画）、groupings は判定を絞る群分け。 */
 export type Claim = {
   name: string;
   claim: string;
-  series: { name: string; comp?: string }[];
+  series: string[];
   groupings?: string[];
   judge: Judge;
 };
 
-/** 実験。groupings × methods × series が回す run の直積で、series は主張が読む系列を合わせたもの。 */
+/** 実験。description は何を回して何を見るかの一文（Markdown）。groupings × methods × series が回す run の直積で、series は宣言の series と主張が読む系列を合わせたもの。判定の無い実験は claims が空。 */
 export type Plan = {
   id: string;
+  description: string;
   groupings: string[];
   methods: string[];
   series: string[];
@@ -102,8 +102,8 @@ export function none(found: string[], unknown: string[]): Pick<Judgement, 'value
 }
 export const groupingsOf = (rows: Row[]) => [...new Set(rows.map(r => r.grouping))];
 
-/** 置き換えた列 1 本。run は置き換えた run、model は学習 run の名前、summary はその学習の summary.json。 */
-export type Column = { run: string; model: string; summary: Record<string, number | null> };
+/** 置き換えた列 1 本。run は置き換えた run、model は学習 run の名前。 */
+export type Column = { run: string; model: string };
 
 /** 系列の列を判定の値にする。values は掃引の値、crossings は列の run ごとの点ごとの Γ と発火の回数（元, モデル）。 */
 export function rowsOf(
@@ -120,7 +120,7 @@ export function rowsOf(
       gammas.push(p.gamma);
       counts.push(p.count);
     }
-    rows.push({ ...partsOf(column.model), values, gammas, counts, summary: column.summary });
+    rows.push({ ...partsOf(column.model), values, gammas, counts });
   }
   return rows;
 }

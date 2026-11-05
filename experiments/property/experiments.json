@@ -1,5 +1,6 @@
 {
   "fidelity": {
+    "description": "hn をまとめた KAM・PCA・AE が、定常電流の外の入力（Kistler 1997 の揺らぐ電流）でも元のモデルの発火を再現するかを、定常電流と同じ物差しで比べる。",
     "groupings": [
       "hn"
     ],

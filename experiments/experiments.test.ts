@@ -8,7 +8,6 @@ const row = (grouping: string, method: string, gammas: (number | null)[], extra:
   values: gammas.map((_, k) => k),
   gammas,
   counts: gammas.map(() => [5, 5]),
-  summary: {},
   ...extra,
 });
 const oks = (name: string, tables: Row[][], groupings?: string[]) =>
@@ -56,42 +55,23 @@ test('absorb-m judges the groupings of the figure', () => {
   expect(oks('absorb-m', [rows], ['ac', 'hn'])).toEqual([false, false, true]);
 });
 
-test('poster-shape compares every kind of operation and finds the unstimulated point by its value', () => {
-  const poster = (summary: Record<string, number>) =>
-    row('mhnabc', 'poster', [1, 0], {
-      values: [10, 0],
-      counts: [
-        [3, 3],
-        [6, 0],
-      ],
-      summary: { nnz_ratio: 0.9, ...summary },
-    });
-  expect(oks('poster-shape', [[poster({ 'cost/surr-orig/pm': 700, 'cost/surr-orig/mul': 0 })]])).toEqual([
-    true,
-    true,
-    true,
-  ]);
-  expect(oks('poster-shape', [[poster({ 'cost/surr-orig/pm': 700, 'cost/surr-orig/mul': -1 })]])[1]).toBe(false);
-  expect(oks('nadr-better', [[row('hn', 'kam', [0.6])], [row('hn', 'kam', [0.9])]])).toEqual([true]);
-});
-
-/** 測った数値の書き方。主張には書かず、判定が runs から出す。 */
+/** 測った数値の書き方。説明と主張には書かず、判定が runs から出す。 */
 const MEASURED = /\d\s*(mV|ms|µA|%|回)/;
 
 test('every claim reads only series and groupings its experiment runs', () => {
   for (const e of EXPERIMENTS)
     for (const c of e.claims) {
-      for (const { name } of c.series)
+      for (const name of c.series)
         expect(e.series, `実験 ${e.id} の主張 ${c.name} が読む系列 ${name} を実験が回さない`).toContain(name);
       for (const g of c.groupings ?? [])
         expect(e.groupings, `実験 ${e.id} の主張 ${c.name} の群分け ${g} を回さない`).toContain(g);
     }
 });
 
-test('claims carry no measured numbers', () => {
+test('descriptions and claims carry no measured numbers', () => {
   for (const e of EXPERIMENTS) {
-    const text = e.claims.map(c => c.claim).join(' ');
-    expect(text, `実験 ${e.id} の主張に測った数値がある（判定が出す）`).not.toMatch(MEASURED);
+    const text = [e.description, ...e.claims.map(c => c.claim)].join(' ');
+    expect(text, `実験 ${e.id} の説明か主張に測った数値がある（判定が出す）`).not.toMatch(MEASURED);
   }
 });
 

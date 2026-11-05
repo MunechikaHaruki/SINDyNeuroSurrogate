@@ -1,37 +1,27 @@
 {
   "extend": {
+    "description": "hn をまとめた KAM を Traub の 19 区画に当て、群分けと再現が保てるかを見る。",
     "groupings": [
       "hn"
     ],
     "methods": [
       "kam"
     ],
-    "claims": {
-      "nadr-better": {
-        "on": [
-          "traub19_somastim",
-          "traub19_somastim_nadr"
-        ],
-        "comp": "soma",
-        "claim": "hn をまとめた KAM は、19 区画のうち Na と DR を持つ 5 区画を置き換えると、soma だけを置き換えるより soma の発火の時刻が元に合う。"
-      }
-    }
+    "series": [
+      "traub19_somastim",
+      "traub19_somastim_nadr"
+    ]
   },
   "poster": {
+    "description": "NEURO2026 で発表した形（6 ゲートを 1 つの AutoEncoder で潜在 5 本へ縮め、右辺を SINDy で同定する。19 区画の軌道で学習する）を今の研究コードで回し直し、19 区画の soma を置き換えて発表時の結果と比べる。",
     "groupings": [
       "mhnabc"
     ],
     "methods": [
       "poster"
     ],
-    "claims": {
-      "poster-shape": {
-        "on": [
-          "traub19_somastim"
-        ],
-        "comp": "soma",
-        "claim": "全ゲートを一つの AutoEncoder で縮める NEURO2026 の形は、係数の半分超が非零で、1 刻みの演算が元より増え、刺激の無いときの発火の時刻が合わない。"
-      }
-    }
+    "series": [
+      "traub19_somastim"
+    ]
   }
 }

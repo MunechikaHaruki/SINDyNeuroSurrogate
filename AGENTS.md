@@ -12,7 +12,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 回せるもののプリセット（既定 `defaults`、縮約の仕方 `methods`、系列 `series` の値をすべて持つ。テスト専用の学習は `evaluation/orchestrate/test-trains.ts` が持つ。`evaluation/orchestrate/conf.ts` が既定を混ぜ、学習 run を `<仕方>_<群分け>` の名前から組む） | `presets.json` |
 | 宣言の読み込み（`conf.ts`）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。外の画面は export した関数、手元では CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | 計算する機械の `~/sindy/runs/`（手元の runs は `remote.sh fetch` で持ってきた写しだけで、どちらも Git の外） |
-| 実験。分類（`experiments/mc/` 拡張、`experiments/sweep/` 改良の探索、`experiments/property/` 性質の発見）ごとに、宣言 `experiments.json`（プリセットの名前で組む回す組と、回す前に書いた主張。回す系列は主張が読む系列から導く）と判定 `checks.ts`。共通の部品と線 `GAMMA_LINE` は `common.ts`、並びと形の確かめは `experiments.ts` | `experiments/` |
+| 実験。分類（`experiments/mc/` 拡張、`experiments/sweep/` 改良の探索、`experiments/property/` 性質の発見）ごとに、宣言 `experiments.json`（プリセットの名前で組む回す組と、回す前に書いた主張。回す系列は `series` と主張が読む系列を合わせたもの）と判定 `checks.ts`（`experiments/mc/` は判定を持たない）。共通の部品と線 `GAMMA_LINE` は `common.ts`、並びと形の確かめは `experiments.ts` | `experiments/` |
 | 結果を読む TS（元のモデルと比べる指標 `compare.ts`、学習の書き出しの読み方 `model-json.ts`、波形の切り分けと間引き `waves.ts`、Traub の TS シミュレータ） | `evaluation/read/`、`evaluation/traub/` |
 | runs の隣で結果を小さい JSON にして返す API（`serve.ts`）と口の形（`api.ts`） | `evaluation/serve/` |
 | 計算する機械のイメージ（ベースと道具は digest、Python の依存は `uv.lock`、TS の依存は `bun.lock` で固定） | `Dockerfile` |

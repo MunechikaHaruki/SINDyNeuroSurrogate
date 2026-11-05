@@ -68,7 +68,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
   `gates` は状態の名前 (Traub は M N C A H B S R Q XI、HH は M H N)。`compressor: kam` は学習しない KAM 縮約で、右辺も `kam`、`d` は 1。UDE は AE を一緒に学習するので、圧縮器は AE に限る。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
   既定値は fit 関数の署名だけが持ち、綴り違いは TypeError になる。
 - 値の既定は `presets.json` の `defaults` が持つ。値から導く既定 (教師は細胞と同じ、圧縮は仕方の名前、右辺は KAM なら KAM でほかは SINDy、項ライブラリは細胞のゲートの項と `basis`) と、どの学習でも同じ形 (学習用の電流・全区画で学習) だけは `conf.ts` が導く。散文の説明は持たない。テスト専用の学習 `_test_*` は presets.json に入れず `evaluation/orchestrate/test-trains.ts` に TS の辞書で書き、仕方に差分を重ね、どの実験にも入れない。
-- 実験は presets.json でなく `experiments/<分類>/` に書く (分類は拡張 `mc`、改良の探索 `sweep`、性質の発見 `property`)。宣言は `experiments.json` で、実験ごとに群分け (`gates` か `groupings`) と仕方と、回す前に書いた主張 (名前 → 読む系列 `on`、文 `claim`、絞る群分け、区画) を持つ。回す系列は主張の `on` を合わせたもので、主張の読まない系列は回さない。判定の関数は隣の `checks.ts` が主張の名前ごとに持ち、API の `claims` が runs から判定して返す。宣言を JSON にするのは、コードを読まずに何を回して何を言うかを追えるようにするため。主張と判定の線は結果を見てから書かない。
+- 実験は presets.json でなく `experiments/<分類>/` に書く (分類は拡張 `mc`、改良の探索 `sweep`、性質の発見 `property`)。宣言は `experiments.json` で、実験ごとに何を回して何を見るかの一文 `description` と、群分け (`gates` か `groupings`) と仕方と、回す系列 `series` か回す前に書いた主張 (名前 → 読む系列 `on`、文 `claim`、絞る群分け) を持つ。回す系列は `series` と主張の `on` を合わせたもの。判定は探索の問い (改良の探索、性質の発見) にだけ置き、拡張 (`mc`) と GPU の実測には置かず、回す系列だけを書く。判定の関数は隣の `checks.ts` が主張の名前ごとに持ち、API の `claims` が runs から判定して返す。宣言を JSON にするのは、コードを読まずに何を回して何を言うかを追えるようにするため。主張と判定の線は結果を見てから書かない。
 - 使わなくなった仕方と系列は消す。run は消さず、`list` の一覧に残る。
 - 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、読む側 (repo の外の図) が持つ。
 
