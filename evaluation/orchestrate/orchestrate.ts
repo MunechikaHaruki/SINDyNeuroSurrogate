@@ -4,7 +4,7 @@
 // 入口は二つで、どちらもここの関数を呼ぶ。外の画面は export した関数を、手元ではこの CLI を使う。
 //   bun evaluation/orchestrate/orchestrate.ts train <学習 run>...        学習 run は実験の中の名前（kam_hn）かテストの名前
 //   … eval <系列> <学習 run かハッシュ>...
-//   … bench <実験> <GPU の実測の名前>...   GPU で細胞を並べて回し、時間・VRAM・L1 を測る
+//   … bench <実験> <GPU の実測の名前>...   GPU で細胞を並べて回し、時間・VRAM・ncu の量を測る
 //   … index | spec <学習 run> | series | list
 // --runs <dir> で置き場を変えられる。--job <鍵> は外の画面から起こしたときに launch が付け、終わりを .jobs/<鍵>.exit に書く。
 import { spawn } from 'node:child_process';

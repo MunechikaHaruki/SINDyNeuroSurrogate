@@ -20,9 +20,9 @@ export const ClaimShape = z.strictObject({
 export const BenchShape = z.strictObject({
   models: z.array(z.string()).nonempty(),
   series: z.string(),
-  /** 細胞の数。融合カーネルのブロック（128 細胞）の倍数。 */
+  /** 細胞の数。1 刻みのカーネルのブロック（128 細胞）の倍数。 */
   cells: z.array(z.number().int().positive().multipleOf(128)).nonempty(),
-  /** Nsight Compute で融合カーネルを測るか。 */
+  /** Nsight Compute で 1 刻みのカーネルを測るか。 */
   ncu: z.boolean().optional(),
 });
 

@@ -369,6 +369,9 @@ def surrogate_column_cell(s: Surrogate, comp: Compartment) -> ColumnCell:
         s.parts, config.groups, _offsets(config), strict=True
     ):
         latent = names[start : start + group.d]
+        if not hasattr(compressor, "decode_columns"):
+            name = type(compressor).__name__
+            raise NotImplementedError(f"{name} の圧縮器は GPU のカーネルに載らない")
         decode, dz = compressor.decode_columns, _rhs_columns(rhs)
         blocks.append((group.gates, latent, decode, dz))
     name_of, phi = cell.name, config.absorbed

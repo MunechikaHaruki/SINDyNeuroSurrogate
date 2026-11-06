@@ -57,7 +57,7 @@ export type Series = {
 /** 学習 run 1 本の宣言。name は学習 run の名前（実験の中の `<仕方の名前>_<群分け>` かテストの名前）で、同一性には入らない。 */
 export type Train = { name: string; config: SurrogateConfig };
 
-/** GPU の実測 1 つ。model は学習 run の名前（null なら元のモデル）、cells は並べる細胞の数（128 の倍数）、ncu は Nsight Compute で融合カーネルを測るか。 */
+/** GPU の実測 1 つ。model は学習 run の名前（null なら元のモデル）、cells は並べる細胞の数（128 の倍数）、ncu は Nsight Compute で 1 刻みのカーネルを測るか。 */
 export type Bench = {
   name: string;
   model: string | null;
