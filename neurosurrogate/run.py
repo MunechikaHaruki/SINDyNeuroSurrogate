@@ -4,7 +4,7 @@ spec.json 1 つを受け取り、run のディレクトリを埋めるだけの�
 掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
 (`evaluation/orchestrate/orchestrate.ts`) が持ち、spec の形は同じ
 場所の `spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
-spec の種類は 2 つ (`kind`):
+spec の種類は 3 つ (`kind`):
 
 - `train` 学習。`surrogate` は設定 (surrogate.Config: 区画の型、形、学習データ、群)。
           置き場は `runs/models/<ハッシュ>/`
@@ -14,6 +14,10 @@ spec の種類は 2 つ (`kind`):
           `runs/inputs/<入力のハッシュ>/` の下で、元のモデルは `original/`、
           置き換えたモデルは段取りが組んだ鍵の名前。`train` は
           `runs/models/` の学習 run を指す
+- `bench` GPU の実測。`input` と `model` は sim と同じで、細胞を `cells` の数ずつ
+          並べて刻みごとに全細胞をそろえて GPU で回し、時間・VRAM と (`ncu` が真なら)
+          レジスタ・溢れ・global と DRAM の量を `bench.json` に書く
+          (neurosurrogate.bench)。置き場は `runs/bench/<ハッシュ>/`
 
 どちらも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
 入れ、JAX の backend が合わなければ回さない (backend は呼ぶ側が JAX_PLATFORMS で選ぶ)。
@@ -62,6 +66,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .bench import cache, run_checked
 from .physics.simulate import (
     EvalSeries,
     gate_matrix,
@@ -277,15 +282,33 @@ def _sim(root: Path, spec: dict) -> dict:
     return {"unit": series.unit}
 
 
+def _bench(root: Path, spec: dict) -> dict:
+    """細胞の数ごとに別のプロセスで GPU の実測を回し、bench.json に書く。"""
+    runs = root.parents[1]
+    gpu = {"JAX_PLATFORMS": "cuda", "XLA_PYTHON_CLIENT_PREALLOCATE": "false"}
+    env = {**os.environ, **gpu}
+    command = [sys.executable, "-m", "neurosurrogate.bench", str(root / "spec.json")]
+    rows = []
+    for cells in spec["cells"]:
+        out = run_checked([*command, str(runs), str(cells)], env)
+        row = json.loads(out.strip().splitlines()[-1])
+        if spec.get("ncu"):
+            row |= cache(root / "spec.json", runs, cells, env)
+        _logger.info("bench %s", row)
+        rows.append(row)
+    _write_json(root / "bench.json", rows)
+    return {}
+
+
 def _kind(spec: dict) -> str:
     """図に出す run の種類。sim はモデルの有無で、元のモデルと置き換えたモデルに
     分ける。"""
-    if spec["kind"] == "train":
-        return "train"
+    if spec["kind"] in ("train", "bench"):
+        return str(spec["kind"])
     return "original" if spec["model"] is None else "replaced"
 
 
-_KINDS = {"train": _train, "sim": _sim}
+_KINDS = {"train": _train, "sim": _sim, "bench": _bench}
 
 
 def _writer_alive(partial: Path) -> bool:
@@ -307,7 +330,10 @@ def _claim(partial: Path, name: str) -> None:
             partial.mkdir(parents=True)
         except FileExistsError:
             try:
-                fresh = not (partial / "pid").exists() and time.time() - partial.stat().st_mtime < _CLAIM_GRACE
+                fresh = (
+                    not (partial / "pid").exists()
+                    and time.time() - partial.stat().st_mtime < _CLAIM_GRACE
+                )
             except FileNotFoundError:  # 相手が書き終えて名前を変えた
                 continue
             if _writer_alive(partial) or fresh:
@@ -324,7 +350,10 @@ def _check_device(spec: dict) -> None:
     """spec の device (cpu か gpu) と、この JAX の backend が合うか。選ぶのは呼ぶ側 (JAX_PLATFORMS)。
     gpu の学習でも、1 細胞を順に進めるシミュレーションは CPU が速いので既定を CPU にし、GPU は AE の学習だけが使う。"""
     if jax.default_backend() != spec["device"]:
-        raise ValueError(f"spec は {spec['device']} で回す run だが、JAX の backend は {jax.default_backend()}")
+        raise ValueError(
+            f"spec は {spec['device']} で回す run だが、"
+            f"JAX の backend は {jax.default_backend()}"
+        )
     if spec["device"] == "gpu":
         jax.config.update("jax_default_device", jax.devices("cpu")[0])
 

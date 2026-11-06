@@ -11,6 +11,7 @@ flowchart RL
   subgraph physics["physics/"]
     physics_cells["cells"]
     physics_currents["currents"]
+    physics_gpu["gpu"]
     physics_kam["kam"]
     physics_simulate["simulate"]
   end
@@ -20,13 +21,17 @@ flowchart RL
     surrogate_sindy["sindy"]
     surrogate_ude["ude"]
   end
+  bench["bench"]
   run["run"]
   spikes["spikes"]
+  bench --> physics_gpu
+  bench --> surrogate_model
+  physics_gpu --> physics_cells
   physics_kam --> physics_cells
   physics_simulate --> physics_cells
   physics_simulate --> physics_currents
+  run --> bench
   run --> spikes
-  run --> surrogate_model
   surrogate_compress --> physics_cells
   surrogate_model --> physics_kam
   surrogate_model --> physics_simulate
@@ -50,6 +55,18 @@ physical_cell が組む。
 ## physics/currents.py
 
 注入電流の名前 → 波形 (SimSpec.current_type が引く選択肢)。
+
+## physics/gpu.py
+
+細胞を並べて、刻みごとに全細胞をそろえて GPU で解く (Pallas の Triton)。
+
+```text
+1 刻みがカーネル 1 回で、全細胞がその刻みを終えてから次の刻みへ進む (ネットワークで
+V をやり取りする区切りがここにできる)。刻みをまたいで持ち越す状態 (V、潜在 z、縮約
+しなかったゲート) はすべて VRAM (global memory) に置き、毎刻み読み込んで書き戻す。
+刻みの中だけで使う値 (z から作り直すゲート、SINDy の項、レート) はカーネルの中の
+局所の値 (レジスタ) に置く。区画は単一区画の ColumnCell (配列にまとめない右辺) だけ。
+```
 
 ## physics/kam.py
 
@@ -116,6 +133,25 @@ kernel・初期値・演算コストは、群と区画の式から組む。学�
 (surrogate_cell)、置換の可否と置換、中身の書き出しもここが持つ。
 ```
 
+## bench.py
+
+GPU の実測: 細胞を並べ、刻みごとに全細胞をそろえて回し、置き場ごとの量を測る。
+
+```text
+`uv run python -m neurosurrogate.bench <spec.json> <runs> <細胞の数> [--once]`。
+spec は run.py の `bench` の spec (入力と、元のモデルか学習 run)。1 回の呼び出しで
+1 つの細胞の数だけを測り、結果を JSON で標準出力に書く。細胞の数ごとに別のプロセスで
+呼ぶのは、XLA の先取りを切って VRAM を細胞の数ごとに測るためと、Nsight Compute (ncu)
+をかぶせるため。`--once` は ncu の下で 1 回だけ回す (時間は測らない)。
+
+1 刻みがカーネル 1 回 (physics.gpu)。刻みをまたいで持ち越す状態 (V、潜在 z、縮約
+しなかったゲート) は VRAM に置いて毎刻み読み書きし、刻みの中だけで使う値はレジスタに
+置く。ncu では途中の 1 刻みのカーネルを測り、VRAM からの読み込みと書き戻しの量を、
+持ち越す状態の数から出した予想と並べる。レジスタの数と溢れ (local memory) も測る。
+細胞 i には系列の点 i mod 点の数 の電流を入れる。発火の回数は、同じ電流の細胞どうしで
+揃うかの確かめに使う。
+```
+
 ## spikes.py
 
 1 本の波形のスパイクの特徴量 (eFEL)。元のモデルとの比較は図 (evaluation/) が持つ。
@@ -129,7 +165,7 @@ spec.json 1 つを受け取り、run のディレクトリを埋めるだけの�
 掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
 (`evaluation/orchestrate/orchestrate.ts`) が持ち、spec の形は同じ
 場所の `spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
-spec の種類は 2 つ (`kind`):
+spec の種類は 3 つ (`kind`):
 
 - `train` 学習。`surrogate` は設定 (surrogate.Config: 区画の型、形、学習データ、群)。
           置き場は `runs/models/<ハッシュ>/`
@@ -139,6 +175,10 @@ spec の種類は 2 つ (`kind`):
           `runs/inputs/<入力のハッシュ>/` の下で、元のモデルは `original/`、
           置き換えたモデルは段取りが組んだ鍵の名前。`train` は
           `runs/models/` の学習 run を指す
+- `bench` GPU の実測。`input` と `model` は sim と同じで、細胞を `cells` の数ずつ
+          並べて刻みごとに全細胞をそろえて GPU で回し、時間・VRAM と (`ncu` が真なら)
+          レジスタ・溢れ・global と DRAM の量を `bench.json` に書く
+          (neurosurrogate.bench)。置き場は `runs/bench/<ハッシュ>/`
 
 どちらも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
 入れ、JAX の backend が合わなければ回さない (backend は呼ぶ側が JAX_PLATFORMS で選ぶ)。

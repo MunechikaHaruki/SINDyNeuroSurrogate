@@ -54,6 +54,17 @@ class PCA:
     def decode(self, z: jnp.ndarray) -> jnp.ndarray:
         return z @ jnp.asarray(self.components) + jnp.asarray(self.mean)
 
+    def decode_columns(self, z: list) -> list:
+        """潜在の値の並び → ゲートの値の並び (decode を配列にまとめずに書いたもの)。"""
+        components = np.asarray(self.components)
+        gates = []
+        for j in range(components.shape[1]):
+            value = float(self.mean[j])
+            for i, zi in enumerate(z):
+                value = value + zi * float(components[i, j])
+            gates.append(value)
+        return gates
+
     def metrics(self) -> dict[str, float]:
         ratios = {}
         for i, r in enumerate(self.explained_variance_ratio):

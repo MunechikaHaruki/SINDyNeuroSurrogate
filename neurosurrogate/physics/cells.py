@@ -102,6 +102,35 @@ def physical_cell(
     )
 
 
+@dataclass(frozen=True)
+class ColumnCell:
+    """GPU のカーネル用の区画。状態を名前 → 値 (細胞の並び) で受け渡す。
+
+    kernel は (params, 電流密度, V, 状態の名前 → 値) → (dV/dt, 状態の名前 → d/dt)。
+    states は刻みをまたいで持ち越す状態 (V を除く)、latent はそのうちの潜在 z、
+    decoded は持ち越さず刻みごとに潜在から作り直すゲート (元のモデルは空)。
+    """
+
+    states: list[str]
+    inits: list[float]
+    params: Any
+    kernel: Callable
+    latent: list[str]
+    decoded: list[str]
+
+
+def column_cell(comp: "Compartment") -> ColumnCell:
+    """元のモデルの区画を GPU のカーネル用にする。式は kernel と同じ dv と derivs。"""
+    cell = comp.type
+    assert cell.dv is not None and cell.derivs is not None, cell.name
+    dv, derivs, states = cell.dv, cell.derivs, cell.states
+
+    def kernel(p, u, v, s):
+        return dv(p, u, v, s), {n: derivs[n](p, v, s) for n in states}
+
+    return ColumnCell(states, list(comp.init), comp.resolved_params, kernel, [], [])
+
+
 # --- レートの形 ------------------------------------------------------------------
 
 

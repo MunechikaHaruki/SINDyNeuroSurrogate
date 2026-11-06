@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from sympy.core.function import AppliedUndef
 
-from neurosurrogate.physics.cells import CELLS, NETS, OpCost
+from neurosurrogate.physics.cells import CELLS, NETS, OpCost, column_cell
 from neurosurrogate.physics.kam import absorbed
 from neurosurrogate.physics.simulate import EvalSeries, SimSpec, potential, simulate
 from neurosurrogate.spikes import FEATURES, spike_features
@@ -29,6 +29,7 @@ from neurosurrogate.surrogate.model import (
     replace,
     summary,
     surrogate_cell,
+    surrogate_column_cell,
 )
 from neurosurrogate.surrogate.sindy import SINDy
 from neurosurrogate.surrogate.ude import UDE
@@ -387,3 +388,41 @@ def test_declared_series_resolve() -> None:
         for point in series.points:
             assert len(point.current()) > 0
         assert set(series.replace_targets) <= set(series.spec.net.names)
+
+
+@pytest.mark.parametrize("name", ["_test_traub_kam", "_test_traub_two_groups"])
+def test_the_column_kernel_matches_the_cell_kernel(name: str) -> None:
+    """GPU 用の右辺 (名前 → 値) は、置換に使う区画の右辺と同じ値を返す。"""
+    s = fit_declared(name)
+    spec = _dc("traub", value=5.0, duration=50.0)
+    run = replace(s, spec.run_input(), ["soma"])
+    comp = run.net.nodes[0]
+    column = surrogate_column_cell(s, comp)
+    x = np.asarray(comp.init[1:], dtype=np.float64) * 1.01
+    v, u = float(comp.init[0]) + 3.0, 5.0
+    dv, ds = comp.type.kernel(comp.resolved_params, u, v, jnp.asarray(x))
+    states = dict(zip(column.states, x, strict=True))
+    cdv, cds = column.kernel(comp.resolved_params, u, v, states)
+    assert float(cdv) == pytest.approx(float(dv), rel=1e-12)
+    got = [float(cds[n]) for n in column.states]
+    assert got == pytest.approx(np.asarray(ds).tolist(), rel=1e-10, abs=1e-14)
+    assert column.latent == column.states[: len(column.latent)]
+    assert column.latent
+    # 作り直すゲートは持ち越さない
+    assert column.decoded and not set(column.decoded) & set(column.states)
+
+
+def test_the_original_column_kernel_matches_the_cell_kernel() -> None:
+    """元のモデルの GPU 用の右辺は、区画の右辺と同じ値を返し、潜在を持たない。"""
+    comp = NETS["traub"].nodes[0]
+    column = column_cell(comp)
+    x = np.asarray(comp.init[1:], dtype=np.float64)
+    dv, ds = comp.type.kernel(comp.resolved_params, 5.0, -50.0, jnp.asarray(x))
+    states = dict(zip(column.states, x, strict=True))
+    cdv, cds = column.kernel(comp.resolved_params, 5.0, -50.0, states)
+    assert float(cdv) == pytest.approx(float(dv), rel=1e-12)
+    assert [float(cds[n]) for n in column.states] == pytest.approx(
+        np.asarray(ds).tolist()
+    )
+    assert column.latent == []
+    assert column.decoded == []

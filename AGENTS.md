@@ -9,6 +9,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | --- | --- |
 | 研究コード（`neurosurrogate/physics/` 元のモデルを解く、`neurosurrogate/surrogate/` 学習して置き換える、直下にスパイクの特徴量 `spikes.py` と入口 `run.py`） | `neurosurrogate/` |
 | 計算の入口（spec.json → run のディレクトリ。`python -m neurosurrogate.run`） | `neurosurrogate/run.py` |
+| GPU の実測（細胞を並べて GPU で回し、時間・VRAM・ncu の L1 と L2 を測る。run.py の `bench` が細胞の数ごとに別のプロセスで呼ぶ） | `neurosurrogate/bench.py` |
 | 回せるもののプリセット（既定 `defaults`、縮約の仕方 `methods`、系列 `series` の値をすべて持つ。テスト専用の学習は `evaluation/orchestrate/test-trains.ts` が持つ。`evaluation/orchestrate/conf.ts` がプリセットと差分を混ぜて学習 run と系列にする部品を持つ） | `presets.json` |
 | プリセットを混ぜる部品（`conf.ts`）と spec.json の形（`spec.ts`）、段取り（`orchestrate.ts`。外の画面は export した関数、手元では CLI で、同じ関数を呼ぶ） | `evaluation/orchestrate/` |
 | 実験の結果（学習したモデルは `models/<ハッシュ>/`、入力ごとの結果は `inputs/<入力のハッシュ>/` の下に元のモデルと置き換えたモデル）と run の一覧 | 計算する機械の `~/sindy/runs/`（手元の runs は `remote.sh fetch` で持ってきた写しだけで、どちらも Git の外） |
@@ -49,7 +50,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 学習・評価と runs は、ssh で入れる NVIDIA の GPU の機械（名前は環境変数 `SINDY_HOST`）に置く。回線に出すのはコードと指示と小さい JSON だけで、波形は動かさない。
 
-- 学習は GPU（spec の `device: gpu`。GPU を使うのは AE の学習だけで、シミュレーションは CPU）、評価とテストの学習は CPU。同じ spec でも結果がずれるので、`device` は spec に入って run を分ける。
+- 学習は GPU（spec の `device: gpu`。GPU を使うのは AE の学習と GPU の実測（spec の `kind: bench`、置き場は計算する機械の runs の bench の下）だけで、1 細胞のシミュレーションは CPU）、評価とテストの学習は CPU。同じ spec でも結果がずれるので、`device` は spec に入って run を分ける。
 - run の meta.json の `env` に、回した backend・device・版・host・コード（commit と書きかけの差分のハッシュ）・イメージを書く。
 - 結果を読む画面は API（`evaluation/serve/serve.ts`、POST /<口>、:8787）だけを呼ぶ。API は間引いた線・軌跡・分布・指標を返し、波形を回線に出さない。
 - 機械の名前と接続先は repo に書かず、環境変数で渡す。

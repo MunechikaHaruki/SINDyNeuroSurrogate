@@ -28,9 +28,18 @@ export const MODELS: Record<string, Model> = {};
 /** 系列の名前 → 掃引（プリセットの系列と、実験が差分で組んだ系列）。 */
 export const SERIES: Record<string, Series> = { ...PRESET_SERIES };
 
-/** 同じ名前が違う中身を指していれば投げる（中身は同じ部品が組むので、書き出した JSON で比べる）。 */
+/** 鍵を並べ替えた JSON。差分の書き順で中身の比較がずれないようにする。 */
+function sorted(value: unknown): string {
+  return JSON.stringify(value, (_, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
+/** 同じ名前が違う中身を指していれば投げる。 */
 function register<T>(table: Record<string, T>, name: string, value: T, where: string): void {
-  if (table[name] !== undefined && JSON.stringify(table[name]) !== JSON.stringify(value))
+  if (table[name] !== undefined && sorted(table[name]) !== sorted(value))
     throw new Error(`${where}：名前 ${name} がほかの実験と違う中身を指している`);
   table[name] = value;
 }
@@ -47,7 +56,7 @@ for (const theme of THEMES) {
     }
     for (const m of plan.models) {
       register(TRAINS, m.name, m.train, where);
-      MODELS[m.name] = m;
+      register(MODELS, m.name, m, where);
     }
     for (const [name, s] of Object.entries(plan.series)) register(SERIES, name, s, where);
     EXPERIMENTS.push(plan);
@@ -72,4 +81,4 @@ export function seriesOf(name: string): Series {
 
 /** 実験の id → 回す組。段取りの状態（status）が読む。 */
 export const EXPERIMENT_RUNS: Record<string, Experiment> = {};
-for (const e of EXPERIMENTS) EXPERIMENT_RUNS[e.id] = { pairs: e.pairs };
+for (const e of EXPERIMENTS) EXPERIMENT_RUNS[e.id] = { pairs: e.pairs, benches: e.benches };

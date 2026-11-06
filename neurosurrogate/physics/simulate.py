@@ -103,7 +103,8 @@ def _layout(net: Net) -> tuple[pd.MultiIndex, np.ndarray, np.ndarray]:
     return index, np.array(inits, dtype=np.float64), offsets
 
 
-def _euler(init, current, dt, laplacian, areas, stim_idx, offsets, groups):
+def _deriv(laplacian, areas, stim_idx, offsets, groups):
+    """状態 x と注入電流 u_t から dx/dt を返す関数。"""
     n = laplacian.shape[0]
 
     def deriv(x, u_t):
@@ -122,6 +123,12 @@ def _euler(init, current, dt, laplacian, areas, stim_idx, offsets, groups):
             if g.n_state > 0:
                 dx = dx.at[state_idx.ravel()].set(ds.ravel())
         return dx
+
+    return deriv
+
+
+def _euler(init, current, dt, laplacian, areas, stim_idx, offsets, groups):
+    deriv = _deriv(laplacian, areas, stim_idx, offsets, groups)
 
     def step(x, u_t):
         return x + deriv(x, u_t) * dt, x
@@ -155,6 +162,33 @@ def simulate(run: RunInput) -> xr.Dataset:
         dims=["time", "node_id"],
     )
     return ds
+
+
+def simulate_batch(run: RunInput, threshold: float = 0.0):
+    """run のネットを細胞ごとに解く jit 済みの関数 fn(電流 (点 × 時刻), 細胞ごとの行)。
+
+    細胞 k は行 rows[k] の電流で回り、最後の状態と注入区画の電位が threshold を上へ
+    横切った回数だけを返す (行列は点の数だけなので、VRAM は細胞の状態を映す)。
+    """
+    index, init, offsets = _layout(run.net)
+    deriv = _deriv(
+        _laplacian(run.net), _areas(run.net), run.stim_idx, offsets, _groups(run.net)
+    )
+    dt, at = run.dt, run.stim_idx
+
+    def one(currents, row):
+        def step(carry, t):
+            x, count = carry
+            nxt = x + deriv(x, currents[row, t]) * dt
+            crossed = (x[at] < threshold) & (nxt[at] >= threshold)
+            return (nxt, count + crossed.astype(jnp.int32)), None
+
+        start = (jnp.array(init), jnp.int32(0))
+        steps = jnp.arange(currents.shape[1] - 1)
+        (final, count), _ = jax.lax.scan(step, start, steps)
+        return final, count
+
+    return jax.jit(jax.vmap(one, in_axes=(None, 0))), index
 
 
 # --- 波形の読み書き -------------------------------------------------------------

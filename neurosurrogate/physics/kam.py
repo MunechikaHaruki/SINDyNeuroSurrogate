@@ -121,6 +121,10 @@ class KamCompressor:
         steadies = [_steady(self.cell, g, self.params)(psi) for g in self.gates]
         return jnp.stack(steadies, axis=-1)
 
+    def decode_columns(self, z: list) -> list:
+        """ψ → ゲートの値の並び (decode を配列にまとめずに書いたもの)。"""
+        return [_steady(self.cell, g, self.params)(z[0]) for g in self.gates]
+
     def metrics(self) -> dict[str, float]:
         return {
             **{f"kam/{k}": v for k, v in self.reconstruction.items()},
@@ -162,6 +166,33 @@ class KamRhs:
                 flow = flow + d * derivs[gate](p, v, s)
                 weight = weight + d * slope
             return jnp.atleast_1d(flow / weight)
+
+        return dpsi
+
+    def rhs_columns(self):
+        """rhs と同じ式で、値を細胞の並びのまま受け、dψ/dt の並び [dψ] を返す。
+
+        微分は 1 細胞ずつの grad でなく、細胞の並びに 1 を向けた jvp で取る。
+        """
+        cell = CELLS[self.cell]
+        assert cell.dv is not None and cell.derivs is not None
+        dv, derivs, gates, name = cell.dv, cell.derivs, self.gates, self.cell
+
+        def dpsi(z, v, s, p):
+            psi = z[0]
+            ones = jnp.ones_like(psi)
+            flow = 0.0
+            weight = 0.0
+            for gate in gates:
+
+                def current(x, gate=gate):
+                    return dv(p, 0.0, v, {**s, gate: x})
+
+                d = jax.jvp(current, (s[gate],), (ones,))[1]
+                slope = jax.jvp(_steady(name, gate, p), (psi,), (ones,))[1]
+                flow = flow + d * derivs[gate](p, v, s)
+                weight = weight + d * slope
+            return [flow / weight]
 
         return dpsi
 

@@ -2,7 +2,7 @@
 // 解決済みの実験は、学習 run と系列を値で持つ。段取り（orchestrate.ts）・API・画面はこれだけを読み、主題のスキーマを知らない。
 import { z } from 'zod';
 import { Ref, methodOf, seriesFrom, trainFrom } from '../evaluation/orchestrate/conf.ts';
-import type { Series } from '../evaluation/orchestrate/spec.ts';
+import type { Bench, Series } from '../evaluation/orchestrate/spec.ts';
 import type { Claim, Judge, Model, Plan } from './common.ts';
 
 /** 仕方の指し方。プリセットの名前か、名前を付けた差分 `{ name, from, ...差分 }`（name は表示と判定の列の名前）。 */
@@ -14,6 +14,16 @@ export const ClaimShape = z.strictObject({
   on: z.array(z.string()).nonempty(),
   groupings: z.array(z.string()).optional(),
   claim: z.string(),
+});
+
+/** GPU の実測。model は実験の学習 run の名前か original（元のモデル）、series は実験が回す系列。名前は `<model>@<series>`。 */
+export const BenchShape = z.strictObject({
+  models: z.array(z.string()).nonempty(),
+  series: z.string(),
+  /** 細胞の数。融合カーネルのブロック（128 細胞）の倍数。 */
+  cells: z.array(z.number().int().positive().multipleOf(128)).nonempty(),
+  /** Nsight Compute で融合カーネルを測るか。 */
+  ncu: z.boolean().optional(),
 });
 
 /** 宣言を形に当てる。誤りはどこの何かが分かる一文にする。 */
@@ -40,6 +50,7 @@ export function build(
     methods: z.infer<typeof MethodRef>[];
     series?: z.infer<typeof SeriesRef>[];
     claims?: Record<string, z.infer<typeof ClaimShape>>;
+    benches?: z.infer<typeof BenchShape>[];
   },
   judges: Record<string, Judge>,
 ): Plan {
@@ -66,6 +77,23 @@ export function build(
     }
   }
   const pairs = models.flatMap(m => Object.keys(series).map(s => ({ model: m.name, series: s })));
+  const benches: Bench[] = [];
+  for (const b of e.benches ?? []) {
+    if (!series[b.series]) throw new Error(`${where}：GPU の実測の系列 ${b.series} を実験が回さない`);
+    for (const model of b.models) {
+      if (model !== 'original' && !models.some(m => m.name === model))
+        throw new Error(`${where}：GPU の実測の ${model} は実験の学習 run でも original でもない`);
+      const name = `${model}@${b.series}`;
+      if (benches.some(x => x.name === name)) throw new Error(`${where}：GPU の実測 ${name} が重なる`);
+      benches.push({
+        name,
+        model: model === 'original' ? null : model,
+        series: b.series,
+        cells: b.cells,
+        ncu: b.ncu ?? false,
+      });
+    }
+  }
   return {
     id: e.id,
     description: e.description,
@@ -74,6 +102,7 @@ export function build(
     models,
     series,
     pairs,
+    benches,
     claims,
   };
 }

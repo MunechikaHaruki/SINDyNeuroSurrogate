@@ -200,17 +200,26 @@ class SINDy:
             raise ValueError(f"library間で feature 重複: {sorted(map(str, dup))}")
         return exprs
 
-    def theta(self) -> Callable:
-        """(列の値...) → Θ。"""
+    def terms(self) -> Callable:
+        """(列の値...) → Θ の項の値の並び (配列にまとめない。GPU 用)。"""
         bundles = self._bundles
 
-        def theta(*cols):
+        def terms(*cols):
             values = []
             for b in bundles:
                 bound = [cols[i] for i in b.inputs]
                 for t in b.terms:
                     values.append(t.func(*bound))
-            return jnp.array(values, dtype=jnp.float64)
+            return values
+
+        return terms
+
+    def theta(self) -> Callable:
+        """(列の値...) → Θ。"""
+        terms = self.terms()
+
+        def theta(*cols):
+            return jnp.array(terms(*cols), dtype=jnp.float64)
 
         return theta
 

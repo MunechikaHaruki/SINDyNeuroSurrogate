@@ -17,7 +17,7 @@ import joblib
 import numpy as np
 import xarray as xr
 
-from ..physics.cells import CELLS, CellType, Compartment, Net, total
+from ..physics.cells import CELLS, CellType, ColumnCell, Compartment, Net, total
 from ..physics.kam import KamCompressor, KamRhs, absorbed, absorbed_cost
 from ..physics.simulate import (
     EvalSeries,
@@ -354,6 +354,73 @@ def surrogate_cell(s: Surrogate) -> CellType:
         + total([cell.costs[n] for n in physics])
         + absorbed_cost(name_of, phi),
     )
+
+
+def surrogate_column_cell(s: Surrogate, comp: Compartment) -> ColumnCell:
+    """置き換えた区画を GPU 用にする。式は surrogate_cell の hybrid と同じ。"""
+    config, cell = s.config, s.config.cell_type
+    if config.form != "hybrid":
+        raise NotImplementedError("GPU のカーネルは hybrid の形だけ")
+    assert cell.dv is not None and cell.derivs is not None
+    dv_fn, derivs, physics = cell.dv, cell.derivs, config.physics
+    names = surrogate_cell(s).states
+    blocks = []
+    for (compressor, rhs), group, start in zip(
+        s.parts, config.groups, _offsets(config), strict=True
+    ):
+        latent = names[start : start + group.d]
+        decode, dz = compressor.decode_columns, _rhs_columns(rhs)
+        blocks.append((group.gates, latent, decode, dz))
+    name_of, phi = cell.name, config.absorbed
+
+    def kernel(p, u, v, st):
+        s_ = absorbed(name_of, phi, p, v)
+        for gates, latent, decode, _ in blocks:
+            for gate, value in zip(gates, decode([st[n] for n in latent]), strict=True):
+                s_[gate] = value
+        for state in physics:
+            s_[state] = st[state]
+        ds = {}
+        for _, latent, _, rhs in blocks:
+            dz = rhs([st[n] for n in latent], v, s_, p)
+            for n, value in zip(latent, dz, strict=True):
+                ds[n] = value
+        for state in physics:
+            ds[state] = derivs[state](p, v, s_)
+        return dv_fn(p, u, v, s_), ds
+
+    n_latent = sum(group.d for group in config.groups)
+    return ColumnCell(
+        names,
+        list(comp.init),
+        comp.resolved_params,
+        kernel,
+        names[:n_latent],
+        [gate for group in config.groups for gate in group.gates],
+    )
+
+
+def _rhs_columns(rhs):
+    """群の右辺を、潜在の値の並び → dz/dt の並び にする (配列にまとめない)。"""
+    if isinstance(rhs, KamRhs):
+        return rhs.rhs_columns()
+    if not hasattr(rhs, "xi"):
+        name = type(rhs).__name__
+        raise NotImplementedError(f"{name} の右辺は GPU のカーネルに載らない")
+    xi, terms = np.asarray(rhs.xi), rhs.terms()
+
+    def dz(z, v, s, p):
+        values = terms(*z, v)
+        out = []
+        for k in range(xi.shape[0]):
+            total_k = 0.0
+            for t, value in enumerate(values):
+                if xi[k, t] != 0:
+                    total_k = total_k + float(xi[k, t]) * value
+            out.append(total_k)
+        return out
+
+    return dz
 
 
 # --- 置換 ------------------------------------------------------------------------
