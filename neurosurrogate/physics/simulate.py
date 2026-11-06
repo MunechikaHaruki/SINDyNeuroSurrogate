@@ -48,6 +48,11 @@ def _areas(net: Net) -> np.ndarray:
     return np.array([c.area for c in net.nodes])
 
 
+def coupling(net: Net) -> tuple[np.ndarray, np.ndarray]:
+    """区画どうしのラプラシアンと区画の面積 (流入電流 = V @ L / 面積)。"""
+    return _laplacian(net), _areas(net)
+
+
 @dataclass(frozen=True)
 class _Group:
     """同じ型の区画をまとめて vmap で解く単位。"""

@@ -293,7 +293,7 @@ def _bench(root: Path, spec: dict) -> dict:
         out = run_checked([*command, str(runs), str(cells)], env)
         row = json.loads(out.strip().splitlines()[-1])
         if spec.get("ncu"):
-            row |= cache(root / "spec.json", runs, cells, env)
+            row |= cache(root / "spec.json", runs, cells, row["compartments"], env)
         _logger.info("bench %s", row)
         rows.append(row)
     _write_json(root / "bench.json", rows)

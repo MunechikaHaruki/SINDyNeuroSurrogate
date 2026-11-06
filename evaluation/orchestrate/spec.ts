@@ -67,8 +67,8 @@ export type Bench = {
 };
 
 /** GPU の実測の結果（bench.json）の 1 行。細胞の数 1 つ。1 刻みがカーネル 1 回で、全細胞をそろえて進める。時間はコンパイルの後の 2 回目の実時間。
- * vram_states は刻みをまたいで持ち越し、VRAM に置いて毎刻み読み書きする状態（V、潜在 z、縮約しなかったゲート）。latent はそのうちの z、
- * decoded は持ち越さず刻みごとに z から作り直すゲート（レジスタに置く）。vram_state_bytes は VRAM に置いた状態の総量、
+ * comp_states は区画ごとの、刻みをまたいで持ち越し、VRAM に置いて毎刻み読み書きする状態（V、潜在 z、縮約しなかったゲート）。
+ * decoded は置き換えた区画ごとの、持ち越さず刻みごとに z から作り直すゲート（レジスタに置く）。1 スレッドが 1 区画を持つ。vram_state_bytes は VRAM に置いた状態の総量、
  * expected_step_load_bytes と expected_step_store_bytes は 1 刻みのカーネルが VRAM から読み、書き戻す量の予想（状態・発火の回数・行）。
  * VRAM の量は XLA（最大・入力・作業量）と nvidia-smi。spike_counts は系列の点ごとの、同じ電流の細胞の発火の回数（揃っていれば 1 つ）。
  * ncu の量（1 刻みのカーネル 1 回分）は ncu を回したときだけ。 */
@@ -78,9 +78,10 @@ export type BenchRow = {
   compile_s: number;
   wall_s: number;
   cell_steps_per_s: number;
-  vram_states: string[];
-  latent: string[];
-  decoded: string[];
+  /** 区画の数と、区画の名前 → VRAM に置く変数（V を含む）、置き換えた区画の名前 → z から作り直すゲート。 */
+  compartments: number;
+  comp_states: Record<string, string[]>;
+  decoded: Record<string, string[]>;
   vram_state_bytes: number;
   expected_step_load_bytes: number;
   expected_step_store_bytes: number;
