@@ -1,5 +1,4 @@
 ---
-type: Reference
 description: "研究コードの repo の入口。全体の地図、実験の流れ、結果の置き場"
 ---
 

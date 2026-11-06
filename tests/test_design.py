@@ -92,7 +92,6 @@ def render() -> str:
     graph = {k: _imported(k, t, set(modules)) for k, t in modules.items()}
     lines = [
         "---",
-        "type: Reference",
         "description: neurosurrogate の各ファイルの docstring と依存の図を集めた生成物",
         "---",
         "",

@@ -1,5 +1,4 @@
 ---
-type: Reference
 description: "研究コードの repo の DESIGN.md。用語、run と設定の形式（device と回した環境を含む）、判断基準"
 ---
 
