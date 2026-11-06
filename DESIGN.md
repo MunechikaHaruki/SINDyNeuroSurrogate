@@ -1,3 +1,8 @@
+---
+type: Reference
+description: "研究コードの repo の DESIGN.md。用語、run と設定の形式（device と回した環境を含む）、判断基準"
+---
+
 # 設計
 
 研究コードの設計に手を入れる前に読む。用語、run と設定の形式、どちらへ倒すかの判断基準を持つ。ファイルごとの責務は各ファイルの docstring と [neurosurrogate/FILES.md](neurosurrogate/FILES.md) にある。

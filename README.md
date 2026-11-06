@@ -1,3 +1,8 @@
+---
+type: Reference
+description: "研究コードの repo の入口。全体の地図、実験の流れ、結果の置き場"
+---
+
 # SINDyNeuroSurrogate
 
 神経細胞モデル（Traub、Hodgkin–Huxley）のゲート変数をまとめて減らし、状態の少ない代理モデル（サロゲート）に置き換える研究コード。まとめ方は二通りで、式から導く KAM 縮約と、データから学ぶ「圧縮 + [SINDy](https://arxiv.org/abs/1904.02107)」を同じ段取りで比べる。

@@ -1,3 +1,8 @@
+---
+type: Reference
+description: neurosurrogate の各ファイルの docstring と依存の図を集めた生成物
+---
+
 # neurosurrogate のファイル
 
 生成物。手で書き換えない。各ファイルの持つものは、そのファイルの先頭の docstring が正本で、`uv run python tests/test_design.py` がここに集める。
