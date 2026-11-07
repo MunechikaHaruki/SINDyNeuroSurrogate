@@ -104,7 +104,7 @@ flowchart LR
 | 間引いた線と指標と主張の判定（API の JSON。口の形は `evaluation/serve/api.ts`） | TS（API） | 画面 |
 | ゲートのレートの式（physics/ の JSON） | 人 | Python と TS |
 
-形式の細部と設計の判断基準は [DESIGN.md](DESIGN.md)、ファイルごとの役割は [neurosurrogate/FILES.md](neurosurrogate/FILES.md) にある。
+形式の細部と設計の判断基準は [AGENTS.md](AGENTS.md)、ファイルごとの役割は [neurosurrogate/AGENTS.md](neurosurrogate/AGENTS.md) にある。
 
 ## セットアップ
 

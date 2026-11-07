@@ -1,4 +1,4 @@
-"""neurosurrogate/FILES.md を docstring と import から作り、置いてあるものと照らす。
+"""neurosurrogate/AGENTS.md を docstring と import から作り、置いてあるものと照らす。
 
 `uv run python tests/test_design.py` で作り直す。
 """
@@ -9,7 +9,7 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 ROOT = REPO / "neurosurrogate"
-FILES = ROOT / "FILES.md"
+FILES = ROOT / "AGENTS.md"
 PLACES = ["physics", "surrogate", ""]
 
 
@@ -87,7 +87,7 @@ def _node(key: str) -> str:
 
 
 def render() -> str:
-    """FILES.md の中身。依存の図と、ファイルごとの docstring。"""
+    """neurosurrogate/AGENTS.md の中身。依存の図と、ファイルごとの docstring。"""
     modules = _modules()
     graph = {k: _imported(k, t, set(modules)) for k, t in modules.items()}
     lines = [
