@@ -29,6 +29,17 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 - 修論の計画、期日、週次の進捗、受けた指摘
 - 本人の事実と、進路の判断基準
 
+## 流れ
+
+宣言 → 段取り（TS）→ 計算（Python）→ runs → API（TS）→ repo の外の画面、の順に渡る。図は `README.md` にある。置き場の間を渡るのはデータだけ:
+
+| 渡るもの | 書く側 | 読む側 |
+| --- | --- | --- |
+| 実験の条件（spec.json） | TS（段取り） | Python |
+| 実験の結果（runs/） | Python | TS（API） |
+| 間引いた線と指標と主張の判定（API の JSON。口の形は `evaluation/serve/api.ts`） | TS（API） | 画面 |
+| ゲートのレートの式（physics/ の JSON） | 人 | Python と TS |
+
 ## 用語
 
 **群 (Group)**:
@@ -142,4 +153,4 @@ uv run pytest -q               # 規約、区画の式、サロゲート、neuro
 bun test evaluation experiments  # TS のテスト（依存は bun install）
 ```
 
-整形と lint は `uv run ruff format` と `uv run ruff check`、型は `uv run mypy`。
+整形と lint は `uv run ruff format` と `uv run ruff check`、型は `uv run mypy`。道具は [uv](https://docs.astral.sh/uv/) と [bun](https://bun.sh/)。計算する機械のイメージ（`Dockerfile`）は、ベースと道具を digest、依存を `uv.lock` と `bun.lock` で固定する。
