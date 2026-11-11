@@ -1,11 +1,9 @@
-// 段取り: 実験（../experiments/experiments.ts の解決済みの学習 run と系列）から spec.json を組み、ハッシュで決めた置き場を Python の計算の入口（neurosurrogate/run.py）で埋める。
-// 置き場は学習が runs/models/<ハッシュ>/、入力 × モデルが runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/。
+// 段取り: resolved/ の spec.json（宣言から resolve.ts が組んだ、送るものそのもの）を、ハッシュで決めた置き場で Python の計算の入口（neurosurrogate/run.py）に回す。宣言は読まない。
+// 置き場は学習が runs/models/<ハッシュ>/、入力 × モデルが runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/、GPU の実測が runs/bench/<ハッシュ>/。
 // 同じ spec は同じ置き場になるので、ディレクトリがあれば回さない。回したあとは runs/index.json（図が読む run の一覧）を書き直す。
 // 入口は二つで、どちらもここの関数を呼ぶ。外の画面は export した関数を、手元ではこの CLI を使う。
-//   bun evaluation/orchestrate/orchestrate.ts train <学習 run>...        学習 run は実験の中の名前（kam_hn）かテストの名前
-//   … eval <系列> <学習 run かハッシュ>...
-//   … bench <実験> <GPU の実測の名前>...   GPU で細胞を並べて回し、時間・VRAM・ncu の量を測る
-//   … index | spec <学習 run> | series | list
+//   bun evaluation/orchestrate/orchestrate.ts run <resolved/ の下のパス>...   その spec を回す。評価と GPU の実測は、指す学習 run と元のモデルを先に回す
+//   … index | list
 // --runs <dir> で置き場を変えられる。--job <鍵> は外の画面から起こしたときに launch が付け、終わりを .jobs/<鍵>.exit に書く。
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -23,8 +21,6 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { METHOD_NAMES, TESTS } from '../experiments/presets.ts';
-import { EXPERIMENT_RUNS, SERIES, TRAINS, seriesOf, trainOf } from '../experiments/experiments.ts';
 import {
   FORMAT,
   type Bench,
@@ -204,56 +200,37 @@ function ensure(runs: string, spec: Spec, name: string): string | undefined {
   return id;
 }
 
-/** 学習 run を指す引数（学習 run の名前か、ハッシュかその先頭）→ 学習 run のハッシュと名前。名前なら、無ければ学習する。 */
-function trainRun(runs: string, selector: string): { hash: string; name: string } {
-  if (!/^[0-9a-f]+$/.test(selector)) {
-    const t = trainOf(selector);
-    ensure(runs, trainSpec(t), t.name);
-    return { hash: hashOf(trainSpec(t)), name: t.name };
+/** resolved/ の置き場。送る spec.json をそのまま置く（resolve.ts が書く）。 */
+export const RESOLVED = join(REPO, 'resolved');
+
+/** resolved/ の下のパスの spec.json。resolved/ の外を指すパスは弾く。 */
+export function specAt(path: string): Spec {
+  const file = resolve(RESOLVED, path);
+  if (!file.startsWith(`${RESOLVED}/`) || !existsSync(file)) throw new Error(`resolved/${path} が無い`);
+  return JSON.parse(readFileSync(file, 'utf8')) as Spec;
+}
+
+/** 学習 run のハッシュ → resolved/ の学習の spec.json（評価と GPU の実測が先に回す学習 run を引く）。 */
+function trainAt(hash: string): { path: string; spec: Spec } {
+  for (const entry of readdirSync(RESOLVED, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile() || !entry.parentPath.endsWith('/train')) continue;
+    const path = relative(RESOLVED, join(entry.parentPath, entry.name));
+    const spec = specAt(path);
+    if (hashOf(spec) === hash) return { path, spec };
   }
-  const hits = scan(runs).filter(e => e.kind === 'train' && e.id.startsWith(`models/${selector}`));
-  if (hits.length !== 1) throw new Error(`学習 run ${selector} が ${hits.length} 本に当たる`);
-  return { hash: hits[0].id.slice('models/'.length), name: hits[0].name };
+  throw new Error(`学習 run ${hash} の spec が resolved/ に無い`);
 }
 
-/** 学習 run を用意する。 */
-export function train(runs: string, model: string): void {
-  const t = trainOf(model);
-  ensure(runs, trainSpec(t), t.name);
-  writeIndex(runs);
-}
-
-/** 実験の GPU の実測を名前で引く。知らなければ投げる。 */
-function benchOf(experiment: string, name: string): Bench {
-  const found = EXPERIMENT_RUNS[experiment]?.benches?.find(b => b.name === name);
-  if (!found) throw new Error(`実験 ${experiment} に GPU の実測 ${name} が無い`);
-  return found;
-}
-
-/** GPU の実測の spec。置き換えたモデルなら学習 run の置き場のハッシュを指す。 */
-function benchSpecOf(b: Bench): Spec {
-  const train = b.model === null ? null : hashOf(trainSpec(trainOf(b.model)));
-  return benchSpec(seriesOf(b.series), train, b);
-}
-
-/** 実験の GPU の実測を回す。置き換えたモデルなら、学習 run が無ければ先に学習する。 */
-export function benchmark(runs: string, experiment: string, name: string): void {
-  const b = benchOf(experiment, name);
-  if (b.model !== null) train(runs, b.model);
-  ensure(runs, benchSpecOf(b), `${experiment} ${name}`);
-  writeIndex(runs);
-}
-
-/** 系列を元のモデルと、選んだ学習 run（名前かハッシュ）で置き換えたモデルで回す。置換できない学習 run は回さない。 */
-export function evaluate(runs: string, name: string, selectors: string[]): void {
-  const series = seriesOf(name);
-  ensure(runs, simSpec(series, null), name);
-  writeIndex(runs);
-  for (const selector of selectors) {
-    const t = trainRun(runs, selector);
-    if (ensure(runs, simSpec(series, t.hash), `${name} × ${t.name}`) === undefined)
-      console.log(`${t.name} は ${name} を置換できないので回さない`);
+/** resolved/ の spec を 1 つ回す。評価と GPU の実測は、指す学習 run と（評価なら）同じ入力の元のモデルを先に回す。名前はパスから .json を除いたもの。 */
+export function runSpec(runs: string, path: string): void {
+  const spec = specAt(path);
+  const name = path.replace(/\.json$/, '');
+  if (spec.kind !== 'train' && spec.model !== null) {
+    const train = trainAt(spec.model.train);
+    ensure(runs, train.spec, train.path.replace(/\.json$/, ''));
   }
+  if (spec.kind === 'sim' && spec.model !== null) ensure(runs, { ...spec, model: null }, `${name} の元のモデル`);
+  if (ensure(runs, spec, name) === undefined) console.log(`${name}: 置換できないので回さない`);
   writeIndex(runs);
 }
 
@@ -325,43 +302,40 @@ function runState(runs: string, id: string): State {
   return running(join(runs, `${id}.partial`)) ? 'running' : 'todo';
 }
 
-/** 宣言した run 1 本の名前・置き場・状態。 */
-function runStatus(runs: string, spec: Spec, name: string): RunStatus {
-  const id = dirOf(spec);
-  return { name, id, state: runState(runs, id) };
+/** resolved/ の spec 1 つの名前・置き場・状態。 */
+function runStatus(runs: string, path: string, name: string): RunStatus {
+  const id = dirOf(specAt(path));
+  return { name, id, spec: path, state: runState(runs, id) };
 }
 
-/** 実験 1 つの学習 run・系列・組の、置き場と状態。起こした仕事が回っていれば計算中にする。 */
+/** 実験 1 つの学習 run・系列・組の、置き場と状態。中身は resolved/<実験>/ の spec を読む。起こした仕事が回っていれば計算中にする。 */
 function experimentStatus(runs: string, name: string, experiment: Experiment): ExperimentStatus {
   const result: ExperimentStatus = { name, models: [], series: [], pairs: [], benches: [] };
   for (const { model, series } of experiment.pairs) {
     let found = result.models.find(m => m.model === model);
     if (!found) {
-      const run = runStatus(runs, trainSpec(trainOf(model)), model);
-      const state = jobRunning(runs, { action: 'train', model }) ? 'running' : run.state;
-      found = { model, state, run };
+      const run = runStatus(runs, `${name}/train/${model}.json`, model);
+      found = { model, state: jobRunning(runs, { spec: run.spec }) ? 'running' : run.state, run };
       result.models.push(found);
     }
     let original = result.series.find(s => s.series === series)?.original;
     if (!original) {
-      original = runStatus(runs, simSpec(seriesOf(series), null), series);
+      original = runStatus(runs, `${name}/sim/${series}/original.json`, series);
       result.series.push({ series, original });
     }
-    const run = runStatus(runs, simSpec(seriesOf(series), hashOf(trainSpec(trainOf(model)))), model);
+    const run = runStatus(runs, `${name}/sim/${series}/${model}.json`, model);
     const parts = [original.state, found.run.state, run.state];
-    const state =
-      jobRunning(runs, { action: 'eval', series, model }) || parts.includes('running') ? 'running' : run.state;
+    const state = jobRunning(runs, { spec: run.spec }) || parts.includes('running') ? 'running' : run.state;
     result.pairs.push({ series, model, state, run });
   }
   for (const b of experiment.benches ?? []) {
-    const run = runStatus(runs, benchSpecOf(b), `${name} ${b.name}`);
-    const state = jobRunning(runs, { action: 'bench', experiment: name, bench: b.name }) ? 'running' : run.state;
-    result.benches.push({ bench: b.name, state, run });
+    const run = runStatus(runs, `${name}/bench/${b.name}.json`, `${name} ${b.name}`);
+    result.benches.push({ bench: b.name, state: jobRunning(runs, { spec: run.spec }) ? 'running' : run.state, run });
   }
   return result;
 }
 
-/** 渡された実験（回す学習 run と系列の組。持つのは使う側）ごとの状態と、外の画面から起こした仕事。 */
+/** 渡された実験（回す学習 run と系列の組の名前。並びと名前は使う側が持ち、中身は resolved/ から読む）ごとの状態と、外の画面から起こした仕事。 */
 export function status(runs: string, experiments: Record<string, Experiment>): Status {
   const result: ExperimentStatus[] = [];
   for (const name of Object.keys(experiments)) result.push(experimentStatus(runs, name, experiments[name]));
@@ -370,20 +344,13 @@ export function status(runs: string, experiments: Record<string, Experiment>): S
 
 /** 段取りを切り離した子プロセスで起こしてすぐ返す（開発サーバーが落ちても道連れにしない）。同じ組が回っていれば起こさない。 */
 export function launch(runs: string, job: Job): boolean {
-  if (job.action === 'bench') benchOf(job.experiment, job.bench);
-  else trainOf(job.model);
-  if (job.action === 'eval') seriesOf(job.series);
+  specAt(job.spec);
   if (jobRunning(runs, job)) return false;
   mkdirSync(jobDir(runs), { recursive: true });
   rmSync(jobFile(runs, job, 'exit'), { force: true });
   writeFileSync(jobFile(runs, job, 'json'), JSON.stringify({ job, started: new Date().toISOString() }));
   const log = openSync(jobFile(runs, job, 'log'), 'w');
-  const args =
-    job.action === 'train'
-      ? ['train', job.model]
-      : job.action === 'eval'
-        ? ['eval', job.series, job.model]
-        : ['bench', job.experiment, job.bench];
+  const args = ['run', job.spec];
   const child = spawn(
     process.execPath,
     [fileURLToPath(import.meta.url), ...args, '--runs', runs, '--job', digest(job)],
@@ -424,20 +391,11 @@ function main(argv: string[]): void {
 
 function command(runs: string, argv: string[]): void {
   const [name, ...rest] = argv;
-  if (name === 'spec') console.log(JSON.stringify(trainOf(rest[0]).config));
-  else if (name === 'series') console.log(JSON.stringify(SERIES));
+  if (name === 'run') for (const path of rest) runSpec(runs, path);
   else if (name === 'list')
     for (const e of scan(runs)) console.log(`${e.id} ${e.kind.padEnd(8)} ${e.created} ${e.name}`);
-  else if (name === 'train') for (const model of rest) train(runs, model);
-  else if (name === 'eval') evaluate(runs, rest[0], rest.slice(1));
-  else if (name === 'bench') {
-    if (rest.length < 2) throw new Error('bench <実験> <GPU の実測の名前>... と書く');
-    for (const b of rest.slice(1)) benchmark(runs, rest[0], b);
-  } else if (name === 'index') writeIndex(runs);
-  else
-    console.log(
-      `仕方のプリセット: ${METHOD_NAMES.join(' ')}\n学習 run（実験とテスト）: ${Object.keys(TRAINS).join(' ')}\nテスト: ${Object.keys(TESTS).join(' ')}\n系列: ${Object.keys(SERIES).join(' ')}`,
-    );
+  else if (name === 'index') writeIndex(runs);
+  else console.log('run <resolved/ の下のパス>... | index | list');
 }
 
 if (import.meta.main) main(process.argv.slice(2));

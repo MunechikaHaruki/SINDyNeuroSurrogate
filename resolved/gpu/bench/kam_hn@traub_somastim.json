@@ -1,0 +1,36 @@
+{
+  "format": 7,
+  "device": "gpu",
+  "kind": "bench",
+  "input": {
+    "spec": {
+      "target": "traub",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "silence_duration": 10,
+        "duration": 300
+      },
+      "stim": "soma"
+    },
+    "param": "value",
+    "values": [
+      0,
+      2.5,
+      5,
+      7.5,
+      10
+    ]
+  },
+  "model": {
+    "train": "2a284fe2ddeb",
+    "replace_targets": [
+      "soma"
+    ]
+  },
+  "cells": [
+    1024,
+    1048576
+  ],
+  "ncu": true
+}

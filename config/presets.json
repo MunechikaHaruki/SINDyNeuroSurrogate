@@ -7,8 +7,7 @@
     "kam": {},
     "pca": {},
     "ae": {},
-    "kamm": { "compressor": "kam", "absorb": ["M"] },
-    "poster": { "compressor": "ae", "d": 5, "target": "traub19", "duration": 1000 }
+    "kamm": { "compressor": "kam", "absorb": ["M"] }
   },
   "series": {
     "traub_somastim": { "duration": 300.0, "sweep": { "value": [0, 2.5, 5, 7.5, 10] } },

@@ -34,13 +34,11 @@ from neurosurrogate.surrogate.model import (
 from neurosurrogate.surrogate.sindy import SINDy
 from neurosurrogate.surrogate.ude import UDE
 
-ORCHESTRATE = (
-    Path(__file__).resolve().parents[1] / "evaluation/orchestrate/orchestrate.ts"
-)
+RESOLVE = Path(__file__).resolve().parents[1] / "evaluation/orchestrate/resolve.ts"
 
 
 def _declared(*args: str) -> Any:
-    return json.loads(subprocess.check_output(["bun", str(ORCHESTRATE), *args]))
+    return json.loads(subprocess.check_output(["bun", str(RESOLVE), *args]))
 
 
 @cache

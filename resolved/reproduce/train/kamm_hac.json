@@ -1,0 +1,35 @@
+{
+  "format": 7,
+  "device": "gpu",
+  "kind": "train",
+  "surrogate": {
+    "cell": "traub",
+    "form": "hybrid",
+    "data": {
+      "target": "traub",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 9000
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "H",
+          "A",
+          "C"
+        ],
+        "compressor": "kam",
+        "d": 1,
+        "rhs": "kam",
+        "compressor_params": {},
+        "rhs_params": {}
+      }
+    ],
+    "train_comp": null,
+    "absorbed": [
+      "M"
+    ]
+  }
+}

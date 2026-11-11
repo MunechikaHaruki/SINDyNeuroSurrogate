@@ -1,0 +1,50 @@
+{
+  "format": 7,
+  "device": "gpu",
+  "kind": "train",
+  "surrogate": {
+    "cell": "traub",
+    "form": "hybrid",
+    "data": {
+      "target": "traub",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 9000
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "H",
+          "N",
+          "C"
+        ],
+        "compressor": "ae",
+        "d": 1,
+        "rhs": "sindy",
+        "compressor_params": {},
+        "rhs_params": {
+          "library_specs": [
+            {
+              "type": "traub_gate_forward"
+            },
+            {
+              "type": "traub_gate_backward"
+            },
+            {
+              "type": "traub_gate_forward_product"
+            },
+            {
+              "type": "traub_gate_backward_product"
+            },
+            {
+              "type": "basis"
+            }
+          ]
+        }
+      }
+    ],
+    "train_comp": null
+  }
+}

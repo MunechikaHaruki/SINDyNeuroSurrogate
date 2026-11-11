@@ -1,4 +1,4 @@
-// 実験の宣言（config/<主題>.yaml）の形と、解決済みの実験（common.ts の Plan）への組み立て。主題は改良の探索 sweep、性質の発見 property、拡張 mc。
+// 実験の宣言（config/<主題>.yaml）の形と、解決済みの実験（common.ts の Plan）への組み立て。主題は改良の探索 sweep、性質の発見 property、拡張 mc、決め打ち fixed（config/<実験>.json、形は plan.ts）。
 // 形は主題ごとに zod で決め、問いに合わせて自由に変えてよい。返すのは学習 run と系列を値で持つ解決済みの実験だけで、段取り（orchestrate.ts）・API・画面は主題の形を知らない。
 import { z } from 'zod';
 import { Ref, methodOf, seriesFrom, trainFrom } from './presets.ts';
@@ -7,6 +7,8 @@ import { groupings, type Claim, type Judge, type Model, type Plan } from './comm
 import mc from '../../config/mc.yaml';
 import property from '../../config/property.yaml';
 import sweep from '../../config/sweep.yaml';
+import neuro2026 from '../../config/neuro2026.json' with { type: 'json' };
+import { fromJson } from './plan.ts';
 
 /** 仕方の指し方。プリセットの名前か、名前を付けた差分 `{ name, from, ...差分 }`（name は表示と判定の列の名前）。 */
 export const MethodRef = z.union([z.string(), z.looseObject({ name: z.string(), from: z.string() })]);
@@ -146,7 +148,7 @@ const Mc = z.record(
   }),
 );
 
-/** 主題。読む順（改良の探索、性質の発見、拡張）。plans は宣言 `<name>.yaml` を形に当て、判定を引いて解決済みの実験にする。 */
+/** 主題。読む順（改良の探索、性質の発見、拡張、決め打ち）。plans は宣言 `<name>.yaml` を形に当て、判定を引いて解決済みの実験にする。決め打ち fixed は、組み合わせを展開しない実験を解決済みの形で手で書いた `config/<実験>.json`（形は plan.ts）。 */
 export const THEMES: { name: string; plans: (judges: Record<string, Judge>) => Plan[] }[] = [
   {
     name: 'sweep',
@@ -166,5 +168,9 @@ export const THEMES: { name: string; plans: (judges: Record<string, Judge>) => P
     name: 'mc',
     plans: judges =>
       Object.entries(parsed(Mc, 'mc.yaml', mc)).map(([id, e]) => build(`mc.yaml の ${id}`, { id, ...e }, judges)),
+  },
+  {
+    name: 'fixed',
+    plans: judges => [fromJson('neuro2026', 'neuro2026.json', neuro2026, judges)],
   },
 ];

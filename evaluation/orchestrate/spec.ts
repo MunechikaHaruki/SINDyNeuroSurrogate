@@ -156,16 +156,13 @@ export type IndexEntry = {
 
 /** run 1 本、または組がいまどこまで回っているか。unreplaceable は置換できないと分かった組。 */
 export type State = 'done' | 'running' | 'todo' | 'unreplaceable';
-/** 外の画面が起こす仕事。model は学習 run の名前。 */
-export type Job =
-  | { action: 'train'; model: string }
-  | { action: 'eval'; series: string; model: string }
-  | { action: 'bench'; experiment: string; bench: string };
+/** 外の画面が起こす仕事。spec は回す resolved/ の下のパス。 */
+export type Job = { spec: string };
 /** 外の画面から起こした仕事 1 つ。failed は終了コードが 0 でないか、終わりを書かずに消えたもの。log はログの末尾の行。 */
 export type JobState = { job: Job; started: string; state: 'running' | 'done' | 'failed'; log: string[] };
 
-/** 宣言した run 1 本の名前・場所・状態。id は runs/ の下のパスで、図はここを読む。 */
-export type RunStatus = { name: string; id: string; state: State };
+/** 宣言した run 1 本の名前・場所・状態。id は runs/ の下のパスで、図はここを読む。spec は回す resolved/ の下のパス。 */
+export type RunStatus = { name: string; id: string; spec: string; state: State };
 /** 実験 1 つの状態。学習 run、系列の元のモデル、組（系列 × 学習 run の置換系）を宣言の順に並べる。state は起こした仕事も見た状態。 */
 export type ExperimentStatus = {
   name: string;

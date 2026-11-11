@@ -1,0 +1,51 @@
+{
+  "description": "NEURO2026 で発表した形（6 ゲートを 1 つの AutoEncoder で潜在 5 本へ縮め、右辺を SINDy で同定する。19 区画の軌道で学習する）を今の研究コードで回し直し、19 区画の soma を置き換えて発表時の結果と比べる。",
+  "trains": [
+    {
+      "name": "neuro2026_mhnabc",
+      "method": "neuro2026",
+      "grouping": "mhnabc",
+      "config": {
+        "cell": "traub",
+        "form": "hybrid",
+        "data": { "target": "traub19", "current_type": "train", "dt": 0.01, "current_params": { "duration": 1000 } },
+        "groups": [
+          {
+            "gates": ["M", "H", "N", "A", "B", "C"],
+            "compressor": "ae",
+            "d": 5,
+            "rhs": "sindy",
+            "compressor_params": {},
+            "rhs_params": {
+              "library_specs": [
+                { "type": "traub_gate_forward" },
+                { "type": "traub_gate_backward" },
+                { "type": "traub_gate_forward_product" },
+                { "type": "traub_gate_backward_product" },
+                { "type": "basis" }
+              ]
+            }
+          }
+        ],
+        "train_comp": null
+      }
+    }
+  ],
+  "series": {
+    "traub19_somastim": {
+      "spec": {
+        "target": "traub19",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": { "silence_duration": 10, "duration": 300 },
+        "stim": "soma"
+      },
+      "replace_targets": ["soma"],
+      "param": "value",
+      "values": [0, 2.5, 5, 7.5, 10]
+    }
+  },
+  "pairs": [{ "model": "neuro2026_mhnabc", "series": "traub19_somastim" }],
+  "benches": [],
+  "claims": []
+}

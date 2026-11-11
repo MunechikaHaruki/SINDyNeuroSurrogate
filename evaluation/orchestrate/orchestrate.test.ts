@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PRESET_SERIES as SERIES, TESTS, groupsOf, methodOf, trainFrom } from '../experiments/presets.ts';
 import { canonical, dirOf, hashOf, jobs, simSpec, trainSpec } from './orchestrate.ts';
+import { stale } from './resolve.ts';
 
 test('the key does not depend on the order the spec was written in', () => {
   expect(canonical({ b: 1, a: { d: [1, { f: 2, e: 3 }], c: null } })).toBe(
@@ -68,7 +69,7 @@ test('a job is running while its pid lives, done on exit code 0, and failed othe
   const dir = join(mkdtempSync(join(tmpdir(), 'runs-')), '.jobs');
   mkdirSync(dir);
   function put(key: string, model: string, started: string, files: Record<string, string>): void {
-    writeFileSync(join(dir, `${key}.json`), JSON.stringify({ job: { action: 'train', model }, started }));
+    writeFileSync(join(dir, `${key}.json`), JSON.stringify({ job: { spec: model }, started }));
     for (const [ext, text] of Object.entries(files)) writeFileSync(join(dir, `${key}.${ext}`), text);
   }
   put('a', 'ok', '2026-01-01', { exit: '0', log: 'one\ntwo\n' });
@@ -81,4 +82,8 @@ test('a job is running while its pid lives, done on exit code 0, and failed othe
     ['2026-01-01', 'done'],
   ]);
   expect(found[2].log).toEqual(['one', 'two']);
+});
+
+test('resolved/ holds exactly the spec.json files the declarations send, so a change to them shows in the diff', () => {
+  expect(stale(), 'resolved/ が宣言と違う（bun evaluation/orchestrate/resolve.ts write で書き直す）').toEqual([]);
 });

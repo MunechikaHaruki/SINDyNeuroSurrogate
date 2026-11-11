@@ -2,7 +2,7 @@
 # 計算する機械（ssh で入れる NVIDIA の GPU の機械。名前は SINDY_HOST）で、学習・評価と結果を返す API を回す。
 # 回線に出すのはコード（作業ツリーの差分）と指示と小さい JSON だけで、runs は計算する機械の ~/sindy/runs/ に置いたまま動かさない。
 #   SINDY_HOST=<host> ./remote.sh up                  コードを送り、イメージを用意し、API（:8787）を立てる
-#   SINDY_HOST=<host> ./remote.sh run <段取りの引数>   コードを送ってから、段取り（orchestrate.ts）を向こうで回す
+#   SINDY_HOST=<host> ./remote.sh run <段取りの引数>   コードを送ってから、段取り（orchestrate.ts。run <resolved/ の下のパス>...）を向こうで回す
 #   SINDY_HOST=<host> ./remote.sh test                コードを送ってから、Python と TS のテストを向こうで回す
 #   SINDY_HOST=<host> ./remote.sh fetch <run の id>   run を 1 つ手元の runs/ へ持ってくる（回線の届かない所で見るとき）
 # イメージはベースと道具を digest で、Python の依存を uv.lock で固定した Dockerfile から向こうで作る。API はコードの書き換えで立ち直る（bun --watch）。
@@ -23,6 +23,8 @@ version() {
 }
 
 sync() {
+  # 向こうは resolved/ の spec だけを回すので、宣言から組み直したものと違えば送らない
+  (cd "$repo" && bun evaluation/orchestrate/resolve.ts check)
   version > "$repo/.code-version"
   ssh "$host" 'mkdir -p ~/sindy/code ~/sindy/runs'
   # 送るのは git が見るものと、版を書いた .code-version だけ（.gitignore で外したものは版に入らないので送らない）

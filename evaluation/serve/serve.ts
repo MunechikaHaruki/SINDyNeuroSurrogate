@@ -24,10 +24,9 @@ function compact(points: Point[]): Point[] {
 
 type Handlers = { [Op in keyof Api]: (body: Api[Op]['body']) => Api[Op]['reply'] };
 
-/** 仕事の欄を、段取りが知る形だけに組み直す（余分な欄で仕事の鍵が変わり、重複の防止をすり抜けないように）。名前は launch が確かめる。 */
+/** 仕事の欄を、段取りが知る形だけに組み直す（余分な欄で仕事の鍵が変わり、重複の防止をすり抜けないように）。パスは launch が確かめる。 */
 function checkJob(job: Job): Job {
-  if (job?.action === 'train') return { action: 'train', model: job.model };
-  if (job?.action === 'eval') return { action: 'eval', series: job.series, model: job.model };
+  if (typeof job?.spec === 'string') return { spec: job.spec };
   throw new Error(`知らない仕事 ${JSON.stringify(job)}`);
 }
 
@@ -163,7 +162,11 @@ export function handlers(runs: string): Handlers {
       if (pair.series !== name || pair.run.state !== 'done') continue;
       columns.push({ run: pair.run.id, method: MODELS[pair.model].method, grouping: MODELS[pair.model].grouping });
     }
-    const request = { original: original.id, columns: columns.map(c => c.run), comp: seriesOf(name).replace_targets[0] };
+    const request = {
+      original: original.id,
+      columns: columns.map(c => c.run),
+      comp: seriesOf(name).replace_targets[0],
+    };
     return rowsOf(columns, entry.spec.input.values, seriesMetrics(request).crossings);
   }
 

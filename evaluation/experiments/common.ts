@@ -88,7 +88,7 @@ export const NAMES: Record<string, string> = {
   kamm: 'KAM（m を吸収）',
   pca: 'PCA',
   ae: 'AE',
-  poster: 'NEURO2026',
+  neuro2026: 'NEURO2026',
 };
 
 /** 群分けと仕方の列。無いか 2 本以上あれば undefined（どれを読むか決まらない）。 */
