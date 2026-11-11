@@ -17,8 +17,11 @@ const THEMES: { name: string; plans: (judges: Record<string, Judge>) => Plan[]; 
   { name: 'mc', plans: () => mcPlans(), judges: {} },
 ];
 
+/** 実験 1 つ。解決済みの実験に、宣言を置いた主題（sweep・property・mc）を添える。画面は主題ごとに実験を並べる。 */
+export type ThemedPlan = Plan & { theme: string };
+
 /** 実験。主題の順、主題の中は書いた順。 */
-export const EXPERIMENTS: Plan[] = [];
+export const EXPERIMENTS: ThemedPlan[] = [];
 /** 主張の名前 → 主張。図（repo の外）とテストが名前で引く。 */
 export const CLAIMS: Record<string, Claim> = {};
 /** 学習 run の名前 → 学習 run（実験の学習 run とテスト専用の学習）。 */
@@ -59,7 +62,7 @@ for (const theme of THEMES) {
       register(MODELS, m.name, m, where);
     }
     for (const [name, s] of Object.entries(plan.series)) register(SERIES, name, s, where);
-    EXPERIMENTS.push(plan);
+    EXPERIMENTS.push({ ...plan, theme: theme.name });
   }
   for (const name of Object.keys(theme.judges))
     if (!own.has(name)) throw new Error(`${theme.name}/checks.ts：判定 ${name} に当たる主張が experiments.json に無い`);
