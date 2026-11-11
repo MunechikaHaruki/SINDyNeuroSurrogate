@@ -3,7 +3,7 @@
 import type { Bin } from '../read/model-json.ts';
 import type { CrossingDiff, PairMetrics } from '../read/compare.ts';
 import type { IndexEntry, Job, Status } from '../orchestrate/spec.ts';
-import type { Judgement } from '../../experiments/common.ts';
+import type { Judgement } from '../experiments/common.ts';
 import type { Point } from '../read/waves.ts';
 
 /** run の中の .f64 の 1 列。file は run の下のパス、変数ごとに n 個ずつ続いて並んだうちの column 番目。 */
@@ -30,7 +30,7 @@ export type ClaimJudgement = { experiment: string; claim: string; name: string; 
 export type Api = {
   /** 今の形式の run の一覧（新しい順）。 */
   index: { body: Record<string, never>; reply: IndexEntry[] };
-  /** 実験（experiments/）ごとの状態と、起こした仕事。 */
+  /** 実験（config/ の宣言）ごとの状態と、起こした仕事。 */
   status: { body: Record<string, never>; reply: Status };
   /** 実験の主張ごとの判定。実験の順、主張の順。 */
   claims: { body: Record<string, never>; reply: ClaimJudgement[] };

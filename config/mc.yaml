@@ -1,0 +1,29 @@
+# 拡張。縮約をマルチコンパートメントと GPU へ広げる。判定を持たず、回す系列と GPU の実測だけを書く。形は schema.ts。
+extend:
+  description: hn と ac をまとめた KAM・PCA・AE の縮約（単一区画で学習）を Traub の 19 区画に当て、soma だけを置き換えるときと、Na と DR を持つ 5 区画を置き換えるときで、元のモデルの発火をどこまで再現するかを見る。
+  groupings: [ hn, ac ]
+  methods: [ kam, pca, ae ]
+  series: [ traub19_somastim, traub19_somastim_nadr ]
+gpu:
+  description: 単一区画と 19 区画の Traub を、元のモデル・hn の KAM・hn の PCA と SINDy のサロゲート（19 区画では soma だけ、または Na と DR を持つ 5 区画を置き換える）で、細胞を並べ、刻みごとに全細胞をそろえて GPU で回す。1 スレッドが 1 区画を持つ。刻みをまたいで持ち越す状態（V、潜在 z、縮約しなかったゲート）は VRAM に置いて毎刻み読み書きし、刻みの中だけで使う値（z から作り直すゲートなど）はキャッシュ（レジスタ）に置く。ncu で 1 刻みの VRAM の読み書きの量とレジスタの数、レジスタから溢れた分を測り、持ち越す状態の少なさが VRAM の量に現れるかをモデルごとに確かめる。
+  groupings: [ hn ]
+  methods: [ kam, pca ]
+  series: [ traub_somastim, traub19_somastim, traub19_somastim_nadr ]
+  benches:
+    - models: [ original, kam_hn, pca_hn ]
+      series: traub_somastim
+      cells: [ 1024, 1048576 ]
+      ncu: true
+    - models: [ original, kam_hn, pca_hn ]
+      series: traub19_somastim
+      cells: [ 1024, 1048576 ]
+      ncu: true
+    - models: [ original, kam_hn, pca_hn ]
+      series: traub19_somastim_nadr
+      cells: [ 1024, 1048576 ]
+      ncu: true
+poster:
+  description: NEURO2026 で発表した形（6 ゲートを 1 つの AutoEncoder で潜在 5 本へ縮め、右辺を SINDy で同定する。19 区画の軌道で学習する）を今の研究コードで回し直し、19 区画の soma を置き換えて発表時の結果と比べる。
+  groupings: [ mhnabc ]
+  methods: [ poster ]
+  series: [ traub19_somastim ]

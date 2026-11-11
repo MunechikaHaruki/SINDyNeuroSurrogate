@@ -1,4 +1,4 @@
-// 段取り: 実験（experiments/experiments.ts の解決済みの学習 run と系列）から spec.json を組み、ハッシュで決めた置き場を Python の計算の入口（neurosurrogate/run.py）で埋める。
+// 段取り: 実験（../experiments/experiments.ts の解決済みの学習 run と系列）から spec.json を組み、ハッシュで決めた置き場を Python の計算の入口（neurosurrogate/run.py）で埋める。
 // 置き場は学習が runs/models/<ハッシュ>/、入力 × モデルが runs/inputs/<入力のハッシュ>/<original かモデルの鍵>/。
 // 同じ spec は同じ置き場になるので、ディレクトリがあれば回さない。回したあとは runs/index.json（図が読む run の一覧）を書き直す。
 // 入口は二つで、どちらもここの関数を呼ぶ。外の画面は export した関数を、手元ではこの CLI を使う。
@@ -23,8 +23,8 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { METHOD_NAMES, TESTS } from './conf.ts';
-import { EXPERIMENT_RUNS, SERIES, TRAINS, seriesOf, trainOf } from '../../experiments/experiments.ts';
+import { METHOD_NAMES, TESTS } from '../experiments/presets.ts';
+import { EXPERIMENT_RUNS, SERIES, TRAINS, seriesOf, trainOf } from '../experiments/experiments.ts';
 import {
   FORMAT,
   type Bench,

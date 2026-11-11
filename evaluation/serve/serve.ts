@@ -5,9 +5,9 @@
 import { readFileSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { RUNS, launch, scan, status } from '../orchestrate/orchestrate.ts';
-import { EXPERIMENTS, EXPERIMENT_RUNS, MODELS, seriesOf } from '../../experiments/experiments.ts';
+import { EXPERIMENTS, EXPERIMENT_RUNS, MODELS, seriesOf } from '../experiments/experiments.ts';
 import { FORMAT, type ExperimentStatus, type IndexEntry, type Job } from '../orchestrate/spec.ts';
-import { rowsOf, type Claim, type Column, type Judgement, type Row } from '../../experiments/common.ts';
+import { rowsOf, type Claim, type Column, type Judgement, type Row } from '../experiments/common.ts';
 import { coincidence, compare, crossingDiff, crossings, type PairMetrics, type SpikesFile } from '../read/compare.ts';
 import { histogram, type Bin } from '../read/model-json.ts';
 import { decimate, path, variablesOf, type Point, type WaveMeta } from '../read/waves.ts';

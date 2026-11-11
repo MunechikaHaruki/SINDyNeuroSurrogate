@@ -1,11 +1,11 @@
-// 回せるものを組む部品。値はすべて repo の根の presets.json（既定 defaults、縮約の仕方 methods、評価の系列 series）が持ち、ここは値を持たない。
-// 実験（experiments/<主題>/schema.ts）は仕方と系列をプリセットの名前か、プリセットからの差分 `{ from, ...差分 }` で指し、ここの関数で学習 run と系列にする。
+// 回せるものを組む部品。値はすべて config/presets.json（既定 defaults、縮約の仕方 methods、評価の系列 series）が持ち、ここは値を持たない。
+// 実験（隣の schema.ts）は仕方と系列をプリセットの名前か、プリセットからの差分 `{ from, ...差分 }` で指し、ここの関数で学習 run と系列にする。
 // 混ぜる順は defaults → プリセット → 差分で、書かなかった欄だけ値から導く（教師は細胞、圧縮は仕方の名前、右辺は圧縮から、項ライブラリは細胞から）。
-// テスト専用の学習は presets.json に入れず、隣の test-trains.ts が持つ。形は spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
+// テスト専用の学習は config/presets.json に入れず、隣の test-trains.ts が持つ。形は ../orchestrate/spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
 import { z } from 'zod';
-import declaration from '../../presets.json' with { type: 'json' };
+import declaration from '../../config/presets.json' with { type: 'json' };
 import { TEST_DECLARATIONS } from './test-trains.ts';
-import type { Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from './spec.ts';
+import type { Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from '../orchestrate/spec.ts';
 
 type Entry = Record<string, unknown>;
 const raw = declaration as unknown as {

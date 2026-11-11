@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PRESET_SERIES as SERIES, TESTS, groupsOf, methodOf, trainFrom } from './conf.ts';
+import { PRESET_SERIES as SERIES, TESTS, groupsOf, methodOf, trainFrom } from '../experiments/presets.ts';
 import { canonical, dirOf, hashOf, jobs, simSpec, trainSpec } from './orchestrate.ts';
 
 test('the key does not depend on the order the spec was written in', () => {

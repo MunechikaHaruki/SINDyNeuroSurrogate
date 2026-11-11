@@ -1,9 +1,12 @@
-// 主題のスキーマ（<主題>/schema.ts）が使う部品。主題は自分の experiments.json の形を zod で宣言し、ここの build で解決済みの実験（Plan）にする。
-// 解決済みの実験は、学習 run と系列を値で持つ。段取り（orchestrate.ts）・API・画面はこれだけを読み、主題のスキーマを知らない。
+// 実験の宣言（config/<主題>.yaml）の形と、解決済みの実験（common.ts の Plan）への組み立て。主題は改良の探索 sweep、性質の発見 property、拡張 mc。
+// 形は主題ごとに zod で決め、問いに合わせて自由に変えてよい。返すのは学習 run と系列を値で持つ解決済みの実験だけで、段取り（orchestrate.ts）・API・画面は主題の形を知らない。
 import { z } from 'zod';
-import { Ref, methodOf, seriesFrom, trainFrom } from '../evaluation/orchestrate/conf.ts';
-import type { Bench, Series } from '../evaluation/orchestrate/spec.ts';
-import type { Claim, Judge, Model, Plan } from './common.ts';
+import { Ref, methodOf, seriesFrom, trainFrom } from './presets.ts';
+import type { Bench, Series } from '../orchestrate/spec.ts';
+import { groupings, type Claim, type Judge, type Model, type Plan } from './common.ts';
+import mc from '../../config/mc.yaml';
+import property from '../../config/property.yaml';
+import sweep from '../../config/sweep.yaml';
 
 /** 仕方の指し方。プリセットの名前か、名前を付けた差分 `{ name, from, ...差分 }`（name は表示と判定の列の名前）。 */
 export const MethodRef = z.union([z.string(), z.looseObject({ name: z.string(), from: z.string() })]);
@@ -33,7 +36,7 @@ export function parsed<T>(schema: z.ZodType<T>, where: string, value: unknown): 
   return result.data;
 }
 
-/** 指し方の名前と、conf.ts に渡す指し方。 */
+/** 指し方の名前と、presets.ts に渡す指し方。 */
 function named(ref: z.infer<typeof MethodRef>): { name: string; ref: Ref } {
   if (typeof ref === 'string') return { name: ref, ref };
   const { name, ...rest } = ref;
@@ -106,3 +109,62 @@ export function build(
     claims,
   };
 }
+
+/** 改良の探索。ゲートの並び gates から全部の群分けを組み、仕方ごとに回す。主張は判定を絞る群分けを持てる。 */
+const Sweep = z.record(
+  z.string(),
+  z.strictObject({
+    description: z.string().min(1),
+    gates: z.string(),
+    methods: z.array(MethodRef).nonempty(),
+    series: z.array(SeriesRef).optional(),
+    claims: z.record(z.string(), ClaimShape),
+  }),
+);
+
+/** 性質の発見。群分けを名前で書き、主張が読む系列を回す。 */
+const Property = z.record(
+  z.string(),
+  z.strictObject({
+    description: z.string().min(1),
+    groupings: z.array(z.string()).nonempty(),
+    methods: z.array(MethodRef).nonempty(),
+    series: z.array(SeriesRef).optional(),
+    claims: z.record(z.string(), ClaimShape),
+  }),
+);
+
+/** 拡張。判定を持たず、群分けと仕方と回す系列と、あれば GPU の実測を書く。 */
+const Mc = z.record(
+  z.string(),
+  z.strictObject({
+    description: z.string().min(1),
+    groupings: z.array(z.string()).nonempty(),
+    methods: z.array(MethodRef).nonempty(),
+    series: z.array(SeriesRef).nonempty(),
+    benches: z.array(BenchShape).optional(),
+  }),
+);
+
+/** 主題。読む順（改良の探索、性質の発見、拡張）。plans は宣言 `<name>.yaml` を形に当て、判定を引いて解決済みの実験にする。 */
+export const THEMES: { name: string; plans: (judges: Record<string, Judge>) => Plan[] }[] = [
+  {
+    name: 'sweep',
+    plans: judges =>
+      Object.entries(parsed(Sweep, 'sweep.yaml', sweep)).map(([id, e]) =>
+        build(`sweep.yaml の ${id}`, { id, ...e, groupings: groupings([...e.gates]) }, judges),
+      ),
+  },
+  {
+    name: 'property',
+    plans: judges =>
+      Object.entries(parsed(Property, 'property.yaml', property)).map(([id, e]) =>
+        build(`property.yaml の ${id}`, { id, ...e }, judges),
+      ),
+  },
+  {
+    name: 'mc',
+    plans: judges =>
+      Object.entries(parsed(Mc, 'mc.yaml', mc)).map(([id, e]) => build(`mc.yaml の ${id}`, { id, ...e }, judges)),
+  },
+];

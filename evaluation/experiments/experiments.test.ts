@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { groupings, type Row } from './common.ts';
-import { build } from './parts.ts';
+import { build } from './schema.ts';
 import { CLAIMS, EXPERIMENTS } from './experiments.ts';
 
 const row = (grouping: string, method: string, gammas: (number | null)[], extra: Partial<Row> = {}): Row => ({

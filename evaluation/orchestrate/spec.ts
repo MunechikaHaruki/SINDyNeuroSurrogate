@@ -1,4 +1,4 @@
-// run の spec.json の形と、段取りと外の画面・図が受け渡す型。何を回すかの宣言は conf.ts。
+// run の spec.json の形と、段取りと外の画面・図が受け渡す型。何を回すかの宣言は config/ で、読むのは ../experiments/。
 // node や bun に依存しない（ブラウザで動く runs.ts も import する）。
 
 /** 1 回のシミュレーションの仕様（Python の SimSpec）。 */

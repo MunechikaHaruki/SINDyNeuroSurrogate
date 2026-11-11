@@ -15,13 +15,13 @@ description: "研究コードの repo の入口。要約と、全体の地図・
 ```mermaid
 flowchart LR
   subgraph machine["計算する機械（Dockerfile のイメージ）"]
+    config["人が書く宣言<br/>config/（プリセットと実験）"]
     subgraph ts["evaluation/（TS）"]
-      conf["プリセット<br/>presets.json"]
+      exp["宣言を読む・主張の判定<br/>experiments/"]
       orch["段取り<br/>orchestrate/"]
       serve["結果を返す API<br/>serve/"]
       read["指標と間引き<br/>read/"]
     end
-    exp["実験と主張の判定<br/>experiments/"]
     subgraph py["neurosurrogate/（Python）"]
       entry["計算の入口<br/>run.py"]
       surr["surrogate/<br/>学習して置き換える"]
@@ -30,7 +30,8 @@ flowchart LR
     runs[("runs/<br/>結果")]
   end
   view["画面<br/>repo の外"]
-  conf --> orch
+  config --> exp
+  exp --> orch
   orch -- "spec.json" --> entry
   entry --> surr
   surr --> phys

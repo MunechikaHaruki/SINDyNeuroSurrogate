@@ -1,4 +1,4 @@
-// テスト専用の学習の宣言。仕方（presets.json の methods）に差分を重ね、conf.ts の methodOf と trainFrom が学習 run にする。
+// テスト専用の学習の宣言。仕方（config/presets.json の methods）に差分を重ね、presets.ts の methodOf と trainFrom が学習 run にする。
 // 名前は _test_ で始め、どの実験にも入れない。tests/ と orchestrate.test.ts が名前で引く。
 
 /** テスト専用の学習。仕方に差分を重ね、電流は 180 ms に縮める。名前は _test_ で始め、どの実験にも入れない。tests/ が名前で引く。 */

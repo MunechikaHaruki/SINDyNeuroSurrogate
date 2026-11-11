@@ -1,6 +1,6 @@
 // 実験の共通の部品。実験の形（回す組と、回す前に書いた主張と判定）と、判定が使う値の読み方・線・三値の論理。
-// 実験そのものは主題ごとのディレクトリ（mc/ 拡張、sweep/ 改良の探索、property/ 性質の発見）の experiments.json・schema.ts・checks.ts が持ち、experiments.ts が並べる。
-import type { Bench, Series, Train } from '../evaluation/orchestrate/spec.ts';
+// 実験そのものは主題ごとの宣言 config/<主題>.yaml（sweep.yaml 改良の探索、property.yaml 性質の発見、mc.yaml 拡張）と、形 schema.ts・判定 checks.ts が持ち、experiments.ts が並べる。
+import type { Bench, Series, Train } from '../orchestrate/spec.ts';
 
 /** Γ で「発火の時刻まで合う」とみなす線。 */
 export const GAMMA_LINE = 0.9;
