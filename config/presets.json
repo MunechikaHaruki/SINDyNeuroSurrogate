@@ -5,22 +5,22 @@
   },
   "methods": {
     "kam": {},
-    "pca": {},
-    "ae": {},
-    "kamm": { "compressor": "kam", "absorb": ["M"] }
+    "pca-sindy": { "compressor": "pca" },
+    "ae-sindy": { "compressor": "ae" },
+    "kam-absorb-m": { "compressor": "kam", "absorb": ["M"] }
   },
   "series": {
-    "traub_somastim": { "duration": 300.0, "sweep": { "value": [0, 2.5, 5, 7.5, 10] } },
-    "traub_release": { "current": "release", "duration": 300.0, "hold": 100.0, "sweep": { "value": [-2.5, -5, -7.5, -10] } },
-    "traub_poisson": { "current": "random&poisson_synapse", "duration": 1000.0, "amplitude": 20.0, "seed": 0, "sweep": { "rate": [20, 40, 80, 160] } },
-    "traub_kistler": { "current": "random&kistler", "duration": 2000.0, "mean": 0.0, "seed": 0, "sweep": { "sigma": [10, 15, 20, 30] } },
-    "traub19_somastim": { "target": "traub19", "duration": 300.0, "sweep": { "value": [0, 2.5, 5, 7.5, 10] } },
-    "traub19_somastim_allcomp": {
+    "traub-1comp-steady": { "duration": 300.0, "sweep": { "value": [0, 2.5, 5, 7.5, 10] } },
+    "traub-1comp-release": { "current": "release", "duration": 300.0, "hold": 100.0, "sweep": { "value": [-2.5, -5, -7.5, -10] } },
+    "traub-1comp-poisson": { "current": "random&poisson_synapse", "duration": 1000.0, "amplitude": 20.0, "seed": 0, "sweep": { "rate": [20, 40, 80, 160] } },
+    "traub-1comp-kistler": { "current": "random&kistler", "duration": 2000.0, "mean": 0.0, "seed": 0, "sweep": { "sigma": [10, 15, 20, 30] } },
+    "traub-19comp-steady-replace-soma": { "target": "traub19", "duration": 300.0, "sweep": { "value": [0, 2.5, 5, 7.5, 10] } },
+    "traub-19comp-steady-replace-all": {
       "target": "traub19",
       "duration": 300.0,
       "replace_targets": ["c00", "c01", "c02", "c03", "c04", "c05", "c06", "c07", "soma", "c09", "c10", "c11", "c12", "c13", "c14", "c15", "c16", "c17", "c18"],
       "sweep": { "value": [0, 2.5, 5, 7.5, 10] }
     },
-    "traub19_somastim_nadr": { "target": "traub19", "duration": 300.0, "replace_targets": ["c05", "c07", "soma", "c09", "c11"], "sweep": { "value": [0, 2.5, 5, 7.5, 10] } }
+    "traub-19comp-steady-replace-na-dr": { "target": "traub19", "duration": 300.0, "replace_targets": ["c05", "c07", "soma", "c09", "c11"], "sweep": { "value": [0, 2.5, 5, 7.5, 10] } }
   }
 }

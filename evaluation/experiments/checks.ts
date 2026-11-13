@@ -4,6 +4,7 @@ import {
   NAMES,
   above,
   all,
+  blocksOf,
   below,
   groupingsOf,
   mean,
@@ -16,27 +17,27 @@ import {
 } from './common.ts';
 
 /** 比べる縮約の仕方。 */
-const METHODS = ['kam', 'pca', 'ae'];
+const METHODS = ['kam', 'pca-sindy', 'ae-sindy'];
 
 // 改良の探索（sweep.yaml）
 
-/** ゲートの組と再現：ac は KAM・PCA・AE のどれでも線以上で、ほかにそういう組は無い。KAM で n を h 以外のゲートとまとめた組は線を下回る。 */
+/** ゲートの組と再現：a+c は KAM・PCA・AE のどれでも線以上で、ほかにそういう組は無い。KAM で n を h 以外のゲートとまとめた組は線を下回る。 */
 function acOnly([rows]: Row[][]): Judgement[] {
   const allAbove = (g: string) => all(METHODS.map(m => above(mean(one(rows, g, m)))));
-  const others = groupingsOf(rows).filter(g => g !== 'ac');
+  const others = groupingsOf(rows).filter(g => g !== 'a+c');
   const nMixed = groupingsOf(rows).filter(g =>
-    g.split('_').some(block => block.includes('n') && [...block].some(x => x !== 'n' && x !== 'h')),
+    blocksOf(g).some(block => block.includes('n') && block.some(x => x !== 'n' && x !== 'h')),
   );
   const nGammas = nMixed.map(g => mean(one(rows, g, 'kam')));
   return [
     {
-      label: 'ac の平均 Γ（KAM・PCA・AE）',
-      value: METHODS.map(m => `${NAMES[m]} ${shown(mean(one(rows, 'ac', m)))}`).join('・'),
+      label: 'a+c の平均 Γ（KAM・PCA・AE）',
+      value: METHODS.map(m => `${NAMES[m]} ${shown(mean(one(rows, 'a+c', m)))}`).join('・'),
       line: `3 つとも ≥ ${GAMMA_LINE}`,
-      ok: allAbove('ac'),
+      ok: allAbove('a+c'),
     },
     {
-      label: 'ac 以外で 3 つとも線以上の組',
+      label: 'a+c 以外で 3 つとも線以上の組',
       line: '0 個',
       ...none(
         others.filter(g => allAbove(g) === true),
@@ -54,7 +55,7 @@ function acOnly([rows]: Row[][]): Judgement[] {
 
 /** m の吸収：図の組は吸収しない KAM で線以上で、吸収すると発火の回数の差はどの点でも一つ以内のまま、平均 Γ が線を下回る。 */
 function absorbM([rows]: Row[][], groupings: string[] = groupingsOf(rows)): Judgement[] {
-  const pairs = groupings.map(g => ({ g, kam: one(rows, g, 'kam'), kamm: one(rows, g, 'kamm') }));
+  const pairs = groupings.map(g => ({ g, kam: one(rows, g, 'kam'), absorbed: one(rows, g, 'kam-absorb-m') }));
   return [
     {
       label: '吸収しない KAM の平均 Γ',
@@ -65,32 +66,32 @@ function absorbM([rows]: Row[][], groupings: string[] = groupingsOf(rows)): Judg
     {
       label: '吸収した KAM の発火の回数の差の最大',
       value: pairs
-        .map(p => `${p.g} ${p.kamm ? Math.max(...p.kamm.counts.map(([o, m]) => Math.abs(o - m))) : '—'}`)
+        .map(p => `${p.g} ${p.absorbed ? Math.max(...p.absorbed.counts.map(([o, m]) => Math.abs(o - m))) : '—'}`)
         .join('・'),
       line: 'どれも ≤ 1',
-      ok: all(pairs.map(p => (p.kamm ? p.kamm.counts.every(([o, m]) => Math.abs(o - m) <= 1) : null))),
+      ok: all(pairs.map(p => (p.absorbed ? p.absorbed.counts.every(([o, m]) => Math.abs(o - m) <= 1) : null))),
     },
     {
       label: '吸収した KAM の平均 Γ',
-      value: pairs.map(p => `${p.g} ${shown(mean(p.kamm))}`).join('・'),
+      value: pairs.map(p => `${p.g} ${shown(mean(p.absorbed))}`).join('・'),
       line: `どれも < ${GAMMA_LINE}`,
-      ok: all(pairs.map(p => below(mean(p.kamm)))),
+      ok: all(pairs.map(p => below(mean(p.absorbed)))),
     },
   ];
 }
 
 // 性質の発見（property.yaml）
 
-/** 入力と再現：hn は 3 つの仕方のどれでも Kistler の揺らぐ電流の方が平均 Γ が高く、最も強い揺らぎで線以上なのは KAM だけ。 */
+/** 入力と再現：h+n は 3 つの仕方のどれでも Kistler の揺らぐ電流の方が平均 Γ が高く、最も強い揺らぎで線以上なのは KAM だけ。 */
 function fluctuatingInput([steady, kistler]: Row[][]): Judgement[] {
-  const rises = METHODS.map(m => ({ m, from: mean(one(steady, 'hn', m)), to: mean(one(kistler, 'hn', m)) }));
+  const rises = METHODS.map(m => ({ m, from: mean(one(steady, 'h+n', m)), to: mean(one(kistler, 'h+n', m)) }));
   const values = kistler[0]?.values ?? [];
   const strongest = values.indexOf(Math.max(...values));
-  const atStrongest = METHODS.map(m => ({ m, ok: above(one(kistler, 'hn', m)?.gammas[strongest]) }));
+  const atStrongest = METHODS.map(m => ({ m, ok: above(one(kistler, 'h+n', m)?.gammas[strongest]) }));
   const passing = atStrongest.filter(a => a.ok === true).map(a => a.m);
   return [
     {
-      label: 'hn の平均 Γ（定常電流 → 揺らぐ電流）',
+      label: 'h+n の平均 Γ（定常電流 → 揺らぐ電流）',
       value: rises.map(r => `${NAMES[r.m]} ${shown(r.from)} → ${shown(r.to)}`).join('・'),
       line: '3 つとも上がる',
       ok: all(rises.map(r => (r.from === null || r.to === null ? null : r.to > r.from))),
@@ -106,7 +107,7 @@ function fluctuatingInput([steady, kistler]: Row[][]): Judgement[] {
 
 /** 主張の名前 → 判定。 */
 export const JUDGES: Record<string, Judge> = {
-  'ac-only': acOnly,
-  'absorb-m': absorbM,
-  'fluctuating-input': fluctuatingInput,
+  'only-a+c-keeps-spike-timing': acOnly,
+  'absorbing-m-loses-spike-timing': absorbM,
+  'fluctuating-input-keeps-timing-better': fluctuatingInput,
 };

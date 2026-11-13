@@ -23,8 +23,8 @@ test('the key does not depend on the order the spec was written in', () => {
 });
 
 test('series that differ only in what they replace share the input directory but not the model', () => {
-  const soma = SERIES.traub19_somastim;
-  const all = SERIES.traub19_somastim_allcomp;
+  const soma = SERIES['traub-19comp-steady-replace-soma'];
+  const all = SERIES['traub-19comp-steady-replace-all'];
   const original = dirOf(simSpec(soma, null));
   expect(original).toMatch(/^inputs\/[0-9a-f]{12}\/original$/);
   expect(dirOf(simSpec(all, null))).toBe(original);
@@ -37,32 +37,32 @@ test('series that differ only in what they replace share the input directory but
 });
 
 test('a model is a method laid over a grouping', () => {
-  expect(groupsOf('hn_ac')).toEqual([
+  expect(groupsOf('h+n_a+c')).toEqual([
     ['H', 'N'],
     ['A', 'C'],
   ]);
-  const kam = trainFrom('kam_hn_ac', methodOf('kam'), 'hn_ac').config;
+  const kam = trainFrom('kam.h+n_a+c', methodOf('kam'), 'h+n_a+c').config;
   expect(kam.groups.map(g => [g.gates, g.compressor, g.rhs, g.d])).toEqual([
     [['H', 'N'], 'kam', 'kam', 1],
     [['A', 'C'], 'kam', 'kam', 1],
   ]);
-  expect(trainFrom('pca_hn', methodOf('pca'), 'hn').config.groups[0].rhs_params.library_specs?.length).toBeGreaterThan(
+  expect(trainFrom('pca-sindy.h+n', methodOf('pca-sindy'), 'h+n').config.groups[0].rhs_params.library_specs?.length).toBeGreaterThan(
     0,
   );
-  expect(hashOf(trainSpec(trainFrom('pca_hn', methodOf('pca'), 'hn')))).not.toBe(
-    hashOf(trainSpec(trainFrom('ae_hn', methodOf('ae'), 'hn'))),
+  expect(hashOf(trainSpec(trainFrom('pca-sindy.h+n', methodOf('pca-sindy'), 'h+n')))).not.toBe(
+    hashOf(trainSpec(trainFrom('ae-sindy.h+n', methodOf('ae-sindy'), 'h+n'))),
   );
-  expect([trainSpec(trainFrom('ae_hn', methodOf('ae'), 'hn')).device, trainSpec(TESTS._test_hh_ae).device]).toEqual([
+  expect([trainSpec(trainFrom('ae-sindy.h+n', methodOf('ae-sindy'), 'h+n')).device, trainSpec(TESTS._test_hh_ae).device]).toEqual([
     'gpu',
     'cpu',
   ]);
   expect(() => methodOf('xyz')).toThrow();
-  expect(trainFrom('d2', methodOf({ from: 'pca', d: 2 }), 'hn').config.groups[0].d).toBe(2);
-  expect(() => methodOf({ from: 'pca', d: 'two' })).toThrow();
-  expect(() => groupsOf('hn_a')).toThrow();
-  expect(trainFrom('kamm_hn', methodOf('kamm'), 'hn').config.absorbed).toEqual(['M']);
-  expect('absorbed' in trainFrom('kam_hn', methodOf('kam'), 'hn').config).toBe(false);
-  expect(() => trainFrom('kamm_mh', methodOf('kamm'), 'mh')).toThrow();
+  expect(trainFrom('d2', methodOf({ from: 'pca-sindy', d: 2 }), 'h+n').config.groups[0].d).toBe(2);
+  expect(() => methodOf({ from: 'pca-sindy', d: 'two' })).toThrow();
+  expect(() => groupsOf('h+n_a')).toThrow();
+  expect(trainFrom('kam-absorb-m.h+n', methodOf('kam-absorb-m'), 'h+n').config.absorbed).toEqual(['M']);
+  expect('absorbed' in trainFrom('kam.h+n', methodOf('kam'), 'h+n').config).toBe(false);
+  expect(() => trainFrom('kam-absorb-m.m+h', methodOf('kam-absorb-m'), 'm+h')).toThrow();
 });
 
 test('a job is running while its pid lives, done on exit code 0, and failed otherwise', () => {

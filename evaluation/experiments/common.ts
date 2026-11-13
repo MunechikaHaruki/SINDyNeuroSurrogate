@@ -8,7 +8,7 @@ export const GAMMA_LINE = 0.9;
 /** 判定 1 行。ok が null なら判定できない。 */
 export type Judgement = { label: string; value: string; line: string; ok: boolean | null };
 
-/** 列 1 本の値。grouping と method は学習 run の名前の部分（`hn_ac`、`kam`）、values は掃引の値、gammas と counts（元, モデル）は掃引の点の順。 */
+/** 列 1 本の値。grouping と method は学習 run の名前の部分（`h+n_a+c`、`kam`）、values は掃引の値、gammas と counts（元, モデル）は掃引の点の順。 */
 export type Row = {
   grouping: string;
   method: string;
@@ -29,7 +29,7 @@ export type Claim = {
   judge: Judge;
 };
 
-/** 学習 run 1 本。name は実験の中の名前（`<仕方の名前>_<群分け>`）、method と grouping は判定と図が列を引く名前。 */
+/** 学習 run 1 本。name は実験の中の名前（`<仕方の名前>.<群分け>`）、method と grouping は判定と図が列を引く名前。 */
 export type Model = { name: string; method: string; grouping: string; train: Train };
 
 /** 解決済みの実験。description は何を回して何を見るかの一文（Markdown）。学習 run と系列を値で持ち、pairs が回す組（学習 run の名前 × 系列の名前）。
@@ -47,7 +47,7 @@ export type Plan = {
   claims: Claim[];
 };
 
-/** ゲートの群分けを全部並べる。2 つ以上のゲートを入れた群だけを名前にし（例 hn_ac）、全部が 1 つずつの分け方は除く。減らす状態の少ない順、同じなら名前の順。 */
+/** ゲートの群分けを全部並べる。2 つ以上のゲートを入れた群だけを、群の中は `+`、群の間は `_` でつないで名前にし（例 h+n_a+c）、全部が 1 つずつの分け方は除く。減らす状態の少ない順、同じなら名前の順。 */
 export function groupings(gates: string[]): string[] {
   let partitions: string[][][] = [[]];
   for (const gate of gates) {
@@ -64,7 +64,7 @@ export function groupings(gates: string[]): string[] {
     if (groups.length === 0) continue;
     let reduced = 0;
     for (const g of groups) reduced += g.length - 1;
-    list.push({ name: groups.map(g => g.join('')).join('_'), reduced });
+    list.push({ name: groups.map(g => g.join('+')).join('_'), reduced });
   }
   list.sort((x, y) => x.reduced - y.reduced || x.name.localeCompare(y.name));
   return list.map(g => g.name);
@@ -85,10 +85,10 @@ export function meanGamma(gammas: (number | null)[]): number | null {
 /** 仕方の読み方。 */
 export const NAMES: Record<string, string> = {
   kam: 'KAM',
-  kamm: 'KAM（m を吸収）',
-  pca: 'PCA',
-  ae: 'AE',
-  neuro2026: 'NEURO2026',
+  'kam-absorb-m': 'KAM（m を吸収）',
+  'pca-sindy': 'PCA＋SINDy',
+  'ae-sindy': 'AE＋SINDy',
+  'ae-latent5-sindy': 'NEURO2026',
 };
 
 /** 群分けと仕方の列。無いか 2 本以上あれば undefined（どれを読むか決まらない）。 */
@@ -131,4 +131,9 @@ export function rowsOf(
     rows.push({ method: column.method, grouping: column.grouping, values, gammas, counts });
   }
   return rows;
+}
+
+/** 群分けの名前（`h+n_a+c`）を、群ごとのゲートの小文字の名前（[['h','n'],['a','c']]）にする。 */
+export function blocksOf(grouping: string): string[][] {
+  return grouping.split('_').map(block => block.split('+'));
 }

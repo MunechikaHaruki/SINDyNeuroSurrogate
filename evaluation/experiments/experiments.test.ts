@@ -14,46 +14,46 @@ const row = (grouping: string, method: string, gammas: (number | null)[], extra:
 const oks = (name: string, tables: Row[][], groupings?: string[]) =>
   CLAIMS[name].judge(tables, groupings).map(j => j.ok);
 
-const ac = [row('ac', 'kam', [0.98]), row('ac', 'pca', [0.91]), row('ac', 'ae', [1])];
-const hn = [row('hn', 'kam', [1]), row('hn', 'pca', [0.1]), row('hn', 'ae', [1])];
-const na = [row('na', 'kam', [0.04]), row('na', 'pca', [0]), row('na', 'ae', [0])];
+const ac = [row('a+c', 'kam', [0.98]), row('a+c', 'pca-sindy', [0.91]), row('a+c', 'ae-sindy', [1])];
+const hn = [row('h+n', 'kam', [1]), row('h+n', 'pca-sindy', [0.1]), row('h+n', 'ae-sindy', [1])];
+const na = [row('n+a', 'kam', [0.04]), row('n+a', 'pca-sindy', [0]), row('n+a', 'ae-sindy', [0])];
 
-test('ac-only holds only when ac alone reaches the line and KAM breaks when n joins a gate other than h', () => {
-  expect(oks('ac-only', [[...ac, ...hn, ...na]])).toEqual([true, true, true]);
-  expect(oks('ac-only', [[...ac, ...hn.slice(0, 1), row('hn', 'pca', [0.95]), hn[2], ...na]])).toEqual([
+test('only-a+c-keeps-spike-timing holds only when ac alone reaches the line and KAM breaks when n joins a gate other than h', () => {
+  expect(oks('only-a+c-keeps-spike-timing', [[...ac, ...hn, ...na]])).toEqual([true, true, true]);
+  expect(oks('only-a+c-keeps-spike-timing', [[...ac, ...hn.slice(0, 1), row('h+n', 'pca-sindy', [0.95]), hn[2], ...na]])).toEqual([
     true,
     false,
     true,
   ]);
-  expect(oks('ac-only', [[...ac, ...hn, row('na', 'kam', [0.95]), ...na.slice(1)]])).toEqual([true, true, false]);
+  expect(oks('only-a+c-keeps-spike-timing', [[...ac, ...hn, row('n+a', 'kam', [0.95]), ...na.slice(1)]])).toEqual([true, true, false]);
 });
 
 test('a missing run cannot be judged, so a negative claim does not pass by default', () => {
-  expect(oks('ac-only', [[...ac, hn[0], hn[2], ...na]])).toEqual([true, null, true]);
-  expect(oks('ac-only', [[...ac, ...hn]])).toEqual([true, true, null]);
-  expect(oks('ac-only', [[...ac, ...ac, ...hn, ...na]])[0]).toBeNull();
+  expect(oks('only-a+c-keeps-spike-timing', [[...ac, hn[0], hn[2], ...na]])).toEqual([true, null, true]);
+  expect(oks('only-a+c-keeps-spike-timing', [[...ac, ...hn]])).toEqual([true, true, null]);
+  expect(oks('only-a+c-keeps-spike-timing', [[...ac, ...ac, ...hn, ...na]])[0]).toBeNull();
 });
 
-test('fluctuating-input reads the strongest fluctuation by its value, not its position', () => {
-  const steady = [row('hn', 'kam', [0.8]), row('hn', 'pca', [0.1]), row('hn', 'ae', [0.5])];
+test('fluctuating-input-keeps-timing-better reads the strongest fluctuation by its value, not its position', () => {
+  const steady = [row('h+n', 'kam', [0.8]), row('h+n', 'pca-sindy', [0.1]), row('h+n', 'ae-sindy', [0.5])];
   const values = [30, 10];
   const kistler = [
-    row('hn', 'kam', [0.97, 1], { values }),
-    row('hn', 'pca', [0.2, 0.9], { values }),
-    row('hn', 'ae', [0.3, 0.9], { values }),
+    row('h+n', 'kam', [0.97, 1], { values }),
+    row('h+n', 'pca-sindy', [0.2, 0.9], { values }),
+    row('h+n', 'ae-sindy', [0.3, 0.9], { values }),
   ];
-  expect(oks('fluctuating-input', [steady, kistler])).toEqual([true, true]);
+  expect(oks('fluctuating-input-keeps-timing-better', [steady, kistler])).toEqual([true, true]);
 });
 
-test('absorb-m judges the groupings of the figure', () => {
+test('absorbing-m-loses-spike-timing judges the groupings of the figure', () => {
   const rows = [
-    row('ac', 'kam', [1]),
-    row('ac', 'kamm', [0.3], { counts: [[6, 7]] }),
-    row('hn', 'kam', [0.5]),
-    row('hn', 'kamm', [0.3], { counts: [[6, 9]] }),
+    row('a+c', 'kam', [1]),
+    row('a+c', 'kam-absorb-m', [0.3], { counts: [[6, 7]] }),
+    row('h+n', 'kam', [0.5]),
+    row('h+n', 'kam-absorb-m', [0.3], { counts: [[6, 9]] }),
   ];
-  expect(oks('absorb-m', [rows], ['ac'])).toEqual([true, true, true]);
-  expect(oks('absorb-m', [rows], ['ac', 'hn'])).toEqual([false, false, true]);
+  expect(oks('absorbing-m-loses-spike-timing', [rows], ['a+c'])).toEqual([true, true, true]);
+  expect(oks('absorbing-m-loses-spike-timing', [rows], ['a+c', 'h+n'])).toEqual([false, false, true]);
 });
 
 /** 測った数値の書き方。説明と主張には書かず、判定が runs から出す。 */
@@ -84,30 +84,30 @@ test('an experiment runs the product of its methods, groupings and series, and a
     {
       id: 't',
       description: 'test',
-      groupings: ['hn', 'ac'],
-      methods: ['kam', { name: 'pca2', from: 'pca', d: 2 }],
-      series: ['traub_somastim'],
+      groupings: ['h+n', 'a+c'],
+      methods: ['kam', { name: 'pca2', from: 'pca-sindy', d: 2 }],
+      series: ['traub-1comp-steady'],
     },
     {},
   );
   expect(plan.pairs.map(p => `${p.model}×${p.series}`)).toEqual([
-    'kam_hn×traub_somastim',
-    'kam_ac×traub_somastim',
-    'pca2_hn×traub_somastim',
-    'pca2_ac×traub_somastim',
+    'kam.h+n×traub-1comp-steady',
+    'kam.a+c×traub-1comp-steady',
+    'pca2.h+n×traub-1comp-steady',
+    'pca2.a+c×traub-1comp-steady',
   ]);
   expect(plan.models.map(m => [m.method, m.grouping, m.train.config.groups[0].d])).toEqual([
-    ['kam', 'hn', 1],
-    ['kam', 'ac', 1],
-    ['pca2', 'hn', 2],
-    ['pca2', 'ac', 2],
+    ['kam', 'h+n', 1],
+    ['kam', 'a+c', 1],
+    ['pca2', 'h+n', 2],
+    ['pca2', 'a+c', 2],
   ]);
 });
 
 test('a sweep spans every grouping of its gates', () => {
   const names = groupings(['h', 'n', 'a', 'c']);
   expect(names.length).toBe(14);
-  expect(names).toContain('hn_ac');
-  expect(names).toContain('hc_na');
-  expect(names[names.length - 1]).toBe('hnac');
+  expect(names).toContain('h+n_a+c');
+  expect(names).toContain('h+c_n+a');
+  expect(names[names.length - 1]).toBe('h+n+a+c');
 });

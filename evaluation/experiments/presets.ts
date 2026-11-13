@@ -4,6 +4,7 @@
 // テスト専用の学習は config/presets.json に入れず、隣の test-trains.ts が持つ。形は ../orchestrate/spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
 import { z } from 'zod';
 import declaration from '../../config/presets.json' with { type: 'json' };
+import { blocksOf } from './common.ts';
 import { TEST_DECLARATIONS } from './test-trains.ts';
 import type { Group, LibrarySpec, Series, SimSpec, SurrogateConfig, Train } from '../orchestrate/spec.ts';
 
@@ -77,12 +78,13 @@ export function methodOf(ref: Ref): Declared {
   });
 }
 
-/** 群分けの名前（`hn_ac`）を状態の名前の群（[['H','N'],['A','C']]）にする。 */
+/** 群分けの名前（`h+n_a+c`）を状態の名前の群（[['H','N'],['A','C']]）にする。 */
 export function groupsOf(grouping: string): string[][] {
   const groups: string[][] = [];
-  for (const block of grouping.split('_')) {
-    if (block.length < 2) throw new Error(`群分け ${grouping} の群 ${block} は 2 つ以上のゲートを持たない`);
-    groups.push([...block.toUpperCase()]);
+  for (const block of blocksOf(grouping)) {
+    if (block.length < 2 || block.some(g => g.length !== 1))
+      throw new Error(`群分け ${grouping} の群 ${block.join('+')} は 1 文字のゲートを 2 つ以上 + でつないでいない`);
+    groups.push(block.map(g => g.toUpperCase()));
   }
   return groups;
 }

@@ -77,7 +77,7 @@ export function build(
     const { name, ref } = named(m);
     const declared = methodOf(ref);
     for (const grouping of e.groupings) {
-      const model = `${name}_${grouping}`;
+      const model = `${name}.${grouping}`;
       models.push({ name: model, method: name, grouping, train: trainFrom(model, declared, grouping) });
     }
   }
@@ -117,7 +117,7 @@ const Sweep = z.record(
   z.string(),
   z.strictObject({
     description: z.string().min(1),
-    gates: z.string(),
+    gates: z.array(z.string().length(1)).nonempty(),
     methods: z.array(MethodRef).nonempty(),
     series: z.array(SeriesRef).optional(),
     claims: z.record(z.string(), ClaimShape),
@@ -154,7 +154,7 @@ export const THEMES: { name: string; plans: (judges: Record<string, Judge>) => P
     name: 'sweep',
     plans: judges =>
       Object.entries(parsed(Sweep, 'sweep.yaml', sweep)).map(([id, e]) =>
-        build(`sweep.yaml の ${id}`, { id, ...e, groupings: groupings([...e.gates]) }, judges),
+        build(`sweep.yaml の ${id}`, { id, ...e, groupings: groupings(e.gates) }, judges),
       ),
   },
   {
@@ -171,6 +171,6 @@ export const THEMES: { name: string; plans: (judges: Record<string, Judge>) => P
   },
   {
     name: 'fixed',
-    plans: judges => [fromJson('neuro2026', 'neuro2026.json', neuro2026, judges)],
+    plans: judges => [fromJson('neuro2026-rerun', 'neuro2026.json', neuro2026, judges)],
   },
 ];
