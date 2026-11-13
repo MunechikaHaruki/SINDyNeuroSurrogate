@@ -1,0 +1,11 @@
+---
+description: 単一区画で学習した縮約を Traub の 19 区画に当てる実験群
+---
+# どの run にも共通の設定。run に書いた欄だけが置き換わる。形は ../evaluation/experiments/schema.ts。
+setup:
+  methods: [ kam, pca-sindy, ae-sindy ]
+  groupings: [ h+n, a+c ]
+  series: [ traub-19comp-steady-replace-soma, traub-19comp-steady-replace-na-dr ]
+runs:
+  transfer-to-19comp:
+    description: h+n と a+c をまとめた縮約（単一区画で学習）を Traub の 19 区画に当て、soma だけを置き換えるときと、Na と DR を持つ 5 区画を置き換えるときで、元のモデルの発火をどこまで再現するかを見る。

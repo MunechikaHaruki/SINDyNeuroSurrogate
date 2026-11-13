@@ -1,17 +1,32 @@
-// 実験を並べる。宣言は主題ごとの config/<主題>.yaml（sweep.yaml 改良の探索、property.yaml 性質の発見、mc.yaml 拡張）、形と組み立ては schema.ts、判定は checks.ts。
-// ここは並べて、id・主張の名前・学習 run と系列の名前が重ならないことを確かめ、名前から引けるようにするだけ。
+// 実験を並べる。実験群ごとに、実験層 config/<群>.yaml（形と組み立ては schema.ts）と判定層 config/<群>.checks.ts を読む。主張の一文は判定層の docstring で、resolve.ts が抜き出して resolved/claims.json に置いたものを読む。
+// 決め打ちの実験は config/<実験>.json（形は plan.ts）。ここは並べて、id・主張の名前・学習 run と系列の名前が重ならないことを確かめ、名前から引けるようにするだけ。
 // 段取り（orchestrate.ts）・API・画面は、ここが返す解決済みの実験と、名前から引く trainOf・seriesOf だけを使う。
 import { PRESET_SERIES, TESTS } from './presets.ts';
 import type { Experiment, Series, Train } from '../orchestrate/spec.ts';
-import { JUDGES } from './checks.ts';
-import type { Claim, Model, Plan } from './common.ts';
-import { THEMES } from './schema.ts';
+import type { Checks, Claim, Model, Plan } from './common.ts';
+import { fromJson } from './plan.ts';
+import { groupPlans } from './schema.ts';
+import { checks as checks1comp } from '../../config/1comp.checks.ts';
+import group1comp from '../../config/1comp.yaml';
+import group19comp from '../../config/19comp.yaml';
+import groupGpu from '../../config/gpu.yaml';
+import neuro2026 from '../../config/neuro2026.json' with { type: 'json' };
+import claimTexts from '../../resolved/claims.json' with { type: 'json' };
 
-/** 実験 1 つ。解決済みの実験に、宣言を置いた主題（sweep・property・mc）を添える。画面は主題ごとに実験を並べる。 */
-export type ThemedPlan = Plan & { theme: string };
+/** 実験群。読む順に、名前・実験層・判定層（無ければ空）。 */
+const GROUP_SOURCES: { name: string; doc: unknown; checks: Checks }[] = [
+  { name: '1comp', doc: group1comp, checks: checks1comp },
+  { name: '19comp', doc: group19comp, checks: {} },
+  { name: 'gpu', doc: groupGpu, checks: {} },
+];
 
-/** 実験。主題の順、主題の中は書いた順。 */
-export const EXPERIMENTS: ThemedPlan[] = [];
+/** 実験 1 つ。解決済みの実験に、宣言を置いた実験群の名前を添える。画面は実験群ごとに実験を並べる。 */
+export type GroupedPlan = Plan & { group: string };
+
+/** 実験群の名前 → 実験層の frontmatter の description。 */
+export const GROUPS: Record<string, string> = {};
+/** 実験。実験群の順、実験群の中は書いた順。 */
+export const EXPERIMENTS: GroupedPlan[] = [];
 /** 主張の名前 → 主張。図（repo の外）とテストが名前で引く。 */
 export const CLAIMS: Record<string, Claim> = {};
 /** 学習 run の名前 → 学習 run（実験の学習 run とテスト専用の学習）。 */
@@ -37,10 +52,18 @@ function register<T>(table: Record<string, T>, name: string, value: T, where: st
   table[name] = value;
 }
 
-for (const theme of THEMES) {
-  for (const plan of theme.plans(JUDGES)) {
-    const where = `${theme.name}.yaml の ${plan.id}`;
-    if (EXPERIMENTS.some(e => e.id === plan.id)) throw new Error(`${where}：実験の id がほかの主題と重なる`);
+const texts = claimTexts as Record<string, string>;
+const resolvedGroups = GROUP_SOURCES.map(g => ({ name: g.name, ...groupPlans(g.name, g.doc, g.checks, texts) }));
+resolvedGroups.push({
+  name: 'neuro2026',
+  description: 'NEURO2026 で発表した形を今の研究コードで回し直す決め打ちの実験',
+  plans: [fromJson('neuro2026-rerun', 'config/neuro2026.json', neuro2026, {})],
+});
+for (const group of resolvedGroups) {
+  GROUPS[group.name] = group.description;
+  for (const plan of group.plans) {
+    const where = `${group.name} の ${plan.id}`;
+    if (EXPERIMENTS.some(e => e.id === plan.id)) throw new Error(`${where}：実験の id がほかの実験群と重なる`);
     for (const c of plan.claims) {
       if (c.name in CLAIMS) throw new Error(`${where}：主張の名前 ${c.name} が重なる`);
       CLAIMS[c.name] = c;
@@ -50,11 +73,9 @@ for (const theme of THEMES) {
       register(MODELS, m.name, m, where);
     }
     for (const [name, s] of Object.entries(plan.series)) register(SERIES, name, s, where);
-    EXPERIMENTS.push({ ...plan, theme: theme.name });
+    EXPERIMENTS.push({ ...plan, group: group.name });
   }
 }
-for (const name of Object.keys(JUDGES))
-  if (!(name in CLAIMS)) throw new Error(`checks.ts：判定 ${name} に当たる主張がどの config/<主題>.yaml にも無い`);
 
 /** 学習 run を名前で引く。知らない名前は投げる。 */
 export function trainOf(name: string): Train {

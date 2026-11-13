@@ -1,35 +1,39 @@
-// 実験の宣言（config/<主題>.yaml）の形と、解決済みの実験（common.ts の Plan）への組み立て。主題は改良の探索 sweep、性質の発見 property、拡張 mc、決め打ち fixed（config/<実験>.json、形は plan.ts）。
-// 形は主題ごとに zod で決め、問いに合わせて自由に変えてよい。返すのは学習 run と系列を値で持つ解決済みの実験だけで、段取り（orchestrate.ts）・API・画面は主題の形を知らない。
+// 実験群の実験層（config/<群>.yaml）の形と、解決済みの実験（common.ts の Plan）への組み立て。
+// 実験層は frontmatter（description）の文書と、共通の設定 setup と回す run の並び runs の文書の二つ。run に書いた欄だけが setup を置き換える。
+// 主張は判定層（config/<群>.checks.ts）が持ち、ここは主張を読む run に付けるだけ。返すのは学習 run と系列を値で持つ解決済みの実験だけで、段取り（orchestrate.ts）・API・画面は実験層の形を知らない。
 import { z } from 'zod';
 import { Ref, methodOf, seriesFrom, trainFrom } from './presets.ts';
 import type { Bench, Series } from '../orchestrate/spec.ts';
-import { groupings, type Claim, type Judge, type Model, type Plan } from './common.ts';
-import mc from '../../config/mc.yaml';
-import property from '../../config/property.yaml';
-import sweep from '../../config/sweep.yaml';
-import neuro2026 from '../../config/neuro2026.json' with { type: 'json' };
-import { fromJson } from './plan.ts';
+import { groupings, type Checks, type Claim, type Model, type Plan } from './common.ts';
 
 /** 仕方の指し方。プリセットの名前か、名前を付けた差分 `{ name, from, ...差分 }`（name は表示と判定の列の名前）。 */
 export const MethodRef = z.union([z.string(), z.looseObject({ name: z.string(), from: z.string() })]);
 /** 系列の指し方。仕方と同じ。 */
 export const SeriesRef = MethodRef;
-/** 主張。読む系列 on、判定を絞る群分け、回す前に書いた一文。 */
-export const ClaimShape = z.strictObject({
-  on: z.array(z.string()).nonempty(),
-  groupings: z.array(z.string()).optional(),
-  claim: z.string(),
-});
 
-/** GPU の実測。model は実験の学習 run の名前か original（元のモデル）、series は実験が回す系列。名前は `<model>@<series>`。 */
-export const BenchShape = z.strictObject({
-  models: z.array(z.string()).nonempty(),
-  series: z.string(),
+/** setup と run が持てる欄。群分けは、ゲートの並び gates（全部の群分けを組む）か、群分けの名前 groupings のどちらか。
+ * benches は GPU で測る系列で、その系列で元のモデルと run の学習 run を全部、細胞の数 cells で測る（ncu なら Nsight Compute で 1 刻みのカーネルも）。 */
+const Fields = {
+  methods: z.array(MethodRef).nonempty().optional(),
+  gates: z.array(z.string().length(1)).nonempty().optional(),
+  groupings: z.array(z.string()).nonempty().optional(),
+  series: z.array(SeriesRef).nonempty().optional(),
+  benches: z.array(z.string()).nonempty().optional(),
   /** 細胞の数。1 刻みのカーネルのブロック（128 細胞）の倍数。 */
-  cells: z.array(z.number().int().positive().multipleOf(128)).nonempty(),
-  /** Nsight Compute で 1 刻みのカーネルを測るか。 */
+  cells: z.array(z.number().int().positive().multipleOf(128)).nonempty().optional(),
   ncu: z.boolean().optional(),
-});
+};
+
+/** 実験層の二つの文書。frontmatter は実験群の道案内の一文だけ。 */
+const GroupDocument = z.tuple([
+  z.strictObject({ description: z.string().min(1) }),
+  z.strictObject({
+    setup: z.strictObject(Fields),
+    runs: z
+      .record(z.string(), z.strictObject({ description: z.string().min(1), ...Fields }))
+      .refine(runs => Object.keys(runs).length > 0, 'runs が空'),
+  }),
+]);
 
 /** 宣言を形に当てる。誤りはどこの何かが分かる一文にする。 */
 export function parsed<T>(schema: z.ZodType<T>, where: string, value: unknown): T {
@@ -45,132 +49,84 @@ function named(ref: z.infer<typeof MethodRef>): { name: string; ref: Ref } {
   return { name, ref: rest as Ref };
 }
 
-/** 解決済みの実験を組む。回す組は 仕方 × 群分け × 系列 の直積で、系列は series と主張の on を合わせたもの。 */
-export function build(
-  where: string,
-  e: {
-    id: string;
-    description: string;
-    groupings: string[];
-    methods: z.infer<typeof MethodRef>[];
-    series?: z.infer<typeof SeriesRef>[];
-    claims?: Record<string, z.infer<typeof ClaimShape>>;
-    benches?: z.infer<typeof BenchShape>[];
-  },
-  judges: Record<string, Judge>,
-): Plan {
+type Run = { description: string } & { [K in keyof typeof Fields]?: z.infer<(typeof Fields)[K]> };
+
+/** run に setup を重ねる。run が群分け（gates か groupings）を書いたら、setup の群分けは使わない。 */
+function merged(setup: Omit<Run, 'description'>, run: Run): Run {
+  const base = run.gates || run.groupings ? { ...setup, gates: undefined, groupings: undefined } : setup;
+  return { ...base, ...Object.fromEntries(Object.entries(run).filter(([, v]) => v !== undefined)) } as Run;
+}
+
+/** 解決済みの実験を組む。回す組は 仕方 × 群分け × 系列 の直積。claims は判定層からこの run を読む主張。 */
+export function build(where: string, id: string, run: Run, claims: Claim[]): Plan {
+  if (!run.methods) throw new Error(`${where}：仕方 methods が無い（setup か run に書く）`);
+  if (!run.series) throw new Error(`${where}：系列 series が無い（setup か run に書く）`);
+  if (!!run.gates === !!run.groupings) throw new Error(`${where}：群分けは gates か groupings のどちらか一つを書く`);
+  const groupingList = run.gates ? groupings(run.gates) : run.groupings!;
   const series: Record<string, Series> = {};
-  for (const s of e.series ?? []) {
+  for (const s of run.series) {
     const { name, ref } = named(s);
     series[name] = seriesFrom(ref);
   }
-  const claims: Claim[] = [];
-  for (const [name, c] of Object.entries(e.claims ?? {})) {
-    const judge = judges[name];
-    if (!judge) throw new Error(`${where}：主張 ${name} の判定が checks.ts に無い`);
-    for (const s of c.on) if (!series[s]) series[s] = seriesFrom(s);
-    claims.push({ name, claim: c.claim, series: c.on, ...(c.groupings ? { groupings: c.groupings } : {}), judge });
+  for (const c of claims) {
+    for (const s of c.series) if (!series[s]) throw new Error(`${where}：主張 ${c.name} の系列 ${s} を run が回さない`);
+    for (const g of c.groupings ?? [])
+      if (!groupingList.includes(g)) throw new Error(`${where}：主張 ${c.name} の群分け ${g} を run が回さない`);
   }
-  if (Object.keys(series).length === 0) throw new Error(`${where}：回す系列が無い（series か claims の on を書く）`);
   const models: Model[] = [];
-  for (const m of e.methods) {
+  for (const m of run.methods) {
     const { name, ref } = named(m);
     const declared = methodOf(ref);
-    for (const grouping of e.groupings) {
+    for (const grouping of groupingList) {
       const model = `${name}.${grouping}`;
       models.push({ name: model, method: name, grouping, train: trainFrom(model, declared, grouping) });
     }
   }
   const pairs = models.flatMap(m => Object.keys(series).map(s => ({ model: m.name, series: s })));
   const benches: Bench[] = [];
-  for (const b of e.benches ?? []) {
-    if (!series[b.series]) throw new Error(`${where}：GPU の実測の系列 ${b.series} を実験が回さない`);
-    for (const model of b.models) {
-      if (model !== 'original' && !models.some(m => m.name === model))
-        throw new Error(`${where}：GPU の実測の ${model} は実験の学習 run でも original でもない`);
-      const name = `${model}@${b.series}`;
-      if (benches.some(x => x.name === name)) throw new Error(`${where}：GPU の実測 ${name} が重なる`);
-      benches.push({
-        name,
-        model: model === 'original' ? null : model,
-        series: b.series,
-        cells: b.cells,
-        ncu: b.ncu ?? false,
-      });
-    }
+  for (const s of run.benches ?? []) {
+    if (!series[s]) throw new Error(`${where}：GPU の実測の系列 ${s} を run が回さない`);
+    if (!run.cells) throw new Error(`${where}：GPU の実測の細胞の数 cells が無い`);
+    for (const model of [null, ...models.map(m => m.name)])
+      benches.push({ name: `${model ?? 'original'}@${s}`, model, series: s, cells: run.cells, ncu: run.ncu ?? false });
   }
   return {
-    id: e.id,
-    description: e.description,
-    groupings: e.groupings,
-    methods: e.methods.map(m => named(m).name),
+    id,
+    description: run.description,
+    groupings: groupingList,
+    methods: run.methods.map(m => named(m).name),
     models,
     series,
     pairs,
     benches,
     claims,
+    ...(run.gates ? { gates: run.gates } : {}),
   };
 }
 
-/** 改良の探索。ゲートの並び gates から全部の群分けを組み、仕方ごとに回す。主張は判定を絞る群分けを持てる。 */
-const Sweep = z.record(
-  z.string(),
-  z.strictObject({
-    description: z.string().min(1),
-    gates: z.array(z.string().length(1)).nonempty(),
-    methods: z.array(MethodRef).nonempty(),
-    series: z.array(SeriesRef).optional(),
-    claims: z.record(z.string(), ClaimShape),
-  }),
-);
-
-/** 性質の発見。群分けを名前で書き、主張が読む系列を回す。 */
-const Property = z.record(
-  z.string(),
-  z.strictObject({
-    description: z.string().min(1),
-    groupings: z.array(z.string()).nonempty(),
-    methods: z.array(MethodRef).nonempty(),
-    series: z.array(SeriesRef).optional(),
-    claims: z.record(z.string(), ClaimShape),
-  }),
-);
-
-/** 拡張。判定を持たず、群分けと仕方と回す系列と、あれば GPU の実測を書く。 */
-const Mc = z.record(
-  z.string(),
-  z.strictObject({
-    description: z.string().min(1),
-    groupings: z.array(z.string()).nonempty(),
-    methods: z.array(MethodRef).nonempty(),
-    series: z.array(SeriesRef).nonempty(),
-    benches: z.array(BenchShape).optional(),
-  }),
-);
-
-/** 主題。読む順（改良の探索、性質の発見、拡張、決め打ち）。plans は宣言 `<name>.yaml` を形に当て、判定を引いて解決済みの実験にする。決め打ち fixed は、組み合わせを展開しない実験を解決済みの形で手で書いた `config/<実験>.json`（形は plan.ts）。 */
-export const THEMES: { name: string; plans: (judges: Record<string, Judge>) => Plan[] }[] = [
-  {
-    name: 'sweep',
-    plans: judges =>
-      Object.entries(parsed(Sweep, 'sweep.yaml', sweep)).map(([id, e]) =>
-        build(`sweep.yaml の ${id}`, { id, ...e, groupings: groupings(e.gates) }, judges),
-      ),
-  },
-  {
-    name: 'property',
-    plans: judges =>
-      Object.entries(parsed(Property, 'property.yaml', property)).map(([id, e]) =>
-        build(`property.yaml の ${id}`, { id, ...e }, judges),
-      ),
-  },
-  {
-    name: 'mc',
-    plans: judges =>
-      Object.entries(parsed(Mc, 'mc.yaml', mc)).map(([id, e]) => build(`mc.yaml の ${id}`, { id, ...e }, judges)),
-  },
-  {
-    name: 'fixed',
-    plans: judges => [fromJson('neuro2026-rerun', 'neuro2026.json', neuro2026, judges)],
-  },
-];
+/** 実験群 1 つを解決済みの実験にする。doc は実験層の YAML を読んだ二つの文書、checks は判定層、texts は主張の名前 → 主張の一文（判定層の docstring から resolve.ts が抜き出したもの）。 */
+export function groupPlans(
+  name: string,
+  doc: unknown,
+  checks: Checks,
+  texts: Record<string, string>,
+): { description: string; plans: Plan[] } {
+  const where = `config/${name}.yaml`;
+  const [front, body] = parsed(GroupDocument, where, doc);
+  for (const [claim, c] of Object.entries(checks))
+    if (!(c.run in body.runs))
+      throw new Error(`config/${name}.checks.ts：主張 ${claim} の run ${c.run} が ${where} に無い`);
+  const plans = Object.entries(body.runs).map(([id, run]) => {
+    const claims = Object.entries(checks)
+      .filter(([, c]) => c.run === id)
+      .map(([claim, c]) => ({
+        name: claim,
+        claim: texts[claim] ?? '',
+        series: c.series,
+        ...(c.groupings ? { groupings: c.groupings } : {}),
+        judge: c.judge,
+      }));
+    return build(`${where} の ${id}`, id, merged(body.setup, run), claims);
+  });
+  return { description: front.description, plans };
+}

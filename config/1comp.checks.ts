@@ -1,4 +1,5 @@
-// 主張の判定。宣言（config/<主題>.yaml）の主張の名前ごとに判定の関数を置き、API の claims が runs から判定して返す。判定は探索の問い（改良の探索 sweep、性質の発見 property）にだけ置く。
+// 実験群 1comp（1comp.yaml）の判定層。主張は checks の各項目の docstring に、回す前に書く（結果を見てから書かない）。
+// 項目は、読む run（1comp.yaml の runs）と系列、絞る群分け、判定の関数を持つ。判定の関数の docstring は、主張を何で確かめるか（線）を書く。
 import {
   GAMMA_LINE,
   NAMES,
@@ -11,15 +12,14 @@ import {
   none,
   one,
   shown,
+  type Checks,
   type Judgement,
   type Row,
-  type Judge,
-} from './common.ts';
+} from '../evaluation/experiments/common.ts';
 
 /** 比べる縮約の仕方。 */
 const METHODS = ['kam', 'pca-sindy', 'ae-sindy'];
 
-// 改良の探索（sweep.yaml）
 
 /** ゲートの組と再現：a+c は KAM・PCA・AE のどれでも線以上で、ほかにそういう組は無い。KAM で n を h 以外のゲートとまとめた組は線を下回る。 */
 function acOnly([rows]: Row[][]): Judgement[] {
@@ -80,7 +80,6 @@ function absorbM([rows]: Row[][], groupings: string[] = groupingsOf(rows)): Judg
   ];
 }
 
-// 性質の発見（property.yaml）
 
 /** 入力と再現：h+n は 3 つの仕方のどれでも Kistler の揺らぐ電流の方が平均 Γ が高く、最も強い揺らぎで線以上なのは KAM だけ。 */
 function fluctuatingInput([steady, kistler]: Row[][]): Judgement[] {
@@ -105,9 +104,20 @@ function fluctuatingInput([steady, kistler]: Row[][]): Judgement[] {
   ];
 }
 
-/** 主張の名前 → 判定。 */
-export const JUDGES: Record<string, Judge> = {
-  'only-a+c-keeps-spike-timing': acOnly,
-  'absorbing-m-loses-spike-timing': absorbM,
-  'fluctuating-input-keeps-timing-better': fluctuatingInput,
-};
+export const checks = {
+  /** 単一区画で、KAM・PCA・AE のどれでも発火の時刻まで合うのは a と c をまとめる組だけで、KAM は n を h 以外のゲートとまとめると時刻が合わなくなる。 */
+  'only-a+c-keeps-spike-timing': { run: 'all-groupings-1comp', series: ['traub-1comp-steady'], judge: acOnly },
+  /** m を膜電位へ吸収すると、吸収しなければ時刻まで合っていた組でも、発火の回数の差は一つ以内のまま、時刻が合わなくなる。 */
+  'absorbing-m-loses-spike-timing': {
+    run: 'all-groupings-1comp',
+    series: ['traub-1comp-steady'],
+    groupings: ['a+c', 'h+a', 'h+c', 'h+a+c'],
+    judge: absorbM,
+  },
+  /** h+n をまとめた縮約は、どの仕方でも Kistler 1997 の揺らぐ電流のほうが定常電流より元の発火の時刻に合う。最も強い揺らぎで時刻まで合うのは KAM だけである。 */
+  'fluctuating-input-keeps-timing-better': {
+    run: 'fluctuating-input-1comp',
+    series: ['traub-1comp-steady', 'traub-1comp-kistler'],
+    judge: fluctuatingInput,
+  },
+} satisfies Checks;

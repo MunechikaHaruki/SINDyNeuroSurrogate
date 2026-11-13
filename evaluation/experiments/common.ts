@@ -1,5 +1,5 @@
 // 実験の共通の部品。実験の形（回す組と、回す前に書いた主張と判定）と、判定が使う値の読み方・線・三値の論理。
-// 実験そのものは主題ごとの宣言 config/<主題>.yaml（sweep.yaml 改良の探索、property.yaml 性質の発見、mc.yaml 拡張）と、形 schema.ts・判定 checks.ts が持ち、experiments.ts が並べる。
+// 実験そのものは実験群ごとの実験層 config/<群>.yaml（形は schema.ts）と判定層 config/<群>.checks.ts が持ち、experiments.ts が並べる。
 import type { Bench, Series, Train } from '../orchestrate/spec.ts';
 
 /** Γ で「発火の時刻まで合う」とみなす線。 */
@@ -19,6 +19,11 @@ export type Row = {
 
 /** 判定。系列ごとの列（主張の series の順）と、主張が絞る群分けで判定する。 */
 export type Judge = (tables: Row[][], groupings?: string[]) => Judgement[];
+
+/** 判定層（config/<群>.checks.ts）の主張 1 つ。主張の一文はこの項目の docstring に書く。run は読む run（実験層の runs の名前）、series は判定が読む系列（区画は系列の置き換える最初の区画）、groupings は判定を絞る群分け。 */
+export type Check = { run: string; series: string[]; groupings?: string[]; judge: Judge };
+/** 判定層。主張の名前 → 主張。 */
+export type Checks = Record<string, Check>;
 
 /** 主張 1 つ。name は判定と図が引く名前、series は判定が読む系列（区画は系列の置き換える最初の区画）、groupings は判定を絞る群分け。 */
 export type Claim = {
@@ -45,6 +50,8 @@ export type Plan = {
   /** GPU の実測。無ければ空。 */
   benches: Bench[];
   claims: Claim[];
+  /** 群分けを全部回すときの、群分けを組むゲート（画面が群分けの掃引の節を出す）。 */
+  gates?: string[];
 };
 
 /** ゲートの群分けを全部並べる。2 つ以上のゲートを入れた群だけを、群の中は `+`、群の間は `_` でつないで名前にし（例 h+n_a+c）、全部が 1 つずつの分け方は除く。減らす状態の少ない順、同じなら名前の順。 */

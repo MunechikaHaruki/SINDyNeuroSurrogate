@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { groupings, type Row } from './common.ts';
-import { build } from './schema.ts';
+import { build, groupPlans } from './schema.ts';
+import { claimTexts } from '../orchestrate/resolve.ts';
 import { CLAIMS, EXPERIMENTS } from './experiments.ts';
 
 const row = (grouping: string, method: string, gammas: (number | null)[], extra: Partial<Row> = {}): Row => ({
@@ -81,14 +82,14 @@ test('descriptions and claims carry no measured numbers', () => {
 test('an experiment runs the product of its methods, groupings and series, and a method can override its preset', () => {
   const plan = build(
     'test',
+    't',
     {
-      id: 't',
       description: 'test',
       groupings: ['h+n', 'a+c'],
       methods: ['kam', { name: 'pca2', from: 'pca-sindy', d: 2 }],
       series: ['traub-1comp-steady'],
     },
-    {},
+    [],
   );
   expect(plan.pairs.map(p => `${p.model}×${p.series}`)).toEqual([
     'kam.h+n×traub-1comp-steady',
@@ -110,4 +111,29 @@ test('a sweep spans every grouping of its gates', () => {
   expect(names).toContain('h+n_a+c');
   expect(names).toContain('h+c_n+a');
   expect(names[names.length - 1]).toBe('h+n+a+c');
+});
+
+test('a run takes the setup and replaces only the fields it writes, groupings as a whole', () => {
+  const doc = [
+    { description: 'test' },
+    {
+      setup: { methods: ['kam'], gates: ['h', 'n'], series: ['traub-1comp-steady'] },
+      runs: {
+        all: { description: 'all' },
+        one: { description: 'one', groupings: ['h+n'], series: ['traub-1comp-kistler'] },
+      },
+    },
+  ];
+  const [all, one] = groupPlans('t', doc, {}, {}).plans;
+  expect([all.groupings, all.gates, Object.keys(all.series)]).toEqual([['h+n'], ['h', 'n'], ['traub-1comp-steady']]);
+  expect([one.groupings, one.gates, Object.keys(one.series)]).toEqual([['h+n'], undefined, ['traub-1comp-kistler']]);
+  expect(() => groupPlans('t', [{ description: 'x', extra: 1 }, doc[1]], {}, {})).toThrow();
+});
+
+test('every claim carries the docstring of its judgement as its sentence', () => {
+  const texts = claimTexts();
+  for (const c of Object.values(CLAIMS)) {
+    expect(texts[c.name], `判定層の主張 ${c.name} に docstring が無い`).toBeTruthy();
+    expect(c.claim).toBe(texts[c.name]);
+  }
 });

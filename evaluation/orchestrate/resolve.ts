@@ -1,4 +1,4 @@
-// 宣言（config/ と ../experiments/）から、実験ごとに送る spec.json を組んで resolved/ に置く。実行（orchestrate.ts）は宣言を読まず、ここが書いた resolved/ だけを回す。
+// 宣言（config/ と ../experiments/）から、実験ごとに送る spec.json を組んで resolved/ に置く。判定層（config/<群>.checks.ts）の docstring から抜いた主張の一文も resolved/claims.json に置く（画面とテストが読む）。実行（orchestrate.ts）は宣言を読まず、ここが書いた resolved/ だけを回す。
 // パスは識別のための名前で、送るのは中身だけ：`<実験>/train/<学習 run>.json`、`<実験>/sim/<系列>/original.json`（元のモデル）と `<学習 run>.json`、`<実験>/bench/<GPU の実測>.json`。
 //   bun evaluation/orchestrate/resolve.ts write        resolved/ を今の宣言から書き直す
 //   … check                                          resolved/ が今の宣言と同じか（違えば挙げて終了コード 1。remote.sh up が送る前に見る）
@@ -6,12 +6,12 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { METHOD_NAMES, TESTS } from '../experiments/presets.ts';
-import { EXPERIMENTS, SERIES, TRAINS, seriesOf, trainOf, type ThemedPlan } from '../experiments/experiments.ts';
+import { EXPERIMENTS, SERIES, TRAINS, seriesOf, trainOf, type GroupedPlan } from '../experiments/experiments.ts';
 import { RESOLVED, benchSpec, hashOf, simSpec, trainSpec } from './orchestrate.ts';
 import type { Spec } from './spec.ts';
 
 /** 実験が送る spec.json を、resolved/ の下のパス → 中身で並べる。 */
-export function resolved(plan: ThemedPlan): Record<string, Spec> {
+export function resolved(plan: GroupedPlan): Record<string, Spec> {
   const files: Record<string, Spec> = {};
   const trainHash = (model: string) => hashOf(trainSpec(trainOf(model)));
   for (const m of plan.models) files[`${plan.id}/train/${m.name}.json`] = trainSpec(m.train);
@@ -27,9 +27,25 @@ export function resolved(plan: ThemedPlan): Record<string, Spec> {
   return files;
 }
 
-/** 全部の実験の、送る spec.json。 */
-function expected(): Record<string, Spec> {
-  const files: Record<string, Spec> = {};
+/** 判定層の項目（docstring のすぐ後に `'<主張の名前>': {`）から、主張の名前 → 主張の一文を抜き出す。 */
+export function claimTexts(dir = join(RESOLVED, '..', 'config')): Record<string, string> {
+  const texts: Record<string, string> = {};
+  const item = /\/\*\*((?:[^*]|\*(?!\/))*)\*\/\s*'([^']+)'\s*:\s*\{/g;
+  for (const file of readdirSync(dir)
+    .filter(f => f.endsWith('.checks.ts'))
+    .sort()) {
+    for (const [, doc, name] of readFileSync(join(dir, file), 'utf8').matchAll(item))
+      texts[name] = doc
+        .replace(/^\s*\* ?/gm, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+  }
+  return texts;
+}
+
+/** 全部の実験の、送る spec.json と主張の一文（claims.json）。 */
+function expected(): Record<string, unknown> {
+  const files: Record<string, unknown> = { 'claims.json': claimTexts() };
   for (const e of EXPERIMENTS) Object.assign(files, resolved(e));
   return files;
 }

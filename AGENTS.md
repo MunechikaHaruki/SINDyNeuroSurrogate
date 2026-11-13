@@ -13,9 +13,9 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 中身 | 場所 |
 | --- | --- |
 | 数値計算（元のモデル `neurosurrogate/physics/`、学習と置換 `neurosurrogate/surrogate/`、計算の入口 `neurosurrogate/run.py`、GPU の実測 `neurosurrogate/bench.py`） | `neurosurrogate/` |
-| 人が書いて確かめる宣言（プリセット `presets.json` の既定 `defaults`・仕方 `methods`・系列 `series`、実験 `<主題>.yaml`、決め打ちの実験 `<実験>.json`） | `config/` |
-| 宣言から組んだ、送る spec.json そのもの（生成物。手で書き換えない） | `resolved/` |
-| 宣言を読む部品（プリセットを混ぜる `presets.ts`、実験の形 `schema.ts`、解決済みの実験の JSON の形 `plan.ts`、判定 `checks.ts`、並べる `experiments.ts`） | `evaluation/experiments/` |
+| 人が書いて確かめる宣言（プリセット `presets.json` の既定 `defaults`・仕方 `methods`・系列 `series`、実験群ごとの実験層 `<群>.yaml` と判定層 `<群>.checks.ts`、決め打ちの実験 `<実験>.json`） | `config/` |
+| 宣言から組んだ、送る spec.json そのものと、判定層の docstring から抜いた主張の一文 `claims.json`（生成物。手で書き換えない） | `resolved/` |
+| 宣言を読む部品（プリセットを混ぜる `presets.ts`、実験の形 `schema.ts`、解決済みの実験の JSON の形 `plan.ts`、判定が使う共通の道具 `common.ts`、並べる `experiments.ts`） | `evaluation/experiments/` |
 | spec の形、宣言から送る spec を組む `resolve.ts`、resolved/ の spec を回す段取り `orchestrate.ts` | `evaluation/orchestrate/` |
 | 結果を読む指標と間引き、Traub の TS シミュレータ | `evaluation/read/`、`evaluation/traub/` |
 | 結果を小さい JSON で返す API と口の形 | `evaluation/serve/` |
@@ -107,8 +107,8 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
   `gates` は状態の名前 (Traub は M N C A H B S R Q XI、HH は M H N)。`compressor: kam` は学習しない KAM 縮約で、右辺も `kam`、`d` は 1。UDE は AE を一緒に学習するので、圧縮器は AE に限る。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
   既定値は fit 関数の署名だけが持ち、綴り違いは TypeError になる。
 - 値の既定は `config/presets.json` の `defaults` が持つ。値から導く既定 (教師は細胞と同じ、圧縮は書かなければ仕方の名前、右辺は KAM なら KAM でほかは SINDy、項ライブラリは細胞のゲートの項と `basis`) と、どの学習でも同じ形 (学習用の電流・全区画で学習) だけは `evaluation/experiments/presets.ts` が導く。散文の説明は持たない。テスト専用の学習 `_test_*` は presets.json に入れず `evaluation/experiments/test-trains.ts` に TS の辞書で書き、仕方に差分を重ね、どの実験にも入れない。
-- 実験は presets.json でなく `config/<主題>.yaml` に書く (主題は拡張 `mc`、改良の探索 `sweep`、性質の発見 `property`)。宣言の形は主題ごとに `evaluation/experiments/schema.ts` が zod で決め、主題の問いに合わせて自由に変えてよい。`schema.ts` が返すのは解決済みの実験 (学習 run と系列を値で持ち、回す組を並べたもの) だけで、段取り・API・画面はこれだけを読み、主題の形を知らない。仕方と系列はプリセットの名前か、名前を付けた差分 `{ "name", "from", ...差分 }` で指し、値を少し変えた実験はプリセットを足さずに差分で書く。学習 run の名前は `<仕方の名前>.<群分け>` で、同じ名前がほかの実験で違う中身を指せば落とす。今の主題の宣言は、実験ごとに何を回して何を見るかの一文 `description` と、群分け (`gates` か `groupings`) と仕方と、回す系列 `series` か回す前に書いた主張 (名前 → 読む系列 `on`、文 `claim`、絞る群分け) を持つ。回す系列は `series` と主張の `on` を合わせたもの。判定は探索の問い (改良の探索、性質の発見) にだけ置き、拡張 (`mc`) と GPU の実測には置かず、回す系列だけを書く。判定の関数は `evaluation/experiments/checks.ts` が主張の名前ごとに持ち、API の `claims` が runs から判定して返す。宣言をコードでなく YAML にするのは、コードを読まずに何を回して何を言うかを追えるようにするため（機械が書く runs と、値の presets.json は JSON）。主張と判定の線は結果を見てから書かない。
-- プリセットは組み合わせを展開する実験（群分けの掃引など）のためだけに使う。組み合わせを展開しない決め打ちの構成（発表の再現など）は、プリセットを通さず、解決済みの実験の形 (`evaluation/experiments/plan.ts` の `PlanJson`: 学習の設定と系列を値のまま) で `config/<実験>.json` に手で書き、主題 `fixed` が読む。一回限りの値をプリセットに足さない。
+- 実験は presets.json でなく、実験群ごとに `config/<群>.yaml`（実験層）に書く。今の実験群は単一区画 `1comp`、19 区画 `19comp`、GPU の実測 `gpu`。実験層は二つの文書で、一つ目は frontmatter（実験群の道案内の一文 `description` だけ）、二つ目はどの run にも共通の設定 `setup` と回す run の並び `runs`（run の名前 → 何を回して何を見るかの一文 `description` と、setup を置き換える欄）。欄は仕方 `methods`、群分け（全部の群分けを組むゲートの並び `gates` か、群分けの名前 `groupings`）、系列 `series`、GPU の実測 `benches`（測る系列。元のモデルと run の学習 run を全部、細胞の数 `cells` で、`ncu` なら Nsight Compute でも測る）。run に書いた欄だけが setup を置き換え、群分けは gates と groupings をまとめて置き換える。形は `evaluation/experiments/schema.ts` が zod で決め、返すのは解決済みの実験 (学習 run と系列を値で持ち、回す組を並べたもの) だけで、段取り・API・画面はこれだけを読み、実験層の形を知らない。仕方と系列はプリセットの名前か、名前を付けた差分 `{ "name", "from", ...差分 }` で指し、値を少し変えた実験はプリセットを足さずに差分で書く。学習 run の名前は `<仕方の名前>.<群分け>` で、同じ名前がほかの実験で違う中身を指せば落とす。主張と判定は実験層に書かず、実験群ごとの判定層 `config/<群>.checks.ts` に置く。判定層は主張の名前 → 項目（読む run、判定が読む系列、絞る群分け、判定の関数）を `checks` に並べ、主張の一文はその項目の docstring に書く (主張と線と判定を一か所にまとめるため)。主張の一文は `resolve.ts write` が docstring から抜き出して `resolved/claims.json` に置き、画面とテストはそれを読む。判定は API の `claims` が runs から出す。主張の無い実験群には判定層を置かない。主張と判定の線は結果を見てから書かない。
+- プリセットは組み合わせを展開する実験（群分けの掃引など）のためだけに使う。組み合わせを展開しない決め打ちの構成（発表の再現など）は、プリセットを通さず、解決済みの実験の形 (`evaluation/experiments/plan.ts` の `PlanJson`: 学習の設定と系列を値のまま) で `config/<実験>.json` に手で書き、`evaluation/experiments/experiments.ts` が読む。一回限りの値をプリセットに足さない。
 - 実際に送る spec.json は、そのままの中身で `resolved/` に生成物として置く (`bun evaluation/orchestrate/resolve.ts write`)。パスは識別のための名前で送らない: `<実験>/train/<学習 run>.json`、`<実験>/sim/<系列>/original.json` と `<学習 run>.json`、`<実験>/bench/<GPU の実測>.json`。段取り (`orchestrate.ts`) は宣言を読まず、`resolved/` の spec だけを回す (評価と GPU の実測は、指す学習 run と元のモデルを先に回す)。画面も仕事を `resolved/` のパスで起こす。宣言やプリセットを直したら write で書き直し、差分で、送る spec が何から何に変わったか (中身が変われば置き場が変わり、回し直しになる) を確かめる。古いと `orchestrate.test.ts` が落ち、`remote.sh` は送らない (`resolve.ts check`)。
 - 使わなくなった仕方と系列は消す。run は消さず、`list` の一覧に残る。
 - 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、読む側 (repo の外の図) が持つ。
@@ -134,7 +134,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - 依存の向きは `physics ← surrogate ← run`。表は `tests/test_conventions.py` の `_ALLOWED`。落ちたらテストを緩めずコードを直す。
 - `neurosurrogate/` は記録・設定の基盤（MLflow や Hydra）を知らない。run の保存形式を知るのは `run.py` だけ。Python は数値計算だけを持ち、指標は `evaluation/read/compare.ts`、段取りは TS が持つ。
 - この repo は図や画面を持たず、外の部品に依存しない。結果を読む図は repo の外に置き、この repo の TS を import して描く。
-- `evaluation/` には TS だけを役割ごとのディレクトリに番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。人が書く宣言（JSON と YAML）は `evaluation/` でなく `config/` に置き、コードを置かない。
+- `evaluation/` には TS だけを役割ごとのディレクトリに番号なしの名前で置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。人が書く宣言（JSON と YAML）と判定層（`<群>.checks.ts`）は `evaluation/` でなく `config/` に置き、ほかのコードは置かない。
 - `_` 始まりの名前は「そのファイルの外から参照しない」印（`tests/test_conventions.py` が見る）。
 - ファイルの持つものは各ファイルの先頭の docstring に書く。`neurosurrogate/AGENTS.md` は生成物なので手で書き換えない（`tests/test_design.py` が作り直し、古いと落ちる）。
 - 学習・評価と runs は ssh で入れる NVIDIA の GPU の機械（環境変数 `SINDY_HOST`）に置く。機械の名前と接続先は repo に書かない。run の meta.json の `env` に、回した backend・device・版・host・コード・イメージを書く。

@@ -85,7 +85,7 @@ export function fromJson(id: string, where: string, value: unknown, judges: Reco
   }
   const claims = p.claims.map(c => {
     const judge = judges[c.name];
-    if (!judge) throw new Error(`${where}：主張 ${c.name} の判定が checks.ts に無い`);
+    if (!judge) throw new Error(`${where}：主張 ${c.name} の判定が判定層に無い`);
     for (const s of c.series) if (!p.series[s]) throw new Error(`${where}：主張 ${c.name} の系列 ${s} が無い`);
     return { ...c, judge };
   });

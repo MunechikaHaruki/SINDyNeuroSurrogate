@@ -15,7 +15,7 @@ description: "研究コードの repo の入口。要約と、全体の地図・
 ```mermaid
 flowchart LR
   subgraph machine["計算する機械（Dockerfile のイメージ）"]
-    config["人が書く宣言<br/>config/（プリセットと実験）"]
+    config["人が書く宣言<br/>config/（プリセット、実験層、判定層）"]
     subgraph ts["evaluation/（TS）"]
       exp["宣言を読む・主張の判定<br/>experiments/"]
       orch["段取り<br/>orchestrate/"]
