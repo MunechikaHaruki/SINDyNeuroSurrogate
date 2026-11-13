@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # 計算する機械（ssh で入れる NVIDIA の GPU の機械。名前は SINDY_HOST）で、学習・評価と結果を返す API を回す。
-# 回線に出すのはコード（作業ツリーの差分）と指示と小さい JSON だけで、runs は計算する機械の ~/sindy/runs/ に置いたまま動かさない。
+# 送るのは計算する機械の側（remote/）と、両方が使う形（shared/）と、行きの JSON（resolved/）だけ。手元の側（local/。宣言を含む）は送らない。
+#返るのは API の小さい JSON だけで、runs は計算する機械の ~/sindy/runs/ に置いたまま動かさない。
 #   SINDY_HOST=<host> ./remote.sh up                  コードを送り、イメージを用意し、API（:8787）を立てる
-#   SINDY_HOST=<host> ./remote.sh run <段取りの引数>   コードを送ってから、段取り（orchestrate.ts。run <resolved/ の下のパス>...）を向こうで回す
+#   SINDY_HOST=<host> ./remote.sh run <段取りの引数>   コードを送ってから、段取り（remote/orchestrate/orchestrate.ts。run <resolved/ の下のパス>...）を向こうで回す
 #   SINDY_HOST=<host> ./remote.sh test                コードを送ってから、Python と TS のテストを向こうで回す
 #   SINDY_HOST=<host> ./remote.sh fetch <run の id>   run を 1 つ手元の runs/ へ持ってくる（回線の届かない所で見るとき）
-# イメージはベースと道具を digest で、Python の依存を uv.lock で固定した Dockerfile から向こうで作る。API はコードの書き換えで立ち直る（bun --watch）。
+# イメージはベースと道具を digest で、Python の依存を uv.lock で固定した remote/Dockerfile から向こうで作る。API はコードの書き換えで立ち直る（bun --watch）。
 set -euo pipefail
 shopt -s inherit_errexit # コマンド置換の中の失敗でも止まる
 
@@ -24,19 +25,20 @@ version() {
 
 sync() {
   # 向こうは resolved/ の spec だけを回すので、宣言から組み直したものと違えば送らない
-  (cd "$repo" && bun evaluation/orchestrate/resolve.ts check)
+  (cd "$repo" && bun local/experiments/resolve.ts check)
   version > "$repo/.code-version"
   ssh "$host" 'mkdir -p ~/sindy/code ~/sindy/runs'
-  # 送るのは git が見るものと、版を書いた .code-version だけ（.gitignore で外したものは版に入らないので送らない）
-  rsync -a --delete --include .code-version --filter=':- .gitignore' --exclude .git --exclude .venv "$repo/" "$host:sindy/code/"
+  # 送るのは remote/・shared/・resolved/ のうち git が見るものと、版を書いた .code-version だけ（.gitignore で外したものは版に入らないので送らない）。ほかは向こうから消す
+  rsync -a --delete --delete-excluded --include /.code-version --filter=':- .gitignore' \
+    --include '/remote/***' --include '/shared/***' --include '/resolved/***' --exclude '*' "$repo/" "$host:sindy/code/"
 }
 
 # イメージの名前は依存を決めるファイルのハッシュ。同じなら作り直さない。
 image() {
   local tag
-  tag=$(cat "$repo/Dockerfile" "$repo/pyproject.toml" "$repo/uv.lock" "$repo/package.json" "$repo/bun.lock" | shasum | cut -c1-12)
+  tag=$(cat "$repo/remote/Dockerfile" "$repo/remote/pyproject.toml" "$repo/remote/uv.lock" | shasum | cut -c1-12)
   if ! docker image inspect "$name:$tag" > /dev/null 2>&1; then
-    tar -C "$repo" -c Dockerfile pyproject.toml uv.lock package.json bun.lock | docker build -t "$name:$tag" - >&2
+    tar -C "$repo/remote" -c Dockerfile pyproject.toml uv.lock | docker build -t "$name:$tag" - >&2
   fi
   echo "$name:$tag"
 }
@@ -72,12 +74,12 @@ case ${1:-} in
   run)
     shift
     up
-    docker exec "$name" bun evaluation/orchestrate/orchestrate.ts "$@"
+    docker exec "$name" bun orchestrate/orchestrate.ts "$@"
     ;;
   test)
     up
     docker exec -e JAX_PLATFORMS=cpu "$name" /venv/bin/python -m pytest -q -p no:cacheprovider
-    docker exec "$name" bun test evaluation experiments
+    docker exec -w /code "$name" bun test ./remote ./shared
     ;;
   fetch)
     run=${2:?run の id（runs/ の下のパス）}

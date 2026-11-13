@@ -1,0 +1,9 @@
+{
+  "name": "sindy-neuro-surrogate",
+  "private": true,
+  "description": "TS が使う依存（ODE ソルバー、スキーマ）",
+  "dependencies": {
+    "odex": "3.0.0-rc.4",
+    "zod": "4.6.7"
+  }
+}

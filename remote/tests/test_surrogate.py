@@ -1,0 +1,429 @@
+"""サロゲートの学習・置換・書き出し。
+
+テスト専用の学習の設定は、手元の resolve.ts が書いた resolved/tests.json から読む
+(宣言は読まない)。
+"""
+
+import json
+from functools import cache
+from pathlib import Path
+from typing import Any
+
+import jax.numpy as jnp
+import numpy as np
+import pytest
+from sympy.core.function import AppliedUndef
+
+from neurosurrogate.physics.cells import CELLS, NETS, OpCost, column_cell
+from neurosurrogate.physics.kam import absorbed
+from neurosurrogate.physics.simulate import EvalSeries, SimSpec, potential, simulate
+from neurosurrogate.spikes import FEATURES, spike_features
+from neurosurrogate.surrogate.compress import AE, fit_ae
+from neurosurrogate.surrogate.model import (
+    Config,
+    Surrogate,
+    applicable,
+    describe,
+    fit,
+    rejections,
+    replace,
+    summary,
+    surrogate_cell,
+    surrogate_column_cell,
+)
+from neurosurrogate.surrogate.sindy import SINDy
+from neurosurrogate.surrogate.ude import UDE
+
+TESTS = Path(__file__).resolve().parents[2] / "resolved/tests.json"
+
+
+@cache
+def _tests() -> dict[str, Any]:
+    tests: dict[str, Any] = json.loads(TESTS.read_text())
+    return tests
+
+
+def declared_config(name: str) -> dict:
+    """テスト専用の学習の設定。"""
+    config: dict = _tests()[name]
+    return config
+
+
+@cache
+def fit_declared(name: str) -> Surrogate:
+    """テスト専用の学習を回す (決定的なので使い回す)。"""
+    return fit(declared_config(name))
+
+
+def _dc(target: str, value: float = 3.0, duration: float = 40.0) -> SimSpec:
+    return SimSpec(
+        target=target,
+        current_type="lin&steady",
+        dt=0.01,
+        current_params={"silence_duration": 10.0, "duration": duration, "value": value},
+    )
+
+
+# --- 恒等サロゲート: 圧縮を恒等、右辺を真の式にすると元のモデルと一致する --------
+
+
+class _Identity:
+    """encode・decode が素通しの圧縮器。"""
+
+    def __init__(self, gate_inits: list[float]) -> None:
+        self.gate_inits = gate_inits
+
+    def encode(self, x):
+        return x
+
+    def decode(self, z):
+        return z
+
+    def opcost(self) -> OpCost:
+        return OpCost()
+
+
+class _Exact:
+    """群のゲートの真の微分を返す右辺。ゲートは自分の値と V だけで動くものに限る。"""
+
+    def __init__(self, cell: str, gates: list[str], params) -> None:
+        derivs = CELLS[cell].derivs
+        assert derivs is not None
+        self.derivs = [derivs[g] for g in gates]
+        self.gates = gates
+        self.params = params
+
+    def rhs(self):
+        def dz(z, v):
+            s = {g: z[j] for j, g in enumerate(self.gates)}
+            return jnp.stack([d(self.params, v, s) for d in self.derivs])
+
+        return dz
+
+    def opcost(self) -> OpCost:
+        return OpCost()
+
+
+def _identity_surrogate(cell: str, groups: list[list[str]]) -> Surrogate:
+    data = {"target": cell, "current_type": "train", "dt": 0.01}
+    config = Config.from_dict(
+        {
+            "cell": cell,
+            "form": "hybrid",
+            "data": data,
+            "groups": [{"gates": g, "compressor": "pca", "d": len(g)} for g in groups],
+        }
+    )
+    node = NETS[cell].nodes[0]
+    init = node.init
+    parts = []
+    for gates in groups:
+        inits = [init[1 + CELLS[cell].states.index(g)] for g in gates]
+        parts.append((_Identity(inits), _Exact(cell, gates, node.resolved_params)))
+    return Surrogate(config, parts)
+
+
+@pytest.mark.parametrize(
+    ("cell", "groups"),
+    [
+        ("hh", [["M", "H", "N"]]),
+        ("hh", [["H"], ["N", "M"]]),
+        ("traub", [["M", "N", "C", "A", "H", "B", "S", "R"]]),
+        ("traub", [["M", "N", "C", "A", "H", "B"]]),
+        ("traub", [["N", "H"]]),
+        ("traub", [["N", "H"], ["A", "C"], ["B"]]),
+    ],
+)
+def test_any_grouping_with_exact_parts_reproduces_the_original(cell, groups) -> None:
+    """どんな群分けでも、恒等の圧縮と真の右辺なら元のモデルと同じ電位になる。
+    群の並べ直しと、元の式で解く状態の組み立てにずれが無いことの担保。"""
+    s = _identity_surrogate(cell, groups)
+    spec = _dc(cell, value=10.0)
+    original = potential(simulate(spec.run_input()), 0)
+    replaced = potential(simulate(replace(s, spec.run_input(), ["soma"])), 0)
+    np.testing.assert_allclose(replaced, original, rtol=0, atol=1e-9)
+
+
+# --- 宣言したテスト専用の学習 ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "_test_hh_sindy",
+        "_test_hh_hybrid",
+        "_test_hh_ae",
+        "_test_traub_hybrid",
+        "_test_traub_hybrid_sr_physics",
+        "_test_traub_hybrid_hn",
+        "_test_traub_two_groups",
+        "_test_traub_kam",
+    ],
+)
+def test_declared_fit_and_replace_finitely(name: str) -> None:
+    """学習した入力で置き換えて回すと有限に走る (短い学習の質までは見ない)。"""
+    s = fit_declared(name)
+    run = replace(s, s.config.data.run_input(), ["soma"])
+    assert np.isfinite(potential(simulate(run), 0)).all()
+    cell = surrogate_cell(s)
+    n_latent = sum(group.d for group in s.config.groups)
+    assert cell.states == [f"z{i + 1}" for i in range(n_latent)] + (
+        [] if s.config.form == "sindy" else s.config.physics
+    )
+
+
+def test_library_gates_keep_only_those_rates() -> None:
+    rhs = fit_declared("_test_traub_hybrid_hn").parts[0][1]
+    assert isinstance(rhs, SINDy)
+    rates = {str(f.func) for e in rhs.feature_exprs for f in e.atoms(AppliedUndef)}
+    assert rates == {"alpha_n_traub", "beta_n_traub", "alpha_h_traub", "beta_h_traub"}
+
+
+def test_each_group_keeps_only_its_own_rates() -> None:
+    """gates を書かなければ、群の右辺のレート項は群の状態のものだけになる。"""
+    (_, first), (_, second) = fit_declared("_test_traub_two_groups").parts
+    for rhs, gates in [(first, "nh"), (second, "ac")]:
+        assert isinstance(rhs, SINDy)
+        rates = {str(f.func) for e in rhs.feature_exprs for f in e.atoms(AppliedUndef)}
+        assert rates == {f"{k}_{g}_traub" for g in gates for k in ["alpha", "beta"]}
+
+
+def test_two_groups_keep_their_latents_apart() -> None:
+    """群の右辺は自分の潜在と V だけを使い、潜在の名前は通し番号。"""
+    s = fit_declared("_test_traub_two_groups")
+    (_, first), (_, second) = s.parts
+    assert [str(t) for t in first.targets] == ["z1"]
+    assert [str(t) for t in second.targets] == ["z2"]
+    assert all("z2" not in str(e) for e in first.feature_exprs)
+    assert s.config.physics == ["M", "B", "S", "R", "Q", "XI"]
+
+
+def test_kam_keeps_the_rest_state_and_the_spike_count() -> None:
+    """KAM は静止状態で ψ = V かつ動かず、DC 入力で元のモデルと同じ回数発火する。"""
+    s = fit_declared("_test_traub_kam")
+    spec = _dc("traub", value=5.0, duration=100.0)
+    rest = CELLS["traub"].inits(spec.net.nodes[0].resolved_params)
+    for (compressor, rhs), group in zip(s.parts, s.config.groups, strict=True):
+        assert compressor.gate_inits == pytest.approx([rest[0]], abs=1e-6)
+        state = dict(zip(CELLS["traub"].states, rest[1:], strict=True))
+        p = spec.net.nodes[0].resolved_params
+        assert float(rhs.rhs()(jnp.asarray([rest[0]]), rest[0], state, p)[0]) == (
+            pytest.approx(0.0, abs=1e-9)
+        )
+        gates = np.array([[state[g] for g in group.gates]])
+        decoded = np.asarray(compressor.decode(jnp.asarray(compressor.encode(gates))))
+        assert decoded == pytest.approx(gates, abs=1e-6)
+
+    def count(v: np.ndarray) -> int:
+        return int(np.sum((v[:-1] < 0) & (v[1:] >= 0)))
+
+    original = potential(simulate(spec.run_input()), 0)
+    reduced = potential(simulate(replace(s, spec.run_input(), ["soma"])), 0)
+    assert count(original) > 0 and count(reduced) == count(original)
+
+
+def test_absorbed_gate_follows_the_membrane_and_drops_its_state() -> None:
+    """m を膜電位へ吸収すると状態が 1 つ減り、初期値では元と同じ dV/dt で ψ は動かず、
+    DC 入力で発火する。"""
+    config = {**declared_config("_test_traub_kam"), "absorbed": ["M"]}
+    s = fit(config)
+    assert "M" not in s.config.physics
+    cell, full = surrogate_cell(s), CELLS["traub"]
+    assert len(cell.states) == len(full.states) - 1 - sum(
+        len(g.gates) - 1 for g in s.config.groups
+    )
+    spec = _dc("traub", value=5.0, duration=100.0)
+    p = spec.net.nodes[0].resolved_params
+    init = cell.inits(p)
+    dv, dx = cell.kernel(p, 0.0, init[0], jnp.asarray(init[1:]))
+    rest = full.inits(p)
+    dv_full, _ = full.kernel(p, 0.0, rest[0], jnp.asarray(rest[1:]))
+    assert float(dv) == pytest.approx(float(dv_full), abs=1e-6)
+    assert np.asarray(dx) == pytest.approx(0.0, abs=1e-6)
+    moved = dict(zip(full.states, rest[1:], strict=True)) | absorbed(
+        "traub", ["M"], p, -30.0
+    )
+    dv_moved, _ = cell.kernel(p, 0.0, -30.0, jnp.asarray(init[1:]))
+    dv_full, _ = full.kernel(
+        p, 0.0, -30.0, jnp.asarray([moved[n] for n in full.states])
+    )
+    assert float(dv_moved) == pytest.approx(float(dv_full), rel=1e-5)
+    kept = surrogate_cell(fit(declared_config("_test_traub_kam"))).opcost
+    steady = full.rates["M"] + OpCost(pm=1, div=1)  # type: ignore[index]
+    assert cell.opcost + full.costs["M"] == kept + steady  # type: ignore[index]
+    reduced = potential(simulate(replace(s, spec.run_input(), ["soma"])), 0)
+    assert int(np.sum((reduced[:-1] < 0) & (reduced[1:] >= 0))) > 0
+    with pytest.raises(ValueError, match="重なって"):
+        Config.from_dict({**config, "absorbed": [s.config.groups[0].gates[0]]})
+    with pytest.raises(ValueError, match="電位だけ"):
+        Config.from_dict({**config, "absorbed": ["XI"]})
+
+
+def test_config_rejects_bad_groups() -> None:
+    base = declared_config("_test_traub_hybrid")
+    group = base["groups"][0]
+    for groups, message in [
+        ([{**group, "gates": ["X"]}], "無い状態"),
+        ([{**group, "gates": ["N"]}, {**group, "gates": ["N", "H"]}], "重なって"),
+        ([{**group, "rhs": "ude"}], "compressor=ae"),
+        ([{**group, "compressor": "kam"}], "両方を kam"),
+        (
+            [{**group, "gates": ["N"], "compressor": "kam", "rhs": "kam", "d": 1}],
+            "2 つ以上",
+        ),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            Config.from_dict({**base, "groups": groups})
+    with pytest.raises(ValueError, match="全状態"):
+        Config.from_dict({**base, "form": "sindy"})
+
+
+def test_ude_updates_the_autoencoder() -> None:
+    s = fit_declared("_test_traub_ude")
+    ae, rhs = s.parts[0]
+    assert isinstance(ae, AE) and isinstance(rhs, UDE)
+    gates = s.training_data["vars"].sel(gate=True, comp_id=0).to_numpy()[:, :8]
+    before = fit_ae(gates, 3, epochs=20)
+    assert not np.allclose(ae.dec_params["W2"], before.dec_params["W2"])
+    assert len(ae.gate_inits) == 3
+
+
+# --- 置換の可否 -----------------------------------------------------------------
+
+
+def test_hybrid_transplants_to_every_traub19_compartment() -> None:
+    """hybrid は params を入力で受けるので、密度の違う全区画へ当てられる。"""
+    s = fit_declared("_test_traub_hybrid_hn")
+    net = NETS["traub19"]
+    assert rejections(s.config, net, net.names) == []
+    spec = SimSpec(target="traub19", current_type="train", dt=0.01)
+    v = potential(simulate(replace(s, spec.run_input(), net.names)), 8)
+    assert np.isfinite(v).all()
+
+
+def test_rejections_name_each_target_and_reason() -> None:
+    sindy = fit_declared("_test_hh_sindy")  # form=sindy は params が一致する区画だけ
+    traub = fit_declared("_test_traub_hybrid")
+    assert "存在しない" in rejections(sindy.config, NETS["hh"], ["nowhere"])[0]
+    assert "種類" in rejections(traub.config, NETS["hh"], ["soma"])[0]
+    hh_series = EvalSeries(_dc("hh"), ("soma",))
+    assert applicable(sindy.config, hh_series)
+    assert not applicable(sindy.config, EvalSeries(_dc("hh"), ()))
+    with pytest.raises(ValueError, match="名前で挙げる"):
+        replace(sindy, _dc("hh").run_input(), [])
+
+
+def test_replace_swaps_only_the_named_compartments() -> None:
+    s = fit_declared("_test_traub_hybrid")
+    run = replace(
+        s,
+        SimSpec(target="traub19", current_type="train", dt=0.01).run_input(),
+        ["soma", "c09"],
+    )
+    swapped = [c.name for c in run.net.nodes if c.type.name != "traub"]
+    assert swapped == ["soma", "c09"]
+    assert [c.area for c in run.net.nodes] == [c.area for c in NETS["traub19"].nodes]
+
+
+# --- 書き出し -------------------------------------------------------------------
+
+
+def test_description_survives_reload_and_lines_up(tmp_path: Path) -> None:
+    s = fit_declared("_test_hh_sindy")
+    s.save(tmp_path)
+    reloaded = Surrogate.load(tmp_path)
+    assert reloaded.config == s.config
+    model, fits = describe(reloaded)
+    json.dumps(model)
+    assert model["closure"]["kind"] == "sindy"
+    assert np.shape(model["closure"]["xi"]) == (
+        len(model["closure"]["targets"]),
+        len(model["closure"]["features"]),
+    )
+    n_time = reloaded.training_data.sizes["time"]
+    comp_fit = fits[0]
+    assert comp_fit.x.shape == (n_time, len(model["x_names"]))
+    assert comp_fit.latent.shape == (n_time, len(model["latent_names"]))
+    compressor = s.parts[0][0]
+    assert float(np.mean(comp_fit.recon_rmse**2)) == pytest.approx(
+        compressor.reconstruction["reconstruction_mse"]
+    )
+
+
+def test_two_groups_describe_every_group() -> None:
+    model, fits = describe(fit_declared("_test_traub_two_groups"))
+    assert [g["gates"] for g in model["groups"]] == [["N", "H"], ["A", "C"]]
+    assert model["x_names"] == model["latent_names"] == ["z1", "z2"]
+    assert fits[0].latent.shape[1] == 2
+
+
+def test_summary_counts_the_decode_and_the_physics() -> None:
+    s = fit_declared("_test_traub_hybrid_hn")
+    result = summary(s)
+    assert {"nnz", "pca/reconstruction_mse", "cost/surr-orig/mul"} <= set(result)
+    compressor, rhs = s.parts[0]
+    cell = CELLS["traub"]
+    assert cell.costs is not None and cell.dv_cost is not None
+    expected = compressor.opcost() + rhs.opcost() + cell.dv_cost
+    for state in s.config.physics:
+        expected = expected + cell.costs[state]
+    assert surrogate_cell(s).opcost == expected
+
+
+def test_spike_features_count_the_spikes_of_one_trace() -> None:
+    spec = _dc("hh", value=10.0)
+    v = potential(simulate(spec.run_input()), 0)
+    features = spike_features(v, spec.dt)
+    assert set(features) == set(FEATURES)
+    peaks = features["peak_indices"]
+    assert len(peaks) > 0 and len(features["peak_voltage"]) == len(peaks)
+    assert spike_features(np.full_like(v, -65.0), spec.dt)["peak_indices"] == []
+
+
+def test_resolved_series_resolve() -> None:
+    """送る評価の spec (resolved/ の sim) は、電流と置換する区画まで名前で解ける。"""
+    for file in sorted(TESTS.parent.glob("*/sim/*/*.json")):
+        sim = json.loads(file.read_text())
+        targets = sim["model"]["replace_targets"] if sim["model"] else []
+        series = EvalSeries.from_dict({**sim["input"], "replace_targets": targets})
+        for point in series.points:
+            assert len(point.current()) > 0
+        assert set(series.replace_targets) <= set(series.spec.net.names)
+
+
+@pytest.mark.parametrize("name", ["_test_traub_kam", "_test_traub_two_groups"])
+def test_the_column_kernel_matches_the_cell_kernel(name: str) -> None:
+    """GPU 用の右辺 (名前 → 値) は、置換に使う区画の右辺と同じ値を返す。"""
+    s = fit_declared(name)
+    spec = _dc("traub", value=5.0, duration=50.0)
+    run = replace(s, spec.run_input(), ["soma"])
+    comp = run.net.nodes[0]
+    column = surrogate_column_cell(s, comp)
+    x = np.asarray(comp.init[1:], dtype=np.float64) * 1.01
+    v, u = float(comp.init[0]) + 3.0, 5.0
+    dv, ds = comp.type.kernel(comp.resolved_params, u, v, jnp.asarray(x))
+    states = dict(zip(column.states, x, strict=True))
+    cdv, cds = column.kernel(comp.resolved_params, u, v, states)
+    assert float(cdv) == pytest.approx(float(dv), rel=1e-12)
+    got = [float(cds[n]) for n in column.states]
+    assert got == pytest.approx(np.asarray(ds).tolist(), rel=1e-10, abs=1e-14)
+    assert column.latent == column.states[: len(column.latent)]
+    assert column.latent
+    # 作り直すゲートは持ち越さない
+    assert column.decoded and not set(column.decoded) & set(column.states)
+
+
+def test_the_original_column_kernel_matches_the_cell_kernel() -> None:
+    """元のモデルの GPU 用の右辺は、区画の右辺と同じ値を返し、潜在を持たない。"""
+    comp = NETS["traub"].nodes[0]
+    column = column_cell(comp)
+    x = np.asarray(comp.init[1:], dtype=np.float64)
+    dv, ds = comp.type.kernel(comp.resolved_params, 5.0, -50.0, jnp.asarray(x))
+    states = dict(zip(column.states, x, strict=True))
+    cdv, cds = column.kernel(comp.resolved_params, 5.0, -50.0, states)
+    assert float(cdv) == pytest.approx(float(dv), rel=1e-12)
+    assert [float(cds[n]) for n in column.states] == pytest.approx(
+        np.asarray(ds).tolist()
+    )
+    assert column.latent == []
+    assert column.decoded == []

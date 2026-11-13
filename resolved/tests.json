@@ -1,0 +1,438 @@
+{
+  "_test_hh_sindy": {
+    "cell": "hh",
+    "form": "sindy",
+    "data": {
+      "target": "hh",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 180
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "M",
+          "H",
+          "N"
+        ],
+        "compressor": "pca",
+        "d": 3,
+        "rhs": "sindy",
+        "compressor_params": {},
+        "rhs_params": {
+          "library_specs": [
+            {
+              "type": "hh_gate_forward"
+            },
+            {
+              "type": "hh_gate_backward"
+            },
+            {
+              "type": "hh_gate_forward_product"
+            },
+            {
+              "type": "hh_gate_backward_product"
+            },
+            {
+              "type": "basis"
+            }
+          ]
+        }
+      }
+    ],
+    "train_comp": null
+  },
+  "_test_hh_hybrid": {
+    "cell": "hh",
+    "form": "hybrid",
+    "data": {
+      "target": "hh",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 180
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "M",
+          "H",
+          "N"
+        ],
+        "compressor": "pca",
+        "d": 3,
+        "rhs": "sindy",
+        "compressor_params": {},
+        "rhs_params": {
+          "library_specs": [
+            {
+              "type": "hh_gate_forward"
+            },
+            {
+              "type": "hh_gate_backward"
+            },
+            {
+              "type": "hh_gate_forward_product"
+            },
+            {
+              "type": "hh_gate_backward_product"
+            },
+            {
+              "type": "basis"
+            }
+          ]
+        }
+      }
+    ],
+    "train_comp": null
+  },
+  "_test_hh_ae": {
+    "cell": "hh",
+    "form": "hybrid",
+    "data": {
+      "target": "hh",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 180
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "M",
+          "H",
+          "N"
+        ],
+        "compressor": "ae",
+        "d": 2,
+        "rhs": "sindy",
+        "compressor_params": {
+          "epochs": 20
+        },
+        "rhs_params": {
+          "library_specs": [
+            {
+              "type": "hh_gate_forward"
+            },
+            {
+              "type": "hh_gate_backward"
+            },
+            {
+              "type": "hh_gate_forward_product"
+            },
+            {
+              "type": "hh_gate_backward_product"
+            },
+            {
+              "type": "basis"
+            }
+          ]
+        }
+      }
+    ],
+    "train_comp": null
+  },
+  "_test_traub_hybrid": {
+    "cell": "traub",
+    "form": "hybrid",
+    "data": {
+      "target": "traub",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 180
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "M",
+          "N",
+          "C",
+          "A",
+          "H",
+          "B",
+          "S",
+          "R"
+        ],
+        "compressor": "pca",
+        "d": 5,
+        "rhs": "sindy",
+        "compressor_params": {},
+        "rhs_params": {
+          "library_specs": [
+            {
+              "type": "traub_gate_forward"
+            },
+            {
+              "type": "traub_gate_backward"
+            },
+            {
+              "type": "traub_gate_forward_product"
+            },
+            {
+              "type": "traub_gate_backward_product"
+            },
+            {
+              "type": "basis"
+            }
+          ]
+        }
+      }
+    ],
+    "train_comp": null
+  },
+  "_test_traub_hybrid_sr_physics": {
+    "cell": "traub",
+    "form": "hybrid",
+    "data": {
+      "target": "traub",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 180
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "M",
+          "N",
+          "C",
+          "A",
+          "H",
+          "B"
+        ],
+        "compressor": "pca",
+        "d": 5,
+        "rhs": "sindy",
+        "compressor_params": {},
+        "rhs_params": {
+          "library_specs": [
+            {
+              "type": "traub_gate_forward",
+              "gates": "msncahrb"
+            },
+            {
+              "type": "traub_gate_backward",
+              "gates": "msncahrb"
+            },
+            {
+              "type": "traub_gate_forward_product",
+              "gates": "msncahrb"
+            },
+            {
+              "type": "traub_gate_backward_product",
+              "gates": "msncahrb"
+            },
+            {
+              "type": "basis"
+            }
+          ]
+        }
+      }
+    ],
+    "train_comp": null
+  },
+  "_test_traub_hybrid_hn": {
+    "cell": "traub",
+    "form": "hybrid",
+    "data": {
+      "target": "traub",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 180
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "N",
+          "H"
+        ],
+        "compressor": "pca",
+        "d": 1,
+        "rhs": "sindy",
+        "compressor_params": {},
+        "rhs_params": {
+          "library_specs": [
+            {
+              "type": "traub_gate_forward"
+            },
+            {
+              "type": "traub_gate_backward"
+            },
+            {
+              "type": "traub_gate_forward_product"
+            },
+            {
+              "type": "traub_gate_backward_product"
+            },
+            {
+              "type": "basis"
+            }
+          ]
+        }
+      }
+    ],
+    "train_comp": null
+  },
+  "_test_traub_two_groups": {
+    "cell": "traub",
+    "form": "hybrid",
+    "data": {
+      "target": "traub",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 180
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "N",
+          "H"
+        ],
+        "compressor": "pca",
+        "d": 1,
+        "rhs": "sindy",
+        "compressor_params": {},
+        "rhs_params": {
+          "library_specs": [
+            {
+              "type": "traub_gate_forward"
+            },
+            {
+              "type": "traub_gate_backward"
+            },
+            {
+              "type": "traub_gate_forward_product"
+            },
+            {
+              "type": "traub_gate_backward_product"
+            },
+            {
+              "type": "basis"
+            }
+          ]
+        }
+      },
+      {
+        "gates": [
+          "A",
+          "C"
+        ],
+        "compressor": "pca",
+        "d": 1,
+        "rhs": "sindy",
+        "compressor_params": {},
+        "rhs_params": {
+          "library_specs": [
+            {
+              "type": "traub_gate_forward"
+            },
+            {
+              "type": "traub_gate_backward"
+            },
+            {
+              "type": "traub_gate_forward_product"
+            },
+            {
+              "type": "traub_gate_backward_product"
+            },
+            {
+              "type": "basis"
+            }
+          ]
+        }
+      }
+    ],
+    "train_comp": null
+  },
+  "_test_traub_kam": {
+    "cell": "traub",
+    "form": "hybrid",
+    "data": {
+      "target": "traub",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 180
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "N",
+          "H"
+        ],
+        "compressor": "kam",
+        "d": 1,
+        "rhs": "kam",
+        "compressor_params": {},
+        "rhs_params": {}
+      },
+      {
+        "gates": [
+          "A",
+          "C"
+        ],
+        "compressor": "kam",
+        "d": 1,
+        "rhs": "kam",
+        "compressor_params": {},
+        "rhs_params": {}
+      }
+    ],
+    "train_comp": null
+  },
+  "_test_traub_ude": {
+    "cell": "traub",
+    "form": "hybrid",
+    "data": {
+      "target": "traub19",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 180
+      }
+    },
+    "groups": [
+      {
+        "gates": [
+          "M",
+          "N",
+          "C",
+          "A",
+          "H",
+          "B",
+          "S",
+          "R"
+        ],
+        "compressor": "ae",
+        "d": 3,
+        "rhs": "ude",
+        "compressor_params": {
+          "epochs": 20
+        },
+        "rhs_params": {
+          "epochs": 20,
+          "lr": 0.003,
+          "window": 20,
+          "batch": 16,
+          "hidden": 32,
+          "depth": 2,
+          "w_recon": 1,
+          "pull": 20
+        }
+      }
+    ],
+    "train_comp": null
+  }
+}
