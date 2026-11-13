@@ -1,6 +1,6 @@
 // 計算する機械の上で runs の隣に立ち、結果を小さい JSON にして返す API（Bun.serve、POST /<口>、既定のポート 8787）。口の形は api.ts。
 // 波形は回線に出さず、間引いた線・軌跡・分布・指標にしてから返す。run は書き換わらないので、読んだファイルと指標は覚えておく。
-// 宣言は読まない。知っているのは resolved/ と runs だけで、主張の判定は手元（local/experiments/judge.ts）が、返した量から出す。
+// 宣言は読まない。知っているのは resolved/ と runs だけ。
 // 回すのは段取り（orchestrate.ts）の関数だけで、任意のコマンドは通さない。runs の置き場は SINDY_RUNS（イメージでは /runs）。
 //   bun remote/serve/serve.ts
 import { readFileSync } from 'node:fs';

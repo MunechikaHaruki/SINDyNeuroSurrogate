@@ -2,7 +2,7 @@
 // 決め打ちの構成（組み合わせを展開しない実験）は、この形の config/<実験>.json を手で書く。送る spec.json は、どの実験の分も隣の resolve.ts が resolved/ にそのまま書き出す。
 import { z } from 'zod';
 import type { SurrogateConfig } from '../../shared/spec.ts';
-import type { Judge, Plan, Bench, Series } from './common.ts';
+import type { Plan, Bench, Series } from './common.ts';
 
 const SimSpec = z.strictObject({
   target: z.string(),
@@ -58,19 +58,11 @@ export const PlanJson = z.strictObject({
       ncu: z.boolean(),
     }),
   ),
-  claims: z.array(
-    z.strictObject({
-      name: z.string(),
-      claim: z.string(),
-      series: z.array(z.string()).nonempty(),
-      groupings: z.array(z.string()).optional(),
-    }),
-  ),
 });
 export type PlanJson = z.infer<typeof PlanJson>;
 
 /** 解決済みの実験の JSON を形に当て、名前の参照を確かめて実験にする。誤りはどこの何かが分かる一文にする。 */
-export function fromJson(id: string, where: string, value: unknown, judges: Record<string, Judge>): Plan {
+export function fromJson(id: string, where: string, value: unknown): Plan {
   const result = PlanJson.safeParse(value);
   if (!result.success) throw new Error(`${where}：${z.prettifyError(result.error)}`);
   const p = result.data;
@@ -83,12 +75,6 @@ export function fromJson(id: string, where: string, value: unknown, judges: Reco
     if (b.model !== null && !trains.has(b.model)) throw new Error(`${where}：GPU の実測 ${b.name} の学習 run が無い`);
     if (!p.series[b.series]) throw new Error(`${where}：GPU の実測 ${b.name} の系列が無い`);
   }
-  const claims = p.claims.map(c => {
-    const judge = judges[c.name];
-    if (!judge) throw new Error(`${where}：主張 ${c.name} の判定が判定層に無い`);
-    for (const s of c.series) if (!p.series[s]) throw new Error(`${where}：主張 ${c.name} の系列 ${s} が無い`);
-    return { ...c, judge };
-  });
   return {
     id,
     description: p.description,
@@ -103,6 +89,5 @@ export function fromJson(id: string, where: string, value: unknown, judges: Reco
     series: p.series as Record<string, Series>,
     pairs: p.pairs,
     benches: p.benches as Bench[],
-    claims,
   };
 }

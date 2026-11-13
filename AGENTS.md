@@ -14,12 +14,12 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 | 中身 | 場所 |
 | --- | --- |
-| 人が書いて確かめる宣言（プリセット `presets.json` の既定 `defaults`・仕方 `methods`・系列 `series`、実験群ごとの実験層 `<群>.yaml` と判定層 `<群>.checks.ts`、決め打ちの実験 `<実験>.json`） | `local/config/` |
-| 手元の TS。宣言を読む部品（プリセットを混ぜる `presets.ts`、実験の形 `schema.ts`、解決済みの実験の JSON の形 `plan.ts`、判定が使う共通の道具 `common.ts`、並べる `experiments.ts`）と、送る spec を組んで `resolved/` に書く `resolve.ts`、返った量から主張を判定する `judge.ts` | `local/experiments/` |
+| 人が書いて確かめる宣言（プリセット `presets.json` の既定 `defaults`・仕方 `methods`・系列 `series`、実験群ごとの実験層 `<群>.yaml`、決め打ちの実験 `<実験>.json`） | `local/config/` |
+| 手元の TS。宣言を読む部品（プリセットを混ぜる `presets.ts`、実験の形 `schema.ts`、解決済みの実験の JSON の形 `plan.ts`、宣言の形と図が使う物差し `common.ts`、並べる `experiments.ts`）と、送る spec を組んで `resolved/` に書く `resolve.ts` | `local/experiments/` |
 | 学習 run の中身（model.json）の表示の変換 | `local/read/` |
 | Traub の TS シミュレータ（図と、Python との基準値のテスト） | `local/traub/` |
 | 手元の TS の npm の依存 | `local/package.json`、`local/bun.lock` |
-| 宣言から組んだ、送る spec.json そのものと、判定層の docstring から抜いた主張の一文 `claims.json`、テスト専用の学習の設定 `tests.json`（生成物。手で書き換えない） | `resolved/` |
+| 宣言から組んだ、送る spec.json そのものと、テスト専用の学習の設定 `tests.json`（生成物。手で書き換えない） | `resolved/` |
 | 手元と計算する機械が受け渡す形（行きの spec と run の一覧と状態 `spec.ts`、spec の鍵 `hash.ts`、API の口と返事 `api.ts`、run のファイルの形と読み方 `runs.ts`） | `shared/` |
 | 数値計算の Python（元のモデル `remote/neurosurrogate/physics/`、学習と置換 `remote/neurosurrogate/surrogate/`、計算の入口 `remote/neurosurrogate/run.py`、GPU の実測 `remote/neurosurrogate/bench.py`）とそのテスト | `remote/neurosurrogate/`、`remote/tests/` |
 | `resolved/` の spec を回す段取り | `remote/orchestrate/` |
@@ -42,19 +42,19 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 手元（`local/`）と計算する機械（`remote/`）は、JSON だけを受け渡す。図は `README.md` にある。
 
 ```
-手元 local/:       config/ → experiments/resolve.ts → resolved/ ──┐      ┌─→ experiments/judge.ts → repo の外の画面
+手元 local/:       config/ → experiments/resolve.ts → resolved/ ──┐      ┌─→ repo の外の画面
                                                              │ 行き   │ 帰り
 計算する機械 remote/:          orchestrate/ → neurosurrogate/ → runs → serve/
 ```
 
 - `local/` と `remote/` は互いのコードを import せず、両方が使うのは `shared/` だけ（`local/experiments/boundary.test.ts`）。手元が `remote/` から読むのは、Python と TS が同じ行から式を組むレートの式の JSON（データ）だけ。
-- 計算する機械へ送るのは `remote/`・`shared/`・`resolved/` だけで、`local/`（宣言）は送らない（`remote.sh`）。計算する機械は宣言を知らず、`resolved/` の spec を回し、run の量を返すだけ。主張の判定は手元が出し、判定の物差し（Γ の許容幅 Δ と、時刻まで合うとみなす線）も手元（`local/experiments/common.ts`）が持つ。Δ は API の `series` の頼み方で渡す。`shared/` に置くのは両方が使う形だけで、宣言の形（`Series`・`Train`・`Bench`）は `local/experiments/common.ts` が持つ。
+- 計算する機械へ送るのは `remote/`・`shared/`・`resolved/` だけで、`local/`（宣言）は送らない（`remote.sh`）。計算する機械は宣言を知らず、`resolved/` の spec を回し、run の量を返すだけ。比べる物差し（Γ の許容幅 Δ と、時刻まで合うとみなす線）は手元（`local/experiments/common.ts`）が持つ。Δ は API の `series` の頼み方で渡す。`shared/` に置くのは両方が使う形だけで、宣言の形（`Series`・`Train`・`Bench`）は `local/experiments/common.ts` が持つ。
 
 | 渡るもの | 書く側 | 読む側 |
 | --- | --- | --- |
 | 実験の条件（spec.json。`resolved/<実験>/` に置いたものをそのまま渡す）、テスト専用の学習の設定（`resolved/tests.json`） | 手元（`local/experiments/resolve.ts`） | 段取りが Python へ、pytest |
 | 実験の結果（runs/） | Python | 計算する機械の API |
-| 実験ごとの状態、間引いた線と指標、run の小さい JSON（口の形は `shared/api.ts`、run のファイルの形は `shared/runs.ts`） | 計算する機械の API | 手元（判定は `local/experiments/judge.ts`）と画面 |
+| 実験ごとの状態、間引いた線と指標、run の小さい JSON（口の形は `shared/api.ts`、run のファイルの形は `shared/runs.ts`） | 計算する機械の API | 手元の画面 |
 | ゲートのレートの式（physics/ の JSON） | 人 | Python と TS |
 
 ## 用語
@@ -117,13 +117,13 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 
 ### 設定ファイル
 
-- 学習の設定も評価の条件も `local/config/presets.json` に書く。値は既定 (`defaults`) も含めてすべて JSON に出し、コードは混ぜて形を確かめるだけにする (JSON だけで何を回すかが分かるように)。学習 run は 縮約の仕方 × 群分け で決まる。名前は記号に詰めず、軸ごとに綴る (単語は `-`、群の中のゲートは小文字を `+`、群どうしは `_`、学習 run の仕方と群分けは `.` でつなぐ。例 仕方 `kam-absorb-m`・`pca-sindy`、群分け `h+n_a+c`、系列 `traub-19comp-steady-replace-soma`、実験 `all-groupings-1comp`、主張 `only-a+c-keeps-spike-timing`)。仕方と系列には既定と違う値だけを書き、`local/experiments/presets.ts` が defaults → プリセット → 差分の順に混ぜて形を確かめる (`methodOf`・`trainFrom`・`seriesFrom`)。プリセットは JSON のままにし、YAML は実験の宣言だけに使う。
+- 学習の設定も評価の条件も `local/config/presets.json` に書く。値は既定 (`defaults`) も含めてすべて JSON に出し、コードは混ぜて形を確かめるだけにする (JSON だけで何を回すかが分かるように)。学習 run は 縮約の仕方 × 群分け で決まる。名前は記号に詰めず、軸ごとに綴る (単語は `-`、群の中のゲートは小文字を `+`、群どうしは `_`、学習 run の仕方と群分けは `.` でつなぐ。例 仕方 `kam-absorb-m`・`pca-sindy`、群分け `h+n_a+c`、系列 `traub-19comp-steady-replace-soma`、実験 `all-groupings-1comp`)。仕方と系列には既定と違う値だけを書き、`local/experiments/presets.ts` が defaults → プリセット → 差分の順に混ぜて形を確かめる (`methodOf`・`trainFrom`・`seriesFrom`)。プリセットは JSON のままにし、YAML は実験の宣言だけに使う。
 - 学習の設定 (`surrogate.Config`) は、区画の型 (`cell`)、`form`、学習データ (`data` = `SimSpec`)、群のリスト (`groups`)、学習を絞る区画 (`train_comp`)。
   群は `gates`・`compressor`・`d`・`rhs` と、それぞれの fit 関数へ `**` で展開する `compressor_params`・`rhs_params`。
   `gates` は状態の名前 (Traub は M N C A H B S R Q XI、HH は M H N)。`compressor: kam` は学習しない KAM 縮約で、右辺も `kam`、`d` は 1。UDE は AE を一緒に学習するので、圧縮器は AE に限る。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
   既定値は fit 関数の署名だけが持ち、綴り違いは TypeError になる。
 - 値の既定は `local/config/presets.json` の `defaults` が持つ。値から導く既定 (教師は細胞と同じ、圧縮は書かなければ仕方の名前、右辺は KAM なら KAM でほかは SINDy、項ライブラリは細胞のゲートの項と `basis`) と、どの学習でも同じ形 (学習用の電流・全区画で学習) だけは `local/experiments/presets.ts` が導く。散文の説明は持たない。テスト専用の学習 `_test_*` は presets.json に入れず `local/experiments/test-trains.ts` に TS の辞書で書き、仕方に差分を重ね、どの実験にも入れない。設定は `resolve.ts write` が `resolved/tests.json` に値で書き、pytest はそれを読む。
-- 実験は presets.json でなく、実験群ごとに `local/config/<群>.yaml`（実験層）に書く。今の実験群は単一区画 `1comp`、19 区画 `19comp`、GPU の実測 `gpu`。実験層は二つの文書で、一つ目は frontmatter（実験群の道案内の一文 `description` だけ）、二つ目はどの run にも共通の設定 `setup` と回す run の並び `runs`（run の名前 → 何を回して何を見るかの一文 `description` と、setup を置き換える欄）。欄は仕方 `methods`、群分け（全部の群分けを組むゲートの並び `gates` か、群分けの名前 `groupings`）、系列 `series`、GPU の実測 `benches`（測る系列。元のモデルと run の学習 run を全部、細胞の数 `cells` で、`ncu` なら Nsight Compute でも測る）。run に書いた欄だけが setup を置き換え、群分けは gates と groupings をまとめて置き換える。形は `local/experiments/schema.ts` が zod で決め、返すのは解決済みの実験 (学習 run と系列を値で持ち、回す組を並べたもの) だけで、`resolve.ts`・`judge.ts`・画面はこれだけを読み、実験層の形を知らない。仕方と系列はプリセットの名前か、名前を付けた差分 `{ "name", "from", ...差分 }` で指し、値を少し変えた実験はプリセットを足さずに差分で書く。学習 run の名前は `<仕方の名前>.<群分け>` で、同じ名前がほかの実験で違う中身を指せば落とす。主張と判定は実験層に書かず、実験群ごとの判定層 `local/config/<群>.checks.ts` に置く。判定層は主張の名前 → 項目（読む run、判定が読む系列、絞る群分け、判定の関数）を `checks` に並べ、主張の一文はその項目の docstring に書く (主張と線と判定を一か所にまとめるため)。主張の一文は `resolve.ts write` が docstring から抜き出して `resolved/claims.json` に置き、画面とテストはそれを読む。判定は手元の `local/experiments/judge.ts` が、API の `series` が返した量から出す。主張の無い実験群には判定層を置かない。主張と判定の線は結果を見てから書かない。
+- 実験は presets.json でなく、実験群ごとに `local/config/<群>.yaml`（実験層）に書く。今の実験群は単一区画 `1comp`、19 区画 `19comp`、GPU の実測 `gpu`。実験層は二つの文書で、一つ目は frontmatter（実験群の道案内の一文 `description` だけ）、二つ目はどの run にも共通の設定 `setup` と回す run の並び `runs`（run の名前 → 何を回して何を見るかの一文 `description` と、setup を置き換える欄）。欄は仕方 `methods`、群分け（全部の群分けを組むゲートの並び `gates` か、群分けの名前 `groupings`）、系列 `series`、GPU の実測 `benches`（測る系列。元のモデルと run の学習 run を全部、細胞の数 `cells` で、`ncu` なら Nsight Compute でも測る）。run に書いた欄だけが setup を置き換え、群分けは gates と groupings をまとめて置き換える。形は `local/experiments/schema.ts` が zod で決め、返すのは解決済みの実験 (学習 run と系列を値で持ち、回す組を並べたもの) だけで、`resolve.ts` と画面はこれだけを読み、実験層の形を知らない。仕方と系列はプリセットの名前か、名前を付けた差分 `{ "name", "from", ...差分 }` で指し、値を少し変えた実験はプリセットを足さずに差分で書く。学習 run の名前は `<仕方の名前>.<群分け>` で、同じ名前がほかの実験で違う中身を指せば落とす。
 - プリセットは組み合わせを展開する実験（群分けの掃引など）のためだけに使う。組み合わせを展開しない決め打ちの構成（発表の再現など）は、プリセットを通さず、解決済みの実験の形 (`local/experiments/plan.ts` の `PlanJson`: 学習の設定と系列を値のまま) で `local/config/<実験>.json` に手で書き、`local/experiments/experiments.ts` が読む。一回限りの値をプリセットに足さない。
 - 実際に送る spec.json は、そのままの中身で `resolved/` に生成物として置く (`bun local/experiments/resolve.ts write`)。パスは識別のための名前で送らない: `<実験>/train/<学習 run>.json`、`<実験>/sim/<系列>/original.json` と `<学習 run>.json`、`<実験>/bench/<GPU の実測>.json`。段取り (`remote/orchestrate/orchestrate.ts`) は宣言を読まず、`resolved/` の spec だけを回す。実験ごとの状態も `resolved/` の下のディレクトリから組み、並びは名前の順 (宣言の順は手元が持つ) (評価と GPU の実測は、指す学習 run と元のモデルを先に回す)。画面も仕事を `resolved/` のパスで起こす。宣言やプリセットを直したら write で書き直し、差分で、送る spec が何から何に変わったか (中身が変われば置き場が変わり、回し直しになる) を確かめる。古いと `local/experiments/resolve.test.ts` が落ち、`remote.sh` は送らない (`resolve.ts check`)。
 - 使わなくなった仕方と系列は消す。run は消さず、`list` の一覧に残る。
@@ -139,7 +139,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
   今あるのは、physics が surrogate を import しないことと、記録・設定・描画の道具を import しないこと (`remote/tests/test_conventions.py`)、恒等の圧縮と真の右辺を入れたサロゲートがどの群分けでも元のモデルと同じ膜電位になること (`remote/tests/test_surrogate.py`)、どのファイルにも docstring があり、`remote/neurosurrogate/AGENTS.md` が docstring と import から作り直したものと一致すること (`remote/tests/test_design.py`)。
 - **数値を変えないリファクタは、新旧の出力を突き合わせる。** 同じ spec を変更前と変更後のコードで回し、run の中身 (学習の書き出し、指標、変数ごとの波形) が一致することを確かめる。
 - **後方互換は取らない。** 保存形式を変えたら `run.py` の `_FORMAT` と `spec.ts` の `FORMAT` を上げ、古い run は学習し直す。互換の shim は入れない。
-- **実行経路を二重に持たない。** 重い計算は `run.py`、回すのは `resolved/` の spec だけで段取りは `remote/orchestrate/orchestrate.ts`、結果を小さくして返すのは `remote/serve/serve.ts`、主張の判定は `local/experiments/judge.ts`、描画は repo の外の図だけ。
+- **実行経路を二重に持たない。** 重い計算は `run.py`、回すのは `resolved/` の spec だけで段取りは `remote/orchestrate/orchestrate.ts`、結果を小さくして返すのは `remote/serve/serve.ts`、描画は repo の外の図だけ。
 - **波形は回線に出さない。** runs は計算する機械に置いたまま、図は API に間引いた線と指標を頼む。帯域の細い回線（テザリング）でも回る量に保つ。
 - **数値の振る舞いが変わる変更は、手を止めて報告する。**
 - **git は明示指示があるときだけ。**
@@ -150,7 +150,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - 依存の向きは `physics ← surrogate ← run`。表は `remote/tests/test_conventions.py` の `_ALLOWED`。落ちたらテストを緩めずコードを直す。
 - `remote/neurosurrogate/` は記録・設定の基盤（MLflow や Hydra）を知らない。run の保存形式を知るのは `run.py` だけ。Python は数値計算だけを持ち、指標は `remote/read/compare.ts`、段取りは TS が持つ。
 - この repo は図や画面を持たず、外の部品に依存しない。結果を読む図は repo の外に置き、この repo の TS を import して描く。
-- ファイルは動く側で置く。手元だけが使うものは `local/`、計算する機械だけが使うものは `remote/`、両方が使う形だけを `shared/` に置き、最上位にはほかを置かない。`local/` と `remote/` の直下には役割ごとのディレクトリと、依存やイメージを決めるファイル（`package.json`、`Dockerfile`、`pyproject.toml` など）だけを置き、コードは役割のディレクトリに番号なしの名前で平らに置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。人が書く宣言（JSON と YAML）と判定層（`<群>.checks.ts`）は `local/config/` に置き、ほかのコードは置かない。
+- ファイルは動く側で置く。手元だけが使うものは `local/`、計算する機械だけが使うものは `remote/`、両方が使う形だけを `shared/` に置き、最上位にはほかを置かない。`local/` と `remote/` の直下には役割ごとのディレクトリと、依存やイメージを決めるファイル（`package.json`、`Dockerfile`、`pyproject.toml` など）だけを置き、コードは役割のディレクトリに番号なしの名前で平らに置く。テストは隣の `<名前>.test.ts`、参照値は `<名前>.reference.json`。人が書く宣言（JSON と YAML）は `local/config/` に置き、コードは置かない。
 - `_` 始まりの名前は「そのファイルの外から参照しない」印（`remote/tests/test_conventions.py` が見る）。
 - ファイルの持つものは各ファイルの先頭の docstring に書く。`remote/neurosurrogate/AGENTS.md` は生成物なので手で書き換えない（`remote/tests/test_design.py` が作り直し、古いと落ちる）。
 - 学習・評価と runs は ssh で入れる NVIDIA の GPU の機械（環境変数 `SINDY_HOST`）に置く。機械の名前と接続先は repo に書かない。run の meta.json の `env` に、回した backend・device・版・host・コード・イメージを書く。

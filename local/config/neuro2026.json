@@ -46,6 +46,5 @@
     }
   },
   "pairs": [{ "model": "ae-latent5-sindy.m+h+n+a+b+c", "series": "traub-19comp-steady-replace-soma" }],
-  "benches": [],
-  "claims": []
+  "benches": []
 }

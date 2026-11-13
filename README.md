@@ -17,8 +17,8 @@ description: "研究コードの repo の入口。要約と、全体の地図・
 ```mermaid
 flowchart LR
   subgraph local["手元 local/"]
-    config["人が書く宣言<br/>config/（プリセット、実験層、判定層）"]
-    exp["宣言を読む・spec を組む・主張の判定<br/>experiments/"]
+    config["人が書く宣言<br/>config/（プリセット、実験層）"]
+    exp["宣言を読む・spec を組む<br/>experiments/"]
   end
   resolved[("送る spec<br/>resolved/")]
   subgraph machine["計算する機械 remote/（Dockerfile のイメージ）"]
@@ -43,7 +43,6 @@ flowchart LR
   runs --> serve
   serve -- "状態、間引いた線と指標（JSON）" --> exp
   serve -- "間引いた線と指標（JSON）" --> view
-  exp -- "主張の判定" --> view
   view -- "回す仕事（resolved/ のパス）" --> serve
   serve --> orch
   format -.- exp
@@ -77,9 +76,6 @@ sequenceDiagram
   U->>A: 線と指標を頼む
   A->>R: 波形を読む
   A-->>U: 間引いた線と指標
-  L->>A: 系列の量を頼む
-  A-->>L: Γ と発火の回数
-  L-->>U: 主張の判定
 ```
 
 ## 結果の置き場

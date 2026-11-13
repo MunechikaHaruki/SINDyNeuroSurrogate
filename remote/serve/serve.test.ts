@@ -77,12 +77,11 @@ test('only json and f64 inside runs can be read, and unknown ops are refused', a
   expect((await post('launch', { job: { action: 'rm' } })).status).toBe(400);
 });
 
-test('the status lists the experiments under resolved/ without reading the declarations, and judging is not an op', async () => {
+test('the status lists the experiments under resolved/ without reading the declarations', async () => {
   const reply = (await (await post('status', {})).json()) as Status;
   const dirs = readdirSync(RESOLVED, { withFileTypes: true })
     .filter(e => e.isDirectory())
     .map(e => e.name)
     .sort();
   expect(reply.experiments.map(e => e.name)).toEqual(dirs);
-  expect((await post('claims', {})).status).toBe(404);
 });

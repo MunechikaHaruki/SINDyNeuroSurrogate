@@ -1,5 +1,5 @@
 ---
-description: 単一区画の Traub で、群分けと縮約の仕方を比べる実験群。判定は 1comp.checks.ts
+description: 単一区画の Traub で、群分けと縮約の仕方を比べる実験群
 ---
 # どの run にも共通の設定。run に書いた欄だけが置き換わる。形は ../experiments/schema.ts。
 setup:

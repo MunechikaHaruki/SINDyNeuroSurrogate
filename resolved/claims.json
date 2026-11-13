@@ -1,5 +1,0 @@
-{
-  "only-a+c-keeps-spike-timing": "単一区画で、KAM・PCA・AE のどれでも発火の時刻まで合うのは a と c をまとめる組だけで、KAM は n を h 以外のゲートとまとめると時刻が合わなくなる。",
-  "absorbing-m-loses-spike-timing": "m を膜電位へ吸収すると、吸収しなければ時刻まで合っていた組でも、発火の回数の差は一つ以内のまま、時刻が合わなくなる。",
-  "fluctuating-input-keeps-timing-better": "h+n をまとめた縮約は、どの仕方でも Kistler 1997 の揺らぐ電流のほうが定常電流より元の発火の時刻に合う。最も強い揺らぎで時刻まで合うのは KAM だけである。"
-}

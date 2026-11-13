@@ -1,4 +1,4 @@
-// 手元の側の出口。宣言（../config/ と隣の TS）から、実験ごとに送る spec.json を組んで resolved/ に置く。判定層（config/<群>.checks.ts）の docstring から抜いた主張の一文を resolved/claims.json（画面とテストが読む）に、テスト専用の学習の設定を resolved/tests.json（計算する機械の pytest が読む）に置く。計算する機械（../../remote/）は宣言を読まず、ここが書いた resolved/ だけを受け取って回す。
+// 手元の側の出口。宣言（../config/ と隣の TS）から、実験ごとに送る spec.json を組んで resolved/ に置く。テスト専用の学習の設定も resolved/tests.json（計算する機械の pytest が読む）に置く。計算する機械（../../remote/）は宣言を読まず、ここが書いた resolved/ だけを受け取って回す。
 // パスは識別のための名前で、送るのは中身だけ：`<実験>/train/<学習 run>.json`、`<実験>/sim/<系列>/original.json`（元のモデル）と `<学習 run>.json`、`<実験>/bench/<GPU の実測>.json`。
 //   bun local/experiments/resolve.ts write        resolved/ を今の宣言から書き直す
 //   … check                                          resolved/ が今の宣言と同じか（違えば挙げて終了コード 1。remote.sh up が送る前に見る）
@@ -67,30 +67,14 @@ export function resolved(plan: GroupedPlan): Record<string, Spec> {
   return files;
 }
 
-/** 判定層の項目（docstring のすぐ後に `'<主張の名前>': {`）から、主張の名前 → 主張の一文を抜き出す。 */
-export function claimTexts(dir = fileURLToPath(new URL('../config', import.meta.url))): Record<string, string> {
-  const texts: Record<string, string> = {};
-  const item = /\/\*\*((?:[^*]|\*(?!\/))*)\*\/\s*'([^']+)'\s*:\s*\{/g;
-  for (const file of readdirSync(dir)
-    .filter(f => f.endsWith('.checks.ts'))
-    .sort()) {
-    for (const [, doc, name] of readFileSync(join(dir, file), 'utf8').matchAll(item))
-      texts[name] = doc
-        .replace(/^\s*\* ?/gm, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-  }
-  return texts;
-}
-
 /** テスト専用の学習の名前 → 設定。計算する機械の pytest が読む（宣言を送らずに済むよう、組んだ設定を値で渡す）。 */
 function testConfigs(): Record<string, Train['config']> {
   return Object.fromEntries(Object.entries(TESTS).map(([name, train]) => [name, train.config]));
 }
 
-/** 全部の実験の、送る spec.json と、主張の一文（claims.json）とテスト専用の学習（tests.json）。 */
+/** 全部の実験の、送る spec.json と、テスト専用の学習（tests.json）。 */
 function expected(): Record<string, unknown> {
-  const files: Record<string, unknown> = { 'claims.json': claimTexts(), 'tests.json': testConfigs() };
+  const files: Record<string, unknown> = { 'tests.json': testConfigs() };
   for (const e of EXPERIMENTS) Object.assign(files, resolved(e));
   return files;
 }

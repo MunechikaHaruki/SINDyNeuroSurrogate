@@ -1,5 +1,5 @@
-// 実験の共通の部品。実験の形（回す組と、回す前に書いた主張と判定）と、判定が使う値の読み方・線・三値の論理。
-// 実験そのものは実験群ごとの実験層 config/<群>.yaml（形は schema.ts）と判定層 config/<群>.checks.ts が持ち、experiments.ts が並べる。
+// 実験の共通の部品。宣言の形（系列・学習 run・GPU の実測・解決済みの実験）と、図が使う物差し（Γ の線と許容幅）と読み方。
+// 実験そのものは実験群ごとの実験層 config/<群>.yaml（形は schema.ts）が持ち、experiments.ts が並べる。
 import type { Input, SurrogateConfig } from '../../shared/spec.ts';
 
 /** 1 回の掃引実験（Python の EvalSeries）の宣言。送る spec では、入力（Input）と、置き換えたモデルの側の置換範囲に分かれる。 */
@@ -27,40 +27,11 @@ export const GAMMA_LINE = 0.9;
 /** Γ の許容幅 Δ [ms]（2026-10-27 に決めた物差し）。計算する機械には series の頼み方で渡す。 */
 export const COINCIDENCE_WINDOW = 2;
 
-/** 判定 1 行。ok が null なら判定できない。 */
-export type Judgement = { label: string; value: string; line: string; ok: boolean | null };
-
-/** 列 1 本の値。grouping と method は学習 run の名前の部分（`h+n_a+c`、`kam`）、values は掃引の値、gammas と counts（元, モデル）は掃引の点の順。 */
-export type Row = {
-  grouping: string;
-  method: string;
-  values: number[];
-  gammas: (number | null)[];
-  counts: [number, number][];
-};
-
-/** 判定。系列ごとの列（主張の series の順）と、主張が絞る群分けで判定する。 */
-export type Judge = (tables: Row[][], groupings?: string[]) => Judgement[];
-
-/** 判定層（config/<群>.checks.ts）の主張 1 つ。主張の一文はこの項目の docstring に書く。run は読む run（実験層の runs の名前）、series は判定が読む系列（区画は系列の置き換える最初の区画）、groupings は判定を絞る群分け。 */
-export type Check = { run: string; series: string[]; groupings?: string[]; judge: Judge };
-/** 判定層。主張の名前 → 主張。 */
-export type Checks = Record<string, Check>;
-
-/** 主張 1 つ。name は判定と図が引く名前、series は判定が読む系列（区画は系列の置き換える最初の区画）、groupings は判定を絞る群分け。 */
-export type Claim = {
-  name: string;
-  claim: string;
-  series: string[];
-  groupings?: string[];
-  judge: Judge;
-};
-
-/** 学習 run 1 本。name は実験の中の名前（`<仕方の名前>.<群分け>`）、method と grouping は判定と図が列を引く名前。 */
+/** 学習 run 1 本。name は実験の中の名前（`<仕方の名前>.<群分け>`）、method と grouping は図が列を引く名前。 */
 export type Model = { name: string; method: string; grouping: string; train: Train };
 
 /** 解決済みの実験。description は何を回して何を見るかの一文（Markdown）。学習 run と系列を値で持ち、pairs が回す組（学習 run の名前 × 系列の名前）。
- * groupings と methods は画面が絞り込みに使う名前の並び。判定の無い実験は claims が空。 */
+ * groupings と methods は画面が絞り込みに使う名前の並び。 */
 export type Plan = {
   id: string;
   description: string;
@@ -71,7 +42,6 @@ export type Plan = {
   pairs: { model: string; series: string }[];
   /** GPU の実測。無ければ空。 */
   benches: Bench[];
-  claims: Claim[];
   /** 群分けを全部回すときの、群分けを組むゲート（画面が群分けの掃引の節を出す）。 */
   gates?: string[];
 };
@@ -109,57 +79,6 @@ export function meanGamma(gammas: (number | null)[]): number | null {
     n++;
   }
   return n > 0 ? sum / n : null;
-}
-
-/** 仕方の読み方。 */
-export const NAMES: Record<string, string> = {
-  kam: 'KAM',
-  'kam-absorb-m': 'KAM（m を吸収）',
-  'pca-sindy': 'PCA＋SINDy',
-  'ae-sindy': 'AE＋SINDy',
-  'ae-latent5-sindy': 'NEURO2026',
-};
-
-/** 群分けと仕方の列。無いか 2 本以上あれば undefined（どれを読むか決まらない）。 */
-export function one(rows: Row[], grouping: string, method: string): Row | undefined {
-  const found = rows.filter(r => r.grouping === grouping && r.method === method);
-  return found.length === 1 ? found[0] : undefined;
-}
-export const mean = (row: Row | undefined) => (row ? meanGamma(row.gammas) : null);
-export const shown = (v: number | null | undefined) => (v === null || v === undefined ? '—' : v.toFixed(2));
-export const above = (v: number | null | undefined) => (v === null || v === undefined ? null : v >= GAMMA_LINE);
-export const below = (v: number | null | undefined) => (v === null || v === undefined ? null : v < GAMMA_LINE);
-/** 三値の「すべて」。一つでも偽なら偽、偽が無く欠けがあれば null。 */
-export const all = (xs: (boolean | null)[]) => (xs.includes(false) ? false : xs.includes(null) ? null : true);
-/** 「当てはまる組が 0 個」。当てはまる組があれば偽、無くても決まらない組があれば null。 */
-export function none(found: string[], unknown: string[]): Pick<Judgement, 'value' | 'ok'> {
-  const value =
-    found.length > 0 ? found.join('・') : unknown.length > 0 ? `なし（判定できない組 ${unknown.join('・')}）` : 'なし';
-  return { value, ok: found.length > 0 ? false : unknown.length > 0 ? null : true };
-}
-export const groupingsOf = (rows: Row[]) => [...new Set(rows.map(r => r.grouping))];
-
-/** 置き換えた列 1 本。run は置き換えた run、method と grouping は学習 run の仕方と群分けの名前。 */
-export type Column = { run: string; method: string; grouping: string };
-
-/** 系列の列を判定の値にする。values は掃引の値、crossings は列の run ごとの点ごとの Γ と発火の回数（元, モデル）。 */
-export function rowsOf(
-  columns: Column[],
-  values: number[],
-  crossings: Record<string, { gamma: number | null; count: [number, number] }[]>,
-): Row[] {
-  const rows: Row[] = [];
-  for (const column of columns) {
-    const points = crossings[column.run] ?? [];
-    const gammas: (number | null)[] = [];
-    const counts: [number, number][] = [];
-    for (const p of points) {
-      gammas.push(p.gamma);
-      counts.push(p.count);
-    }
-    rows.push({ method: column.method, grouping: column.grouping, values, gammas, counts });
-  }
-  return rows;
 }
 
 /** 群分けの名前（`h+n_a+c`）を、群ごとのゲートの小文字の名前（[['h','n'],['a','c']]）にする。 */
