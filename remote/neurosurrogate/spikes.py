@@ -1,6 +1,6 @@
 """1 本の波形のスパイクの特徴量 (eFEL)。
 
-元のモデルとの比較は ../read/compare.ts が持つ。
+元のモデルとの比較は ../read/comparison.ts が持つ。
 """
 
 import warnings

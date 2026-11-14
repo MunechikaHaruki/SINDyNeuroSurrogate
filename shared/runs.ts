@@ -1,5 +1,19 @@
 // run のファイルの形（計算する機械の Python が書き、API の json の口で手元に返る小さい JSON）と、その読み方。形式の正本は remote/neurosurrogate/run.py。
+// run の中のどこに何があるか（RUN と、.f64 の 1 列を指す compArray など）もここが持ち、計算する機械の API と手元の両方が使う。
 // node や bun に依存しない（ブラウザで動く画面も import する）。
+import type { ArrayRef } from './api.ts';
+
+/** run の中の置き場。波形の根 root は、回した波形 waves、原系を列の前処理で射影した projected(区画)、学習データ train のどれか。 */
+export const RUN = {
+  waves: 'waves',
+  train: 'description/train',
+  model: 'description/model.json',
+  spikes: 'spikes.json',
+  summary: 'summary.json',
+  bench: 'bench.json',
+  projected: (comp: string) => `projected/${comp}`,
+  meta: (root: string) => `${root}/meta.json`,
+};
 
 /** 1 列の波形の目録（waves/meta.json）。features は [comp_id, 変数名, ゲートか] の並び。 */
 export type WaveMeta = {
@@ -23,6 +37,42 @@ export function gatesOf(meta: WaveMeta, compId: number): string[] {
   const names: string[] = [];
   for (const feature of meta.features) if (feature[0] === compId && feature[2]) names.push(feature[1]);
   return names;
+}
+
+/** 根 root の点 point の区画 compId の変数 1 つ。 */
+export function compArray(
+  run: string,
+  root: string,
+  meta: WaveMeta,
+  point: number,
+  compId: number,
+  variable: string,
+): ArrayRef {
+  const column = variablesOf(meta, compId).indexOf(variable);
+  if (column < 0) throw new Error(`${run}/${root} の comp ${compId} に ${variable} が無い`);
+  return { run, file: `${root}/${point}/comp${compId}.f64`, column, n: meta.n[point] };
+}
+
+/** 根 root の点 point の注入電流 I_ext。 */
+export function currentArray(run: string, root: string, meta: WaveMeta, point: number): ArrayRef {
+  return { run, file: `${root}/${point}/I_ext.f64`, column: 0, n: meta.n[point] };
+}
+
+/** 根 root の点 point の内部電流 I_internal の node 1 つ（結合電流と、刺激した区画では注入電流の和）。 */
+export function internalArray(run: string, root: string, meta: WaveMeta, point: number, node: number): ArrayRef {
+  const column = (meta.nodes ?? []).indexOf(node);
+  return { run, file: `${root}/${point}/I_internal.f64`, column, n: meta.n[point] };
+}
+
+/** 学習データ（meta は train の目録）の区画 compId の、同定器への入力 x・潜在 latent・再構成誤差 recon_rmse の column 列目。 */
+export function fitArray(
+  run: string,
+  meta: WaveMeta,
+  compId: number,
+  file: 'x' | 'latent' | 'recon_rmse',
+  column: number,
+): ArrayRef {
+  return { run, file: `description/fit/${compId}/${file}.f64`, column, n: meta.n[0] };
 }
 
 /** 特徴量の名前 → 値の並び（spikes.json の 1 区画・1 点）。null は eFEL の nan。 */

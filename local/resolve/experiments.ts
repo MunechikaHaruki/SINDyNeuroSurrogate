@@ -1,11 +1,8 @@
 // 実験を並べる。実験群ごとに、実験層 config/<群>.yaml（形と組み立ては schema.ts）を読む。
-// 決め打ちの実験は config/<実験>.json（形は plan.ts）。ここは並べて、id・学習 run と系列の名前が重ならないことを確かめ、名前から引けるようにするだけ。
+// 決め打ちの実験は config/<実験>.json（形は schema.ts の PlanJson）。ここは並べて、id・学習 run と系列の名前が重ならないことを確かめ、名前から引けるようにするだけ。
 // 手元の側の中心。resolve.ts（送る spec を組む）と画面は、ここが返す解決済みの実験と、名前から引く trainOf・seriesOf だけを使う。計算する機械（../../remote/）は読まない。
-import { PRESET_SERIES, TESTS } from './presets.ts';
-
-import type { Model, Plan, Series, Train } from './common.ts';
-import { fromJson } from './plan.ts';
-import { groupPlans } from './schema.ts';
+import { PRESET_SERIES, TESTS, type Series, type Train } from './presets.ts';
+import { fromJson, groupPlans, type Model, type Plan } from './schema.ts';
 import group1comp from '../config/1comp.yaml';
 import group19comp from '../config/19comp.yaml';
 import groupGpu from '../config/gpu.yaml';

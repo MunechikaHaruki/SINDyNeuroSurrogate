@@ -1,14 +1,83 @@
-// 読んだ波形のバイト列の切り分け方と、回線に出すための間引き・軌跡・分布。計算する機械の API（serve.ts）だけが使う。
-// ファイルは読まない（読むのは serve.ts）。波形の形式は ../shared/runs.ts。
-import type { Bin, Point } from '../../shared/api.ts';
+// 波形。run のファイルを読んで覚え（runs/ の外を指すパスは弾き、.f64 は丸ごと読んで古く使ったものから忘れる）、回線に出す形（表示の範囲で間引いた線・相平面の軌跡・分布、表示に要る桁）にする。
+import { readFileSync } from 'node:fs';
+import { join, normalize } from 'node:path';
+import type { ArrayRef, Bin, Point } from '../../shared/api.ts';
 
-/** 変数ごとに n 個ずつ続いて並んだ float64 を変数ごとの列に分ける（comp<id>.f64、I_internal.f64、fit の x・latent）。 */
-export function decodeComp(all: Float64Array, variables: string[], n: number): Record<string, Float64Array> {
-  if (all.length !== variables.length * n)
-    throw new Error(`長さ ${all.length} が ${variables.length} 変数 × ${n} 点と合わない`);
-  const table: Record<string, Float64Array> = {};
-  for (let i = 0; i < variables.length; i++) table[variables[i]] = all.subarray(i * n, (i + 1) * n);
-  return table;
+// ---- run のファイルを読む
+
+/** 覚えておく .f64 の合計の上限 [バイト]。超えたら古く使ったものから忘れる。 */
+const BUDGET = 2 ** 31;
+
+/** runs の置き場 1 つの読み方。 */
+export type RunFiles = {
+  /** run の中の .f64 の 1 列（変数ごとに n 個ずつ続いて並んだうちの column 番目）。 */
+  column: (ref: ArrayRef) => Float64Array;
+  /** run の中の .json。 */
+  json: <T>(run: string, file: string) => T;
+};
+
+/** runs の置き場 runs を読む。読んだ .f64 はこの中で覚える。 */
+export function runFiles(runs: string): RunFiles {
+  const arrays = new Map<string, Float64Array>();
+  let held = 0;
+
+  /** run の下のファイルの絶対パス。runs/ の外を指すものは弾く。 */
+  function inRuns(run: string, file: string): string {
+    const relative = normalize(join(run, file));
+    if (relative.startsWith('..') || relative.startsWith('/')) throw new Error(`${run}/${file} は runs の外`);
+    return join(runs, relative);
+  }
+
+  /** run の中の .f64 を丸ごと。 */
+  function f64(run: string, file: string): Float64Array {
+    const key = `${run}/${file}`;
+    const hit = arrays.get(key);
+    if (hit) {
+      arrays.delete(key);
+      arrays.set(key, hit);
+      return hit;
+    }
+    if (!file.endsWith('.f64')) throw new Error(`${key} は .f64 でない`);
+    const bytes = readFileSync(inRuns(run, file));
+    const values = new Float64Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    arrays.set(key, values);
+    held += values.byteLength;
+    for (const [old, array] of arrays) {
+      if (held <= BUDGET || old === key) break;
+      arrays.delete(old);
+      held -= array.byteLength;
+    }
+    return values;
+  }
+
+  function column(ref: ArrayRef): Float64Array {
+    const all = f64(ref.run, ref.file);
+    const { column: at, n } = ref;
+    if (
+      !Number.isInteger(at) ||
+      at < 0 ||
+      !Number.isInteger(n) ||
+      n <= 0 ||
+      all.length % n !== 0 ||
+      all.length < (at + 1) * n
+    )
+      throw new Error(`${ref.run}/${ref.file}（${all.length} 個）に ${at} 列目（${n} 点ずつ）が無い`);
+    return all.subarray(ref.column * ref.n, (ref.column + 1) * ref.n);
+  }
+
+  function json<T>(run: string, file: string): T {
+    if (!file.endsWith('.json')) throw new Error(`${run}/${file} は .json でない`);
+    return JSON.parse(readFileSync(inRuns(run, file), 'utf8')) as T;
+  }
+
+  return { column, json };
+}
+
+// ---- 回線に出す形
+
+/** 回線に出す線の点。表示に要る桁だけに丸める（時刻は 0.01 ms の刻みが 1 万 ms まで残る 7 桁、値は 6 桁）。 */
+export function compact(points: Point[]): Point[] {
+  return points.map(p => ({ x: Number(p.x.toPrecision(7)), y: Number(p.y.toPrecision(6)) }));
 }
 
 /** 時刻 [ms] の範囲 [start, end] に入る添字の範囲。 */
@@ -81,4 +150,18 @@ export function histogram(values: Float64Array, low: number, high: number, bins:
   const list: Bin[] = [];
   for (let i = 0; i < bins; i++) list.push({ center: low + (i + 0.5) * width, count: counts[i] });
   return list;
+}
+
+/** 列ごとの分布。区間は全部の列の有限な値の最小から最大でそろえる。 */
+export function histograms(values: Float64Array[], bins: number): Bin[][] {
+  let low = Infinity;
+  let high = -Infinity;
+  for (const array of values)
+    for (const v of array) {
+      if (!Number.isFinite(v)) continue;
+      low = Math.min(low, v);
+      high = Math.max(high, v);
+    }
+  if (!(low < high)) return values.map(() => []);
+  return values.map(array => histogram(array, low, high, bins));
 }

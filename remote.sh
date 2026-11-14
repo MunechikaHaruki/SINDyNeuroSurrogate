@@ -3,7 +3,7 @@
 # 送るのは計算する機械の側（remote/）と、両方が使う形（shared/）と、行きの JSON（resolved/）だけ。手元の側（local/。宣言を含む）は送らない。
 #返るのは API の小さい JSON だけで、runs は計算する機械の ~/sindy/runs/ に置いたまま動かさない。
 #   SINDY_HOST=<host> ./remote.sh up                  コードを送り、イメージを用意し、API（:8787）を立てる
-#   SINDY_HOST=<host> ./remote.sh run <段取りの引数>   コードを送ってから、段取り（remote/orchestrate/orchestrate.ts。run <resolved/ の下のパス>...）を向こうで回す
+#   SINDY_HOST=<host> ./remote.sh run <段取りの引数>   コードを送ってから、段取り（remote/run/run-spec.ts。run <resolved/ の下のパス>...）を向こうで回す
 #   SINDY_HOST=<host> ./remote.sh test                コードを送ってから、Python と TS のテストを向こうで回す
 #   SINDY_HOST=<host> ./remote.sh fetch <run の id>   run を 1 つ手元の runs/ へ持ってくる（回線の届かない所で見るとき）
 # イメージはベースと道具を digest で、Python の依存を uv.lock で固定した remote/Dockerfile から向こうで作る。API はコードの書き換えで立ち直る（bun --watch）。
@@ -25,7 +25,7 @@ version() {
 
 sync() {
   # 向こうは resolved/ の spec だけを回すので、宣言から組み直したものと違えば送らない
-  (cd "$repo" && bun local/experiments/resolve.ts check)
+  (cd "$repo" && bun local/resolve/resolve.ts check)
   version > "$repo/.code-version"
   ssh "$host" 'mkdir -p ~/sindy/code ~/sindy/runs'
   # 送るのは remote/・shared/・resolved/ のうち git が見るものと、版を書いた .code-version だけ（.gitignore で外したものは版に入らないので送らない）。ほかは向こうから消す
@@ -45,7 +45,7 @@ image() {
 
 # 向こうのコンテナで学習か評価が回っているか。
 busy() {
-  docker exec "$name" ps -eo args 2> /dev/null | grep -q 'neurosurrogate.run\|orchestrate.ts'
+  docker exec "$name" ps -eo args 2> /dev/null | grep -q 'neurosurrogate.run\|run/run-spec.ts'
 }
 
 up() {
@@ -74,7 +74,7 @@ case ${1:-} in
   run)
     shift
     up
-    docker exec "$name" bun orchestrate/orchestrate.ts "$@"
+    docker exec "$name" bun run/run-spec.ts "$@"
     ;;
   test)
     up

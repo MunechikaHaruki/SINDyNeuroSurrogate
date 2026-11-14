@@ -18,18 +18,18 @@ description: "研究コードの repo の入口。要約と、全体の地図・
 flowchart LR
   subgraph local["手元 local/"]
     config["人が書く宣言<br/>config/（プリセット、実験層）"]
-    exp["宣言を読む・spec を組む<br/>experiments/"]
+    exp["宣言を解く・spec を組む<br/>resolve/"]
   end
   resolved[("送る spec<br/>resolved/")]
   subgraph machine["計算する機械 remote/（Dockerfile のイメージ）"]
-    orch["段取り<br/>orchestrate/"]
+    orch["段取り<br/>run/"]
     subgraph py["neurosurrogate/（Python）"]
       entry["計算の入口<br/>run.py"]
       surr["surrogate/<br/>学習して置き換える"]
       phys["physics/<br/>元のモデルを解く"]
     end
     runs[("runs/<br/>結果")]
-    serve["結果を返す API<br/>serve/"]
+    serve["結果を返す API<br/>read/・serve/"]
   end
   format["受け渡す JSON の形<br/>shared/"]
   view["画面<br/>repo の外"]
@@ -57,7 +57,7 @@ sequenceDiagram
   participant L as 手元（local/）
   participant U as 画面
   participant A as API（remote/serve/serve.ts）
-  participant O as 段取り（remote/orchestrate/orchestrate.ts）
+  participant O as 段取り（remote/run/）
   participant R as runs/
   participant P as 計算（Python）
   L->>L: 宣言から spec を組み、resolved/ に書く

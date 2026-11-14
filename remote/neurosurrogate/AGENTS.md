@@ -50,8 +50,7 @@ flowchart RL
 区画の式。状態の名前ごとに微分の式を持ち、kernel・初期値・演算コストはそこから組む。
 
 ```text
-レートの式と単一区画のパラメータは隣の hh.json と traub.json が持つ
-(TS の ../../../local/traub/traub.ts も読む)。
+レートの式と単一区画のパラメータは隣の hh.json と traub.json が持つ。
 Traub19 の区画ごとの密度・φ・寸法は原著 (Traub et al. 1991) の表 3 と p.637 どおり。
 区画は HH・Traub・passive と、Traub19 の区画の定数とネット (NETS)。kernel は
 physical_cell が組む。
@@ -86,8 +85,7 @@ dψ/dt = Σ_i D_i ẋ_i / Σ_j D_j x̄_j'(ψ)、D_i = ∂(dV/dt)/∂x_i で動�
 式(6)の重みで ẋ_i を等価電位の速さへ写したもの)。φ 群 (膜電位への吸収) のゲートは
 状態を持たず、V での定常値 x̄_i(V) に置く (重み α₀ = 1。φ 群を速いゲートとみなす)。
 サロゲートの群の圧縮器と右辺 (kam) として使い、学習した圧縮と同じ段取りで比べる。
-導き方は Kepler, Abbott & Marder 1992 (https://doi.org/10.1007/BF00197717)、
-対話的に動かす版は ../../../local/traub/traub.ts。
+導き方は Kepler, Abbott & Marder 1992 (https://doi.org/10.1007/BF00197717)。
 ```
 
 ## physics/simulate.py
@@ -165,7 +163,7 @@ spec は run.py の `bench` の spec (入力と、元のモデルか学習 run)�
 1 本の波形のスパイクの特徴量 (eFEL)。
 
 ```text
-元のモデルとの比較は ../read/compare.ts が持つ。
+元のモデルとの比較は ../read/comparison.ts が持つ。
 ```
 
 ## run.py
@@ -175,7 +173,7 @@ spec は run.py の `bench` の spec (入力と、元のモデルか学習 run)�
 ```text
 spec.json 1 つを受け取り、run のディレクトリを埋めるだけの純粋な計算。何を回すか、
 掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
-(`../orchestrate/orchestrate.ts`) が持ち、spec の形は
+(`../run/`) が持ち、spec の形は
 `../../shared/spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
 spec の種類は 3 つ (`kind`):
 

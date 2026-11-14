@@ -1,7 +1,6 @@
 """区画の式。状態の名前ごとに微分の式を持ち、kernel・初期値・演算コストはそこから組む。
 
-レートの式と単一区画のパラメータは隣の hh.json と traub.json が持つ
-(TS の ../../../local/traub/traub.ts も読む)。
+レートの式と単一区画のパラメータは隣の hh.json と traub.json が持つ。
 Traub19 の区画ごとの密度・φ・寸法は原著 (Traub et al. 1991) の表 3 と p.637 どおり。
 区画は HH・Traub・passive と、Traub19 の区画の定数とネット (NETS)。kernel は
 physical_cell が組む。

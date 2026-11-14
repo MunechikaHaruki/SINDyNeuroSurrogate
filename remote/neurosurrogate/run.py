@@ -2,7 +2,7 @@
 
 spec.json 1 つを受け取り、run のディレクトリを埋めるだけの純粋な計算。何を回すか、
 掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
-(`../orchestrate/orchestrate.ts`) が持ち、spec の形は
+(`../run/`) が持ち、spec の形は
 `../../shared/spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
 spec の種類は 3 つ (`kind`):
 

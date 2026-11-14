@@ -1,7 +1,8 @@
-// 元のモデルと置き換えたモデルの 1 区画・1 点の指標。波形（waves/）とスパイクの特徴量（spikes.json）から計算する。
-// スパイクの特徴量は eFEL が持つので Python（neurosurrogate/spikes.py）が書き、比べる計算はここが持つ。計算する機械の API（serve.ts）だけが使う。
-import type { CrossingDiff, PairMetrics } from '../../shared/api.ts';
-import type { Spikes } from '../../shared/runs.ts';
+// 比べ。元のモデルと置き換えたモデルを、系列の列ごと・掃引の点ごとに比べる：波形とスパイクの特徴量の指標（compare）、0 mV の上向きの横切りで数えた差と Γ（coincidence）、発火の時刻。
+// スパイクの特徴量は eFEL が持つので Python（neurosurrogate/spikes.py）が書き、比べる計算はここが持つ。Γ の許容幅 Δ は手元が頼み方で渡す。
+import type { CrossingDiff, CrossingRow, PairMetrics, SeriesMetrics, SeriesRequest } from '../../shared/api.ts';
+import { compArray, RUN, type Spikes, type SpikesFile, type WaveMeta } from '../../shared/runs.ts';
+import type { RunFiles } from './waves.ts';
 
 /** AP ごとの特徴量（neurosurrogate/spikes.py の AP_FEATURES）。比べる AP は読む側が選ぶ。 */
 export const AP_FEATURES = [
@@ -178,7 +179,56 @@ export function coincidence(original: number[], model: number[], duration: numbe
   return (matched - expected) / (0.5 * (original.length + model.length)) / normalization;
 }
 
-/** 発火率 [Hz]。duration は数える区間の長さ [ms]。f–I 曲線の 1 点。 */
-export function rate(times: number[], duration: number): number {
-  return (times.length / duration) * 1000;
+/** 系列の比べを、読み方 files で組む。答えは頼み方ごとに覚えておく（run は書き換わらない）。 */
+export function seriesComparison(files: RunFiles): (request: SeriesRequest) => SeriesMetrics {
+  const metrics = new Map<string, SeriesMetrics>();
+
+  /** 1 点の 1 区画の膜電位。 */
+  function voltage(run: string, meta: WaveMeta, point: number, compId: number): Float64Array {
+    return files.column(compArray(run, RUN.waves, meta, point, compId, 'V'));
+  }
+
+  /** 系列の、列ごと・点ごとの原系との指標と、0 mV の横切りで数えた差と Γ、発火の時刻。 */
+  function seriesMetrics(request: SeriesRequest): SeriesMetrics {
+    const key = JSON.stringify(request);
+    const hit = metrics.get(key);
+    if (hit) return hit;
+    if (!(Number.isFinite(request.delta) && request.delta > 0)) throw new Error(`Γ の許容幅 delta ${request.delta} が正の数でない`);
+    const meta = files.json<WaveMeta>(request.original, RUN.meta(RUN.waves));
+    const compId = meta.names ? meta.names[request.comp] : 0;
+    if (compId === undefined)
+      throw new Error(`${request.original} に区画 ${request.comp} が無い（${Object.keys(meta.names!).join('、')}）`);
+    const original = meta.n.map((_, k) => voltage(request.original, meta, k, compId));
+    const originalSpikes = files.json<SpikesFile>(request.original, RUN.spikes)[request.comp];
+    const result: SeriesMetrics = {
+      pairs: {},
+      crossings: {},
+      times: { original: original.map(v => crossings(v, meta.dt).times), columns: {} },
+    };
+    for (const run of request.columns) {
+      const columnMeta = files.json<WaveMeta>(run, RUN.meta(RUN.waves));
+      const spikes = files.json<SpikesFile>(run, RUN.spikes)[request.comp];
+      const pairs: PairMetrics[] = [];
+      const rows: CrossingRow[] = [];
+      const times: number[][] = [];
+      for (let k = 0; k < meta.n.length; k++) {
+        const v = voltage(run, columnMeta, k, compId);
+        if (originalSpikes && spikes) pairs.push(compare(original[k], v, originalSpikes[k], spikes[k], meta.dt));
+        const before = crossings(original[k], meta.dt);
+        const after = crossings(v, meta.dt);
+        rows.push({
+          ...crossingDiff(before, after),
+          gamma: coincidence(before.times, after.times, original[k].length * meta.dt, request.delta),
+        });
+        times.push(after.times);
+      }
+      if (originalSpikes && spikes) result.pairs[run] = pairs;
+      result.crossings[run] = rows;
+      result.times.columns[run] = times;
+    }
+    metrics.set(key, result);
+    return result;
+  }
+
+  return seriesMetrics;
 }

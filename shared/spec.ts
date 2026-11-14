@@ -86,7 +86,7 @@ export type RunEnv = {
   image: string | null;
 };
 
-/** run の一覧の 1 行（runs/index.json）。id は runs/ の下のパス、kind は run.py が meta.json に書く種類。 */
+/** run の一覧の 1 行（API の index）。id は runs/ の下のパス、kind は run.py が meta.json に書く種類。 */
 export type IndexEntry = {
   id: string;
   kind: 'train' | 'original' | 'replaced' | 'bench';

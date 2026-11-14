@@ -1,31 +1,5 @@
 import { expect, test } from 'bun:test';
-import { decimate, decodeComp, histogram, path } from './waves.ts';
-import { variablesOf, type WaveMeta } from '../../shared/runs.ts';
-
-const meta: WaveMeta = {
-  t0: 0,
-  dt: 0.5,
-  n: [4],
-  features: [
-    [0, 'V', false],
-    [1, 'V', false],
-    [0, 'M', true],
-    [0, 'H', true],
-  ],
-  nodes: null,
-  names: null,
-};
-
-test('a comp file is split into one column per variable, in the order the features list them', () => {
-  expect(variablesOf(meta, 0)).toEqual(['V', 'M', 'H']);
-  // この repo は comp の変数を変数ごとに続けて書く（V の 4 点、M の 4 点、H の 4 点）。
-  const raw = new Float64Array([-60, -59, -58, -57, 0.1, 0.2, 0.3, 0.4, 0.9, 0.8, 0.7, 0.6]);
-  const table = decodeComp(raw, variablesOf(meta, 0), meta.n[0]);
-  expect(Array.from(table.V)).toEqual([-60, -59, -58, -57]);
-  expect(Array.from(table.M)).toEqual(Array.from(new Float64Array([0.1, 0.2, 0.3, 0.4])));
-  expect(Array.from(table.H)).toEqual(Array.from(new Float64Array([0.9, 0.8, 0.7, 0.6])));
-  expect(() => decodeComp(raw, ['V', 'M'], 4)).toThrow();
-});
+import { decimate, histogram, histograms, path } from './waves.ts';
 
 test('decimation keeps each bucket’s extremes in time order, so a spike survives', () => {
   const values = new Float64Array(1000).fill(-65);
@@ -65,4 +39,11 @@ test('the histogram counts only finite values in range, and puts the top edge in
     { center: 0.5, count: 2 },
     { center: 1.5, count: 2 },
   ]);
+});
+
+test('histograms share one range across the columns', () => {
+  const [a, b] = histograms([new Float64Array([0, 1]), new Float64Array([2, 3])], 3);
+  expect(a.reduce((n, bin) => n + bin.count, 0)).toBe(2);
+  expect(b[2].count).toBe(2);
+  expect(histograms([new Float64Array([1, 1])], 3)).toEqual([[]]);
 });

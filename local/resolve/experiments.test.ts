@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { groupings, rheobase } from './common.ts';
+import { groupings } from './presets.ts';
 import { build, groupPlans } from './schema.ts';
 import { EXPERIMENTS } from './experiments.ts';
 
@@ -59,10 +59,4 @@ test('a run takes the setup and replaces only the fields it writes, groupings as
   expect([all.groupings, all.gates, Object.keys(all.series)]).toEqual([['h+n'], ['h', 'n'], ['traub-1comp-steady']]);
   expect([one.groupings, one.gates, Object.keys(one.series)]).toEqual([['h+n'], undefined, ['traub-1comp-kistler']]);
   expect(() => groupPlans('t', [{ description: 'x', extra: 1 }, doc[1]])).toThrow();
-});
-
-test('rheobase is the smallest swept value that fires', () => {
-  expect(rheobase([0, 2.5, 5], [0, 0, 4])).toBe(5);
-  expect(rheobase([5, 0], [1, 0])).toBe(5);
-  expect(rheobase([0, 2.5], [0, 0])).toBeNull();
 });

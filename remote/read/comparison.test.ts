@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { coincidence, compare, crossingDiff, crossings, diverged, rate } from './compare.ts';
+import { coincidence, compare, crossingDiff, crossings, diverged } from './comparison.ts';
 import type { Spikes } from '../../shared/runs.ts';
 
 /** 山を 2 つ持つ波形（dt = 0.5 ms で 2 ms の窓は ±4 点）。 */
@@ -73,8 +73,4 @@ test('coincidence follows Kistler et al. 1997 eq. (4.1) when the rates differ', 
   model.sort((a, b) => a - b);
   const expected = (280 - (450 * 300) / 2500) / (0.5 * (300 + 450)) / (1 - 300 / 2500);
   expect(coincidence(original, model, 10000, 2)).toBeCloseTo(expected, 6);
-});
-
-test('rate reads a point of the f–I curve', () => {
-  expect(rate([1, 2, 3], 300)).toBeCloseTo(10);
 });

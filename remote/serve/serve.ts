@@ -1,25 +1,16 @@
-// 計算する機械の上で runs の隣に立ち、結果を小さい JSON にして返す API（Bun.serve、POST /<口>、既定のポート 8787）。口の形は api.ts。
-// 波形は回線に出さず、間引いた線・軌跡・分布・指標にしてから返す。run は書き換わらないので、読んだファイルと指標は覚えておく。
-// 宣言は読まない。知っているのは resolved/ と runs だけ。
-// 回すのは段取り（orchestrate.ts）の関数だけで、任意のコマンドは通さない。runs の置き場は SINDY_RUNS（イメージでは /runs）。
+// 計算する機械の上で runs の隣に立つ API（Bun.serve、POST /<口>、既定のポート 8787）。口の形は shared/api.ts で、ここは口を回す側（../run/）と答えを作る側（../read/）の関数に渡すだけ。
+// 波形は回線に出さず、間引いた線・軌跡・分布・指標にしてから返す。宣言は読まない。知っているのは resolved/ と runs だけ。回すのは段取りの関数だけで、任意のコマンドは通さない。
+// runs の置き場は SINDY_RUNS（イメージでは /runs）。
 //   bun remote/serve/serve.ts
-import { readFileSync } from 'node:fs';
-import { join, normalize } from 'node:path';
-import { RUNS, launch, scan, status } from '../orchestrate/orchestrate.ts';
 import { FORMAT, type Job } from '../../shared/spec.ts';
-import { coincidence, compare, crossingDiff, crossings } from '../read/compare.ts';
-import { decimate, histogram, path } from '../read/waves.ts';
-import type { Api, ArrayRef, Bin, CrossingRow, PairMetrics, Point, SeriesMetrics, SeriesRequest } from '../../shared/api.ts';
-import { variablesOf, type SpikesFile, type WaveMeta } from '../../shared/runs.ts';
+import type { Api } from '../../shared/api.ts';
+import { seriesComparison } from '../read/comparison.ts';
+import { compact, decimate, histograms, path, runFiles } from '../read/waves.ts';
+import { launch } from '../run/run-spec.ts';
+import { status } from '../run/status.ts';
+import { RUNS, scan } from '../run/places.ts';
 
 const PORT = Number(process.env.SINDY_PORT ?? 8787);
-/** 覚えておく .f64 の合計の上限 [バイト]。超えたら古く使ったものから忘れる。 */
-const BUDGET = 2 ** 31;
-
-/** 回線に出す線の点。表示に要る桁だけに丸める（時刻は 0.01 ms の刻みが 1 万 ms まで残る 7 桁、値は 6 桁）。 */
-function compact(points: Point[]): Point[] {
-  return points.map(p => ({ x: Number(p.x.toPrecision(7)), y: Number(p.y.toPrecision(6)) }));
-}
 
 type Handlers = { [Op in keyof Api]: (body: Api[Op]['body']) => Api[Op]['reply'] };
 
@@ -31,135 +22,18 @@ function checkJob(job: Job): Job {
 
 /** runs の置き場 1 つの口。読んだ .f64 と指標はこの中で覚える。 */
 export function handlers(runs: string): Handlers {
-  const arrays = new Map<string, Float64Array>();
-  const metrics = new Map<string, SeriesMetrics>();
-  let held = 0;
-
-  /** run の下のファイルの絶対パス。runs/ の外を指すものは弾く。 */
-  function inRuns(run: string, file: string): string {
-    const relative = normalize(join(run, file));
-    if (relative.startsWith('..') || relative.startsWith('/')) throw new Error(`${run}/${file} は runs の外`);
-    return join(runs, relative);
-  }
-
-  /** run の中の .f64 を丸ごと。 */
-  function f64(run: string, file: string): Float64Array {
-    const key = `${run}/${file}`;
-    const hit = arrays.get(key);
-    if (hit) {
-      arrays.delete(key);
-      arrays.set(key, hit);
-      return hit;
-    }
-    if (!file.endsWith('.f64')) throw new Error(`${key} は .f64 でない`);
-    const bytes = readFileSync(inRuns(run, file));
-    const values = new Float64Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-    arrays.set(key, values);
-    held += values.byteLength;
-    for (const [old, array] of arrays) {
-      if (held <= BUDGET || old === key) break;
-      arrays.delete(old);
-      held -= array.byteLength;
-    }
-    return values;
-  }
-
-  function column(ref: ArrayRef): Float64Array {
-    const all = f64(ref.run, ref.file);
-    const { column: at, n } = ref;
-    if (
-      !Number.isInteger(at) ||
-      at < 0 ||
-      !Number.isInteger(n) ||
-      n <= 0 ||
-      all.length % n !== 0 ||
-      all.length < (at + 1) * n
-    )
-      throw new Error(`${ref.run}/${ref.file}（${all.length} 個）に ${at} 列目（${n} 点ずつ）が無い`);
-    return all.subarray(ref.column * ref.n, (ref.column + 1) * ref.n);
-  }
-
-  function json<T>(run: string, file: string): T {
-    if (!file.endsWith('.json')) throw new Error(`${run}/${file} は .json でない`);
-    return JSON.parse(readFileSync(inRuns(run, file), 'utf8')) as T;
-  }
-
-  /** 1 点の 1 区画の膜電位。 */
-  function voltage(run: string, meta: WaveMeta, point: number, compId: number): Float64Array {
-    return column({
-      run,
-      file: `waves/${point}/comp${compId}.f64`,
-      column: variablesOf(meta, compId).indexOf('V'),
-      n: meta.n[point],
-    });
-  }
-
-  /** 系列の、列ごと・点ごとの原系との指標と、0 mV の横切りで数えた差と Γ、発火の時刻。 */
-  function seriesMetrics(request: SeriesRequest): SeriesMetrics {
-    const key = JSON.stringify(request);
-    const hit = metrics.get(key);
-    if (hit) return hit;
-    if (!(Number.isFinite(request.delta) && request.delta > 0)) throw new Error(`Γ の許容幅 delta ${request.delta} が正の数でない`);
-    const meta = json<WaveMeta>(request.original, 'waves/meta.json');
-    const compId = meta.names ? meta.names[request.comp] : 0;
-    if (compId === undefined)
-      throw new Error(`${request.original} に区画 ${request.comp} が無い（${Object.keys(meta.names!).join('、')}）`);
-    const original = meta.n.map((_, k) => voltage(request.original, meta, k, compId));
-    const originalSpikes = json<SpikesFile>(request.original, 'spikes.json')[request.comp];
-    const result: SeriesMetrics = {
-      pairs: {},
-      crossings: {},
-      times: { original: original.map(v => crossings(v, meta.dt).times), columns: {} },
-    };
-    for (const run of request.columns) {
-      const columnMeta = json<WaveMeta>(run, 'waves/meta.json');
-      const spikes = json<SpikesFile>(run, 'spikes.json')[request.comp];
-      const pairs: PairMetrics[] = [];
-      const rows: CrossingRow[] = [];
-      const times: number[][] = [];
-      for (let k = 0; k < meta.n.length; k++) {
-        const v = voltage(run, columnMeta, k, compId);
-        if (originalSpikes && spikes) pairs.push(compare(original[k], v, originalSpikes[k], spikes[k], meta.dt));
-        const before = crossings(original[k], meta.dt);
-        const after = crossings(v, meta.dt);
-        rows.push({
-          ...crossingDiff(before, after),
-          gamma: coincidence(before.times, after.times, original[k].length * meta.dt, request.delta),
-        });
-        times.push(after.times);
-      }
-      if (originalSpikes && spikes) result.pairs[run] = pairs;
-      result.crossings[run] = rows;
-      result.times.columns[run] = times;
-    }
-    metrics.set(key, result);
-    return result;
-  }
-
-  /** 列ごとの分布。区間は全部の列の有限な値の最小から最大。 */
-  function histograms(refs: ArrayRef[], bins: number): Bin[][] {
-    const values = refs.map(column);
-    let low = Infinity;
-    let high = -Infinity;
-    for (const array of values)
-      for (const v of array) {
-        if (!Number.isFinite(v)) continue;
-        low = Math.min(low, v);
-        high = Math.max(high, v);
-      }
-    if (!(low < high)) return values.map(() => []);
-    return values.map(array => histogram(array, low, high, bins));
-  }
-
+  const files = runFiles(runs);
   return {
     index: () => scan(runs).filter(e => e.spec.format === FORMAT),
     status: () => status(runs),
     launch: body => ({ started: launch(runs, checkJob(body.job)) }),
-    json: body => json(body.run, body.path),
-    traces: body => body.requests.map(r => compact(decimate(column(r.array), r.t0, r.dt, r.start, r.end, r.buckets))),
-    paths: body => body.requests.map(r => compact(path(column(r.x), column(r.y), r.t0, r.dt, r.start, r.end, r.max))),
-    histograms: body => histograms(body.arrays, body.bins),
-    series: seriesMetrics,
+    json: body => files.json(body.run, body.path),
+    traces: body =>
+      body.requests.map(r => compact(decimate(files.column(r.array), r.t0, r.dt, r.start, r.end, r.buckets))),
+    paths: body =>
+      body.requests.map(r => compact(path(files.column(r.x), files.column(r.y), r.t0, r.dt, r.start, r.end, r.max))),
+    histograms: body => histograms(body.arrays.map(files.column), body.bins),
+    series: seriesComparison(files),
   };
 }
 

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Status } from '../../shared/spec.ts';
 import type { WaveMeta } from '../../shared/runs.ts';
-import { RESOLVED } from '../orchestrate/orchestrate.ts';
+import { RESOLVED } from '../run/places.ts';
 import { server } from './serve.ts';
 
 const runs = mkdtempSync(join(tmpdir(), 'runs-'));

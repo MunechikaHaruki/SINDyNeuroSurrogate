@@ -5,15 +5,13 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
 
-/** 調べるディレクトリと、そこから import してよい場所。手元（local/）と計算する機械（remote/）は互いのコードを import せず、両方が使うのは shared/ だけ。
- * 手元が remote/ から読むのは、Python と TS が同じ行から式を組むレートの式の JSON（データ）だけ。 */
-const LOCAL = ['local/', 'shared/', 'resolved/', 'remote/neurosurrogate/physics/'];
+/** 調べるディレクトリと、そこから import してよい場所。手元（local/）と計算する機械（remote/）は互いのコードを import せず、両方が使うのは shared/ だけ。 */
+const LOCAL = ['local/', 'shared/', 'resolved/'];
 const ALLOWED: Record<string, string[]> = {
   'local/config': ['local/', 'shared/'],
-  'local/experiments': LOCAL,
+  'local/resolve': LOCAL,
   'local/read': LOCAL,
-  'local/traub': LOCAL,
-  'remote/orchestrate': ['remote/', 'shared/'],
+  'remote/run': ['remote/', 'shared/'],
   'remote/read': ['remote/', 'shared/'],
   'remote/serve': ['remote/', 'shared/'],
   shared: ['shared/'],

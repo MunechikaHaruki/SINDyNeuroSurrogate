@@ -4,9 +4,45 @@
 // テスト専用の学習は config/presets.json に入れず、隣の test-trains.ts が持つ。形は ../../shared/spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
 import { z } from 'zod';
 import declaration from '../config/presets.json' with { type: 'json' };
-import { blocksOf, type Series, type Train } from './common.ts';
 import { TEST_DECLARATIONS } from './test-trains.ts';
-import type { Group, LibrarySpec, SimSpec, SurrogateConfig } from '../../shared/spec.ts';
+import type { Group, Input, LibrarySpec, SimSpec, SurrogateConfig } from '../../shared/spec.ts';
+
+/** 1 回の掃引実験（Python の EvalSeries）の宣言。送る spec では、入力（Input）と、置き換えたモデルの側の置換範囲に分かれる。 */
+export type Series = Input & {
+  /** 置換するノード名。互換かどうかは Python が名前ごとに検証する。 */
+  replace_targets: string[];
+};
+
+/** 学習 run 1 本の宣言。name は学習 run の名前（実験の中の `<仕方の名前>.<群分け>` かテストの名前）で、同一性には入らない。 */
+export type Train = { name: string; config: SurrogateConfig };
+
+/** ゲートの群分けを全部並べる。2 つ以上のゲートを入れた群だけを、群の中は `+`、群の間は `_` でつないで名前にし（例 h+n_a+c）、全部が 1 つずつの分け方は除く。減らす状態の少ない順、同じなら名前の順。 */
+export function groupings(gates: string[]): string[] {
+  let partitions: string[][][] = [[]];
+  for (const gate of gates) {
+    const next: string[][][] = [];
+    for (const blocks of partitions) {
+      for (let i = 0; i < blocks.length; i++) next.push(blocks.map((b, j) => (j === i ? [...b, gate] : b)));
+      next.push([...blocks, [gate]]);
+    }
+    partitions = next;
+  }
+  const list: { name: string; reduced: number }[] = [];
+  for (const blocks of partitions) {
+    const groups = blocks.filter(b => b.length > 1);
+    if (groups.length === 0) continue;
+    let reduced = 0;
+    for (const g of groups) reduced += g.length - 1;
+    list.push({ name: groups.map(g => g.join('+')).join('_'), reduced });
+  }
+  list.sort((x, y) => x.reduced - y.reduced || x.name.localeCompare(y.name));
+  return list.map(g => g.name);
+}
+
+/** 群分けの名前（`h+n_a+c`）を、群ごとのゲートの小文字の名前（[['h','n'],['a','c']]）にする。 */
+export function blocksOf(grouping: string): string[][] {
+  return grouping.split('_').map(block => block.split('+'));
+}
 
 type Entry = Record<string, unknown>;
 const raw = declaration as unknown as {
@@ -40,8 +76,8 @@ export type Declared = z.infer<typeof Method>;
 export const Ref = z.union([z.string(), z.looseObject({ from: z.string() })]);
 export type Ref = z.infer<typeof Ref>;
 
-/** 形の誤りを、どこの何かが分かる一文にする。 */
-function parsed<T>(schema: z.ZodType<T>, where: string, value: unknown): T {
+/** 宣言を形に当てる。誤りはどこの何かが分かる一文にする。 */
+export function parsed<T>(schema: z.ZodType<T>, where: string, value: unknown): T {
   const result = schema.safeParse(value);
   if (!result.success) throw new Error(`${where}：${z.prettifyError(result.error)}`);
   return result.data;

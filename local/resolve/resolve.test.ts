@@ -54,5 +54,5 @@ test('a model is a method laid over a grouping', () => {
 });
 
 test('resolved/ holds exactly the spec.json files the declarations send, so a change to them shows in the diff', () => {
-  expect(stale(), 'resolved/ が宣言と違う（bun local/experiments/resolve.ts write で書き直す）').toEqual([]);
+  expect(stale(), 'resolved/ が宣言と違う（bun local/resolve/resolve.ts write で書き直す）').toEqual([]);
 });
