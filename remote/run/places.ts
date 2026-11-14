@@ -1,4 +1,4 @@
-// 置き場。送る spec を置いた resolved/（手元の resolve.ts が書く）からパスで spec を引き、run を置く runs/ では、spec から置き場を決め
+// 置き場。手元から送られてきた resolved/（手元の local/resolve.ts が書く）からパスで spec を引き、run を置く runs/ では、spec から置き場を決め
 // （学習は models/<ハッシュ>/、入力 × モデルは inputs/<入力のハッシュ>/<original かモデルの鍵>/、GPU の実測は bench/<ハッシュ>/）、完成した run を並べ、run 1 本の状態（済み・計算中・置換できない・まだ）を読む。
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -6,15 +6,28 @@ import { fileURLToPath } from 'node:url';
 import type { IndexEntry, Spec, State } from '../../shared/spec.ts';
 import { digest, hashOf } from '../../shared/hash.ts';
 
-/** resolved/ の置き場。 */
-export const RESOLVED = join(fileURLToPath(new URL('../..', import.meta.url)), 'resolved');
+/** 送られてきた resolved/ の置き場。手元が組んで送る（local/remote.sh）ので、どこにあるかは SINDY_RESOLVED で受け取る
+ * （計算する機械のイメージは /code/resolved、手元で回すときは local/experiments/resolved）。 */
+export function resolvedDir(): string {
+  const dir = process.env.SINDY_RESOLVED;
+  if (!dir)
+    throw new Error('SINDY_RESOLVED に送られてきた resolved/ の場所を入れる（手元なら local/experiments/resolved）');
+  return resolve(dir);
+}
 
 /** resolved/ の下のパスの spec.json。resolved/ の外を指すパスは弾く。 */
 export function specAt(path: string): Spec {
-  const file = resolve(RESOLVED, path);
-  if (!file.startsWith(`${RESOLVED}/`) || !existsSync(file)) throw new Error(`resolved/${path} が無い`);
+  const dir = resolvedDir();
+  const file = resolve(dir, path);
+  if (!file.startsWith(`${dir}/`) || !existsSync(file)) throw new Error(`resolved/${path} が無い`);
   return JSON.parse(readFileSync(file, 'utf8')) as Spec;
 }
+
+/** 計算する機械の側（Python の project）。Python はここで起こす。 */
+export const PROJECT = fileURLToPath(new URL('..', import.meta.url));
+
+/** Python を起こすコマンド。計算する機械のイメージは venv の python を SINDY_PYTHON で渡す。 */
+export const PYTHON = process.env.SINDY_PYTHON?.split(' ') ?? ['uv', 'run', 'python'];
 
 /** 既定の run の置き場。計算する機械のイメージは SINDY_RUNS で載せた場所を指す。 */
 export const RUNS = process.env.SINDY_RUNS ?? join(fileURLToPath(new URL('../..', import.meta.url)), 'runs');

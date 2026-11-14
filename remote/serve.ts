@@ -1,14 +1,14 @@
-// 計算する機械の上で runs の隣に立つ API（Bun.serve、POST /<口>、既定のポート 8787）。口の形は shared/api.ts で、ここは口を回す側（../run/）と答えを作る側（../read/）の関数に渡すだけ。
+// 計算する機械の側の通信。runs の隣に立つ API（Bun.serve、POST /<口>、既定のポート 8787）。口の形は shared/api.ts で、ここは口を回す側（run/）と答えを作る側（read/）の関数に渡すだけ。
 // 波形は回線に出さず、間引いた線・軌跡・分布・指標にしてから返す。宣言は読まない。知っているのは resolved/ と runs だけ。回すのは段取りの関数だけで、任意のコマンドは通さない。
 // runs の置き場は SINDY_RUNS（イメージでは /runs）。
-//   bun remote/serve/serve.ts
-import { FORMAT, type Job } from '../../shared/spec.ts';
-import type { Api } from '../../shared/api.ts';
-import { seriesComparison } from '../read/comparison.ts';
-import { compact, decimate, histograms, path, runFiles } from '../read/waves.ts';
-import { launch } from '../run/run-spec.ts';
-import { status } from '../run/status.ts';
-import { RUNS, scan } from '../run/places.ts';
+//   bun remote/serve.ts
+import { FORMAT, type Job } from '../shared/spec.ts';
+import type { Api } from '../shared/api.ts';
+import { seriesComparison } from './read/comparison.ts';
+import { compact, decimate, histograms, path, runFiles } from './read/waves.ts';
+import { launch } from './run-spec.ts';
+import { status } from './run/status.ts';
+import { RUNS, scan } from './run/places.ts';
 
 const PORT = Number(process.env.SINDY_PORT ?? 8787);
 
@@ -20,7 +20,7 @@ function checkJob(job: Job): Job {
   throw new Error(`知らない仕事 ${JSON.stringify(job)}`);
 }
 
-/** runs の置き場 1 つの口。読んだ .f64 と指標はこの中で覚える。 */
+/** runs の置き場 1 つの口。読んだ .f64・特徴量・指標はこの中で覚える。 */
 export function handlers(runs: string): Handlers {
   const files = runFiles(runs);
   return {

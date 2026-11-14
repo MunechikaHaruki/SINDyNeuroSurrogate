@@ -1,4 +1,5 @@
 {
+  "measures": { "coincidence_window": 2 },
   "defaults": {
     "method": { "cell": "traub", "form": "hybrid", "duration": 9000, "d": 1, "dt": 0.01 },
     "series": { "target": "traub", "current": "lin&steady", "stim": "soma", "replace_targets": ["soma"], "silence_duration": 10.0, "dt": 0.01 }

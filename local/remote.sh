@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# 計算する機械（ssh で入れる NVIDIA の GPU の機械。名前は SINDY_HOST）で、学習・評価と結果を返す API を回す。
-# 送るのは計算する機械の側（remote/）と、両方が使う形（shared/）と、行きの JSON（resolved/）だけ。手元の側（local/。宣言を含む）は送らない。
+# 手元の側の、計算する機械との ssh の通信。計算する機械（ssh で入れる NVIDIA の GPU の機械。名前は SINDY_HOST）で、学習・評価と結果を返す API を回す。
+# 送るのは計算する機械の側（remote/）と、両方が使う形（shared/）と、手元が組んだ行きの JSON（local/experiments/resolved/ を向こうの resolved/ へ）だけ。宣言と手元のコードは送らない。
 #返るのは API の小さい JSON だけで、runs は計算する機械の ~/sindy/runs/ に置いたまま動かさない。
-#   SINDY_HOST=<host> ./remote.sh up                  コードを送り、イメージを用意し、API（:8787）を立てる
-#   SINDY_HOST=<host> ./remote.sh run <段取りの引数>   コードを送ってから、段取り（remote/run/run-spec.ts。run <resolved/ の下のパス>...）を向こうで回す
-#   SINDY_HOST=<host> ./remote.sh test                コードを送ってから、Python と TS のテストを向こうで回す
-#   SINDY_HOST=<host> ./remote.sh fetch <run の id>   run を 1 つ手元の runs/ へ持ってくる（回線の届かない所で見るとき）
+#   SINDY_HOST=<host> local/remote.sh up                  コードを送り、イメージを用意し、API（:8787）を立てる
+#   SINDY_HOST=<host> local/remote.sh run <段取りの引数>   コードを送ってから、段取り（remote/run-spec.ts。run <resolved/ の下のパス>...）を向こうで回す
+#   SINDY_HOST=<host> local/remote.sh test                コードを送ってから、Python と TS のテストを向こうで回す
+#   SINDY_HOST=<host> local/remote.sh fetch <run の id>   run を 1 つ手元の runs/ へ持ってくる（回線の届かない所で見るとき）
 # イメージはベースと道具を digest で、Python の依存を uv.lock で固定した remote/Dockerfile から向こうで作る。API はコードの書き換えで立ち直る（bun --watch）。
 set -euo pipefail
 shopt -s inherit_errexit # コマンド置換の中の失敗でも止まる
 
 host=${SINDY_HOST:?計算する機械の ssh の名前を SINDY_HOST に入れる}
-repo=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$(dirname "$0")/.." && pwd)
 export DOCKER_HOST="ssh://$host"
 name=sindy
 
@@ -25,12 +25,14 @@ version() {
 
 sync() {
   # 向こうは resolved/ の spec だけを回すので、宣言から組み直したものと違えば送らない
-  (cd "$repo" && bun local/resolve/resolve.ts check)
+  (cd "$repo" && bun local/resolve.ts check)
   version > "$repo/.code-version"
   ssh "$host" 'mkdir -p ~/sindy/code ~/sindy/runs'
-  # 送るのは remote/・shared/・resolved/ のうち git が見るものと、版を書いた .code-version だけ（.gitignore で外したものは版に入らないので送らない）。ほかは向こうから消す
-  rsync -a --delete --delete-excluded --include /.code-version --filter=':- .gitignore' \
-    --include '/remote/***' --include '/shared/***' --include '/resolved/***' --exclude '*' "$repo/" "$host:sindy/code/"
+  # 送るのは remote/・shared/ のうち git が見るものと、版を書いた .code-version だけ（.gitignore で外したものは版に入らないので送らない）。ほかは向こうから消す
+  rsync -a --delete --delete-excluded --filter 'P /resolved/' --include /.code-version --filter=':- .gitignore' \
+    --include '/remote/***' --include '/shared/***' --exclude '*' "$repo/" "$host:sindy/code/"
+  # 行きの spec は手元の local/experiments/resolved/ を、向こうの resolved/（イメージの SINDY_RESOLVED）へ写す
+  rsync -a --delete "$repo/local/experiments/resolved/" "$host:sindy/code/resolved/"
 }
 
 # イメージの名前は依存を決めるファイルのハッシュ。同じなら作り直さない。
@@ -45,7 +47,7 @@ image() {
 
 # 向こうのコンテナで学習か評価が回っているか。
 busy() {
-  docker exec "$name" ps -eo args 2> /dev/null | grep -q 'neurosurrogate.run\|run/run-spec.ts'
+  docker exec "$name" ps -eo args 2> /dev/null | grep -q 'neurosurrogate.run\|run-spec.ts'
 }
 
 up() {
@@ -74,7 +76,7 @@ case ${1:-} in
   run)
     shift
     up
-    docker exec "$name" bun run/run-spec.ts "$@"
+    docker exec "$name" bun run-spec.ts "$@"
     ;;
   test)
     up

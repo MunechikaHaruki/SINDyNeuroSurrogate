@@ -3,7 +3,7 @@
 // 決め打ちの構成（組み合わせを展開しない実験）は、プリセットを通さず、学習の設定と系列を値のまま config/<実験>.json に書く（PlanJson）。
 // 返すのは学習 run と系列を値で持つ解決済みの実験だけで、resolve.ts と画面は宣言の形を知らない。
 import { z } from 'zod';
-import type { SurrogateConfig } from '../../shared/spec.ts';
+import type { SurrogateConfig } from '../../../shared/spec.ts';
 import { Ref, groupings, methodOf, parsed, seriesFrom, trainFrom, type Series, type Train } from './presets.ts';
 
 /** 細胞の数。1 刻みのカーネルのブロック（128 細胞）の倍数。 */

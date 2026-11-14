@@ -8,7 +8,6 @@ export const RUN = {
   waves: 'waves',
   train: 'description/train',
   model: 'description/model.json',
-  spikes: 'spikes.json',
   summary: 'summary.json',
   bench: 'bench.json',
   projected: (comp: string) => `projected/${comp}`,
@@ -74,11 +73,6 @@ export function fitArray(
 ): ArrayRef {
   return { run, file: `description/fit/${compId}/${file}.f64`, column, n: meta.n[0] };
 }
-
-/** 特徴量の名前 → 値の並び（spikes.json の 1 区画・1 点）。null は eFEL の nan。 */
-export type Spikes = Record<string, (number | null)[]>;
-/** comp 名 → 点ごとの特徴量（spikes.json）。 */
-export type SpikesFile = Record<string, Spikes[]>;
 
 /** 閉包項の中身。kind で表現を見分ける。 */
 export type ClosureJson =

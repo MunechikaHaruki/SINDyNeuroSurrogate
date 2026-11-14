@@ -1,8 +1,14 @@
-"""1 本の波形のスパイクの特徴量 (eFEL)。
+"""波形のスパイクの特徴量 (eFEL)。run には書かず、API が頼まれるたびに呼ぶ。
 
-元のモデルとの比較は ../read/comparison.ts が持つ。
+`python -m neurosurrogate.spikes '[{"dt": 刻み, "n": 長さ}, ...]'` が、標準入力の
+little-endian float64 を並びの長さで切った波形ごとに、特徴量を JSON の並びで書く
+(nan は null)。run の形式は知らない。波形を読んで渡すのも、元のモデルとの比べも
+API (../read/comparison.ts) が持つ。
 """
 
+import json
+import math
+import sys
 import warnings
 
 import efel
@@ -42,3 +48,29 @@ def spike_features(v: np.ndarray, dt: float) -> dict[str, list[float]]:
         name: [] if found[name] is None else [float(x) for x in found[name]]
         for name in FEATURES
     }
+
+
+def _nulled(features: dict[str, list[float]]) -> dict[str, list[float | None]]:
+    """JSON に書けない nan・無限大を null にする。"""
+    return {
+        name: [x if math.isfinite(x) else None for x in values]
+        for name, values in features.items()
+    }
+
+
+def main(header: str) -> None:
+    """標準入力の波形を header の長さで切り、波形ごとの特徴量を標準出力へ書く。"""
+    traces = json.loads(header)
+    values = np.frombuffer(sys.stdin.buffer.read(), dtype="<f8")
+    if values.size != sum(t["n"] for t in traces):
+        raise ValueError(f"波形の長さの和 {values.size} が header と合わない")
+    found, start = [], 0
+    for t in traces:
+        v = values[start : start + t["n"]]
+        found.append(_nulled(spike_features(v, float(t["dt"]))))
+        start += t["n"]
+    json.dump(found, sys.stdout)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])

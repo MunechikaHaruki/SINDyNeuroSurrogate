@@ -2,9 +2,9 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Status } from '../../shared/spec.ts';
-import type { WaveMeta } from '../../shared/runs.ts';
-import { RESOLVED } from '../run/places.ts';
+import type { Status } from '../shared/spec.ts';
+import type { WaveMeta } from '../shared/runs.ts';
+import { resolvedDir } from './run/places.ts';
 import { server } from './serve.ts';
 
 const runs = mkdtempSync(join(tmpdir(), 'runs-'));
@@ -34,8 +34,8 @@ function put(run: string, shift: number): void {
     values[N + i] = i / N;
   }
   writeFileSync(join(dir, 'waves/meta.json'), JSON.stringify(META));
+  writeFileSync(join(dir, 'spec.json'), JSON.stringify({ kind: 'sim', input: { param: null, values: [] } }));
   writeFileSync(join(dir, 'waves/0/comp0.f64'), Buffer.from(values.buffer));
-  writeFileSync(join(dir, 'spikes.json'), JSON.stringify({ soma: [{ peak_voltage: [30] }] }));
 }
 put('inputs/i/original', 10);
 put('inputs/i/m', 11);
@@ -66,7 +66,11 @@ test('the series metrics count crossings and coincidence against the original', 
   expect(reply.times.original[0].length).toBe(reply.times.columns['inputs/i/m'][0].length);
   expect(reply.crossings['inputs/i/m'][0].count[0]).toBe(reply.crossings['inputs/i/m'][0].count[1]);
   expect(reply.crossings['inputs/i/m'][0].gamma).toBeGreaterThan(0.9);
-  expect(reply.pairs['inputs/i/m']).toHaveLength(1);
+  expect(reply.summaries['inputs/i/m'].gamma).toBe(reply.crossings['inputs/i/m'][0].gamma);
+  expect(reply.pairs['inputs/i/m'][0].scalars.mae).toBeGreaterThan(0);
+  expect(reply.pairs['inputs/i/m'][0].rows.spike_count[1]).toBeGreaterThan(0);
+  const missing = { original: 'inputs/i/original', columns: [], comp: 'dend', delta: 2 };
+  expect((await post('series', missing)).status).toBe(400);
 });
 
 test('only json and f64 inside runs can be read, and unknown ops are refused', async () => {
@@ -79,7 +83,7 @@ test('only json and f64 inside runs can be read, and unknown ops are refused', a
 
 test('the status lists the experiments under resolved/ without reading the declarations', async () => {
   const reply = (await (await post('status', {})).json()) as Status;
-  const dirs = readdirSync(RESOLVED, { withFileTypes: true })
+  const dirs = readdirSync(resolvedDir(), { withFileTypes: true })
     .filter(e => e.isDirectory())
     .map(e => e.name)
     .sort();

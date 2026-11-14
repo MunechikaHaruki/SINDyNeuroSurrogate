@@ -1,19 +1,19 @@
 // 手元の側の出口。宣言（../config/ と隣の TS）から、実験ごとに送る spec.json を組んで resolved/ に置く。テスト専用の学習の設定も resolved/tests.json（計算する機械の pytest が読む）に置く。計算する機械（../../remote/）は宣言を読まず、ここが書いた resolved/ だけを受け取って回す。
 // パスは識別のための名前で、送るのは中身だけ：`<実験>/train/<学習 run>.json`、`<実験>/sim/<系列>/original.json`（元のモデル）と `<学習 run>.json`、`<実験>/bench/<GPU の実測>.json`。
-//   bun local/resolve/resolve.ts write        resolved/ を今の宣言から書き直す
-//   … check                                          resolved/ が今の宣言と同じか（違えば挙げて終了コード 1。remote.sh up が送る前に見る）
+//   bun local/resolve.ts write        resolved/ を今の宣言から書き直す
+//   … check                                          resolved/ が今の宣言と同じか（違えば挙げて終了コード 1。local/remote.sh up が送る前に見る）
 //   引数なしで名前の一覧
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { METHOD_NAMES, TESTS, type Series, type Train } from './presets.ts';
-import { EXPERIMENTS, SERIES, TRAINS, seriesOf, trainOf, type GroupedPlan } from './experiments.ts';
-import { hashOf } from '../../shared/hash.ts';
-import { FORMAT, type Device, type Input, type Spec } from '../../shared/spec.ts';
-import type { Bench } from './schema.ts';
+import { METHOD_NAMES, TESTS, type Series, type Train } from './experiments/schema/presets.ts';
+import { EXPERIMENTS, SERIES, TRAINS, seriesOf, trainOf, type GroupedPlan } from './experiments/schema/experiments.ts';
+import { hashOf } from '../shared/hash.ts';
+import { FORMAT, type Device, type Input, type Spec } from '../shared/spec.ts';
+import type { Bench } from './experiments/schema/schema.ts';
 
 /** 送る spec.json の置き場。 */
-export const RESOLVED = fileURLToPath(new URL('../../resolved', import.meta.url));
+export const RESOLVED = fileURLToPath(new URL('./experiments/resolved', import.meta.url));
 
 /** 学習は GPU（AE の学習が速い）、テストの学習は GPU の無い機械でも回るよう CPU。 */
 function trainDevice(train: Train): Device {
@@ -116,9 +116,7 @@ function main([name]: string[]): void {
   else if (name === 'check') {
     const found = stale();
     if (found.length === 0) return;
-    console.error(
-      `resolved/ が宣言と違う（bun local/resolve/resolve.ts write で書き直す）:\n  ${found.join('\n  ')}`,
-    );
+    console.error(`resolved/ が宣言と違う（bun local/resolve.ts write で書き直す）:\n  ${found.join('\n  ')}`);
     process.exitCode = 1;
   } else
     console.log(

@@ -1,9 +1,12 @@
 """サロゲートの学習・置換・書き出し。
 
-テスト専用の学習の設定は、手元の resolve.ts が書いた resolved/tests.json から読む
+テスト専用の学習の設定は、手元の resolve.ts が書いて送った resolved/tests.json
+(場所は SINDY_RESOLVED) から読む
 (宣言は読まない)。
 """
 
+import io
+import os
 import json
 from functools import cache
 from pathlib import Path
@@ -18,6 +21,7 @@ from neurosurrogate.physics.cells import CELLS, NETS, OpCost, column_cell
 from neurosurrogate.physics.kam import absorbed
 from neurosurrogate.physics.simulate import EvalSeries, SimSpec, potential, simulate
 from neurosurrogate.spikes import FEATURES, spike_features
+from neurosurrogate.spikes import main as spikes_main
 from neurosurrogate.surrogate.compress import AE, fit_ae
 from neurosurrogate.surrogate.model import (
     Config,
@@ -34,7 +38,7 @@ from neurosurrogate.surrogate.model import (
 from neurosurrogate.surrogate.sindy import SINDy
 from neurosurrogate.surrogate.ude import UDE
 
-TESTS = Path(__file__).resolve().parents[2] / "resolved/tests.json"
+TESTS = Path(os.environ.get("SINDY_RESOLVED", "SINDY_RESOLVED が無い")) / "tests.json"
 
 
 @cache
@@ -378,6 +382,22 @@ def test_spike_features_count_the_spikes_of_one_trace() -> None:
     peaks = features["peak_indices"]
     assert len(peaks) > 0 and len(features["peak_voltage"]) == len(peaks)
     assert spike_features(np.full_like(v, -65.0), spec.dt)["peak_indices"] == []
+
+
+def test_spike_features_cut_the_stdin_into_traces(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """標準入力の波形を header の長さで切り、波形ごとの特徴量を JSON で書く。"""
+    spec = _dc("hh", value=10.0)
+    v = potential(simulate(spec.run_input()), 0)
+    flat = np.full(50, -65.0)
+    raw = np.concatenate([v, flat]).astype("<f8").tobytes()
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(raw)))
+    header = [{"dt": spec.dt, "n": len(v)}, {"dt": spec.dt, "n": len(flat)}]
+    spikes_main(json.dumps(header))
+    found = json.loads(capsys.readouterr().out)
+    assert found[0]["peak_indices"] == spike_features(v, spec.dt)["peak_indices"]
+    assert found[1]["peak_indices"] == []
 
 
 def test_resolved_series_resolve() -> None:

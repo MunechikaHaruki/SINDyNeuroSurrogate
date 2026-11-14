@@ -1,6 +1,6 @@
 # 計算する機械（NVIDIA の GPU）で学習・評価・測定と、結果を返す API を回すイメージ。
 # ベースと道具は digest で、Python とその依存は uv.lock で固定する（lock が pyproject と合わなければ作らない）。TS（段取りと API）は npm の依存を持たない。
-# コードは焼き込まず、送った remote/・shared/・resolved/ を /code に、runs を /runs に載せる（../remote.sh）。
+# コードは焼き込まず、送った remote/・shared/ と行きの spec（resolved/）を /code に、runs を /runs に載せる（../local/remote.sh）。
 
 # CUDA 12.8 の devel は ncu（Nsight Compute）を持つ
 FROM nvidia/cuda:12.8.1-devel-ubuntu24.04@sha256:520292dbb4f755fd360766059e62956e9379485d9e073bbd2f6e3c20c270ed66
@@ -15,11 +15,12 @@ WORKDIR /deps
 COPY pyproject.toml uv.lock ./
 RUN uv python install 3.13.5 && uv sync --python 3.13.5 --no-install-project --extra cuda
 
-# 段取りは venv の python を起こす。JAX は VRAM を先取りせず（使った分を測るため）、GPU の演算は決定的にする
+# 段取りは venv の python を起こし、送られてきた spec を /code/resolved から読む。JAX は VRAM を先取りせず（使った分を測るため）、GPU の演算は決定的にする
 ENV SINDY_PYTHON=/venv/bin/python \
     SINDY_RUNS=/runs \
+    SINDY_RESOLVED=/code/resolved \
     XLA_PYTHON_CLIENT_PREALLOCATE=false \
     XLA_FLAGS=--xla_gpu_deterministic_ops=true
 WORKDIR /code/remote
 EXPOSE 8787
-CMD ["bun", "--watch", "serve/serve.ts"]
+CMD ["bun", "--watch", "serve.ts"]

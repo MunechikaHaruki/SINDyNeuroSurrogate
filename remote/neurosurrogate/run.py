@@ -31,10 +31,10 @@ JSON の nan は null):
     train      surrogate/ (config.json + parts.joblib)、summary.json (学習側の指標)、
                description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
                description/fit/<comp_id>/{x,latent,recon_rmse}.f64
-    sim        waves/、spikes.json (comp 名 → 点ごとの spike_features)。置き換えた
-               モデルは加えて、projected/<comp>/ (置換した comp の original/ の
-               ゲートを潜在へ射影したもの。waves と同じ形)。元のモデルとの比較は
-               図が波形と spikes.json から計算する
+    sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
+               original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ
+               だけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
+               頼まれるたびに波形から計算する
 
     waves/meta.json           t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]],
                               I_internal の nodes, comp 名 → id
@@ -75,7 +75,6 @@ from .physics.simulate import (
     potential,
     simulate,
 )
-from .spikes import spike_features
 from .surrogate.model import (
     Surrogate,
     applicable,
@@ -238,18 +237,8 @@ def _diverged(v: np.ndarray) -> bool:
     return not bool(np.all(np.isfinite(v))) or float(np.abs(v).max()) > _DIVERGE_V
 
 
-def _write_spikes(root: Path, series: EvalSeries, waves: list[xr.Dataset]) -> None:
-    """全区画・全点のスパイクの特徴量を spikes.json に書く。"""
-    net, dt = series.spec.net, series.spec.dt
-    spikes = {
-        comp: [spike_features(potential(ds, net.index(comp)), dt) for ds in waves]
-        for comp in net.names
-    }
-    _write_json(root / "spikes.json", spikes)
-
-
 def _sim(root: Path, spec: dict) -> dict:
-    """入力をモデルで回して波形とスパイクの特徴量を書く。置き換えたモデルなら、
+    """入力をモデルで回して波形を書く。置き換えたモデルなら、
     置換した区画の射影も書く。"""
     model = spec["model"]
     targets = model["replace_targets"] if model else []
@@ -257,7 +246,6 @@ def _sim(root: Path, spec: dict) -> dict:
     if model is None:
         waves = [simulate(point.run_input()) for point in series.points]
         _write_waves(root / "waves", waves, _names(series))
-        _write_spikes(root, series, waves)
         return {"unit": series.unit}
     runs = root.parents[2]
     surrogate = Surrogate.load(runs / "models" / model["train"] / "surrogate")
@@ -274,7 +262,6 @@ def _sim(root: Path, spec: dict) -> dict:
             _logger.warning("置換系の電位が発散 (%s): %s", point.current_type, broken)
         waves.append(ds)
     _write_waves(root / "waves", waves, _names(series))
-    _write_spikes(root, series, waves)
     net = series.spec.net
     for comp in targets:
         projected = [_project(surrogate, ds, net.index(comp)) for ds in originals]

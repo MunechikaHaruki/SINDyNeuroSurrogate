@@ -35,7 +35,6 @@ flowchart RL
   physics_simulate --> physics_cells
   physics_simulate --> physics_currents
   run --> bench
-  run --> spikes
   surrogate_compress --> physics_cells
   surrogate_model --> physics_kam
   surrogate_model --> physics_simulate
@@ -158,14 +157,6 @@ spec は run.py の `bench` の spec (入力と、元のモデルか学習 run)�
 揃うかの確かめに使う。
 ```
 
-## spikes.py
-
-1 本の波形のスパイクの特徴量 (eFEL)。
-
-```text
-元のモデルとの比較は ../read/comparison.ts が持つ。
-```
-
 ## run.py
 
 計算の入口: `uv run python -m neurosurrogate.run <spec.json> <run のディレクトリ>`。
@@ -202,10 +193,10 @@ JSON の nan は null):
     train      surrogate/ (config.json + parts.joblib)、summary.json (学習側の指標)、
                description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
                description/fit/<comp_id>/{x,latent,recon_rmse}.f64
-    sim        waves/、spikes.json (comp 名 → 点ごとの spike_features)。置き換えた
-               モデルは加えて、projected/<comp>/ (置換した comp の original/ の
-               ゲートを潜在へ射影したもの。waves と同じ形)。元のモデルとの比較は
-               図が波形と spikes.json から計算する
+    sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
+               original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ
+               だけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
+               頼まれるたびに波形から計算する
 
     waves/meta.json           t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]],
                               I_internal の nodes, comp 名 → id
@@ -216,4 +207,15 @@ JSON の nan は null):
 に書いてから名前を変える。一時ディレクトリには書いているプロセスの pid を置き、図は
 それで「計算中」を出す。ディレクトリが既にあれば回さない。置換できない組み合わせは何も書かずに
 終了コード 3、同じ run を生きた別のプロセスが書いていれば終了コード 4。
+```
+
+## spikes.py
+
+波形のスパイクの特徴量 (eFEL)。run には書かず、API が頼まれるたびに呼ぶ。
+
+```text
+`python -m neurosurrogate.spikes '[{"dt": 刻み, "n": 長さ}, ...]'` が、標準入力の
+little-endian float64 を並びの長さで切った波形ごとに、特徴量を JSON の並びで書く
+(nan は null)。run の形式は知らない。波形を読んで渡すのも、元のモデルとの比べも
+API (../read/comparison.ts) が持つ。
 ```

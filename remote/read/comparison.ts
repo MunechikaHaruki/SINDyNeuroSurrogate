@@ -1,8 +1,21 @@
-// 比べ。元のモデルと置き換えたモデルを、系列の列ごと・掃引の点ごとに比べる：波形とスパイクの特徴量の指標（compare）、0 mV の上向きの横切りで数えた差と Γ（coincidence）、発火の時刻。
-// スパイクの特徴量は eFEL が持つので Python（neurosurrogate/spikes.py）が書き、比べる計算はここが持つ。Γ の許容幅 Δ は手元が頼み方で渡す。
-import type { CrossingDiff, CrossingRow, PairMetrics, SeriesMetrics, SeriesRequest } from '../../shared/api.ts';
-import { compArray, RUN, type Spikes, type SpikesFile, type WaveMeta } from '../../shared/runs.ts';
+// 比べ。run は生データ（波形）だけを持つので、波形から先の量は全部ここが頼まれるたびに純粋関数で計算する：
+// 波形 1 本の特徴量（eFEL・0 mV の上向きの横切り・山の平均の形・発散）、原系と置き換えた列の点ごとの指標（rmse・mae、ISI の統計、周期の差、形の相関、横切りで数えた差、
+// coincidence factor Γ）と、列ごとのまとめ（決まる点での Γ の平均、発火の始まり）。eFEL は Python（neurosurrogate/spikes.py）を子プロセスで起こし、波形を標準入力で渡す。
+// 物差しの値（Γ の許容幅 Δ）は手元が頼み方で渡す。run は書き換わらないので、特徴量は run・区画ごとに、答えは頼み方ごとに覚えておく。
+import type { ColumnSummary, CrossingDiff, CrossingRow, PairMetrics, SeriesMetrics, SeriesRequest } from '../../shared/api.ts';
+import { compArray, RUN, type WaveMeta } from '../../shared/runs.ts';
+import type { Spec } from '../../shared/spec.ts';
+import { PROJECT, PYTHON } from '../run/places.ts';
 import type { RunFiles } from './waves.ts';
+
+/** eFEL の特徴量の名前 → 値の並び（波形 1 本）。null は eFEL の nan。 */
+export type Spikes = Record<string, (number | null)[]>;
+/** 0 mV を上向きにまたいだ時刻 [ms] と、そのスパイクの山 [mV]。 */
+export type Crossings = { times: number[]; peaks: number[] };
+/** 波形 1 本の特徴量。shape は山ごとに ±2 ms を切り出して平均した形（切り出せる山が無ければ null）。 */
+export type TraceFeatures = { spikes: Spikes; crossings: Crossings; shape: number[] | null; diverged: boolean };
+/** 原系と置き換えた列の、1 点の膜電位の差。値が決まらなければ（nan）null。 */
+export type Distance = { rmse: number | null; mae: number | null };
 
 /** AP ごとの特徴量（neurosurrogate/spikes.py の AP_FEATURES）。比べる AP は読む側が選ぶ。 */
 export const AP_FEATURES = [
@@ -19,7 +32,7 @@ export const AP_FEATURES = [
 ];
 /** |V| [mV] の発散の閾値（生理的な範囲は ±200 程度）。 */
 const DIVERGE_V = 1e3;
-/** スパイクの形を比べる窓の半幅 [ms]。 */
+/** スパイクの形を切り出す窓の半幅 [ms]。 */
 const HALF_WINDOW = 2.0;
 
 /** 有限でない値は null にする（JSON の nan と同じ扱い）。 */
@@ -31,6 +44,65 @@ function finite(value: number): number | null {
 export function diverged(v: Float64Array): boolean {
   for (const x of v) if (!Number.isFinite(x) || Math.abs(x) > DIVERGE_V) return true;
   return false;
+}
+
+/** 0 mV を上向きにまたいだ時刻 [ms] と、そのスパイクの山 [mV]。eFEL を通さないので、TS の縮約モデルにも同じ物差しを当てられる。 */
+export function crossings(v: ArrayLike<number>, dt: number): Crossings {
+  const times: number[] = [];
+  const peaks: number[] = [];
+  for (let i = 1; i < v.length; i++) {
+    if (!(v[i - 1] < 0 && v[i] >= 0)) continue;
+    times.push(i * dt);
+    let top = v[i];
+    for (let j = i; j < v.length && v[j] >= 0; j++) top = Math.max(top, v[j]);
+    peaks.push(top);
+  }
+  return { times, peaks };
+}
+
+/** 山ごとに ±HALF_WINDOW ms を切り出して平均した形。切り出せる山が無ければ null。 */
+export function shape(v: Float64Array, peaks: (number | null)[], dt: number): number[] | null {
+  const half = Math.trunc(HALF_WINDOW / dt);
+  const sum = new Float64Array(2 * half + 1);
+  let count = 0;
+  for (const peak of peaks) {
+    if (peak === null || peak - half < 0 || peak + half + 1 > v.length) continue;
+    for (let i = 0; i < sum.length; i++) sum[i] += v[peak - half + i];
+    count++;
+  }
+  if (count === 0) return null;
+  return Array.from(sum, x => x / count);
+}
+
+/** 原系と置き換えた列の膜電位の差。 */
+export function distance(original: Float64Array, surrogate: Float64Array): Distance {
+  let squared = 0;
+  let absolute = 0;
+  for (let i = 0; i < original.length; i++) {
+    const error = original[i] - surrogate[i];
+    squared += error * error;
+    absolute += Math.abs(error);
+  }
+  return { rmse: finite(Math.sqrt(squared / original.length)), mae: finite(absolute / original.length) };
+}
+
+/** 波形の並びの eFEL の特徴量。Python を一度だけ起こし、波形を続けて標準入力へ流す。 */
+export function efel(traces: Float64Array[], dt: number): Spikes[] {
+  if (traces.length === 0) return [];
+  const header = JSON.stringify(traces.map(v => ({ dt, n: v.length })));
+  const input = new Uint8Array(traces.reduce((sum, v) => sum + v.byteLength, 0));
+  let at = 0;
+  for (const v of traces) {
+    input.set(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), at);
+    at += v.byteLength;
+  }
+  const done = Bun.spawnSync([...PYTHON, '-m', 'neurosurrogate.spikes', header], {
+    cwd: PROJECT,
+    stdin: input,
+    env: { ...process.env, JAX_PLATFORMS: 'cpu' },
+  });
+  if (done.exitCode !== 0) throw new Error(`eFEL が落ちた：${done.stderr.toString()}`);
+  return JSON.parse(done.stdout.toString()) as Spikes[];
 }
 
 function mean(values: number[]): number {
@@ -64,25 +136,10 @@ function stat(values: (number | null)[] | undefined, fn: (values: number[]) => n
   return list ? finite(fn(list)) : null;
 }
 
-/** 山ごとに ±HALF_WINDOW ms を切り出して平均した形。切り出せる山が無ければ undefined。 */
-function template(v: Float64Array, peaks: (number | null)[], dt: number): Float64Array | undefined {
-  const half = Math.trunc(HALF_WINDOW / dt);
-  const sum = new Float64Array(2 * half + 1);
-  let count = 0;
-  for (const peak of peaks) {
-    if (peak === null || peak - half < 0 || peak + half + 1 > v.length) continue;
-    for (let i = 0; i < sum.length; i++) sum[i] += v[peak - half + i];
-    count++;
-  }
-  if (count === 0) return undefined;
-  for (let i = 0; i < sum.length; i++) sum[i] /= count;
-  return sum;
-}
-
 /** Pearson の相関（np.corrcoef）。 */
-function correlation(a: Float64Array, b: Float64Array): number {
-  const ma = mean(Array.from(a));
-  const mb = mean(Array.from(b));
+function correlation(a: number[], b: number[]): number {
+  const ma = mean(a);
+  const mb = mean(b);
   let ab = 0;
   let aa = 0;
   let bb = 0;
@@ -94,61 +151,31 @@ function correlation(a: Float64Array, b: Float64Array): number {
   return Math.max(-1, Math.min(1, ab / Math.sqrt(aa * bb)));
 }
 
-/** 1 ペアの 1 comp の全指標。rows は両方にある指標の [原系, 置換系]、scalars は比べて決まる指標、spikes は AP ごとの特徴量。 */
-export function compare(
-  original: Float64Array,
-  surrogate: Float64Array,
-  o: Spikes,
-  s: Spikes,
-  dt: number,
-): PairMetrics {
-  let squared = 0;
-  let absolute = 0;
-  for (let i = 0; i < original.length; i++) {
-    const error = original[i] - surrogate[i];
-    squared += error * error;
-    absolute += Math.abs(error);
-  }
-  const oIsi = stat(o.ISI_values, mean);
-  const sIsi = stat(s.ISI_values, mean);
-  const oShape = template(original, o.peak_indices ?? [], dt);
-  const sShape = template(surrogate, s.peak_indices ?? [], dt);
+/** 1 ペアの 1 comp の全指標を、両方の特徴量と波形の差から組む。 */
+export function compare(o: TraceFeatures, s: TraceFeatures, d: Distance): PairMetrics {
+  const oIsi = stat(o.spikes.ISI_values, mean);
+  const sIsi = stat(s.spikes.ISI_values, mean);
   const spikes: PairMetrics['spikes'] = {};
-  for (const name of AP_FEATURES) spikes[name] = [o[name] ?? [], s[name] ?? []];
+  for (const name of AP_FEATURES) spikes[name] = [o.spikes[name] ?? [], s.spikes[name] ?? []];
   return {
     rows: {
-      spike_count: [(o.peak_indices ?? []).length, (s.peak_indices ?? []).length],
-      latency: [o.time_to_first_spike?.[0] ?? null, s.time_to_first_spike?.[0] ?? null],
+      spike_count: [(o.spikes.peak_indices ?? []).length, (s.spikes.peak_indices ?? []).length],
+      latency: [o.spikes.time_to_first_spike?.[0] ?? null, s.spikes.time_to_first_spike?.[0] ?? null],
       mean_isi: [oIsi, sIsi],
-      std_isi: [stat(o.ISI_values, std), stat(s.ISI_values, std)],
+      std_isi: [stat(o.spikes.ISI_values, std), stat(s.spikes.ISI_values, std)],
     },
     scalars: {
-      rmse: finite(Math.sqrt(squared / original.length)),
-      mae: finite(absolute / original.length),
+      rmse: d.rmse,
+      mae: d.mae,
       periodicity_gap: oIsi === null || sIsi === null ? null : Math.abs(oIsi - sIsi),
-      spike_shape_corr: oShape && sShape ? finite(correlation(oShape, sShape)) : null,
+      spike_shape_corr: o.shape && s.shape ? finite(correlation(o.shape, s.shape)) : null,
     },
     spikes,
-    diverged: diverged(surrogate),
+    diverged: s.diverged,
   };
 }
 
-/** 0 mV を上向きにまたいだ時刻 [ms] と、そのスパイクの山 [mV]。eFEL を通さないので、TS の縮約モデルにも同じ物差しを当てられる。 */
-export type Crossings = { times: number[]; peaks: number[] };
-
-export function crossings(v: ArrayLike<number>, dt: number): Crossings {
-  const times: number[] = [];
-  const peaks: number[] = [];
-  for (let i = 1; i < v.length; i++) {
-    if (!(v[i - 1] < 0 && v[i] >= 0)) continue;
-    times.push(i * dt);
-    let top = v[i];
-    for (let j = i; j < v.length && v[j] >= 0; j++) top = Math.max(top, v[j]);
-    peaks.push(top);
-  }
-  return { times, peaks };
-}
-
+/** 0 mV の横切りで数えた、元のモデルとの差。 */
 export function crossingDiff(original: Crossings, model: Crossings): CrossingDiff {
   const n = Math.min(original.times.length, model.times.length);
   const peak = original.peaks.length > 0 && model.peaks.length > 0 ? mean(model.peaks) - mean(original.peaks) : null;
@@ -161,7 +188,7 @@ export function crossingDiff(original: Crossings, model: Crossings): CrossingDif
 
 /** coincidence factor Γ（Kistler et al. 1997 の式(4.1)、https://doi.org/10.1162/neco.1997.9.5.1015）。±Δ 以内で一致した発火の数を偶然の一致で補正する。
  * 1 が完全一致、0 が偶然と同じ。全体を幅 2Δ のビン K 個に分け、偶然の一致を N_model N_original / K、正規化を 1 − N_original / K とする。
- * どちらにも発火が無ければ決まらないので null。duration は波形の長さ [ms]。 delta は許容幅 Δ [ms]（物差しは頼む側が決める）。 */
+ * どちらにも発火が無ければ決まらないので null。duration は波形の長さ [ms]、delta は許容幅 Δ [ms]（物差しは頼む側が決める）。 */
 export function coincidence(original: number[], model: number[], duration: number, delta: number): number | null {
   if (original.length + model.length === 0) return null;
   let matched = 0;
@@ -179,56 +206,133 @@ export function coincidence(original: number[], model: number[], duration: numbe
   return (matched - expected) / (0.5 * (original.length + model.length)) / normalization;
 }
 
-/** 系列の比べを、読み方 files で組む。答えは頼み方ごとに覚えておく（run は書き換わらない）。 */
-export function seriesComparison(files: RunFiles): (request: SeriesRequest) => SeriesMetrics {
-  const metrics = new Map<string, SeriesMetrics>();
-
-  /** 1 点の 1 区画の膜電位。 */
-  function voltage(run: string, meta: WaveMeta, point: number, compId: number): Float64Array {
-    return files.column(compArray(run, RUN.waves, meta, point, compId, 'V'));
+/** 決まる点（どちらかが発火した点）での Γ の平均。決まる点が無ければ null。 */
+export function meanGamma(gammas: (number | null)[]): number | null {
+  let sum = 0;
+  let n = 0;
+  for (const g of gammas) {
+    if (g === null) continue;
+    sum += g;
+    n++;
   }
+  return n > 0 ? sum / n : null;
+}
 
-  /** 系列の、列ごと・点ごとの原系との指標と、0 mV の横切りで数えた差と Γ、発火の時刻。 */
-  function seriesMetrics(request: SeriesRequest): SeriesMetrics {
-    const key = JSON.stringify(request);
-    const hit = metrics.get(key);
-    if (hit) return hit;
-    if (!(Number.isFinite(request.delta) && request.delta > 0)) throw new Error(`Γ の許容幅 delta ${request.delta} が正の数でない`);
-    const meta = files.json<WaveMeta>(request.original, RUN.meta(RUN.waves));
-    const compId = meta.names ? meta.names[request.comp] : 0;
-    if (compId === undefined)
-      throw new Error(`${request.original} に区画 ${request.comp} が無い（${Object.keys(meta.names!).join('、')}）`);
-    const original = meta.n.map((_, k) => voltage(request.original, meta, k, compId));
-    const originalSpikes = files.json<SpikesFile>(request.original, RUN.spikes)[request.comp];
-    const result: SeriesMetrics = {
-      pairs: {},
-      crossings: {},
-      times: { original: original.map(v => crossings(v, meta.dt).times), columns: {} },
+/** 発火の始まり（rheobase）。掃引の値を小さい順に見て、初めて発火した値。どこでも発火しなければ null。 */
+export function rheobase(values: number[], counts: number[]): number | null {
+  const order = values.map((_, i) => i).sort((a, b) => values[a] - values[b]);
+  const first = order.find(i => counts[i] > 0);
+  return first === undefined ? null : values[first];
+}
+
+/** 系列の、列ごと・点ごとの原系との指標と、列ごとのまとめ。duration は点ごとの波形の長さ [ms]、values は掃引の値（掃引しなければ空）。 */
+export function seriesMetrics(
+  original: TraceFeatures[],
+  columns: Record<string, TraceFeatures[]>,
+  distances: Record<string, Distance[]>,
+  duration: number[],
+  values: number[],
+  delta: number,
+): SeriesMetrics {
+  const result: SeriesMetrics = {
+    pairs: {},
+    crossings: {},
+    summaries: {},
+    times: { original: original.map(f => f.crossings.times), columns: {} },
+  };
+  for (const [run, features] of Object.entries(columns)) {
+    result.pairs[run] = features.map((f, k) => compare(original[k], f, distances[run][k]));
+    const rows: CrossingRow[] = features.map((f, k) => ({
+      ...crossingDiff(original[k].crossings, f.crossings),
+      gamma: coincidence(original[k].crossings.times, f.crossings.times, duration[k], delta),
+    }));
+    result.crossings[run] = rows;
+    const summary: ColumnSummary = {
+      gamma: meanGamma(rows.map(r => r.gamma)),
+      rheobase:
+        values.length === 0
+          ? [null, null]
+          : [
+              rheobase(
+                values,
+                rows.map(r => r.count[0]),
+              ),
+              rheobase(
+                values,
+                rows.map(r => r.count[1]),
+              ),
+            ],
     };
-    for (const run of request.columns) {
-      const columnMeta = files.json<WaveMeta>(run, RUN.meta(RUN.waves));
-      const spikes = files.json<SpikesFile>(run, RUN.spikes)[request.comp];
-      const pairs: PairMetrics[] = [];
-      const rows: CrossingRow[] = [];
-      const times: number[][] = [];
-      for (let k = 0; k < meta.n.length; k++) {
-        const v = voltage(run, columnMeta, k, compId);
-        if (originalSpikes && spikes) pairs.push(compare(original[k], v, originalSpikes[k], spikes[k], meta.dt));
-        const before = crossings(original[k], meta.dt);
-        const after = crossings(v, meta.dt);
-        rows.push({
-          ...crossingDiff(before, after),
-          gamma: coincidence(before.times, after.times, original[k].length * meta.dt, request.delta),
-        });
-        times.push(after.times);
-      }
-      if (originalSpikes && spikes) result.pairs[run] = pairs;
-      result.crossings[run] = rows;
-      result.times.columns[run] = times;
-    }
-    metrics.set(key, result);
-    return result;
+    result.summaries[run] = summary;
+    result.times.columns[run] = features.map(f => f.crossings.times);
+  }
+  return result;
+}
+
+/** 系列の比べを、読み方 files で組む。特徴量は run・区画ごとに、答えは頼み方ごとに覚えておく。 */
+export function seriesComparison(files: RunFiles): (request: SeriesRequest) => SeriesMetrics {
+  const known = new Map<string, TraceFeatures[]>();
+  const answers = new Map<string, SeriesMetrics>();
+
+  /** run の点ごとの、区画 comp の膜電位。 */
+  function voltages(run: string, comp: string): { v: Float64Array[]; dt: number } {
+    const meta = files.json<WaveMeta>(run, RUN.meta(RUN.waves));
+    const compId = meta.names ? meta.names[comp] : 0;
+    if (compId === undefined) throw new Error(`${run} に区画 ${comp} が無い（${Object.keys(meta.names!).join('、')}）`);
+    return { v: meta.n.map((_, k) => files.column(compArray(run, RUN.waves, meta, k, compId, 'V'))), dt: meta.dt };
   }
 
-  return seriesMetrics;
+  /** run ごと・点ごとの、区画 comp の膜電位の特徴量。まだ無い run だけ、刻みごとに eFEL を一度起こす。 */
+  function features(runs: string[], comp: string): Record<string, TraceFeatures[]> {
+    const missing = runs.filter(run => !known.has(`${run} ${comp}`));
+    const read = new Map(missing.map(run => [run, voltages(run, comp)]));
+    for (const dt of new Set([...read.values()].map(r => r.dt))) {
+      const group = missing.filter(run => read.get(run)!.dt === dt);
+      const found = efel(
+        group.flatMap(run => read.get(run)!.v),
+        dt,
+      );
+      let at = 0;
+      for (const run of group) {
+        const list = read.get(run)!.v.map((v, k) => ({
+          spikes: found[at + k],
+          crossings: crossings(v, dt),
+          shape: shape(v, found[at + k].peak_indices ?? [], dt),
+          diverged: diverged(v),
+        }));
+        at += list.length;
+        known.set(`${run} ${comp}`, list);
+      }
+    }
+    return Object.fromEntries(runs.map(run => [run, known.get(`${run} ${comp}`)!]));
+  }
+
+  return request => {
+    const key = JSON.stringify(request);
+    const hit = answers.get(key);
+    if (hit) return hit;
+    const { original, columns, comp, delta } = request;
+    if (!(Number.isFinite(delta) && delta > 0)) throw new Error(`Γ の許容幅 delta ${delta} が正の数でない`);
+    const found = features([original, ...columns], comp);
+    const base = voltages(original, comp).v;
+    const distances: Record<string, Distance[]> = {};
+    const own: Record<string, TraceFeatures[]> = {};
+    for (const run of columns) {
+      distances[run] = voltages(run, comp).v.map((v, k) => distance(base[k], v));
+      own[run] = found[run];
+    }
+    const meta = files.json<WaveMeta>(original, RUN.meta(RUN.waves));
+    const spec = files.json<Spec>(original, 'spec.json');
+    const values = spec.kind === 'sim' ? spec.input.values : [];
+    const result = seriesMetrics(
+      found[original],
+      own,
+      distances,
+      meta.n.map(n => n * meta.dt),
+      values,
+      delta,
+    );
+    answers.set(key, result);
+    return result;
+  };
 }

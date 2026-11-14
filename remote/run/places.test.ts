@@ -2,8 +2,18 @@ import { expect, test } from 'bun:test';
 import { FORMAT, type Spec } from '../../shared/spec.ts';
 import { dirOf } from './places.ts';
 
-const input = { spec: { target: 'traub-19comp', current_type: 'steady', dt: 0.01, current_params: { amplitude: 1 } }, param: null, values: [0] };
-const sim = (model: { train: string; replace_targets: string[] } | null): Spec => ({ format: FORMAT, device: 'cpu', kind: 'sim', input, model });
+const input = {
+  spec: { target: 'traub-19comp', current_type: 'steady', dt: 0.01, current_params: { amplitude: 1 } },
+  param: null,
+  values: [0],
+};
+const sim = (model: { train: string; replace_targets: string[] } | null): Spec => ({
+  format: FORMAT,
+  device: 'cpu',
+  kind: 'sim',
+  input,
+  model,
+});
 
 test('specs that differ only in what they replace share the input directory but not the model', () => {
   const original = dirOf(sim(null));

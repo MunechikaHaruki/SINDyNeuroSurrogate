@@ -1,11 +1,11 @@
-// 回せるものを組む部品。値はすべて config/presets.json（既定 defaults、縮約の仕方 methods、評価の系列 series）が持ち、ここは値を持たない。
+// 回せるものを組む部品。値はすべて config/presets.json（比べる物差し measures、既定 defaults、縮約の仕方 methods、評価の系列 series）が持ち、ここは値を持たない。
 // 実験（隣の schema.ts）は仕方と系列をプリセットの名前か、プリセットからの差分 `{ from, ...差分 }` で指し、ここの関数で学習 run と系列にする。
 // 混ぜる順は defaults → プリセット → 差分で、書かなかった欄だけ値から導く（教師は細胞、圧縮は仕方の名前、右辺は圧縮から、項ライブラリは細胞から）。
 // テスト専用の学習は config/presets.json に入れず、隣の test-trains.ts が持つ。形は ../../shared/spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
 import { z } from 'zod';
 import declaration from '../config/presets.json' with { type: 'json' };
 import { TEST_DECLARATIONS } from './test-trains.ts';
-import type { Group, Input, LibrarySpec, SimSpec, SurrogateConfig } from '../../shared/spec.ts';
+import type { Group, Input, LibrarySpec, SimSpec, SurrogateConfig } from '../../../shared/spec.ts';
 
 /** 1 回の掃引実験（Python の EvalSeries）の宣言。送る spec では、入力（Input）と、置き換えたモデルの側の置換範囲に分かれる。 */
 export type Series = Input & {
@@ -46,6 +46,7 @@ export function blocksOf(grouping: string): string[][] {
 
 type Entry = Record<string, unknown>;
 const raw = declaration as unknown as {
+  measures: unknown;
   defaults: { method: Entry & { dt: number }; series: Entry & { dt: number } };
   methods: Record<string, Entry>;
   series: Record<string, Entry>;
@@ -189,6 +190,13 @@ export function seriesFrom(ref: Ref): Series {
   } as SimSpec;
   return { spec, replace_targets: entry.replace_targets, param, values };
 }
+
+/** 置き換えたモデルを元のモデルと比べる物差し。coincidence_window は Γ の許容幅 Δ [ms]（2026-10-27 に決めた値）で、API の series に頼み方で渡す。 */
+export const MEASURES = parsed(
+  z.strictObject({ coincidence_window: z.number().positive() }),
+  'presets.json の measures',
+  raw.measures,
+);
 
 /** プリセットの系列。名前 → 掃引。手元の CLI で名前から回すときに引く。 */
 export const PRESET_SERIES: Record<string, Series> = {};

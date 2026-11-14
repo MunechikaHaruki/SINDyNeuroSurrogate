@@ -103,9 +103,8 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
         text = (runs / path).read_text()
         return cast(dict, json.loads(text, parse_constant=reject))
 
-    for kind in ["original", "R"]:
-        spikes = strict(f"inputs/I/{kind}/spikes.json")
-        assert list(spikes) == ["soma"] and len(spikes["soma"]) == 2
+    # run は生データだけを持つ。スパイクの特徴量は API が頼まれるたびに計算する
+    assert not any(runs.glob("inputs/I/*/spikes.json"))
     assert "nnz" in strict("models/T/summary.json")
     projected = json.loads((runs / "inputs/I/R/projected/soma/meta.json").read_text())
     assert [v for _, v, _ in projected["features"]][0] == "V"

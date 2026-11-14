@@ -1,17 +1,38 @@
-// spec を回す。計算する機械の上の段取りの入口で、remote.sh run と、画面から起こした仕事（runs/.jobs/ に仕事の中身・pid・ログ・終了コードを置き、切り離した子プロセスでこのファイルを起こす。--job で終わりを .jobs/<鍵>.exit に書く）がこれを使う。
-//   bun remote/run/run-spec.ts run <resolved/ の下のパス>...   その spec を回す
+// spec を回す。計算する機械の上の段取りの入口で、local/remote.sh run と、画面から起こした仕事（runs/.jobs/ に仕事の中身・pid・ログ・終了コードを置き、切り離した子プロセスでこのファイルを起こす。--job で終わりを .jobs/<鍵>.exit に書く）がこれを使う。
+//   bun remote/run-spec.ts run <resolved/ の下のパス>...   その spec を回す
 //   … list                                                      完成した run の一覧（--runs <dir> で置き場を変えられる）
 // resolved/ の spec を読み、評価と GPU の実測なら指す学習 run と（評価なら）同じ入力の元のモデルを先に用意してから、
 // Python の計算の入口（neurosurrogate/run.py）を起こして置き場を埋める。置き場があれば回さず、終了コードで置換できない組と、別のプロセスが回している run を見分ける。
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Job, JobState, Spec } from '../../shared/spec.ts';
-import { digest, hashOf } from '../../shared/hash.ts';
-import { alive, dirOf, RESOLVED, RUNS, running, scan, specAt, unreplaceableMark } from './places.ts';
+import type { Job, JobState, Spec } from '../shared/spec.ts';
+import { digest, hashOf } from '../shared/hash.ts';
+import {
+  alive,
+  dirOf,
+  PROJECT,
+  PYTHON,
+  resolvedDir,
+  RUNS,
+  running,
+  scan,
+  specAt,
+  unreplaceableMark,
+} from './run/places.ts';
 
 /** resolved/ の spec を 1 つ回す。評価と GPU の実測は、指す学習 run と（評価なら）同じ入力の元のモデルを先に回す。名前はパスから .json を除いたもの。 */
 export function runSpec(runs: string, path: string): void {
@@ -27,27 +48,23 @@ export function runSpec(runs: string, path: string): void {
 
 /** 学習 run のハッシュ → resolved/ の学習の spec.json（評価と GPU の実測が先に回す学習 run を引く）。 */
 function trainAt(hash: string): { path: string; spec: Spec } {
-  for (const entry of readdirSync(RESOLVED, { recursive: true, withFileTypes: true })) {
+  const dir = resolvedDir();
+  for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || !entry.parentPath.endsWith('/train')) continue;
-    const path = relative(RESOLVED, join(entry.parentPath, entry.name));
+    const path = relative(dir, join(entry.parentPath, entry.name));
     const spec = specAt(path);
     if (hashOf(spec) === hash) return { path, spec };
   }
   throw new Error(`学習 run ${hash} の spec が resolved/ に無い`);
 }
 
-const REPO = fileURLToPath(new URL('../..', import.meta.url));
-/** 計算する機械の側（Python の project）。Python はここで起こす。 */
-const HERE = fileURLToPath(new URL('..', import.meta.url));
+const REPO = fileURLToPath(new URL('..', import.meta.url));
 /** run.py が「置換できない」で返す終了コード */
 const NOT_REPLACEABLE = 3;
 /** run.py が「同じ run を別のプロセスが回している」で返す終了コード */
 const RUNNING = 4;
 
-/** Python の計算の入口を起こすコマンド。計算する機械のイメージは venv の python を SINDY_PYTHON で渡す。 */
-const PYTHON = process.env.SINDY_PYTHON?.split(' ') ?? ['uv', 'run', 'python'];
-
-/** 回すコードの版。計算する機械へ送ったコード（.git が無い）は remote.sh が .code-version に書き、手元では git から組む。書きかけなら差分（未追跡のファイルは名前と中身）のハッシュを足す。 */
+/** 回すコードの版。計算する機械へ送ったコード（.git が無い）は local/remote.sh が .code-version に書き、手元では git から組む。書きかけなら差分（未追跡のファイルは名前と中身）のハッシュを足す。 */
 function codeVersion(): string {
   const sent = join(REPO, '.code-version');
   if (!existsSync(join(REPO, '.git')) && existsSync(sent)) return readFileSync(sent, 'utf8').trim();
@@ -84,7 +101,7 @@ function ensure(runs: string, spec: Spec, name: string): string | undefined {
     ...preallocate,
   };
   const { exitCode } = Bun.spawnSync([...PYTHON, '-m', 'neurosurrogate.run', file, root, '--name', name], {
-    cwd: HERE,
+    cwd: PROJECT,
     env,
     stdio: ['inherit', 'inherit', 'inherit'],
   });
@@ -103,7 +120,6 @@ function ensure(runs: string, spec: Spec, name: string): string | undefined {
 }
 
 // ---- 画面から起こした仕事
-
 
 /** 外の画面に返すログの末尾の行数 */
 const LOG_TAIL = 30;
