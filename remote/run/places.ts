@@ -1,5 +1,5 @@
 // 置き場。手元から送られてきた resolved/（手元の local/resolve.ts が書く）からパスで spec を引き、run を置く runs/ では、spec から置き場を決め
-// （学習データは data/<ハッシュ>/、学習器は parts/<ハッシュ>/、モデルは models/<ハッシュ>/、入力 × モデルは inputs/<入力のハッシュ>/<original かモデルの鍵>/、GPU の実測は bench/<ハッシュ>/）、完成した run を並べ、run 1 本の状態（済み・計算中・置換できない・まだ）を読む。
+// （学習データは data/<ハッシュ>/、学習器は parts/<ハッシュ>/、モデルは models/<ハッシュ>/、入力 × モデルは inputs/<入力のハッシュ>/<original か <モデルのハッシュ>@<置換する区画を + でつないだもの>>/、GPU の実測は bench/<ハッシュ>/）、完成した run を並べ、run 1 本の状態（済み・計算中・置換できない・まだ）を読む。
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,14 +32,14 @@ export const PYTHON = process.env.SINDY_PYTHON?.split(' ') ?? ['uv', 'run', 'pyt
 /** 既定の run の置き場。計算する機械のイメージは SINDY_RUNS で載せた場所を指す。 */
 export const RUNS = process.env.SINDY_RUNS ?? join(fileURLToPath(new URL('../..', import.meta.url)), 'runs');
 
-/** spec の置き場（runs/ の下のパス）。置換範囲だけが違う系列は同じ入力のディレクトリに並ぶ。 */
+/** spec の置き場（runs/ の下のパス）。置き換えたモデルの評価は、どのモデルでどこを置き換えたかがディレクトリ名で読める（3ea34b09c3f4@soma）。置換範囲だけが違う系列は同じ入力のディレクトリに並ぶ。 */
 export function dirOf(spec: Spec): string {
   if (spec.kind === 'data') return `data/${hashOf(spec)}`;
   if (spec.kind === 'part') return `parts/${hashOf(spec)}`;
   if (spec.kind === 'model') return `models/${hashOf(spec)}`;
   if (spec.kind === 'bench') return `bench/${hashOf(spec)}`;
   const input = digest({ format: spec.format, device: spec.device, input: spec.input });
-  return `inputs/${input}/${spec.model === null ? 'original' : digest(spec.model)}`;
+  return `inputs/${input}/${spec.model === null ? 'original' : `${spec.model.surrogate}@${spec.model.replace_targets.join('+')}`}`;
 }
 
 /** 置き場の下の、名前に . を含まないディレクトリ。 */

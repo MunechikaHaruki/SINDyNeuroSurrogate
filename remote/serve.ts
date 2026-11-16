@@ -2,7 +2,7 @@
 // 波形は回線に出さず、間引いた線・軌跡・分布・指標にしてから返す。宣言は読まない。知っているのは resolved/ と runs だけ。回すのは段取りの関数だけで、任意のコマンドは通さない。
 // runs の置き場は SINDY_RUNS（イメージでは /runs）。
 //   bun remote/serve.ts
-import { FORMAT, type Job } from '../shared/spec.ts';
+import { FORMATS, type Job } from '../shared/spec.ts';
 import type { Api } from '../shared/api.ts';
 import { benchRows } from './read/bench.ts';
 import { seriesComparison } from './read/comparison.ts';
@@ -25,7 +25,7 @@ function checkJob(job: Job): Job {
 export function handlers(runs: string): Handlers {
   const files = runFiles(runs);
   return {
-    index: () => scan(runs).filter(e => e.spec.format === FORMAT),
+    index: () => scan(runs).filter(e => e.spec.format === FORMATS[e.spec.kind]),
     status: () => status(runs),
     launch: body => ({ started: launch(runs, checkJob(body.job)) }),
     json: body => files.json(body.run, body.path),

@@ -1,7 +1,7 @@
 // 手元の側の出口。宣言（../config/ と隣の TS）から、実験ごとに送る spec.json を組んで resolved/ に置く。テスト専用の学習の設定も resolved/tests.json（計算する機械の pytest が読む）に置く。計算する機械（../../remote/）は宣言を読まず、ここが書いた resolved/ だけを受け取って回す。
-// パスは識別のための名前で、送るのは中身だけ：学習データ `<実験>/data/<対象>.<電流>.<パラメータ>.json`、学習器 `<実験>/parts/<仕方>.<群>.json`、それを組んだモデル `<実験>/models/<モデル>.json`、
+// パスは識別のための名前で、送るのは中身だけ：学習データ `<実験>/data/<対象>.<電流>.<パラメータ>.json`、学習器 `<実験>/parts/<圧縮器と右辺>.<群>.json`、それを組んだモデル `<実験>/models/<モデル>.json`、
 // `<実験>/sim/<系列>/original.json`（元のモデル）と `<モデル>.json`、`<実験>/bench/<GPU の実測>.json`。宣言のモデル 1 つは、学習データ 1 つ・群ごとの学習器・それを組んだモデルの spec に分かれる。
-// 同じ中身の学習データと学習器は実験の中で 1 ファイルにまとめ（学習器は最初に宣言した仕方の名前）、同じパスに違う中身が来たら投げる。
+// どちらも名前は中身から付け、同じ中身は実験の中で 1 ファイルにまとめ、同じ名前に違う中身が来たら投げる（名前に出ない違いがある）。
 //   bun local/resolve.ts write        resolved/ を今の宣言から書き直す
 //   … check                                          resolved/ が今の宣言と同じか（違えば挙げて終了コード 1。local/remote.sh up が送る前に見る）
 //   引数なしで名前の一覧
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { METHOD_NAMES, TESTS, type ModelDecl, type Series } from './experiments/schema/presets.ts';
 import { EXPERIMENTS, MODELS, SERIES, modelOf, seriesOf, type GroupedPlan } from './experiments/schema/experiments.ts';
 import { hashOf } from '../shared/hash.ts';
-import { FORMAT, type Device, type Group, type Input, type Spec } from '../shared/spec.ts';
+import { FORMATS, type Device, type Group, type Input, type Spec } from '../shared/spec.ts';
 import type { Bench } from './experiments/schema/schema.ts';
 
 /** 送る spec.json の置き場。 */
@@ -24,14 +24,14 @@ function trainDevice(model: ModelDecl): Device {
 
 /** 学習データの spec。元のモデルを学習用の電流で回すだけなので CPU。 */
 export function dataSpec(model: ModelDecl): Spec {
-  return { format: FORMAT, device: 'cpu', kind: 'data', data: model.config.data };
+  return { format: FORMATS.data, device: 'cpu', kind: 'data', data: model.config.data };
 }
 
 /** 群 1 つの学習器の spec。学習データをハッシュで指す。 */
 export function partSpec(model: ModelDecl, group: Group): Spec {
   const { cell, form, train_comp } = model.config;
   return {
-    format: FORMAT,
+    format: FORMATS.part,
     device: trainDevice(model),
     kind: 'part',
     data: hashOf(dataSpec(model)),
@@ -46,7 +46,7 @@ export function partSpec(model: ModelDecl, group: Group): Spec {
 export function modelSpec(model: ModelDecl): Spec {
   const { cell, form, absorbed, groups } = model.config;
   const parts = groups.map(group => hashOf(partSpec(model, group)));
-  return { format: FORMAT, device: 'cpu', kind: 'model', cell, form, ...(absorbed ? { absorbed } : {}), parts };
+  return { format: FORMATS.model, device: 'cpu', kind: 'model', cell, form, ...(absorbed ? { absorbed } : {}), parts };
 }
 
 /** 学習データのファイルの名前。中身から決める（traub.train.duration-9000）。 */
@@ -55,9 +55,10 @@ export function dataName(model: ModelDecl): string {
   return [target, current_type, ...Object.entries(current_params).map(([k, v]) => `${k}-${v}`)].join('.');
 }
 
-/** 学習器のファイルの名前。仕方と、群の状態を小文字で + につないだもの（pca-sindy.h+n）。 */
-export function partName(method: string, group: Group): string {
-  return `${method}.${group.gates.map(gate => gate.toLowerCase()).join('+')}`;
+/** 学習器のファイルの名前。学習データと同じく中身から決める：圧縮器と右辺（同じなら 1 つ）、潜在の次元（1 でなければ）、群の状態を小文字で + につないだもの（pca-sindy.h+n、kam.h+n、ae-sindy-d5.m+h+n+a+b+c）。 */
+export function partName(group: Group): string {
+  const kind = group.compressor === group.rhs ? group.compressor : `${group.compressor}-${group.rhs}`;
+  return `${kind}${group.d === 1 ? '' : `-d${group.d}`}.${group.gates.map(gate => gate.toLowerCase()).join('+')}`;
 }
 
 /** 系列の入力（電流と掃引）。置換範囲はモデルの側に入る。 */
@@ -69,14 +70,14 @@ export function inputOf(series: Series): Input {
 /** 系列をモデル（ハッシュ）で置き換えて回す spec。surrogate が null なら元のモデル。1 細胞を順に進めるので CPU（GPU は 1 刻みの命令の往復で遅い）。 */
 export function simSpec(series: Series, surrogate: string | null): Spec {
   const model = surrogate === null ? null : { surrogate, replace_targets: series.replace_targets };
-  return { format: FORMAT, device: 'cpu', kind: 'sim', input: inputOf(series), model };
+  return { format: FORMATS.sim, device: 'cpu', kind: 'sim', input: inputOf(series), model };
 }
 
 /** GPU の実測の spec。細胞を並べて GPU で回す。surrogate はモデルのハッシュで、null なら元のモデル。 */
 export function benchSpec(series: Series, surrogate: string | null, bench: Bench): Spec {
   const model = surrogate === null ? null : { surrogate, replace_targets: series.replace_targets };
   return {
-    format: FORMAT,
+    format: FORMATS.bench,
     device: 'gpu',
     kind: 'bench',
     input: inputOf(series),
@@ -89,23 +90,16 @@ export function benchSpec(series: Series, surrogate: string | null, bench: Bench
 /** 実験が送る spec.json を、resolved/ の下のパス → 中身で並べる。 */
 export function resolved(plan: GroupedPlan): Record<string, Spec> {
   const files: Record<string, Spec> = {};
-  /** パスに spec を置く。同じパスに違う中身が来たら投げる（片方が黙って消え、指す側が引けなくなるのを防ぐ）。 */
+  /** パスに spec を置く。同じパスに違う中身が来たら投げる（名前に出ない違いがあり、片方が黙って消えて指す側が引けなくなるのを防ぐ）。 */
   const put = (path: string, spec: Spec) => {
     if (path in files && hashOf(files[path]) !== hashOf(spec))
       throw new Error(`resolved/${path} に違う中身の spec が二つ来た`);
     files[path] = spec;
   };
   const modelHash = (model: string) => hashOf(modelSpec(modelOf(model)));
-  /** 置いた学習器のハッシュ。同じ学習器（kam と kam-absorb-m の群など）は最初の名前の 1 ファイルだけにする。 */
-  const parts = new Set<string>();
   for (const m of plan.models) {
     put(`${plan.id}/data/${dataName(m)}.json`, dataSpec(m));
-    for (const group of m.config.groups) {
-      const spec = partSpec(m, group);
-      if (parts.has(hashOf(spec))) continue;
-      parts.add(hashOf(spec));
-      put(`${plan.id}/parts/${partName(m.method, group)}.json`, spec);
-    }
+    for (const group of m.config.groups) put(`${plan.id}/parts/${partName(group)}.json`, partSpec(m, group));
     put(`${plan.id}/models/${m.name}.json`, modelSpec(m));
   }
   for (const [name, s] of Object.entries(plan.series)) files[`${plan.id}/sim/${name}/original.json`] = simSpec(s, null);

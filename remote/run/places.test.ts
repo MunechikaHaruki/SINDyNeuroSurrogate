@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { FORMAT, type Spec } from '../../shared/spec.ts';
+import { readFileSync } from 'node:fs';
+import { FORMATS, type Spec } from '../../shared/spec.ts';
 import { dirOf } from './places.ts';
 
 const input = {
@@ -8,7 +9,7 @@ const input = {
   values: [0],
 };
 const sim = (model: { surrogate: string; replace_targets: string[] } | null): Spec => ({
-  format: FORMAT,
+  format: FORMATS.sim,
   device: 'cpu',
   kind: 'sim',
   input,
@@ -25,4 +26,13 @@ test('specs that differ only in what they replace share the input directory but 
   for (const dir of [soma, all, other]) expect(dir.startsWith(prefix)).toBe(true);
   expect(soma).not.toBe(all);
   expect(soma).not.toBe(other);
+  expect(soma.slice(prefix.length)).toBe('t@soma');
+  expect(all.slice(prefix.length)).toBe('t@soma+axon');
+});
+
+test('the format versions of each spec kind match the ones run.py checks', () => {
+  const source = readFileSync(new URL('../neurosurrogate/run.py', import.meta.url), 'utf8');
+  const block = /_FORMATS = \{([^}]*)\}/.exec(source)?.[1] ?? '';
+  const python = Object.fromEntries([...block.matchAll(/"(\w+)": (\d+)/g)].map(m => [m[1], Number(m[2])]));
+  expect(python).toEqual({ ...FORMATS });
 });

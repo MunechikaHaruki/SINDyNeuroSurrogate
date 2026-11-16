@@ -102,7 +102,9 @@ from .surrogate.model import (
     summary,
 )
 
-_FORMAT = 11  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
+# spec の種類ごとの形式の版。段取りが spec に入れる = 形式を変えたらその種類の鍵が変わる
+# (shared/spec.ts の FORMATS と揃える)
+_FORMATS = {"data": 11, "part": 11, "model": 11, "sim": 12, "bench": 11}
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _CLAIM_GRACE = 60.0  # [s] 書きかけを作ってから pid を置くまでの猶予 (これより古く pid の無いものは残骸)
@@ -399,8 +401,11 @@ def _run(spec_path: Path, root: Path, name: str) -> None:
         _logger.info("%s は回してある", root.name)
         return
     spec = json.loads(spec_path.read_text())
-    if spec.get("format") != _FORMAT:
-        raise ValueError(f"spec の形式 {spec.get('format')} は {_FORMAT} でない")
+    want = _FORMATS[spec["kind"]]
+    if spec.get("format") != want:
+        raise ValueError(
+            f"{spec['kind']} の spec の形式 {spec.get('format')} は {want} でない"
+        )
     _check_device(spec)
     partial = root.with_name(f"{root.name}.partial")
     _claim(partial, root.name)
