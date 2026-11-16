@@ -1,15 +1,20 @@
 """GPU の実測: 細胞を並べ、刻みごとに全細胞をそろえて回し、置き場ごとの量を測る。
 
-`uv run python -m neurosurrogate.bench <spec.json> <runs> <細胞の数> [--once]`。
+`uv run python -m neurosurrogate.bench <spec.json> <runs> <細胞の数>
+[--out <dir>] [--once]`。
 spec は run.py の `bench` の spec (入力と、元のモデルか学習 run)。1 回の呼び出しで
-1 つの細胞の数だけを測り、結果を JSON で標準出力に書く。細胞の数ごとに別のプロセスで
-呼ぶのは、XLA の先取りを切って VRAM を細胞の数ごとに測るためと、Nsight Compute (ncu)
-をかぶせるため。`--once` は ncu の下で 1 回だけ回す (時間は測らない)。
+1 つの細胞の数だけを測り、自分で測ったもの (時間、状態の置き方、発火の回数) を JSON で
+標準出力に書く。`--out` を渡せば、使ったツールの出力を加工せずにそのディレクトリへ
+ツールごとのファイルで書く (JAX の memory_stats、nvidia-smi の CSV)。ncu の CSV は
+ncu をかぶせる側 (`cache`) が同じディレクトリに書く。集計は API (remote/read/bench.ts)
+が頼まれるたびにこれらから計算する。細胞の数ごとに別のプロセスで呼ぶのは、XLA の先取りを
+切って VRAM を細胞の数ごとに測るためと、Nsight Compute (ncu) をかぶせるため。`--once` は
+ncu の下で 1 回だけ回す (時間は測らない)。
 
 1 刻みがカーネル 1 回 (physics.gpu)。刻みをまたいで持ち越す状態 (V、潜在 z、縮約
 しなかったゲート) は VRAM に置いて毎刻み読み書きし、刻みの中だけで使う値はレジスタに
-置く。ncu では途中の 1 刻みのカーネルを測り、VRAM からの読み込みと書き戻しの量を、
-持ち越す状態の数から出した予想と並べる。レジスタの数と溢れ (local memory) も測る。
+置く。ncu では途中の 1 刻みのカーネルを測る (VRAM からの読み込みと書き戻しの量、
+レジスタの数と溢れ (local memory))。持ち越す状態の数から出した量の予想は自分で書く。
 細胞 i には系列の点 i mod 点の数 の電流を入れる。発火の回数は、同じ電流の細胞どうしで
 揃うかの確かめに使う。
 """
@@ -53,22 +58,14 @@ NCU_METRICS = [
     "l1tex__t_sector_hit_rate.pct",
     "lts__t_sector_hit_rate.pct",
 ]
-# 当たり率の重みに使う、global の読み込みと書き込みの量の指標。
-NCU_LOAD = "l1tex__t_bytes_pipe_lsu_mem_global_op_ld.sum"
-NCU_STORE = "l1tex__t_bytes_pipe_lsu_mem_global_op_st.sum"
-# ncu の指標の名前 → bench.json の鍵。
-NCU_KEYS = {
-    "launch__registers_per_thread": "registers_per_thread",
-    "launch__thread_count": "threads",
-    "l1tex__t_bytes_pipe_lsu_mem_global_op_st.sum": "global_store_bytes",
-    "l1tex__t_bytes_pipe_lsu_mem_global_op_ld.sum": "global_load_bytes",
-    "l1tex__t_bytes_pipe_lsu_mem_local_op_st.sum": "local_store_bytes",
-    "l1tex__t_bytes_pipe_lsu_mem_local_op_ld.sum": "local_load_bytes",
-    "dram__bytes_write.sum": "dram_write_bytes",
-    "dram__bytes_read.sum": "dram_read_bytes",
-    "l1tex__t_sector_hit_rate.pct": "l1_hit_pct",
-    "lts__t_sector_hit_rate.pct": "l2_hit_pct",
-}
+# ツールごとの出力のファイルの名前 (細胞の数のディレクトリの下)。
+# shared/runs.ts の BENCH と揃える。
+OWN_FILE = "bench.json"
+NCU_FILE = "ncu.csv"
+SMI_APPS_FILE = "nvidia-smi.apps.csv"
+SMI_GPU_FILE = "nvidia-smi.gpu.csv"
+JAX_PLACED_FILE = "jax.memory_stats.placed.json"
+JAX_AFTER_FILE = "jax.memory_stats.after.json"
 
 
 def batch_input(
@@ -131,36 +128,38 @@ def _alive_group(pgid: int) -> bool:
     return True
 
 
-def _smi_used() -> float | None:
-    """nvidia-smi が示すこのプロセスの GPU のメモリ [MiB]。読めなければ None。"""
-    query = ["--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"]
+def _smi(query: str) -> str | None:
+    """nvidia-smi の問い合わせの CSV (見出しと単位つき) をそのまま返す。
+
+    読めなければ None。
+    """
     try:
-        out = subprocess.run(
-            ["nvidia-smi", *query], capture_output=True, text=True, check=True
+        return subprocess.run(
+            ["nvidia-smi", query, "--format=csv"],
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout
     except (FileNotFoundError, subprocess.CalledProcessError):
         return None
-    for line in out.strip().splitlines():
-        pid, used = (x.strip() for x in line.split(","))
-        if int(pid) == os.getpid():
-            return float(used)
-    return None
 
 
-def _vram_total() -> int | None:
-    """GPU の VRAM の全容量 [バイト] (nvidia-smi)。読めなければ None。"""
-    query = ["--query-gpu=memory.total", "--format=csv,noheader,nounits"]
-    try:
-        out = subprocess.run(
-            ["nvidia-smi", *query], capture_output=True, text=True, check=True
-        ).stdout
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return None
-    return int(float(out.strip().splitlines()[0]) * 1024 * 1024)
+def _write_raw(out: Path, name: str, text: str | None) -> None:
+    """ツールの出力 1 つを、加工せずにファイルへ書く。出力が無ければ書かない。"""
+    if text is not None:
+        (out / name).write_text(text)
 
 
-def measure(spec: dict, runs: Path, cells: int, once: bool = False) -> dict:
-    """細胞を並べて刻みごとに回し、時間・置き場ごとの量・発火の回数を返す。"""
+def measure(
+    spec: dict, runs: Path, cells: int, out: Path | None = None, once: bool = False
+) -> dict:
+    """細胞を並べて刻みごとに回し、自分で測ったものを返す。
+
+    自分で測ったものは、時間・状態の置き方・発火の回数。
+
+    out を渡せば、JAX の memory_stats (入力を置いた後と回した後) と nvidia-smi の CSV
+    (このプロセスの使用量と GPU の全容量) を、加工せずにそこへ書く。
+    """
     gpu = jax.devices("gpu")[0]
     run, types, points = batch_input(spec, runs)
     net = run.net
@@ -173,7 +172,7 @@ def measure(spec: dict, runs: Path, cells: int, once: bool = False) -> dict:
     table = jax.device_put(jnp.array(currents_table(points)[: STEPS + 1]), gpu)
     rows = jax.device_put(jnp.arange(cells, dtype=jnp.int32) % len(points), gpu)
     jax.block_until_ready((table, rows))
-    placed = (gpu.memory_stats() or {}).get("bytes_in_use")
+    placed = gpu.memory_stats()
     if once:
         jax.block_until_ready(fn(table, rows))
         return {"cells": cells}
@@ -183,8 +182,13 @@ def measure(spec: dict, runs: Path, cells: int, once: bool = False) -> dict:
     start = time.perf_counter()
     _, _, counts = jax.block_until_ready(fn(table, rows))
     wall = time.perf_counter() - start
-    stats = gpu.memory_stats() or {}
-    peak = stats.get("peak_bytes_in_use")
+    after = gpu.memory_stats()
+    if out is not None:
+        out.mkdir(parents=True, exist_ok=True)
+        _write_raw(out, JAX_PLACED_FILE, None if placed is None else json.dumps(placed))
+        _write_raw(out, JAX_AFTER_FILE, None if after is None else json.dumps(after))
+        _write_raw(out, SMI_APPS_FILE, _smi("--query-compute-apps=pid,used_memory"))
+        _write_raw(out, SMI_GPU_FILE, _smi("--query-gpu=memory.total"))
     steps = table.shape[0] - 1
     counts = np.asarray(counts)
     n = len(points)
@@ -201,23 +205,21 @@ def measure(spec: dict, runs: Path, cells: int, once: bool = False) -> dict:
         "steps": steps,
         "compile_s": first - wall,
         "wall_s": wall,
-        "cell_steps_per_s": cells * steps / wall,
         "comp_states": comp_states,
         "decoded": decoded,
         "vram_state_bytes": layout.state_bytes,
         "expected_step_load_bytes": layout.step_load_bytes,
         "expected_step_store_bytes": layout.step_store_bytes,
-        "peak_bytes": peak,
-        "input_bytes": placed,
-        "work_bytes": None if peak is None or placed is None else peak - placed,
-        "smi_used_mib": _smi_used(),
-        "vram_total_bytes": _vram_total(),
         "spike_counts": per_point,
+        "pid": os.getpid(),
     }
 
 
 def _rows(out: str) -> dict[str, dict[str, float]]:
-    """ncu の CSV を、カーネルの ID → 指標の名前 → 値 にする。"""
+    """ncu の CSV を、カーネルの ID → 指標の名前 → 値 にする。
+
+    拾ったカーネルの数を確かめるためだけに読む。
+    """
     lines = [line for line in out.splitlines() if line.startswith('"')]
     records = list(csv.reader(lines))
     if not records:
@@ -244,8 +246,13 @@ def _ncu() -> str:
     return found
 
 
-def cache(spec_path: Path, runs: Path, cells: int, kernels: int, env: dict) -> dict:
-    """ncu の下で回し、途中の 1 刻みの区画ごとのカーネルの量を足し合わせる。"""
+def cache(
+    spec_path: Path, runs: Path, cells: int, kernels: int, env: dict, out: Path
+) -> None:
+    """ncu の下で回し、途中の 1 刻みのカーネルの指標の CSV を out に書く。
+
+    区画ごとのカーネルの行を、加工せずにそのまま書く。
+    """
     command = [
         *(_ncu(), "--csv", "--print-units", "base"),
         *("--kernel-name", f"regex:{KERNEL}"),
@@ -256,7 +263,8 @@ def cache(spec_path: Path, runs: Path, cells: int, kernels: int, env: dict) -> d
     ]
     for attempt in range(NCU_ATTEMPTS):
         try:
-            rows = _rows(run_checked(command, env, timeout=NCU_TIMEOUT))
+            text = run_checked(command, env, timeout=NCU_TIMEOUT)
+            rows = _rows(text)
             break
         except RuntimeError:
             # ncu はときどきセグメンテーション違反で落ちるので、やり直す
@@ -265,38 +273,16 @@ def cache(spec_path: Path, runs: Path, cells: int, kernels: int, env: dict) -> d
     if len(rows) != kernels:
         found = f"{len(rows)} 本 ({kernels} 本のはず)"
         raise RuntimeError(f"ncu が 1 刻みのカーネルを {found} 拾った")
-    return _summed(list(rows.values()))
-
-
-def _summed(rows: list[dict[str, float]]) -> dict:
-    """区画ごとのカーネルを合わせる。量は和、レジスタは最大、当たり率は量で重み付け。"""
-    out: dict = {}
-    for metric, key in NCU_KEYS.items():
-        found = [r.get(metric) for r in rows]
-        if any(v is None for v in found):
-            out[key] = None
-            continue
-        values = [float(v) for v in found if v is not None]
-        if key == "registers_per_thread":
-            out[key] = max(values)
-        elif key.endswith("_pct"):
-            weights = [
-                (r.get(NCU_LOAD) or 0.0) + (r.get(NCU_STORE) or 0.0) for r in rows
-            ]
-            total = sum(weights)
-            products = (v * w for v, w in zip(values, weights, strict=True))
-            out[key] = sum(products) / total if total else None
-        else:
-            out[key] = sum(values)
-    return out
+    _write_raw(out, NCU_FILE, text)
 
 
 def main(argv: list[str]) -> None:
     """細胞の数 1 つを測って JSON で書く。"""
     os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
     spec_path, runs, cells = Path(argv[0]), Path(argv[1]), int(argv[2])
+    out = Path(argv[argv.index("--out") + 1]) if "--out" in argv else None
     spec = json.loads(spec_path.read_text())
-    print(json.dumps(measure(spec, runs, cells, once="--once" in argv)))
+    print(json.dumps(measure(spec, runs, cells, out=out, once="--once" in argv)))
 
 
 if __name__ == "__main__":

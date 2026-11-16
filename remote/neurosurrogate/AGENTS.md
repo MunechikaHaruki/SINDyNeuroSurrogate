@@ -143,16 +143,21 @@ kernel・初期値・演算コストは、群と区画の式から組む。学�
 GPU の実測: 細胞を並べ、刻みごとに全細胞をそろえて回し、置き場ごとの量を測る。
 
 ```text
-`uv run python -m neurosurrogate.bench <spec.json> <runs> <細胞の数> [--once]`。
+`uv run python -m neurosurrogate.bench <spec.json> <runs> <細胞の数>
+[--out <dir>] [--once]`。
 spec は run.py の `bench` の spec (入力と、元のモデルか学習 run)。1 回の呼び出しで
-1 つの細胞の数だけを測り、結果を JSON で標準出力に書く。細胞の数ごとに別のプロセスで
-呼ぶのは、XLA の先取りを切って VRAM を細胞の数ごとに測るためと、Nsight Compute (ncu)
-をかぶせるため。`--once` は ncu の下で 1 回だけ回す (時間は測らない)。
+1 つの細胞の数だけを測り、自分で測ったもの (時間、状態の置き方、発火の回数) を JSON で
+標準出力に書く。`--out` を渡せば、使ったツールの出力を加工せずにそのディレクトリへ
+ツールごとのファイルで書く (JAX の memory_stats、nvidia-smi の CSV)。ncu の CSV は
+ncu をかぶせる側 (`cache`) が同じディレクトリに書く。集計は API (remote/read/bench.ts)
+が頼まれるたびにこれらから計算する。細胞の数ごとに別のプロセスで呼ぶのは、XLA の先取りを
+切って VRAM を細胞の数ごとに測るためと、Nsight Compute (ncu) をかぶせるため。`--once` は
+ncu の下で 1 回だけ回す (時間は測らない)。
 
 1 刻みがカーネル 1 回 (physics.gpu)。刻みをまたいで持ち越す状態 (V、潜在 z、縮約
 しなかったゲート) は VRAM に置いて毎刻み読み書きし、刻みの中だけで使う値はレジスタに
-置く。ncu では途中の 1 刻みのカーネルを測り、VRAM からの読み込みと書き戻しの量を、
-持ち越す状態の数から出した予想と並べる。レジスタの数と溢れ (local memory) も測る。
+置く。ncu では途中の 1 刻みのカーネルを測る (VRAM からの読み込みと書き戻しの量、
+レジスタの数と溢れ (local memory))。持ち越す状態の数から出した量の予想は自分で書く。
 細胞 i には系列の点 i mod 点の数 の電流を入れる。発火の回数は、同じ電流の細胞どうしで
 揃うかの確かめに使う。
 ```
@@ -177,9 +182,10 @@ spec の種類は 3 つ (`kind`):
           置き換えたモデルは段取りが組んだ鍵の名前。`train` は
           `runs/models/` の学習 run を指す
 - `bench` GPU の実測。`input` と `model` は sim と同じで、細胞を `cells` の数ずつ
-          並べて刻みごとに全細胞をそろえて GPU で回し、時間・VRAM と (`ncu` が真なら)
-          レジスタ・溢れ・global と DRAM の量を `bench.json` に書く
-          (neurosurrogate.bench)。置き場は `runs/bench/<ハッシュ>/`
+          並べて刻みごとに全細胞をそろえて GPU で回し、細胞の数ごとの `<細胞の数>/` に
+          使ったツールの出力を加工せずにツールごとのファイルで書く
+          (neurosurrogate.bench)。
+          置き場は `runs/bench/<ハッシュ>/`
 
 どちらも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
 入れ、JAX の backend が合わなければ回さない (backend は呼ぶ側が JAX_PLATFORMS で選ぶ)。
@@ -197,6 +203,10 @@ JSON の nan は null):
                original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ
                だけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
                頼まれるたびに波形から計算する
+    bench      <細胞の数>/ に、bench.json (bench.py が自分で測った時間・状態の置き方・
+               発火の回数)、jax.memory_stats.{placed,after}.json、nvidia-smi.{apps,gpu}.csv、
+               ncu.csv (`ncu` が真なら)。どれもツールの出力のままで、集計は API が
+               頼まれるたびに計算する (remote/read/bench.ts)
 
     waves/meta.json           t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]],
                               I_internal の nodes, comp 名 → id

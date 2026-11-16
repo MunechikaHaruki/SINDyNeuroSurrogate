@@ -25,7 +25,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 数値計算の Python（元のモデル `remote/neurosurrogate/physics/`、学習と置換 `remote/neurosurrogate/surrogate/`、計算の入口 `remote/neurosurrogate/run.py`、GPU の実測 `remote/neurosurrogate/bench.py`、API が呼ぶ eFEL の特徴量 `remote/neurosurrogate/spikes.py`）とそのテスト | `remote/neurosurrogate/`、`remote/tests/` |
 | 入口。送られてきた resolved/ の spec を回す段取り（先に要る run を用意し、Python の計算の入口を起こす。画面から起こした仕事と、run・list の CLI もここ） | `remote/run-spec.ts` |
 | 段取りの部品。実験の状態 `status.ts`、置き場（resolved/ からパスで spec を引く、runs/ の置き場と run 1 本の状態）`places.ts` | `remote/run/` |
-| API の答えを作る部品。run のファイルを読んで覚え、回線に出す形（間引き・軌跡・分布）にする `waves.ts`、波形から先の統計量を全部、頼まれるたびに純粋関数で計算する `comparison.ts`（波形 1 本の eFEL の特徴量・0 mV の横切り・山の平均の形・発散、原系と列の点ごとの rmse・mae・ISI の統計・周期の差・形の相関・横切りの差・Γ、列ごとの Γ の平均と発火の始まり） | `remote/read/` |
+| API の答えを作る部品。run のファイルを読んで覚え、回線に出す形（間引き・軌跡・分布）にする `waves.ts`、波形から先の統計量を全部、頼まれるたびに純粋関数で計算する `comparison.ts`（波形 1 本の eFEL の特徴量・0 mV の横切り・山の平均の形・発散、原系と列の点ごとの rmse・mae・ISI の統計・周期の差・形の相関・横切りの差・Γ、列ごとの Γ の平均と発火の始まり）、GPU の実測のツールごとの出力を細胞の数ごとの行に集める `bench.ts`（ncu の区画ごとのカーネルの合わせ方もここ） | `remote/read/` |
 | 計算する機械の側の通信。結果を小さい JSON で返す API（口を `remote/run-spec.ts`・`remote/run/`・`remote/read/` の関数に渡すだけ） | `remote/serve.ts` |
 | 計算する機械のイメージと Python の依存 | `remote/Dockerfile`、`remote/pyproject.toml`、`remote/uv.lock` |
 | run | 計算する機械の `~/sindy/runs/`（手元の runs は `local/remote.sh fetch` の写しだけ。どちらも Git の外） |
@@ -51,7 +51,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 - `local/` と `remote/` は互いのコードを import せず、両方が使うのは `shared/` だけ（`local/experiments/schema/boundary.test.ts`）。
 - 人やエージェントが直に走らせる入口は `local/` と `remote/` の直下だけに置く。マシン間の通信もここが受け持つ（手元は `local/remote.sh`、計算する機械は `remote/serve.ts`）。
 - 計算する機械へ送るのは `remote/`・`shared/` と、手元が組んだ `local/experiments/resolved/` の写しだけで、宣言と手元のコードは送らない（`local/remote.sh`）。計算する機械は宣言を知らず、送られてきた resolved/（場所は `SINDY_RESOLVED`）の spec を回し、run の量を返すだけ。
-- runs は生データ（波形と学習の書き出し）だけを持つ。波形から先の統計量（eFEL の特徴量から Γ と列ごとのまとめまで）は全部、計算する機械が頼まれるたびに純粋関数で計算して返し（`remote/read/comparison.ts`）、使う側は API で受け取るだけ。比べる物差し（Γ の許容幅 Δ）は宣言（`local/experiments/config/presets.json` の `measures`）が持ち、使う側がそこから読んで API の `series` の頼み方で渡す。どの列を比べるかの組み立てと見せ方（時刻まで合うとみなす Γ の線）は使う側が持つ。`shared/` に置くのは両方が使う形だけで、宣言の形（`Series`・`Train`）は `local/experiments/schema/presets.ts`、`Bench`・`Plan` は `local/experiments/schema/schema.ts` が持つ。run の中の置き場（`RUN`、`.f64` の 1 列を指す `compArray` など）は両方が使うので `shared/runs.ts` が持つ。
+- runs は生データ（波形と学習の書き出し、GPU の実測で使ったツールの出力をツールごとのファイルのまま）だけを持つ。波形から先の統計量（eFEL の特徴量から Γ と列ごとのまとめまで）は全部、計算する機械が頼まれるたびに純粋関数で計算して返し（`remote/read/comparison.ts`）、使う側は API で受け取るだけ。比べる物差し（Γ の許容幅 Δ）は宣言（`local/experiments/config/presets.json` の `measures`）が持ち、使う側がそこから読んで API の `series` の頼み方で渡す。どの列を比べるかの組み立てと見せ方（時刻まで合うとみなす Γ の線）は使う側が持つ。`shared/` に置くのは両方が使う形だけで、宣言の形（`Series`・`Train`）は `local/experiments/schema/presets.ts`、`Bench`・`Plan` は `local/experiments/schema/schema.ts` が持つ。run の中の置き場（`RUN`、`.f64` の 1 列を指す `compArray` など）は両方が使うので `shared/runs.ts` が持つ。
 
 | 渡るもの | 書く側 | 読む側 |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 
 ### run の置き場
 
-保存の単位は学習したモデル (`runs/models/<学習のハッシュ>/`) と入力 (`runs/inputs/<入力のハッシュ>/`) の二つで、入力の下に元のモデル (`<入力のハッシュ>/original/`) と置き換えたモデル (`<入力のハッシュ>/<モデルの鍵>/`、学習 run のハッシュ + 置換範囲) を置く。1 run = spec.json 1 つで、置き場は spec から決まる (`remote/run/places.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。図は Python で描かず、Python が置くのは図に要るデータだけ:
+保存の単位は学習したモデル (`runs/models/<学習のハッシュ>/`) と入力 (`runs/inputs/<入力のハッシュ>/`) と GPU の実測 (`runs/bench/<ハッシュ>/`) の三つで、入力の下に元のモデル (`<入力のハッシュ>/original/`) と置き換えたモデル (`<入力のハッシュ>/<モデルの鍵>/`、学習 run のハッシュ + 置換範囲) を置く。1 run = spec.json 1 つで、置き場は spec から決まる (`remote/run/places.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。図は Python で描かず、Python が置くのは図に要るデータだけ:
 
 ```
 <run>/  spec.json              回した条件 (format = 形式の版, kind, ...)
@@ -94,6 +94,12 @@ inputs/<ハッシュ>/  input.json                電流と掃引 (段取りが�
                     original/ waves/          下の形式。meta.json に comp 名 → id も入る
                     <モデルの鍵>/ waves/
                                   projected/<comp>/ 置換した comp の original/ のゲートを潜在空間へ射影したもの (waves と同じ形式)
+bench/<ハッシュ>/   <細胞の数>/bench.json      bench.py が自分で測ったもの (時間、状態の置き方と量の予想、発火の回数、pid)
+                    <細胞の数>/jax.memory_stats.{placed,after}.json
+                                              JAX の memory_stats そのまま (入力を置いた後と回した後)
+                    <細胞の数>/nvidia-smi.{apps,gpu}.csv
+                                              nvidia-smi の CSV そのまま (このプロセスの使用量と GPU の全容量)
+                    <細胞の数>/ncu.csv         ncu の標準出力そのまま (1 刻みの区画ごとのカーネルの指標。spec の ncu が真のとき)
 
 waves/meta.json            t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]], nodes, names
 waves/<点>/comp<id>.f64    その comp の変数 (features の並び順)。変数ごとに連続した little-endian float64

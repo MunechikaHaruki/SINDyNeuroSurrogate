@@ -1,5 +1,5 @@
 // 波形。run のファイルを読んで覚え（runs/ の外を指すパスは弾き、.f64 は丸ごと読んで古く使ったものから忘れる）、回線に出す形（表示の範囲で間引いた線・相平面の軌跡・分布、表示に要る桁）にする。
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import type { ArrayRef, Bin, Point } from '../../shared/api.ts';
 
@@ -14,6 +14,10 @@ export type RunFiles = {
   column: (ref: ArrayRef) => Float64Array;
   /** run の中の .json。 */
   json: <T>(run: string, file: string) => T;
+  /** run の中の .json か .csv を、ファイルのままの文字で。無ければ null。 */
+  text: (run: string, file: string) => string | null;
+  /** run の中の dir の下のディレクトリの名前。 */
+  dirs: (run: string, dir?: string) => string[];
 };
 
 /** runs の置き場 runs を読む。読んだ .f64 はこの中で覚える。 */
@@ -70,7 +74,21 @@ export function runFiles(runs: string): RunFiles {
     return JSON.parse(readFileSync(inRuns(run, file), 'utf8')) as T;
   }
 
-  return { column, json };
+  function text(run: string, file: string): string | null {
+    if (!file.endsWith('.json') && !file.endsWith('.csv')) throw new Error(`${run}/${file} は .json か .csv でない`);
+    const path = inRuns(run, file);
+    return existsSync(path) ? readFileSync(path, 'utf8') : null;
+  }
+
+  function dirs(run: string, dir = '.'): string[] {
+    const path = inRuns(run, dir);
+    if (!existsSync(path)) return [];
+    const names: string[] = [];
+    for (const entry of readdirSync(path, { withFileTypes: true })) if (entry.isDirectory()) names.push(entry.name);
+    return names;
+  }
+
+  return { column, json, text, dirs };
 }
 
 // ---- 回線に出す形

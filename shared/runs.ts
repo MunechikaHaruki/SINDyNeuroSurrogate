@@ -9,7 +9,6 @@ export const RUN = {
   train: 'description/train',
   model: 'description/model.json',
   summary: 'summary.json',
-  bench: 'bench.json',
   projected: (comp: string) => `projected/${comp}`,
   meta: (root: string) => `${root}/meta.json`,
 };
@@ -99,32 +98,47 @@ export type ModelJson = {
   latent_names: string[];
 };
 
-/** GPU の実測の結果（bench.json）の 1 行。細胞の数 1 つ。1 刻みがカーネル 1 回で、全細胞をそろえて進める。時間はコンパイルの後の 2 回目の実時間。
- * comp_states は区画ごとの、刻みをまたいで持ち越し、VRAM に置いて毎刻み読み書きする状態（V、潜在 z、縮約しなかったゲート）。
- * decoded は置き換えた区画ごとの、持ち越さず刻みごとに z から作り直すゲート（レジスタに置く）。1 スレッドが 1 区画を持つ。vram_state_bytes は VRAM に置いた状態の総量、
- * expected_step_load_bytes と expected_step_store_bytes は 1 刻みのカーネルが VRAM から読み、書き戻す量の予想（状態・発火の回数・行）。
- * VRAM の量は XLA（最大・入力・作業量）と nvidia-smi。spike_counts は系列の点ごとの、同じ電流の細胞の発火の回数（揃っていれば 1 つ）。
- * ncu の量（1 刻みのカーネル 1 回分）は ncu を回したときだけ。 */
-export type BenchRow = {
+/** GPU の実測の run の中身。細胞の数ごとのディレクトリ `<細胞の数>/` に、使ったツールの出力を加工せずにツールごとのファイルで置く（remote/neurosurrogate/bench.py と揃える）。
+ * own は bench.py が自分で測ったもの（BenchOwn）、jaxPlaced と jaxAfter は入力を置いた後と回した後の JAX の memory_stats、smiApps と smiGpu は nvidia-smi の CSV（このプロセスの使用量と GPU の全容量）、
+ * ncu は Nsight Compute の CSV（ncu で測ったときだけ。1 刻みの区画ごとのカーネルの行）。集計は API の bench の口（remote/read/bench.ts）が頼まれるたびに計算する。 */
+export const BENCH = {
+  own: 'bench.json',
+  jaxPlaced: 'jax.memory_stats.placed.json',
+  jaxAfter: 'jax.memory_stats.after.json',
+  smiApps: 'nvidia-smi.apps.csv',
+  smiGpu: 'nvidia-smi.gpu.csv',
+  ncu: 'ncu.csv',
+  at: (cells: number, file: string) => `${cells}/${file}`,
+};
+
+/** bench.py が自分で測ったもの（<細胞の数>/bench.json）。時間はコンパイルの後の 2 回目の実時間。comp_states は区画ごとの、刻みをまたいで持ち越し VRAM に置く状態（V を含む）、
+ * decoded は置き換えた区画ごとの、刻みごとに z から作り直すゲート（レジスタに置く）。vram_state_bytes と expected_step_* は状態の置き方から出した予想。
+ * spike_counts は系列の点ごとの、同じ電流の細胞の発火の回数（揃っていれば 1 つ）。pid は nvidia-smi の行を引くための、測ったプロセスの pid。 */
+export type BenchOwn = {
   cells: number;
+  compartments: number;
   steps: number;
   compile_s: number;
   wall_s: number;
-  cell_steps_per_s: number;
-  /** 区画の数と、区画の名前 → VRAM に置く変数（V を含む）、置き換えた区画の名前 → z から作り直すゲート。 */
-  compartments: number;
   comp_states: Record<string, string[]>;
   decoded: Record<string, string[]>;
   vram_state_bytes: number;
   expected_step_load_bytes: number;
   expected_step_store_bytes: number;
+  spike_counts: number[][];
+  pid: number;
+};
+
+/** GPU の実測の 1 行（API の bench の口の答え）。細胞の数 1 つ。1 刻みがカーネル 1 回で、全細胞をそろえて進める。BenchOwn に、ツールの出力から API が集めた量を足したもの。
+ * VRAM の量は JAX（最大・入力・作業量）と nvidia-smi。ncu の量（1 刻みの区画ごとのカーネルを合わせたもの。量は和、レジスタは最大、当たり率は global の読み書きの量で重み付け）は ncu で測ったときだけ。 */
+export type BenchRow = Omit<BenchOwn, 'pid'> & {
+  cell_steps_per_s: number;
   peak_bytes: number | null;
   input_bytes: number | null;
   work_bytes: number | null;
   smi_used_mib: number | null;
   /** GPU の VRAM の全容量 [バイト]（nvidia-smi）。 */
   vram_total_bytes: number | null;
-  spike_counts: number[][];
   registers_per_thread?: number | null;
   threads?: number | null;
   global_store_bytes?: number | null;

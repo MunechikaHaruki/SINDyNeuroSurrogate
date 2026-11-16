@@ -15,9 +15,10 @@ spec の種類は 3 つ (`kind`):
           置き換えたモデルは段取りが組んだ鍵の名前。`train` は
           `runs/models/` の学習 run を指す
 - `bench` GPU の実測。`input` と `model` は sim と同じで、細胞を `cells` の数ずつ
-          並べて刻みごとに全細胞をそろえて GPU で回し、時間・VRAM と (`ncu` が真なら)
-          レジスタ・溢れ・global と DRAM の量を `bench.json` に書く
-          (neurosurrogate.bench)。置き場は `runs/bench/<ハッシュ>/`
+          並べて刻みごとに全細胞をそろえて GPU で回し、細胞の数ごとの `<細胞の数>/` に
+          使ったツールの出力を加工せずにツールごとのファイルで書く
+          (neurosurrogate.bench)。
+          置き場は `runs/bench/<ハッシュ>/`
 
 どちらも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
 入れ、JAX の backend が合わなければ回さない (backend は呼ぶ側が JAX_PLATFORMS で選ぶ)。
@@ -35,6 +36,10 @@ JSON の nan は null):
                original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ
                だけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
                頼まれるたびに波形から計算する
+    bench      <細胞の数>/ に、bench.json (bench.py が自分で測った時間・状態の置き方・
+               発火の回数)、jax.memory_stats.{placed,after}.json、nvidia-smi.{apps,gpu}.csv、
+               ncu.csv (`ncu` が真なら)。どれもツールの出力のままで、集計は API が
+               頼まれるたびに計算する (remote/read/bench.ts)
 
     waves/meta.json           t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]],
                               I_internal の nodes, comp 名 → id
@@ -66,7 +71,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .bench import cache, run_checked
+from .bench import OWN_FILE, cache, run_checked
 from .physics.simulate import (
     EvalSeries,
     gate_matrix,
@@ -270,20 +275,22 @@ def _sim(root: Path, spec: dict) -> dict:
 
 
 def _bench(root: Path, spec: dict) -> dict:
-    """細胞の数ごとに別のプロセスで GPU の実測を回し、bench.json に書く。"""
+    """細胞の数ごとに別のプロセスで GPU の実測を回す。
+
+    `<細胞の数>/` に、ツールごとの出力をそのまま書く。
+    """
     runs = root.parents[1]
     gpu = {"JAX_PLATFORMS": "cuda", "XLA_PYTHON_CLIENT_PREALLOCATE": "false"}
     env = {**os.environ, **gpu}
     command = [sys.executable, "-m", "neurosurrogate.bench", str(root / "spec.json")]
-    rows = []
     for cells in spec["cells"]:
-        out = run_checked([*command, str(runs), str(cells)], env)
-        row = json.loads(out.strip().splitlines()[-1])
+        out = root / str(cells)
+        text = run_checked([*command, str(runs), str(cells), "--out", str(out)], env)
+        row = json.loads(text.strip().splitlines()[-1])
+        _write_json(out / OWN_FILE, row)
         if spec.get("ncu"):
-            row |= cache(root / "spec.json", runs, cells, row["compartments"], env)
-        _logger.info("bench %s", row)
-        rows.append(row)
-    _write_json(root / "bench.json", rows)
+            cache(root / "spec.json", runs, cells, row["compartments"], env, out)
+        _logger.info("bench %s cells %s", root.name, cells)
     return {}
 
 

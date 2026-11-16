@@ -4,6 +4,7 @@
 //   bun remote/serve.ts
 import { FORMAT, type Job } from '../shared/spec.ts';
 import type { Api } from '../shared/api.ts';
+import { benchRows } from './read/bench.ts';
 import { seriesComparison } from './read/comparison.ts';
 import { compact, decimate, histograms, path, runFiles } from './read/waves.ts';
 import { launch } from './run-spec.ts';
@@ -28,6 +29,8 @@ export function handlers(runs: string): Handlers {
     status: () => status(runs),
     launch: body => ({ started: launch(runs, checkJob(body.job)) }),
     json: body => files.json(body.run, body.path),
+    text: body => files.text(body.run, body.path),
+    bench: body => benchRows(files, body.run),
     traces: body =>
       body.requests.map(r => compact(decimate(files.column(r.array), r.t0, r.dt, r.start, r.end, r.buckets))),
     paths: body =>

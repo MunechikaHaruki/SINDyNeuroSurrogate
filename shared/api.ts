@@ -1,7 +1,8 @@
 // 帰りの JSON の形。計算する機械の API（remote/serve.ts）の口ごとの受け取りと返事で、手元はこの型だけを import して POST /<口> に JSON を送る。
 // runs が持つのは生データだけ。波形から先の統計量（eFEL の特徴量、波形の差、Γ など）は全部 API が頼まれるたびに計算して返し、手元は受け取るだけ。
-// 波形は回線に出さない。返すのは run の小さい JSON（meta.json・summary.json・model.json）と、間引いた線・軌跡・分布・指標だけ。
+// 波形は回線に出さない。返すのは run の小さい JSON（meta.json・summary.json・model.json）とテキスト（ツールの出力の CSV）、間引いた線・軌跡・分布・指標、GPU の実測の集計だけ。
 import type { IndexEntry, Job, Status } from './spec.ts';
+import type { BenchRow } from './runs.ts';
 
 /** 線の 1 点。 */
 export type Point = { x: number; y: number };
@@ -48,6 +49,10 @@ export type Api = {
   launch: { body: { job: Job }; reply: { started: boolean } };
   /** run の中の .json 1 つ。 */
   json: { body: { run: string; path: string }; reply: unknown };
+  /** run の中の .json か .csv 1 つを、ファイルのままの文字で。無ければ null。 */
+  text: { body: { run: string; path: string }; reply: string | null };
+  /** GPU の実測の run の、細胞の数ごとの行（ツールの出力から頼まれるたびに集める）。並びは細胞の数の順。 */
+  bench: { body: { run: string }; reply: BenchRow[] };
   traces: { body: { requests: TraceRequest[] }; reply: Point[][] };
   paths: { body: { requests: PathRequest[] }; reply: Point[][] };
   /** 列ごとの分布。区間は全部の列の有限な値の最小から最大で揃える。 */
