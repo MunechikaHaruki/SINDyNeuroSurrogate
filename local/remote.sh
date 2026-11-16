@@ -6,7 +6,7 @@
 #   SINDY_HOST=<host> local/remote.sh run <段取りの引数>   コードを送ってから、段取り（remote/run-spec.ts。run <resolved/ の下のパス>...）を向こうで回す
 #   SINDY_HOST=<host> local/remote.sh test                コードを送ってから、Python と TS のテストを向こうで回す
 #   SINDY_HOST=<host> local/remote.sh fetch <run の id>   run を 1 つ手元の runs/ へ持ってくる（回線の届かない所で見るとき）
-# イメージはベースと道具を digest で、Python の依存を uv.lock で固定した remote/Dockerfile から向こうで作る。API はコードの書き換えで立ち直る（bun --watch）。
+# イメージはベースと道具を digest で、Python の依存を uv.lock で固定した remote/Dockerfile から向こうで作る。学習か評価が回っていれば送らず、送ったら API を立て直す。
 set -euo pipefail
 shopt -s inherit_errexit # コマンド置換の中の失敗でも止まる
 
@@ -51,16 +51,22 @@ busy() {
 }
 
 up() {
+  # 回っている段取りは、次に起こす run.py で送り直したコードと spec を読んでしまうので、回っていれば送らない
+  if [ "$(docker inspect -f '{{.State.Running}}' "$name" 2> /dev/null)" = true ] && busy; then
+    echo "学習か評価が回っているので、コードを送らない（終わってから送る）" >&2
+    exit 1
+  fi
   sync
   local tag home
   tag=$(image)
   if [ "$(docker inspect -f '{{.Config.Image}}' "$name" 2> /dev/null)" = "$tag" ]; then
-    [ "$(docker inspect -f '{{.State.Running}}' "$name")" = true ] || docker start "$name" > /dev/null
+    if [ "$(docker inspect -f '{{.State.Running}}' "$name")" != true ]; then
+      docker start "$name" > /dev/null
+    else
+      # bun --watch は送り直したファイルを拾わないことがあるので、送ったら API を立て直して新しいコードを読ませる
+      docker restart "$name" > /dev/null
+    fi
     return
-  fi
-  if busy; then
-    echo "イメージが変わったが、学習か評価が回っているので作り直さない（終わってから up する）" >&2
-    exit 1
   fi
   docker rm -f "$name" > /dev/null 2>&1 || true
   home=$(ssh "$host" 'echo $HOME')

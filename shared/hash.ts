@@ -1,4 +1,4 @@
-// spec の同一性の鍵。手元の resolve.ts（学習 run を評価の spec の中でハッシュで指す）と計算する機械の段取り（run の置き場）が同じ関数で組む。
+// spec の同一性の鍵。手元の resolve.ts（学習データ・学習器・モデルを後ろの spec の中でハッシュで指す）と計算する機械の段取り（run の置き場）が同じ関数で組む。
 // ハッシュを組むのはここだけ（Python は組まない。JS と Python で数値の JSON 表記が違うので、鍵を 2 か所で組まない）。
 import { createHash } from 'node:crypto';
 import type { Spec } from './spec.ts';

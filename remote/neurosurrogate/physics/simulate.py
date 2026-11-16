@@ -188,12 +188,17 @@ def waves_dataset(raw, current, index: pd.MultiIndex, dt: float) -> xr.Dataset:
 
 
 def latent_dataset(
-    v: np.ndarray, latent: np.ndarray, u: np.ndarray, comp_id: int, dt: float
+    v: np.ndarray,
+    latent: np.ndarray,
+    names: list[str],
+    u: np.ndarray,
+    comp_id: int,
+    dt: float,
 ) -> xr.Dataset:
-    """1 区画の [V, z1..zN] と流入電流 u の Dataset。"""
+    """1 区画の [V, 潜在] と流入電流 u の Dataset。names は潜在の名前。"""
     n = latent.shape[1]
     index = pd.MultiIndex.from_arrays(
-        [[comp_id] * (n + 1), ["V", *latent_names(n)], [False] + [True] * n],
+        [[comp_id] * (n + 1), ["V", *names], [False] + [True] * n],
         names=("comp_id", "variable", "gate"),
     )
     raw = np.concatenate((v.reshape(-1, 1), latent), axis=1)

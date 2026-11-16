@@ -14,3 +14,12 @@ runs:
     methods: [ kam, pca-sindy, ae-sindy ]
     groupings: [ h+n ]
     series: [ traub-1comp-steady, traub-1comp-kistler ]
+  test-1comp:
+    description: テスト用。形式やコードを変えたらまず回す。KAM・PCA・AE を短い学習データで 2 つの学習器を持つ h+n_a+c に縮約し、短い定常電流の 2 点で回す。
+    methods:
+      - { name: kam-test, from: kam, duration: 1000 }
+      - { name: pca-sindy-test, from: pca-sindy, duration: 1000 }
+      - { name: ae-sindy-test, from: ae-sindy, duration: 1000 }
+    groupings: [ h+n_a+c ]
+    series:
+      - { name: traub-1comp-steady-test, from: traub-1comp-steady, duration: 100.0, sweep: { value: [ 0, 10 ] } }

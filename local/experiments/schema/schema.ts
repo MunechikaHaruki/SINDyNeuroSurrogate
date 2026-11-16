@@ -1,15 +1,15 @@
 // 宣言の二つの書き方と、どちらからも組む解決済みの実験（Plan）。
 // 実験群の実験層（config/<群>.yaml）は frontmatter（description）の文書と、共通の設定 setup と回す run の並び runs の文書の二つ。run に書いた欄だけが setup を置き換え、プリセット（presets.ts）を名前か差分で指す。
 // 決め打ちの構成（組み合わせを展開しない実験）は、プリセットを通さず、学習の設定と系列を値のまま config/<実験>.json に書く（PlanJson）。
-// 返すのは学習 run と系列を値で持つ解決済みの実験だけで、resolve.ts と画面は宣言の形を知らない。
+// 返すのはモデルと系列を値で持つ解決済みの実験だけで、resolve.ts と画面は宣言の形を知らない。
 import { z } from 'zod';
 import type { SurrogateConfig } from '../../../shared/spec.ts';
-import { Ref, groupings, methodOf, parsed, seriesFrom, trainFrom, type Series, type Train } from './presets.ts';
+import { Ref, groupings, methodOf, modelFrom, parsed, seriesFrom, type ModelDecl, type Series } from './presets.ts';
 
 /** 細胞の数。1 刻みのカーネルのブロック（128 細胞）の倍数。 */
 const Cells = z.array(z.number().int().positive().multipleOf(128)).nonempty();
 
-/** GPU の実測 1 つ。model は学習 run の名前（null なら元のモデル）、cells は並べる細胞の数、ncu は Nsight Compute で 1 刻みのカーネルを測るか。 */
+/** GPU の実測 1 つ。model はモデルの名前（null なら元のモデル）、cells は並べる細胞の数、ncu は Nsight Compute で 1 刻みのカーネルを測るか。 */
 const BenchValue = z.strictObject({
   name: z.string(),
   model: z.string().nullable(),
@@ -19,10 +19,10 @@ const BenchValue = z.strictObject({
 });
 export type Bench = z.infer<typeof BenchValue>;
 
-/** 学習 run 1 本。name は実験の中の名前（`<仕方の名前>.<群分け>`）、method と grouping は図が列を引く名前。 */
-export type Model = { name: string; method: string; grouping: string; train: Train };
+/** モデル 1 つ。name は実験の中の名前（`<仕方の名前>.<群分け>`）、method と grouping は図が列を引く名前。 */
+export type Model = ModelDecl & { method: string; grouping: string };
 
-/** 解決済みの実験。description は何を回して何を見るかの一文（Markdown）。学習 run と系列を値で持ち、pairs が回す組（学習 run の名前 × 系列の名前）。
+/** 解決済みの実験。description は何を回して何を見るかの一文（Markdown）。モデルと系列を値で持ち、pairs が回す組（モデルの名前 × 系列の名前）。
  * groupings と methods は画面が絞り込みに使う名前の並び。 */
 export type Plan = {
   id: string;
@@ -44,7 +44,7 @@ export const MethodRef = z.union([z.string(), z.looseObject({ name: z.string(), 
 export const SeriesRef = MethodRef;
 
 /** setup と run が持てる欄。群分けは、ゲートの並び gates（全部の群分けを組む）か、群分けの名前 groupings のどちらか。
- * benches は GPU で測る系列で、その系列で元のモデルと run の学習 run を全部、細胞の数 cells で測る（ncu なら Nsight Compute で 1 刻みのカーネルも）。 */
+ * benches は GPU で測る系列で、その系列で元のモデルと run のモデルを全部、細胞の数 cells で測る（ncu なら Nsight Compute で 1 刻みのカーネルも）。 */
 const Fields = {
   methods: z.array(MethodRef).nonempty().optional(),
   gates: z.array(z.string().length(1)).nonempty().optional(),
@@ -98,7 +98,7 @@ export function build(where: string, id: string, run: Run): Plan {
     const declared = methodOf(ref);
     for (const grouping of groupingList) {
       const model = `${name}.${grouping}`;
-      models.push({ name: model, method: name, grouping, train: trainFrom(model, declared, grouping) });
+      models.push({ ...modelFrom(model, declared, grouping), method: name, grouping });
     }
   }
   const pairs = models.flatMap(m => Object.keys(series).map(s => ({ model: m.name, series: s })));
@@ -169,10 +169,10 @@ export const SeriesValue = z.strictObject({
   values: z.array(z.number()),
 });
 
-/** 解決済みの実験。学習 run は名前・仕方と群分けの名前（図と判定が列を引く）・設定、系列は名前 → 値。回す組 pairs は学習 run × 系列の名前。 */
+/** 解決済みの実験。モデルは名前・仕方と群分けの名前（図と判定が列を引く）・設定、系列は名前 → 値。回す組 pairs はモデル × 系列の名前。 */
 export const PlanJson = z.strictObject({
   description: z.string().min(1),
-  trains: z
+  models: z
     .array(z.strictObject({ name: z.string(), method: z.string(), grouping: z.string(), config: Config }))
     .nonempty(),
   series: z.record(z.string(), SeriesValue),
@@ -184,26 +184,21 @@ export type PlanJson = z.infer<typeof PlanJson>;
 /** 決め打ちの実験の JSON を形に当て、名前の参照を確かめて実験にする。誤りはどこの何かが分かる一文にする。 */
 export function fromJson(id: string, where: string, value: unknown): Plan {
   const p = parsed(PlanJson, where, value);
-  const trains = new Set(p.trains.map(t => t.name));
+  const models = new Set(p.models.map(m => m.name));
   for (const pair of p.pairs) {
-    if (!trains.has(pair.model)) throw new Error(`${where}：組の学習 run ${pair.model} が trains に無い`);
+    if (!models.has(pair.model)) throw new Error(`${where}：組のモデル ${pair.model} が models に無い`);
     if (!p.series[pair.series]) throw new Error(`${where}：組の系列 ${pair.series} が series に無い`);
   }
   for (const b of p.benches) {
-    if (b.model !== null && !trains.has(b.model)) throw new Error(`${where}：GPU の実測 ${b.name} の学習 run が無い`);
+    if (b.model !== null && !models.has(b.model)) throw new Error(`${where}：GPU の実測 ${b.name} のモデルが無い`);
     if (!p.series[b.series]) throw new Error(`${where}：GPU の実測 ${b.name} の系列が無い`);
   }
   return {
     id,
     description: p.description,
-    groupings: [...new Set(p.trains.map(t => t.grouping))],
-    methods: [...new Set(p.trains.map(t => t.method))],
-    models: p.trains.map(t => ({
-      name: t.name,
-      method: t.method,
-      grouping: t.grouping,
-      train: { name: t.name, config: t.config as SurrogateConfig },
-    })),
+    groupings: [...new Set(p.models.map(m => m.grouping))],
+    methods: [...new Set(p.models.map(m => m.method))],
+    models: p.models.map(m => ({ ...m, config: m.config as SurrogateConfig })),
     series: p.series as Record<string, Series>,
     pairs: p.pairs,
     benches: p.benches,

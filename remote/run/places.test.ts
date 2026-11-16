@@ -7,7 +7,7 @@ const input = {
   param: null,
   values: [0],
 };
-const sim = (model: { train: string; replace_targets: string[] } | null): Spec => ({
+const sim = (model: { surrogate: string; replace_targets: string[] } | null): Spec => ({
   format: FORMAT,
   device: 'cpu',
   kind: 'sim',
@@ -19,9 +19,9 @@ test('specs that differ only in what they replace share the input directory but 
   const original = dirOf(sim(null));
   expect(original).toMatch(/^inputs\/[0-9a-f]{12}\/original$/);
   const prefix = original.slice(0, -'original'.length);
-  const soma = dirOf(sim({ train: 't', replace_targets: ['soma'] }));
-  const all = dirOf(sim({ train: 't', replace_targets: ['soma', 'axon'] }));
-  const other = dirOf(sim({ train: 'u', replace_targets: ['soma'] }));
+  const soma = dirOf(sim({ surrogate: 't', replace_targets: ['soma'] }));
+  const all = dirOf(sim({ surrogate: 't', replace_targets: ['soma', 'axon'] }));
+  const other = dirOf(sim({ surrogate: 'u', replace_targets: ['soma'] }));
   for (const dir of [soma, all, other]) expect(dir.startsWith(prefix)).toBe(true);
   expect(soma).not.toBe(all);
   expect(soma).not.toBe(other);

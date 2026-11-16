@@ -4,34 +4,44 @@ spec.json 1 つを受け取り、run のディレクトリを埋めるだけの�
 掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
 (`../run/`) が持ち、spec の形は
 `../../shared/spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
-spec の種類は 3 つ (`kind`):
+spec の種類は 5 つ (`kind`)。学習データ → 学習器 → モデル → シミュレーションの順に、
+後ろの spec が前の run をハッシュで指す:
 
-- `train` 学習。`surrogate` は設定 (surrogate.Config: 区画の型、形、学習データ、群)。
+- `data`  学習データ。`data` (SimSpec) を元のモデルで回す。
+          置き場は `runs/data/<ハッシュ>/`
+- `part`  学習器 1 つ (群 1 つの圧縮器と右辺)。`data` は学習データのハッシュで、
+          `cell`・`form`・`train_comp`・`group` で学習する。
+          置き場は `runs/parts/<ハッシュ>/`
+- `model` 学習器の並びを組んだモデル。`parts` は学習器のハッシュの並び (群の順)、
+          `cell`・`form`・`absorbed`。学習はせず、組んだ演算コストを書く。
           置き場は `runs/models/<ハッシュ>/`
 - `sim`   入力 × モデルのシミュレーション。`input` は `EvalSeries.to_dict`
           から置換範囲を除いたもの (電流と掃引)。`model` は
-          `{train, replace_targets}` か null (元のモデル)。置き場は
+          `{surrogate, replace_targets}` か null (元のモデル)。置き場は
           `runs/inputs/<入力のハッシュ>/` の下で、元のモデルは `original/`、
-          置き換えたモデルは段取りが組んだ鍵の名前。`train` は
-          `runs/models/` の学習 run を指す
+          置き換えたモデルは段取りが組んだ鍵の名前。`surrogate` は
+          `runs/models/` のモデルを指す
 - `bench` GPU の実測。`input` と `model` は sim と同じで、細胞を `cells` の数ずつ
           並べて刻みごとに全細胞をそろえて GPU で回し、細胞の数ごとの `<細胞の数>/` に
           使ったツールの出力を加工せずにツールごとのファイルで書く
           (neurosurrogate.bench)。
           置き場は `runs/bench/<ハッシュ>/`
 
-どちらも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
+どれも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
 入れ、JAX の backend が合わなければ回さない (backend は呼ぶ側が JAX_PLATFORMS で選ぶ)。
 gpu でも GPU を使うのは AE の学習だけで、シミュレーションは CPU で回す。
 
 書くもの (図が読む形。`.f64` は little-endian の float64 を並べただけ、
 JSON の nan は null):
 
-    spec.json  meta.json (kind = train / original / replaced, name, created, 掃引の単位,
-               env = 回した環境: backend、device、jax と python の版、host、コードとイメージの版)
-    train      surrogate/ (config.json + parts.joblib)、summary.json (学習側の指標)、
-               description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
-               description/fit/<comp_id>/{x,latent,recon_rmse}.f64
+    spec.json  meta.json (kind = data / part / model / original / replaced / bench,
+               name, created, elapsed = 計算にかかった秒, 掃引の単位, env = 回した環境:
+               backend、device、jax と python の版、host、コードとイメージの版)
+    data       waves/ (点は 1 つ)
+    part       part.joblib (圧縮器と右辺)、part.json (状態・潜在・学習区画の名前、
+               右辺と圧縮器の中身、学習側の指標)、
+               fit/<comp_id>/{latent,recon_rmse}.f64
+    model      summary.json (組んだ 1 刻みの演算コスト。学習器の指標は part.json)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
                original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ
                だけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
@@ -74,22 +84,25 @@ import xarray as xr
 from .bench import OWN_FILE, cache, run_checked
 from .physics.simulate import (
     EvalSeries,
+    SimSpec,
     gate_matrix,
     i_internal,
     latent_dataset,
     potential,
     simulate,
 )
+from .store import assemble, load_model, part_config, save_part
 from .surrogate.model import (
     Surrogate,
     applicable,
-    describe,
-    fit,
+    describe_group,
+    fit_group,
+    group_latents,
     replace,
     summary,
 )
 
-_FORMAT = 7  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
+_FORMAT = 11  # spec の形式の版。段取りが spec に入れる = 形式を変えたら鍵が変わる
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _CLAIM_GRACE = 60.0  # [s] 書きかけを作ってから pid を置くまでの猶予 (これより古く pid の無いものは残骸)
@@ -193,7 +206,7 @@ def _write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(_jsonable(value), ensure_ascii=False))
 
 
-# --- 2 種類の run ---------------------------------------------------------------
+# --- 5 種類の run ---------------------------------------------------------------
 
 
 def _names(series: EvalSeries) -> dict[str, int]:
@@ -201,36 +214,51 @@ def _names(series: EvalSeries) -> dict[str, int]:
     return {comp: net.index(comp) for comp in net.names}
 
 
-def _train(root: Path, spec: dict) -> dict:
-    """学習して surrogate とその中身 (`description/`) を書く。"""
-    surrogate = fit(spec["surrogate"])
-    (root / "surrogate").mkdir()
-    surrogate.save(root / "surrogate")
-    model, fits = describe(surrogate)
-    _write_json(root / "description/model.json", model)
-    net = surrogate.config.data.net
+def _data(root: Path, spec: dict) -> dict:
+    """学習データを元のモデルで回して書く。"""
+    data = SimSpec.from_dict(spec["data"])
+    net = data.net
     names = {comp: net.index(comp) for comp in net.names}
-    _write_waves(root / "description/train", [surrogate.training_data], names)
+    _write_waves(root / "waves", [simulate(data.run_input())], names)
+    return {}
+
+
+def _part(root: Path, spec: dict) -> dict:
+    """学習データを読んで学習器 1 つを学習し、その中身を書く。"""
+    runs = root.parents[1]
+    config = part_config(runs, spec)
+    [data] = _read_waves(runs / "data" / spec["data"] / "waves")
+    group = config.groups[0]
+    part = fit_group(config, group, data)
+    save_part(root, part)
+    description, fits = describe_group(config, group, part, data)
+    _write_json(root / "part.json", description)
     for comp_id, comp_fit in fits.items():
-        folder = root / "description/fit" / str(comp_id)
+        folder = root / "fit" / str(comp_id)
         folder.mkdir(parents=True)
-        _write_f64(folder / "x.f64", comp_fit.x.T)
         _write_f64(folder / "latent.f64", comp_fit.latent.T)
         _write_f64(folder / "recon_rmse.f64", comp_fit.recon_rmse)
-    _write_json(root / "summary.json", summary(surrogate))
+    return {}
+
+
+def _model(root: Path, spec: dict) -> dict:
+    """学習器を組み、組んだモデルの演算コストを書く。"""
+    _write_json(root / "summary.json", summary(assemble(root.parents[1], spec)))
     return {}
 
 
 def _project(surrogate: Surrogate, ds: xr.Dataset, comp_id: int) -> xr.Dataset:
-    """元のモデルの区画のゲートを、各群の圧縮器で潜在へ落とした [V, z...]。"""
+    """元のモデルの区画のゲートを、各群の圧縮器で潜在へ落とした [V, 潜在]。"""
     config = surrogate.config
-    latents = []
+    latents, names = [], []
     for (compressor, _), group in zip(surrogate.parts, config.groups, strict=True):
         gates = gate_matrix(ds, comp_id)[:, config.positions(group)]
         latents.append(compressor.encode(gates))
+        names.extend(group_latents(group))
     return latent_dataset(
         potential(ds, comp_id),
         np.concatenate(latents, axis=1),
+        names,
         i_internal(ds, comp_id),
         comp_id,
         float(ds["time"][1] - ds["time"][0]),
@@ -253,9 +281,9 @@ def _sim(root: Path, spec: dict) -> dict:
         _write_waves(root / "waves", waves, _names(series))
         return {"unit": series.unit}
     runs = root.parents[2]
-    surrogate = Surrogate.load(runs / "models" / model["train"] / "surrogate")
+    surrogate = load_model(runs, model["surrogate"])
     if not applicable(surrogate.config, series):
-        print(f"{model['train']} は {targets} を置換できない")
+        print(f"{model['surrogate']} は {targets} を置換できない")
         sys.exit(_NOT_REPLACEABLE)
     originals = _read_waves(root.parent / "original/waves")
     waves = []
@@ -297,12 +325,12 @@ def _bench(root: Path, spec: dict) -> dict:
 def _kind(spec: dict) -> str:
     """図に出す run の種類。sim はモデルの有無で、元のモデルと置き換えたモデルに
     分ける。"""
-    if spec["kind"] in ("train", "bench"):
+    if spec["kind"] != "sim":
         return str(spec["kind"])
     return "original" if spec["model"] is None else "replaced"
 
 
-_KINDS = {"train": _train, "sim": _sim, "bench": _bench}
+_KINDS = {"data": _data, "part": _part, "model": _model, "sim": _sim, "bench": _bench}
 
 
 def _writer_alive(partial: Path) -> bool:
@@ -378,11 +406,13 @@ def _run(spec_path: Path, root: Path, name: str) -> None:
     _claim(partial, root.name)
     try:
         (partial / "spec.json").write_text(spec_path.read_text())
+        start = time.monotonic()
         extra = _KINDS[spec["kind"]](partial, spec)
         meta = {
             "kind": _kind(spec),
             "name": name,
             "created": datetime.now().isoformat(timespec="seconds"),
+            "elapsed": round(time.monotonic() - start, 1),
             "env": _env(),
             **extra,
         }

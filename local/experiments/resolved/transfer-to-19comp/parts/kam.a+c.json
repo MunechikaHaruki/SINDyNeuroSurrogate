@@ -1,0 +1,20 @@
+{
+  "format": 11,
+  "device": "gpu",
+  "kind": "part",
+  "data": "a9806f86a63e",
+  "cell": "traub",
+  "form": "hybrid",
+  "train_comp": null,
+  "group": {
+    "gates": [
+      "A",
+      "C"
+    ],
+    "compressor": "kam",
+    "d": 1,
+    "rhs": "kam",
+    "compressor_params": {},
+    "rhs_params": {}
+  }
+}

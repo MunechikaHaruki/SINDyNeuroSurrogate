@@ -32,7 +32,8 @@ function imports(dir: string): { file: string; target: string }[] {
 function tsDirs(side: string): string[] {
   const found: string[] = [];
   for (const e of readdirSync(join(REPO, side), { withFileTypes: true })) {
-    if (!e.isDirectory() || ['node_modules', 'neurosurrogate', 'tests'].includes(e.name) || e.name.includes('.')) continue;
+    if (!e.isDirectory() || ['node_modules', 'neurosurrogate', 'tests'].includes(e.name) || e.name.includes('.'))
+      continue;
     const dir = `${side}/${e.name}`;
     if (readdirSync(join(REPO, dir)).some(name => name.endsWith('.ts'))) found.push(dir);
     found.push(...tsDirs(dir));

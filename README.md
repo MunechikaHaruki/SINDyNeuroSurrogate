@@ -92,13 +92,15 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  subgraph models["runs/models/"]
-    train["学習 run"]
-  end
+  data["runs/data/<br/>学習データ"]
+  parts["runs/parts/<br/>学習器（群 1 つ）"]
+  models["runs/models/<br/>学習器を組んだモデル"]
   subgraph inputs["runs/inputs/（入力ごと）"]
     original["original/<br/>元のモデル"]
     replaced["置き換えたモデル"]
   end
-  replaced -- "学習 run を名指す" --> train
+  parts -- "学習データを名指す" --> data
+  models -- "学習器を並べて名指す" --> parts
+  replaced -- "モデルを名指す" --> models
   replaced -. "比べる相手" .-> original
 ```

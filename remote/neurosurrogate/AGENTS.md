@@ -28,13 +28,15 @@ flowchart RL
   bench["bench"]
   run["run"]
   spikes["spikes"]
+  store["store"]
   bench --> physics_gpu
-  bench --> surrogate_model
+  bench --> store
   physics_gpu --> physics_cells
   physics_kam --> physics_cells
   physics_simulate --> physics_cells
   physics_simulate --> physics_currents
   run --> bench
+  store --> surrogate_model
   surrogate_compress --> physics_cells
   surrogate_model --> physics_kam
   surrogate_model --> physics_simulate
@@ -134,8 +136,30 @@ UDE の右辺: 潜在の時間発展を MLP にし、encoder・decoder と同じ
 ```text
 設定 (Config) は群のリストで、群ごとに圧縮器と右辺を持つ。群に入らなかった状態は
 元のモデルの式のまま解く (hybrid)。form="sindy" は膜電位も含めて丸ごと同定する。
-kernel・初期値・演算コストは、群と区画の式から組む。学習 (fit)、置換に使う区画の型
-(surrogate_cell)、置換の可否と置換、中身の書き出しもここが持つ。
+kernel・初期値・演算コストは、群と区画の式から組む。学習は群 1 つ (学習器) ごとに
+行い (fit_group)、学習器の並びをサロゲートに組む。置換に使う区画の型 (surrogate_cell)、
+置換の可否と置換、学習器とサロゲートの中身の書き出しもここが持つ。
+```
+
+## spikes.py
+
+波形のスパイクの特徴量 (eFEL)。run には書かず、API が頼まれるたびに呼ぶ。
+
+```text
+`python -m neurosurrogate.spikes '[{"dt": 刻み, "n": 長さ}, ...]'` が、標準入力の
+little-endian float64 を並びの長さで切った波形ごとに、特徴量を JSON の並びで書く
+(nan は null)。run の形式は知らない。波形を読んで渡すのも、元のモデルとの比べも
+API (../read/comparison.ts) が持つ。
+```
+
+## store.py
+
+run の置き場の学習器とモデル: 学習器を書いて読み、モデルの学習器を組む。
+
+```text
+置き場は `runs/data/<ハッシュ>/` (学習データ)、`runs/parts/<ハッシュ>/` (学習器 1 つ)、
+`runs/models/<ハッシュ>/` (学習器の並びを組んだモデル)。どれも spec.json を持ち、
+学習器の spec は学習データを、モデルの spec は学習器をハッシュで指す。
 ```
 
 ## bench.py
@@ -145,7 +169,7 @@ GPU の実測: 細胞を並べ、刻みごとに全細胞をそろえて回し�
 ```text
 `uv run python -m neurosurrogate.bench <spec.json> <runs> <細胞の数>
 [--out <dir>] [--once]`。
-spec は run.py の `bench` の spec (入力と、元のモデルか学習 run)。1 回の呼び出しで
+spec は run.py の `bench` の spec (入力と、元のモデルか学習器を組んだモデル)。1 回の呼び出しで
 1 つの細胞の数だけを測り、自分で測ったもの (時間、状態の置き方、発火の回数) を JSON で
 標準出力に書く。`--out` を渡せば、使ったツールの出力を加工せずにそのディレクトリへ
 ツールごとのファイルで書く (JAX の memory_stats、nvidia-smi の CSV)。ncu の CSV は
@@ -171,34 +195,44 @@ spec.json 1 つを受け取り、run のディレクトリを埋めるだけの�
 掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
 (`../run/`) が持ち、spec の形は
 `../../shared/spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
-spec の種類は 3 つ (`kind`):
+spec の種類は 5 つ (`kind`)。学習データ → 学習器 → モデル → シミュレーションの順に、
+後ろの spec が前の run をハッシュで指す:
 
-- `train` 学習。`surrogate` は設定 (surrogate.Config: 区画の型、形、学習データ、群)。
+- `data`  学習データ。`data` (SimSpec) を元のモデルで回す。
+          置き場は `runs/data/<ハッシュ>/`
+- `part`  学習器 1 つ (群 1 つの圧縮器と右辺)。`data` は学習データのハッシュで、
+          `cell`・`form`・`train_comp`・`group` で学習する。
+          置き場は `runs/parts/<ハッシュ>/`
+- `model` 学習器の並びを組んだモデル。`parts` は学習器のハッシュの並び (群の順)、
+          `cell`・`form`・`absorbed`。学習はせず、組んだ演算コストを書く。
           置き場は `runs/models/<ハッシュ>/`
 - `sim`   入力 × モデルのシミュレーション。`input` は `EvalSeries.to_dict`
           から置換範囲を除いたもの (電流と掃引)。`model` は
-          `{train, replace_targets}` か null (元のモデル)。置き場は
+          `{surrogate, replace_targets}` か null (元のモデル)。置き場は
           `runs/inputs/<入力のハッシュ>/` の下で、元のモデルは `original/`、
-          置き換えたモデルは段取りが組んだ鍵の名前。`train` は
-          `runs/models/` の学習 run を指す
+          置き換えたモデルは段取りが組んだ鍵の名前。`surrogate` は
+          `runs/models/` のモデルを指す
 - `bench` GPU の実測。`input` と `model` は sim と同じで、細胞を `cells` の数ずつ
           並べて刻みごとに全細胞をそろえて GPU で回し、細胞の数ごとの `<細胞の数>/` に
           使ったツールの出力を加工せずにツールごとのファイルで書く
           (neurosurrogate.bench)。
           置き場は `runs/bench/<ハッシュ>/`
 
-どちらも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
+どれも `device` (cpu か gpu) を持つ。計算の順序が変わって結果がずれるので同一性に
 入れ、JAX の backend が合わなければ回さない (backend は呼ぶ側が JAX_PLATFORMS で選ぶ)。
 gpu でも GPU を使うのは AE の学習だけで、シミュレーションは CPU で回す。
 
 書くもの (図が読む形。`.f64` は little-endian の float64 を並べただけ、
 JSON の nan は null):
 
-    spec.json  meta.json (kind = train / original / replaced, name, created, 掃引の単位,
-               env = 回した環境: backend、device、jax と python の版、host、コードとイメージの版)
-    train      surrogate/ (config.json + parts.joblib)、summary.json (学習側の指標)、
-               description/model.json、description/train/ (waves と同じ形、点は 1 つ)、
-               description/fit/<comp_id>/{x,latent,recon_rmse}.f64
+    spec.json  meta.json (kind = data / part / model / original / replaced / bench,
+               name, created, elapsed = 計算にかかった秒, 掃引の単位, env = 回した環境:
+               backend、device、jax と python の版、host、コードとイメージの版)
+    data       waves/ (点は 1 つ)
+    part       part.joblib (圧縮器と右辺)、part.json (状態・潜在・学習区画の名前、
+               右辺と圧縮器の中身、学習側の指標)、
+               fit/<comp_id>/{latent,recon_rmse}.f64
+    model      summary.json (組んだ 1 刻みの演算コスト。学習器の指標は part.json)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
                original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ
                だけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
@@ -217,15 +251,4 @@ JSON の nan は null):
 に書いてから名前を変える。一時ディレクトリには書いているプロセスの pid を置き、図は
 それで「計算中」を出す。ディレクトリが既にあれば回さない。置換できない組み合わせは何も書かずに
 終了コード 3、同じ run を生きた別のプロセスが書いていれば終了コード 4。
-```
-
-## spikes.py
-
-波形のスパイクの特徴量 (eFEL)。run には書かず、API が頼まれるたびに呼ぶ。
-
-```text
-`python -m neurosurrogate.spikes '[{"dt": 刻み, "n": 長さ}, ...]'` が、標準入力の
-little-endian float64 を並びの長さで切った波形ごとに、特徴量を JSON の並びで書く
-(nan は null)。run の形式は知らない。波形を読んで渡すのも、元のモデルとの比べも
-API (../read/comparison.ts) が持つ。
 ```

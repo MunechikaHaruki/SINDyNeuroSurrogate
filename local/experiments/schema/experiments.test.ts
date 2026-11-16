@@ -4,7 +4,7 @@ import { build, groupPlans } from './schema.ts';
 import { EXPERIMENTS } from './experiments.ts';
 
 /** 測った数値の書き方。説明には書かず、結果は図と表が runs から出す。 */
-const MEASURED = /\d\s*(mV|ms|µA|%|回)/;
+const MEASURED = /\d\s*(mV|ms|µA|%|回|分|秒)/;
 
 test('descriptions carry no measured numbers', () => {
   for (const e of EXPERIMENTS)
@@ -12,23 +12,19 @@ test('descriptions carry no measured numbers', () => {
 });
 
 test('an experiment runs the product of its methods, groupings and series, and a method can override its preset', () => {
-  const plan = build(
-    'test',
-    't',
-    {
-      description: 'test',
-      groupings: ['h+n', 'a+c'],
-      methods: ['kam', { name: 'pca2', from: 'pca-sindy', d: 2 }],
-      series: ['traub-1comp-steady'],
-    },
-  );
+  const plan = build('test', 't', {
+    description: 'test',
+    groupings: ['h+n', 'a+c'],
+    methods: ['kam', { name: 'pca2', from: 'pca-sindy', d: 2 }],
+    series: ['traub-1comp-steady'],
+  });
   expect(plan.pairs.map(p => `${p.model}×${p.series}`)).toEqual([
     'kam.h+n×traub-1comp-steady',
     'kam.a+c×traub-1comp-steady',
     'pca2.h+n×traub-1comp-steady',
     'pca2.a+c×traub-1comp-steady',
   ]);
-  expect(plan.models.map(m => [m.method, m.grouping, m.train.config.groups[0].d])).toEqual([
+  expect(plan.models.map(m => [m.method, m.grouping, m.config.groups[0].d])).toEqual([
     ['kam', 'h+n', 1],
     ['kam', 'a+c', 1],
     ['pca2', 'h+n', 2],

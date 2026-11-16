@@ -1,6 +1,6 @@
 // 帰りの JSON の形。計算する機械の API（remote/serve.ts）の口ごとの受け取りと返事で、手元はこの型だけを import して POST /<口> に JSON を送る。
 // runs が持つのは生データだけ。波形から先の統計量（eFEL の特徴量、波形の差、Γ など）は全部 API が頼まれるたびに計算して返し、手元は受け取るだけ。
-// 波形は回線に出さない。返すのは run の小さい JSON（meta.json・summary.json・model.json）とテキスト（ツールの出力の CSV）、間引いた線・軌跡・分布・指標、GPU の実測の集計だけ。
+// 波形は回線に出さない。返すのは run の小さい JSON（meta.json・summary.json・part.json・spec.json）とテキスト（ツールの出力の CSV）、間引いた線・軌跡・分布・指標、GPU の実測の集計だけ。
 import type { IndexEntry, Job, Status } from './spec.ts';
 import type { BenchRow } from './runs.ts';
 

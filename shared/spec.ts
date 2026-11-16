@@ -45,7 +45,7 @@ export type SurrogateConfig = {
 };
 
 /** spec の形式の版。neurosurrogate/run.py の _FORMAT と揃える。spec に入るので、変えると鍵が変わり古い run は回し直される。 */
-export const FORMAT = 7;
+export const FORMAT = 11;
 
 /** 回す backend。同じ spec でも計算の順序が変わって結果がずれるので、spec に入れて run を分ける。 */
 export type Device = 'cpu' | 'gpu';
@@ -57,12 +57,38 @@ export type Input = {
   param: string | null;
   values: number[];
 };
-/** 置き換えたモデル：どの学習 run（ハッシュ）で、どの区画を置き換えるか。 */
-export type Model = { train: string; replace_targets: string[] };
+/** 置き換えたモデル：どのモデル（runs/models/ のハッシュ）で、どの区画を置き換えるか。 */
+export type Model = { surrogate: string; replace_targets: string[] };
 
-/** run.py に渡す spec.json。学習は runs/models/ に、入力 × モデルは runs/inputs/<入力>/ に、GPU の実測は runs/bench/ に置く。model が null なら元のモデル。 */
+/**
+ * run.py に渡す spec.json。学習データ → 学習器 → モデル → シミュレーションの順に、後ろの spec が前の run をハッシュで指す。
+ * 学習データは runs/data/ に、学習器（群 1 つの圧縮器と右辺）は runs/parts/ に、学習器の並びを組んだモデルは runs/models/ に、
+ * 入力 × モデルは runs/inputs/<入力>/ に、GPU の実測は runs/bench/ に置く。sim と bench の model が null なら元のモデル。
+ */
 export type Spec =
-  | { format: number; device: Device; kind: 'train'; surrogate: SurrogateConfig }
+  | { format: number; device: Device; kind: 'data'; data: SimSpec }
+  | {
+      format: number;
+      device: Device;
+      kind: 'part';
+      /** 学習データ（runs/data/）のハッシュ。 */
+      data: string;
+      cell: string;
+      form: SurrogateConfig['form'];
+      train_comp: string | null;
+      group: Group;
+    }
+  | {
+      format: number;
+      device: Device;
+      kind: 'model';
+      cell: string;
+      form: SurrogateConfig['form'];
+      /** 膜電位へ吸収するゲート。書かなければ無い。 */
+      absorbed?: string[];
+      /** 学習器（runs/parts/）のハッシュの並び（群の順）。 */
+      parts: string[];
+    }
   | { format: number; device: Device; kind: 'sim'; input: Input; model: Model | null }
   | {
       format: number;
@@ -89,9 +115,11 @@ export type RunEnv = {
 /** run の一覧の 1 行（API の index）。id は runs/ の下のパス、kind は run.py が meta.json に書く種類。 */
 export type IndexEntry = {
   id: string;
-  kind: 'train' | 'original' | 'replaced' | 'bench';
+  kind: 'data' | 'part' | 'model' | 'original' | 'replaced' | 'bench';
   name: string;
   created: string;
+  /** 計算にかかった秒（run.py が測る。同一性に入らない）。 */
+  elapsed?: number;
   unit?: string;
   env: RunEnv;
   spec: Spec;
@@ -106,10 +134,11 @@ export type JobState = { job: Job; started: string; state: 'running' | 'done' | 
 
 /** resolved/ の spec 1 つの名前・場所・状態。id は runs/ の下のパスで、図はここを読む。spec は回す resolved/ の下のパス。 */
 export type RunStatus = { name: string; id: string; spec: string; state: State };
-/** 実験（resolved/ の下のディレクトリ）1 つの状態。学習 run、系列の元のモデル、組（系列 × 学習 run の置換系）を名前の順に並べる（宣言の順は手元が持つ）。state は起こした仕事も見た状態。 */
+/** 実験（resolved/ の下のディレクトリ）1 つの状態。モデル（とその学習器と学習データ）、系列の元のモデル、組（系列 × モデルの置換系）を名前の順に並べる（宣言の順は手元が持つ）。state は起こした仕事も見た状態。 */
 export type ExperimentStatus = {
   name: string;
-  models: { model: string; state: State; run: RunStatus }[];
+  /** モデルごとの組み立ての run と、組んだ学習器（群の順）と、学習器が学習した学習データ。state は学習器と学習データも見た状態。 */
+  models: { model: string; state: State; run: RunStatus; parts: RunStatus[]; data: RunStatus }[];
   series: { series: string; original: RunStatus }[];
   pairs: { series: string; model: string; state: State; run: RunStatus }[];
   benches: { bench: string; state: State; run: RunStatus }[];

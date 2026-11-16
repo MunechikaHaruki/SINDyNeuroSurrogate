@@ -1,5 +1,5 @@
 // 置き場。手元から送られてきた resolved/（手元の local/resolve.ts が書く）からパスで spec を引き、run を置く runs/ では、spec から置き場を決め
-// （学習は models/<ハッシュ>/、入力 × モデルは inputs/<入力のハッシュ>/<original かモデルの鍵>/、GPU の実測は bench/<ハッシュ>/）、完成した run を並べ、run 1 本の状態（済み・計算中・置換できない・まだ）を読む。
+// （学習データは data/<ハッシュ>/、学習器は parts/<ハッシュ>/、モデルは models/<ハッシュ>/、入力 × モデルは inputs/<入力のハッシュ>/<original かモデルの鍵>/、GPU の実測は bench/<ハッシュ>/）、完成した run を並べ、run 1 本の状態（済み・計算中・置換できない・まだ）を読む。
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,7 +34,9 @@ export const RUNS = process.env.SINDY_RUNS ?? join(fileURLToPath(new URL('../..'
 
 /** spec の置き場（runs/ の下のパス）。置換範囲だけが違う系列は同じ入力のディレクトリに並ぶ。 */
 export function dirOf(spec: Spec): string {
-  if (spec.kind === 'train') return `models/${hashOf(spec)}`;
+  if (spec.kind === 'data') return `data/${hashOf(spec)}`;
+  if (spec.kind === 'part') return `parts/${hashOf(spec)}`;
+  if (spec.kind === 'model') return `models/${hashOf(spec)}`;
   if (spec.kind === 'bench') return `bench/${hashOf(spec)}`;
   const input = digest({ format: spec.format, device: spec.device, input: spec.input });
   return `inputs/${input}/${spec.model === null ? 'original' : digest(spec.model)}`;
@@ -52,7 +54,8 @@ function children(dir: string): string[] {
 /** runs/ の下の完成した run を新しい順に。書きかけ（.partial）と印のファイルは数えない。 */
 export function scan(runs: string): IndexEntry[] {
   const dirs: string[] = [];
-  for (const top of ['models', 'bench']) for (const name of children(join(runs, top))) dirs.push(join(runs, top, name));
+  for (const top of ['data', 'parts', 'models', 'bench'])
+    for (const name of children(join(runs, top))) dirs.push(join(runs, top, name));
   for (const input of children(join(runs, 'inputs')))
     for (const name of children(join(runs, 'inputs', input))) dirs.push(join(runs, 'inputs', input, name));
   const list: IndexEntry[] = [];

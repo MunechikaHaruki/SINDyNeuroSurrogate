@@ -1,0 +1,42 @@
+{
+  "format": 11,
+  "device": "gpu",
+  "kind": "part",
+  "data": "5b988859260a",
+  "cell": "traub",
+  "form": "hybrid",
+  "train_comp": null,
+  "group": {
+    "gates": [
+      "M",
+      "H",
+      "N",
+      "A",
+      "B",
+      "C"
+    ],
+    "compressor": "ae",
+    "d": 5,
+    "rhs": "sindy",
+    "compressor_params": {},
+    "rhs_params": {
+      "library_specs": [
+        {
+          "type": "traub_gate_forward"
+        },
+        {
+          "type": "traub_gate_backward"
+        },
+        {
+          "type": "traub_gate_forward_product"
+        },
+        {
+          "type": "traub_gate_backward_product"
+        },
+        {
+          "type": "basis"
+        }
+      ]
+    }
+  }
+}

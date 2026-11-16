@@ -2,18 +2,16 @@
 
 設定 (Config) は群のリストで、群ごとに圧縮器と右辺を持つ。群に入らなかった状態は
 元のモデルの式のまま解く (hybrid)。form="sindy" は膜電位も含めて丸ごと同定する。
-kernel・初期値・演算コストは、群と区画の式から組む。学習 (fit)、置換に使う区画の型
-(surrogate_cell)、置換の可否と置換、中身の書き出しもここが持つ。
+kernel・初期値・演算コストは、群と区画の式から組む。学習は群 1 つ (学習器) ごとに
+行い (fit_group)、学習器の並びをサロゲートに組む。置換に使う区画の型 (surrogate_cell)、
+置換の可否と置換、学習器とサロゲートの中身の書き出しもここが持つ。
 """
 
-import json
 from dataclasses import dataclass, field
 from functools import cached_property
-from pathlib import Path
 from typing import Any
 
 import jax.numpy as jnp
-import joblib
 import numpy as np
 import xarray as xr
 
@@ -148,26 +146,15 @@ class Config:
 
 @dataclass(eq=False)
 class Surrogate:
-    """学習済みのサロゲート。parts は群ごとの (圧縮器, 右辺)。"""
+    """学習器の並びを組んだサロゲート。parts は群ごとの学習器 (圧縮器, 右辺)。"""
 
     config: Config
     parts: list[tuple[Any, Any]]
 
     @cached_property
     def training_data(self) -> xr.Dataset:
-        """学習データ。保存せず、設定から決定的に作り直す。"""
+        """学習データ。設定から決定的に作り直す。"""
         return simulate(self.config.data.run_input())
-
-    def save(self, folder: Path) -> None:
-        (folder / "config.json").write_text(
-            json.dumps(self.config.to_dict(), indent=2, ensure_ascii=False)
-        )
-        joblib.dump(self.parts, folder / "parts.joblib")
-
-    @classmethod
-    def load(cls, folder: Path) -> "Surrogate":
-        config = Config.from_dict(json.loads((folder / "config.json").read_text()))
-        return cls(config, joblib.load(folder / "parts.joblib"))
 
 
 @dataclass(frozen=True)
@@ -178,6 +165,19 @@ class _Inputs:
     u_names: list[str]
     x: list[np.ndarray]
     u: list[np.ndarray]
+
+
+def group_label(group: Group) -> str:
+    """群の名前。状態を小文字で + につなぐ (h+n)。"""
+    return "+".join(g.lower() for g in group.gates)
+
+
+def group_latents(group: Group) -> list[str]:
+    """群の潜在の名前。群の名前で修飾し、学習器の中で z1 から (h+n.z1)。
+
+    どのモデルに組んでも、学習器の中身でもシミュレーションの波形でも同じ名前になる。
+    """
+    return [f"{group_label(group)}.{z}" for z in latent_names(group.d)]
 
 
 def _offsets(config: Config) -> list[int]:
@@ -195,13 +195,14 @@ def _group_gates(config: Config, group: Group, data: xr.Dataset) -> list[np.ndar
     return [gate_matrix(data, i)[:, positions] for i in config.train_ids()]
 
 
-def _inputs(
-    config: Config, group: Group, compressor, data: xr.Dataset, offset: int
-) -> _Inputs:
-    """hybrid は x = 潜在、u = V。form=sindy は x = [V, 潜在]、u = 流入電流。"""
+def _inputs(config: Config, group: Group, compressor, data: xr.Dataset) -> _Inputs:
+    """hybrid は x = 潜在、u = V。form=sindy は x = [V, 潜在]、u = 流入電流。
+
+    潜在の名前は学習器の中で z1 から付ける。
+    """
     ids = config.train_ids()
     latents = [compressor.encode(g) for g in _group_gates(config, group, data)]
-    names = latent_names(group.d, offset)
+    names = latent_names(group.d)
     if config.form == "sindy":
         x = []
         for i, z in zip(ids, latents, strict=True):
@@ -221,7 +222,7 @@ def _own_rates(group: Group, params: dict) -> dict:
     return {**params, "library_specs": specs}
 
 
-def _fit_rhs(config: Config, group: Group, compressor, data, offset: int):
+def _fit_rhs(config: Config, group: Group, compressor, data):
     if group.rhs == "ude":
         gates = _group_gates(config, group, data)
         volts = [potential(data, i) for i in config.train_ids()]
@@ -234,7 +235,7 @@ def _fit_rhs(config: Config, group: Group, compressor, data, offset: int):
             d=group.d,
             **group.rhs_params,
         )
-    inputs = _inputs(config, group, compressor, data, offset)
+    inputs = _inputs(config, group, compressor, data)
     if config.form == "sindy":
         roles = Roles(V=0, g=list(range(1, 1 + group.d)), u=1 + group.d)
     else:
@@ -250,21 +251,34 @@ def _fit_rhs(config: Config, group: Group, compressor, data, offset: int):
     )
 
 
+def fit_group(config: Config, group: Group, data: xr.Dataset) -> tuple[Any, Any]:
+    """群 1 つの学習器 (圧縮器, 右辺) を学習する。
+
+    圧縮器を学習してから右辺を同定し、ほかの群には依らない。
+    """
+    gates = np.concatenate(_group_gates(config, group, data), axis=0)
+    if group.compressor == "kam":
+        params = config.train_node().resolved_params
+        kam = KamCompressor(config.cell, group.gates, params)
+        fill_fit_results(kam, gates)
+        return kam, KamRhs(config.cell, group.gates)
+    compressor = FITS[group.compressor](gates, group.d, **group.compressor_params)
+    return compressor, _fit_rhs(config, group, compressor, data)
+
+
 def fit(config_dict: dict) -> Surrogate:
-    """設定から学習する。群ごとに、圧縮器を学習してから右辺を同定する。"""
+    """設定から、群ごとの学習器を学習してサロゲートに組む。
+
+    run の置き場を通す本番 (学習器ごとの run を組む) と同じく、学習器はその群だけの
+    設定で学習する。
+    """
     config = Config.from_dict(config_dict)
     data = simulate(config.data.run_input())
-    parts = []
-    for group, offset in zip(config.groups, _offsets(config), strict=True):
-        gates = np.concatenate(_group_gates(config, group, data), axis=0)
-        if group.compressor == "kam":
-            params = config.train_node().resolved_params
-            kam = KamCompressor(config.cell, group.gates, params)
-            fill_fit_results(kam, gates)
-            parts.append((kam, KamRhs(config.cell, group.gates)))
-            continue
-        compressor = FITS[group.compressor](gates, group.d, **group.compressor_params)
-        parts.append((compressor, _fit_rhs(config, group, compressor, data, offset)))
+    alone = [
+        Config.from_dict({**config_dict, "groups": [group.__dict__], "absorbed": []})
+        for group in config.groups
+    ]
+    parts = [fit_group(c, c.groups[0], data) for c in alone]
     surrogate = Surrogate(config, parts)
     surrogate.training_data = data
     return surrogate
@@ -304,7 +318,7 @@ def surrogate_cell(s: Surrogate) -> CellType:
             kernel=sindy_kernel,
             # params が一致する区画にだけ当てるので、学習区画の初期値を使う
             param_cls=None,
-            states=latent_names(d),
+            states=group_latents(config.groups[0]),
             inits=lambda _: [v0, *compressor.gate_inits],
             opcost=rhs.opcost(),
         )
@@ -347,7 +361,7 @@ def surrogate_cell(s: Surrogate) -> CellType:
         name=name,
         kernel=hybrid_kernel,
         param_cls=cell.param_cls,
-        states=latent_names(n_latent) + physics,
+        states=[z for group in config.groups for z in group_latents(group)] + physics,
         inits=inits,
         opcost=learned
         + cell.dv_cost
@@ -479,16 +493,13 @@ def replace(s: Surrogate, run: RunInput, targets) -> RunInput:
 
 
 def summary(s: Surrogate) -> dict[str, Any]:
-    """学習側の指標と、1 刻みの演算コスト (置換後・元・差)。"""
-    metrics: dict[str, Any] = {}
-    for (compressor, rhs), group in zip(s.parts, s.config.groups, strict=True):
-        prefix = "" if len(s.parts) == 1 else "".join(group.gates).lower() + "/"
-        for k, v in {**rhs.metrics(), **compressor.metrics()}.items():
-            metrics[prefix + k] = v
+    """組んだモデルの 1 刻みの演算コスト (置換後・元・差)。
+
+    学習器の指標は describe_group が持つ。
+    """
     surr = surrogate_cell(s).opcost.to_dict()
     orig = s.config.cell_type.opcost.to_dict()
     return {
-        **metrics,
         **{f"cost/surrogate/{k}": v for k, v in surr.items()},
         **{f"cost/original/{k}": v for k, v in orig.items()},
         **{f"cost/surr-orig/{k}": surr[k] - orig[k] for k in orig},
@@ -497,61 +508,35 @@ def summary(s: Surrogate) -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class CompFit:
-    """学習区画 1 つの、同定器へ渡した列・潜在・再構成の RMSE (時刻ごと)。"""
+    """学習区画 1 つの、学習器の潜在 (時刻 × 潜在) と再構成の RMSE (時刻ごと)。"""
 
-    x: np.ndarray
     latent: np.ndarray
     recon_rmse: np.ndarray
 
 
-def describe(s: Surrogate) -> tuple[dict, dict[int, CompFit]]:
-    """図が読む中身 (model.json) と、学習区画ごとの CompFit。"""
-    config, data = s.config, s.training_data
+def describe_group(
+    config: Config, group: Group, part: tuple[Any, Any], data: xr.Dataset
+) -> tuple[dict, dict[int, CompFit]]:
+    """学習器 1 つの、図が読む中身 (part.json) と学習区画ごとの CompFit。"""
+    compressor, rhs = part
     net = config.data.net
     ids = config.train_ids()
-    per_group = []
-    for (compressor, _), group, offset in zip(
-        s.parts, config.groups, _offsets(config), strict=True
-    ):
-        gates = _group_gates(config, group, data)
-        latents = [np.asarray(compressor.encode(g)) for g in gates]
-        recons = [np.asarray(compressor.decode(jnp.asarray(z))) for z in latents]
-        inputs = _inputs(config, group, compressor, data, offset)
-        per_group.append((gates, latents, recons, inputs))
-    fits = {}
-    for pos, comp_id in enumerate(ids):
-        sq = np.concatenate(
-            [(g[pos] - r[pos]) ** 2 for g, _, r, _ in per_group], axis=1
+    gates = _group_gates(config, group, data)
+    latents = [np.asarray(compressor.encode(g)) for g in gates]
+    recons = [np.asarray(compressor.decode(jnp.asarray(z))) for z in latents]
+    fits = {
+        comp_id: CompFit(
+            latent=latents[pos],
+            recon_rmse=np.sqrt(np.mean((gates[pos] - recons[pos]) ** 2, axis=1)),
         )
-        fits[comp_id] = CompFit(
-            x=np.concatenate([inp.x[pos] for _, _, _, inp in per_group], axis=1),
-            latent=np.concatenate([z[pos] for _, z, _, _ in per_group], axis=1),
-            recon_rmse=np.sqrt(np.mean(sq, axis=1)),
-        )
-    first_compressor, first_rhs = s.parts[0]
-    model: dict[str, Any] = {
-        "closure": first_rhs.describe(),
-        "preprocessor": first_compressor.describe(),
-        "net": {
-            "nodes": [{"name": c.name, "type": c.type.name} for c in net.nodes],
-            "edges": [
-                {"src": e.src, "dst": e.dst, "weight": e.weight} for e in net.edges
-            ],
-            "stim": config.data.stim,
-            "replaceable": [c.name for c in net.nodes if config.in_domain(c)],
-            "train": [net.nodes[i].name for i in ids],
-        },
-        "train_gates": [g for group in config.groups for g in group.gates],
-        "x_names": [n for _, _, _, inp in per_group for n in inp.x_names],
-        "latent_names": latent_names(sum(group.d for group in config.groups)),
+        for pos, comp_id in enumerate(ids)
     }
-    if len(s.parts) > 1:
-        model["groups"] = [
-            {
-                "gates": group.gates,
-                "closure": r.describe(),
-                "preprocessor": c.describe(),
-            }
-            for (c, r), group in zip(s.parts, config.groups, strict=True)
-        ]
-    return model, fits
+    description = {
+        "gates": group.gates,
+        "latents": group_latents(group),
+        "comps": [net.nodes[i].name for i in ids],
+        "closure": rhs.describe(),
+        "preprocessor": compressor.describe(),
+        "metrics": {**rhs.metrics(), **compressor.metrics()},
+    }
+    return description, fits

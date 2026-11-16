@@ -1,5 +1,5 @@
 {
-  "format": 7,
+  "format": 11,
   "device": "gpu",
   "kind": "bench",
   "input": {

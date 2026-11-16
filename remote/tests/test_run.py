@@ -2,7 +2,8 @@
 
 `tests/test_surrogate.py` がドメイン層だけを通すのに対し、ここは run の置き場と
 波形の保存形式を通す。ハッシュは段取り (TS) が組むので、ここでは置き場の形
-(`models/<学習>`、`inputs/<入力>/<original かモデル>`) だけを守って名前を適当に付ける。
+(`data/<学習データ>`、`parts/<学習器>`、`models/<モデル>`、
+`inputs/<入力>/<original かモデル>`) だけを守って名前を適当に付ける。
 """
 
 import json
@@ -44,15 +45,21 @@ def _sim(series: dict, model: dict | None) -> dict:
     return {"kind": "sim", "input": input_, "model": model}
 
 
-_MODEL = {"train": "T", "replace_targets": ["soma"]}
+_MODEL = {"surrogate": "M", "replace_targets": ["soma"]}
 
 
 @pytest.fixture(scope="module")
 def runs(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """学習 1 本と、1 つの入力を元のモデルと置き換えたモデルで回した runs/。"""
+    """学習データ・学習器・それを組んだモデルと、1 つの入力を元のモデルと置き換えた
+    モデルで回した runs/。"""
     tmp = tmp_path_factory.mktemp("runs")
-    train = {"kind": "train", "surrogate": declared_config("_test_hh_sindy")}
-    _put(tmp, "models/T", train)
+    config = declared_config("_test_hh_sindy")
+    _put(tmp, "data/D", {"kind": "data", "data": config["data"]})
+    shared = {k: config[k] for k in ("cell", "form", "train_comp")}
+    [group] = config["groups"]
+    _put(tmp, "parts/P", {"kind": "part", "data": "D", **shared, "group": group})
+    model = {"kind": "model", "cell": config["cell"], "form": config["form"]}
+    _put(tmp, "models/M", {**model, "parts": ["P"]})
     _put(tmp, "inputs/I/original", _sim(_series(), None))
     _put(tmp, "inputs/I/R", _sim(_series(), _MODEL))
     return tmp / "runs"
@@ -81,14 +88,21 @@ def test_runs_round_trip_and_are_not_rerun(runs: Path) -> None:
 
 
 def test_runs_hold_what_the_figures_read(runs: Path) -> None:
-    """図が読むものは全部 run の中にある: 学習 run の中身、素の float64 の波形、
-    全 comp・全点のスパイクの特徴量、置換した comp の射影、学習側の指標。JSON に nan は
-    出さない (JS が読めない)。"""
-    model = json.loads((runs / "models/T/description/model.json").read_text())
-    n_time = json.loads((runs / "models/T/description/train/meta.json").read_text())
-    x = np.fromfile(runs / "models/T/description/fit/0/x.f64", dtype="<f8")
-    assert x.size == len(model["x_names"]) * n_time["n"][0]
-    assert (runs / "models/T/surrogate/config.json").exists()
+    """図が読むものは全部 run の中にある: 学習データ、学習器の中身、素の float64 の
+    波形、置換した comp の射影、学習側の指標。JSON に nan は出さない
+    (JS が読めない)。"""
+    part = json.loads((runs / "parts/P/part.json").read_text())
+    n_time = json.loads((runs / "data/D/waves/meta.json").read_text())
+    latent = np.fromfile(runs / "parts/P/fit/0/latent.f64", dtype="<f8")
+    assert latent.size == len(part["latents"]) * n_time["n"][0]
+    recon = np.fromfile(runs / "parts/P/fit/0/recon_rmse.f64", dtype="<f8")
+    assert recon.size == n_time["n"][0]
+    assert part["comps"] == ["soma"] and (runs / "parts/P/part.joblib").exists()
+    kinds = [
+        json.loads((runs / p / "meta.json").read_text())["kind"]
+        for p in ("data/D", "parts/P", "models/M")
+    ]
+    assert kinds == ["data", "part", "model"]
 
     meta = json.loads((runs / "inputs/I/original/waves/meta.json").read_text())
     assert meta["names"] == {"soma": 0}
@@ -105,9 +119,18 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
 
     # run は生データだけを持つ。スパイクの特徴量は API が頼まれるたびに計算する
     assert not any(runs.glob("inputs/I/*/spikes.json"))
-    assert "nnz" in strict("models/T/summary.json")
+    assert "cost/surr-orig/mul" in strict("models/M/summary.json")
+    assert "nnz" in strict("parts/P/part.json")["metrics"]
     projected = json.loads((runs / "inputs/I/R/projected/soma/meta.json").read_text())
-    assert [v for _, v, _ in projected["features"]][0] == "V"
+    names = [v for _, v, _ in projected["features"]]
+    assert names[0] == "V" and names[1:] == part["latents"]
+    assert all(
+        m["elapsed"] >= 0
+        for m in map(
+            lambda p: json.loads((runs / p / "meta.json").read_text()),
+            ("data/D", "parts/P", "models/M"),
+        )
+    )
 
 
 def _unreplaceable() -> dict:

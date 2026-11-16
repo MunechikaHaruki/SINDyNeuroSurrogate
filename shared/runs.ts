@@ -3,12 +3,13 @@
 // node や bun に依存しない（ブラウザで動く画面も import する）。
 import type { ArrayRef } from './api.ts';
 
-/** run の中の置き場。波形の根 root は、回した波形 waves、原系を列の前処理で射影した projected(区画)、学習データ train のどれか。 */
+/** run の中の置き場。波形の根 root は、回した波形（学習データの run では学習データ）waves か、原系を列の前処理で射影した projected(区画)。
+ * part は学習器の run の中身、summary はモデルの run の組んだ演算コスト、spec はどの run も持つ回した条件。 */
 export const RUN = {
   waves: 'waves',
-  train: 'description/train',
-  model: 'description/model.json',
+  part: 'part.json',
   summary: 'summary.json',
+  spec: 'spec.json',
   projected: (comp: string) => `projected/${comp}`,
   meta: (root: string) => `${root}/meta.json`,
 };
@@ -62,15 +63,15 @@ export function internalArray(run: string, root: string, meta: WaveMeta, point: 
   return { run, file: `${root}/${point}/I_internal.f64`, column, n: meta.n[point] };
 }
 
-/** 学習データ（meta は train の目録）の区画 compId の、同定器への入力 x・潜在 latent・再構成誤差 recon_rmse の column 列目。 */
+/** 学習器の run の、学習区画 compId の潜在 latent（column 列目）か再構成誤差 recon_rmse（1 列）。meta は学習データの目録。 */
 export function fitArray(
   run: string,
   meta: WaveMeta,
   compId: number,
-  file: 'x' | 'latent' | 'recon_rmse',
-  column: number,
+  file: 'latent' | 'recon_rmse',
+  column = 0,
 ): ArrayRef {
-  return { run, file: `description/fit/${compId}/${file}.f64`, column, n: meta.n[0] };
+  return { run, file: `fit/${compId}/${file}.f64`, column, n: meta.n[0] };
 }
 
 /** 閉包項の中身。kind で表現を見分ける。 */
@@ -81,21 +82,14 @@ export type ClosureJson =
 /** 前処理の中身。PCA は捨てた成分も含めた寄与率を持つ。 */
 export type PreprocessorJson =
   { kind: 'pca'; explained_variance_ratio: number[]; n_components: number } | { kind: string };
-export type NetJson = {
-  nodes: { name: string; type: string }[];
-  edges: { src: string; dst: string; weight: number }[];
-  stim: string;
-  replaceable: string[];
-  train: string[];
-};
-/** description/model.json。 */
-export type ModelJson = {
+/** 学習器の run の中身（part.json）。latents は潜在の名前（群の名前で修飾し学習器の中で z1 から。h+n.z1。どのモデルの波形でも同じ名前）、comps は学習区画の名前（fit/<区画の id>/）。 */
+export type PartJson = {
+  gates: string[];
+  latents: string[];
+  comps: string[];
   closure: ClosureJson;
   preprocessor: PreprocessorJson;
-  net: NetJson;
-  train_gates: string[];
-  x_names: string[];
-  latent_names: string[];
+  metrics: Record<string, number | null>;
 };
 
 /** GPU の実測の run の中身。細胞の数ごとのディレクトリ `<細胞の数>/` に、使ったツールの出力を加工せずにツールごとのファイルで置く（remote/neurosurrogate/bench.py と揃える）。

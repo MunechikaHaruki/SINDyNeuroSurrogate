@@ -1,5 +1,5 @@
 {
-  "format": 7,
+  "format": 11,
   "device": "gpu",
   "kind": "bench",
   "input": {
@@ -23,7 +23,7 @@
     ]
   },
   "model": {
-    "train": "2a284fe2ddeb",
+    "surrogate": "98fafe6ab3d5",
     "replace_targets": [
       "soma"
     ]

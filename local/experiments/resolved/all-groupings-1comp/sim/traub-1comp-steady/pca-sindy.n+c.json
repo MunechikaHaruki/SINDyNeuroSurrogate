@@ -1,5 +1,5 @@
 {
-  "format": 7,
+  "format": 11,
   "device": "cpu",
   "kind": "sim",
   "input": {
@@ -23,7 +23,7 @@
     ]
   },
   "model": {
-    "train": "04c1f170b3b4",
+    "surrogate": "3e89b9cf8b5a",
     "replace_targets": [
       "soma"
     ]

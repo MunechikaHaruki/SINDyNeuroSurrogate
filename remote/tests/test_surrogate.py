@@ -6,8 +6,8 @@
 """
 
 import io
-import os
 import json
+import os
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -27,8 +27,10 @@ from neurosurrogate.surrogate.model import (
     Config,
     Surrogate,
     applicable,
-    describe,
+    describe_group,
     fit,
+    fit_group,
+    group_latents,
     rejections,
     replace,
     summary,
@@ -170,8 +172,8 @@ def test_declared_fit_and_replace_finitely(name: str) -> None:
     run = replace(s, s.config.data.run_input(), ["soma"])
     assert np.isfinite(potential(simulate(run), 0)).all()
     cell = surrogate_cell(s)
-    n_latent = sum(group.d for group in s.config.groups)
-    assert cell.states == [f"z{i + 1}" for i in range(n_latent)] + (
+    latents = [z for group in s.config.groups for z in group_latents(group)]
+    assert cell.states == latents + (
         [] if s.config.form == "sindy" else s.config.physics
     )
 
@@ -193,12 +195,12 @@ def test_each_group_keeps_only_its_own_rates() -> None:
 
 
 def test_two_groups_keep_their_latents_apart() -> None:
-    """群の右辺は自分の潜在と V だけを使い、潜在の名前は通し番号。"""
+    """群の右辺は自分の潜在と V だけを使い、潜在の名前は学習器ごとに z1 から。"""
     s = fit_declared("_test_traub_two_groups")
     (_, first), (_, second) = s.parts
-    assert [str(t) for t in first.targets] == ["z1"]
-    assert [str(t) for t in second.targets] == ["z2"]
-    assert all("z2" not in str(e) for e in first.feature_exprs)
+    for rhs in (first, second):
+        assert [str(t) for t in rhs.targets] == ["z1"]
+        assert all("z2" not in str(e) for e in rhs.feature_exprs)
     assert s.config.physics == ["M", "B", "S", "R", "Q", "XI"]
 
 
@@ -332,39 +334,47 @@ def test_replace_swaps_only_the_named_compartments() -> None:
 # --- 書き出し -------------------------------------------------------------------
 
 
-def test_description_survives_reload_and_lines_up(tmp_path: Path) -> None:
+def test_a_learner_describes_itself_and_lines_up() -> None:
     s = fit_declared("_test_hh_sindy")
-    s.save(tmp_path)
-    reloaded = Surrogate.load(tmp_path)
-    assert reloaded.config == s.config
-    model, fits = describe(reloaded)
-    json.dumps(model)
-    assert model["closure"]["kind"] == "sindy"
-    assert np.shape(model["closure"]["xi"]) == (
-        len(model["closure"]["targets"]),
-        len(model["closure"]["features"]),
+    [group] = s.config.groups
+    description, fits = describe_group(s.config, group, s.parts[0], s.training_data)
+    json.dumps(description)
+    assert description["closure"]["kind"] == "sindy"
+    assert np.shape(description["closure"]["xi"]) == (
+        len(description["closure"]["targets"]),
+        len(description["closure"]["features"]),
     )
-    n_time = reloaded.training_data.sizes["time"]
+    assert description["comps"] == ["soma"]
+    n_time = s.training_data.sizes["time"]
     comp_fit = fits[0]
-    assert comp_fit.x.shape == (n_time, len(model["x_names"]))
-    assert comp_fit.latent.shape == (n_time, len(model["latent_names"]))
+    assert comp_fit.latent.shape == (n_time, len(description["latents"]))
+    assert comp_fit.recon_rmse.shape == (n_time,)
     compressor = s.parts[0][0]
     assert float(np.mean(comp_fit.recon_rmse**2)) == pytest.approx(
         compressor.reconstruction["reconstruction_mse"]
     )
 
 
-def test_two_groups_describe_every_group() -> None:
-    model, fits = describe(fit_declared("_test_traub_two_groups"))
-    assert [g["gates"] for g in model["groups"]] == [["N", "H"], ["A", "C"]]
-    assert model["x_names"] == model["latent_names"] == ["z1", "z2"]
-    assert fits[0].latent.shape[1] == 2
+def test_a_learner_does_not_depend_on_the_other_groups() -> None:
+    """2 つの群の学習器は、その群だけの設定で学習したものと同じ (潜在も z1 から)。"""
+    s = fit_declared("_test_traub_two_groups")
+    data = s.training_data
+    for group, part in zip(s.config.groups, s.parts, strict=True):
+        alone = Config.from_dict({**s.config.to_dict(), "groups": [group.__dict__]})
+        description, _ = describe_group(alone, group, part, data)
+        assert description["latents"] == [
+            f"{'+'.join(g.lower() for g in group.gates)}.z1"
+        ]
+        refit = describe_group(alone, group, fit_group(alone, group, data), data)[0]
+        assert refit["closure"] == description["closure"]
+    assert [g.gates for g in s.config.groups] == [["N", "H"], ["A", "C"]]
+    assert surrogate_cell(s).states[:2] == ["n+h.z1", "a+c.z1"]
 
 
 def test_summary_counts_the_decode_and_the_physics() -> None:
     s = fit_declared("_test_traub_hybrid_hn")
     result = summary(s)
-    assert {"nnz", "pca/reconstruction_mse", "cost/surr-orig/mul"} <= set(result)
+    assert "cost/surr-orig/mul" in result and "nnz" not in result
     compressor, rhs = s.parts[0]
     cell = CELLS["traub"]
     assert cell.costs is not None and cell.dv_cost is not None

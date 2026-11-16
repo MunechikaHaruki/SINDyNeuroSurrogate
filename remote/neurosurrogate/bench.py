@@ -2,7 +2,7 @@
 
 `uv run python -m neurosurrogate.bench <spec.json> <runs> <細胞の数>
 [--out <dir>] [--once]`。
-spec は run.py の `bench` の spec (入力と、元のモデルか学習 run)。1 回の呼び出しで
+spec は run.py の `bench` の spec (入力と、元のモデルか学習器を組んだモデル)。1 回の呼び出しで
 1 つの細胞の数だけを測り、自分で測ったもの (時間、状態の置き方、発火の回数) を JSON で
 標準出力に書く。`--out` を渡せば、使ったツールの出力を加工せずにそのディレクトリへ
 ツールごとのファイルで書く (JAX の memory_stats、nvidia-smi の CSV)。ncu の CSV は
@@ -37,7 +37,8 @@ import numpy as np
 from .physics.cells import ColumnCell, column_cell
 from .physics.gpu import KERNEL, currents_table, stepped_net
 from .physics.simulate import EvalSeries, RunInput, coupling
-from .surrogate.model import Surrogate, replace, surrogate_column_cell
+from .store import load_model
+from .surrogate.model import replace, surrogate_column_cell
 
 # ncu を 1 回待つ秒数と、落ちたときにやり直す回数。
 NCU_TIMEOUT = 120
@@ -78,7 +79,7 @@ def batch_input(
     inputs = [point.run_input() for point in series.points]
     surrogate = None
     if model is not None:
-        surrogate = Surrogate.load(runs / "models" / model["train"] / "surrogate")
+        surrogate = load_model(runs, model["surrogate"])
         inputs = [replace(surrogate, run, targets) for run in inputs]
     cells = []
     for comp in inputs[0].net.nodes:

@@ -1,10 +1,10 @@
 // 回せるものを組む部品。値はすべて config/presets.json（比べる物差し measures、既定 defaults、縮約の仕方 methods、評価の系列 series）が持ち、ここは値を持たない。
-// 実験（隣の schema.ts）は仕方と系列をプリセットの名前か、プリセットからの差分 `{ from, ...差分 }` で指し、ここの関数で学習 run と系列にする。
+// 実験（隣の schema.ts）は仕方と系列をプリセットの名前か、プリセットからの差分 `{ from, ...差分 }` で指し、ここの関数でモデルと系列にする。
 // 混ぜる順は defaults → プリセット → 差分で、書かなかった欄だけ値から導く（教師は細胞、圧縮は仕方の名前、右辺は圧縮から、項ライブラリは細胞から）。
-// テスト専用の学習は config/presets.json に入れず、隣の test-trains.ts が持つ。形は ../../shared/spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
+// テスト専用のモデルは config/presets.json に入れず、隣の test-models.ts が持つ。形は ../../shared/spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（tests/test_surrogate.py）。
 import { z } from 'zod';
 import declaration from '../config/presets.json' with { type: 'json' };
-import { TEST_DECLARATIONS } from './test-trains.ts';
+import { TEST_DECLARATIONS } from './test-models.ts';
 import type { Group, Input, LibrarySpec, SimSpec, SurrogateConfig } from '../../../shared/spec.ts';
 
 /** 1 回の掃引実験（Python の EvalSeries）の宣言。送る spec では、入力（Input）と、置き換えたモデルの側の置換範囲に分かれる。 */
@@ -13,8 +13,8 @@ export type Series = Input & {
   replace_targets: string[];
 };
 
-/** 学習 run 1 本の宣言。name は学習 run の名前（実験の中の `<仕方の名前>.<群分け>` かテストの名前）で、同一性には入らない。 */
-export type Train = { name: string; config: SurrogateConfig };
+/** モデル 1 つの宣言。name はモデルの名前（実験の中の `<仕方の名前>.<群分け>` かテストの名前）で、同一性には入らない。config は群ごとの学習器の設定と、それらを組む形。 */
+export type ModelDecl = { name: string; config: SurrogateConfig };
 
 /** ゲートの群分けを全部並べる。2 つ以上のゲートを入れた群だけを、群の中は `+`、群の間は `_` でつないで名前にし（例 h+n_a+c）、全部が 1 つずつの分け方は除く。減らす状態の少ない順、同じなら名前の順。 */
 export function groupings(gates: string[]): string[] {
@@ -126,8 +126,8 @@ export function groupsOf(grouping: string): string[][] {
   return groups;
 }
 
-/** 仕方と群分けを学習 run にする。学習用の電流（train）・刻み・全区画で学習するのは、どの学習でも同じ。name は表示の名前で、同一性には入らない。 */
-export function trainFrom(name: string, d: Declared, grouping: string): Train {
+/** 仕方と群分けをモデルにする。学習用の電流（train）・刻み・全区画で学習するのは、どの学習器でも同じ。name は表示の名前で、同一性には入らない。 */
+export function modelFrom(name: string, d: Declared, grouping: string): ModelDecl {
   const data: SimSpec = {
     target: d.target,
     current_type: 'train',
@@ -204,7 +204,7 @@ for (const name of Object.keys(raw.series)) PRESET_SERIES[name] = seriesFrom(nam
 /** プリセットの仕方の名前。 */
 export const METHOD_NAMES = Object.keys(raw.methods);
 
-/** テスト専用の学習 run。仕方に差分を重ね、電流は 180 ms に縮める。 */
-export const TESTS: Record<string, Train> = {};
+/** テスト専用のモデル。仕方に差分を重ね、電流は 180 ms に縮める。 */
+export const TESTS: Record<string, ModelDecl> = {};
 for (const [name, { method, grouping, ...rest }] of Object.entries(TEST_DECLARATIONS))
-  TESTS[name] = trainFrom(name, methodOf({ from: String(method), duration: 180, ...rest }), String(grouping));
+  TESTS[name] = modelFrom(name, methodOf({ from: String(method), duration: 180, ...rest }), String(grouping));

@@ -9,3 +9,12 @@ setup:
 runs:
   transfer-to-19comp:
     description: h+n と a+c をまとめた縮約（単一区画で学習）を Traub の 19 区画に当て、soma だけを置き換えるときと、Na と DR を持つ 5 区画を置き換えるときで、元のモデルの発火をどこまで再現するかを見る。
+  test-19comp:
+    description: テスト用。形式やコードを変えたらまず回す。h+n の KAM・PCA・AE を短い学習データで学習し、19 区画の soma を置き換えて短い定常電流の 2 点で回す。
+    methods:
+      - { name: kam-test, from: kam, duration: 1000 }
+      - { name: pca-sindy-test, from: pca-sindy, duration: 1000 }
+      - { name: ae-sindy-test, from: ae-sindy, duration: 1000 }
+    groupings: [ h+n ]
+    series:
+      - { name: traub-19comp-steady-replace-soma-test, from: traub-19comp-steady-replace-soma, duration: 100.0, sweep: { value: [ 0, 10 ] } }
