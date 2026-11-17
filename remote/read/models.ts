@@ -24,7 +24,7 @@ function compareLines(
   span: Span,
   comps: string[],
   axes: { x: string; y: string },
-): Omit<ModelCompare, 'metrics'> {
+): ModelCompare {
   const { original, run, k, comp, replaced } = at;
   const meta = wavesOf(ctx, original);
   const own = wavesOf(ctx, run);
@@ -134,7 +134,7 @@ export function models(ctx: Context, request: ModelsRequest): ModelsReply {
     comp,
     delta: all.measures.coincidence_window,
   });
-  const pairMetrics = metrics.pairs[pair.run.id]?.[point] ?? null;
+  const diverged = metrics.pairs[pair.run.id]?.[point]?.diverged ?? false;
   const span = spanOf(wavesOf(ctx, original.id), request.window, input.duration);
   const lines = compareLines(
     ctx,
@@ -143,12 +143,12 @@ export function models(ctx: Context, request: ModelsRequest): ModelsReply {
       run: pair.run.id,
       k: point,
       comp,
-      replaced: !pairMetrics?.diverged,
+      replaced: !diverged,
       projected: input.replaceTargets.includes(comp),
     },
     span,
     request.comps ?? [],
     request.axes ?? { x: 'V', y: '' },
   );
-  return { ...reply, input, comp, point, compare: { ...lines, metrics: pairMetrics } };
+  return { ...reply, input, comp, point, compare: lines };
 }

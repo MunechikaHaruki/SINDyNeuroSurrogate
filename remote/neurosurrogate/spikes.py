@@ -27,7 +27,7 @@ AP_FEATURES = [
     "AHP_depth",
     "AHP_time_from_peak",
 ]
-FEATURES = ["peak_indices", "ISI_values", "time_to_first_spike", *AP_FEATURES]
+FEATURES = ["peak_indices", "peak_time", "ISI_values", "time_to_first_spike", *AP_FEATURES]
 
 
 def spike_features(v: np.ndarray, dt: float) -> dict[str, list[float]]:

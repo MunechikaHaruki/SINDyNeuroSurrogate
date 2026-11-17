@@ -175,7 +175,6 @@ export function experiment(runs: string, id: string): ExperimentView {
     groupings: plan.groupings,
     methods: plan.methods,
     inputs: Object.keys(plan.series),
-    sweep: !!plan.gates,
     models: plan.models.map(m => {
       const built = found.models.find(f => f.model === m.name)!;
       return {

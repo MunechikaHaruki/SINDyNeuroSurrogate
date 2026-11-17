@@ -53,9 +53,11 @@ export function originalOf(found: ExperimentStatus, name: string): RunStatus {
   return series.original;
 }
 
-/** 比べる区画。頼まれた名前が無ければ投げ、省けば最初に置き換える区画。 */
+/** 比べる区画。頼まれた名前が無ければ投げ、省けば置き換えた区画のうち刺激する区画（無ければ最初に置き換える区画）。 */
 export function compOf(input: InputView, comp: string | undefined): string {
-  const chosen = comp ?? input.replaceTargets[0] ?? input.comps[0];
+  // 省けば、置き換えた区画のうち刺激する区画（発火を測る所）、無ければ最初に置き換える区画
+  const stim = input.replaceTargets.includes(input.spec.stim) ? input.spec.stim : undefined;
+  const chosen = comp ?? stim ?? input.replaceTargets[0] ?? input.comps[0];
   if (!input.comps.includes(chosen))
     throw new Error(`${input.name} に区画 ${chosen} が無い（${input.comps.join('、')}）`);
   return chosen;
@@ -113,6 +115,7 @@ export function inputs(ctx: Context, request: InputsRequest): InputsReply {
   const span = spanOf(meta, request.window, input.duration);
   const points = meta.n.map((_, k) => {
     const diverged = columns.filter(c => metrics.pairs[c.run]?.[k]?.diverged).map(c => c.model);
+    if (request.waves === false) return { current: [], voltages: [], diverged };
     const voltages: VoltageLine[] = [
       {
         label: '原系',
@@ -140,7 +143,7 @@ export function inputs(ctx: Context, request: InputsRequest): InputsReply {
     pairs: byModel(metrics.pairs),
     crossings: byModel(metrics.crossings),
     summaries: byModel(metrics.summaries),
-    raster: { original: metrics.times.original, columns: byModel(metrics.times.columns) },
+    spikes: { original: metrics.trains.original, columns: byModel(metrics.trains.columns) },
     training: Object.fromEntries(columns.map(c => [c.model, trainingOf(ctx, found, c.model)])),
   };
 }

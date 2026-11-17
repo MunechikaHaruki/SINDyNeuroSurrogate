@@ -2,18 +2,18 @@
 // 波形 1 本の特徴量（eFEL・0 mV の上向きの横切り・山の平均の形・発散）、原系と置き換えた列の点ごとの指標（rmse・mae、ISI の統計、周期の差、形の相関、横切りで数えた差、
 // coincidence factor Γ）と、列ごとのまとめ（決まる点での Γ の平均、発火の始まり）。eFEL は Python（neurosurrogate/spikes.py）を子プロセスで起こし、波形を標準入力で渡す。
 // 物差しの値（Γ の許容幅 Δ）は手元が頼み方で渡す。run は書き換わらないので、特徴量は run・区画ごとに、答えは頼み方ごとに覚えておく。
-import type { ColumnSummary, CrossingRow, PairMetrics } from '../../shared/api.ts';
+import type { ColumnSummary, CrossingRow, PairMetrics, SpikeTrain } from '../../shared/api.ts';
 
 /** 元のモデルとの差（Γ を除く）。 */
 export type CrossingDiff = Omit<CrossingRow, 'gamma'>;
 /** 系列 1 つの、原系と置き換えた列（run の id）の 1 区画の指標の頼み方。delta は Γ の許容幅 Δ [ms]。 */
 export type SeriesRequest = { original: string; columns: string[]; comp: string; delta: number };
-/** 系列の指標。キーは列の run の id、並びは掃引の点。times は 0 mV を上向きに越えた時刻（ラスタ）。 */
+/** 系列の指標。キーは列の run の id、並びは掃引の点。trains は原系と列の点ごとの発火。 */
 export type SeriesMetrics = {
   pairs: Record<string, PairMetrics[]>;
   crossings: Record<string, CrossingRow[]>;
   summaries: Record<string, ColumnSummary>;
-  times: { original: number[][]; columns: Record<string, number[][]> };
+  trains: { original: SpikeTrain[]; columns: Record<string, SpikeTrain[]> };
 };
 import { compArray, RUN, type WaveMeta } from '../../shared/runs.ts';
 import type { Spec } from '../../shared/spec.ts';
@@ -167,8 +167,6 @@ function correlation(a: number[], b: number[]): number {
 export function compare(o: TraceFeatures, s: TraceFeatures, d: Distance): PairMetrics {
   const oIsi = stat(o.spikes.ISI_values, mean);
   const sIsi = stat(s.spikes.ISI_values, mean);
-  const spikes: PairMetrics['spikes'] = {};
-  for (const name of AP_FEATURES) spikes[name] = [o.spikes[name] ?? [], s.spikes[name] ?? []];
   return {
     rows: {
       spike_count: [(o.spikes.peak_indices ?? []).length, (s.spikes.peak_indices ?? []).length],
@@ -182,9 +180,15 @@ export function compare(o: TraceFeatures, s: TraceFeatures, d: Distance): PairMe
       periodicity_gap: oIsi === null || sIsi === null ? null : Math.abs(oIsi - sIsi),
       spike_shape_corr: o.shape && s.shape ? finite(correlation(o.shape, s.shape)) : null,
     },
-    spikes,
     diverged: s.diverged,
   };
+}
+
+/** 波形 1 本の発火：AP の山の時刻と、AP ごとの特徴量。 */
+export function trainOf(f: TraceFeatures): SpikeTrain {
+  const features: SpikeTrain['features'] = {};
+  for (const name of AP_FEATURES) features[name] = f.spikes[name] ?? [];
+  return { times: (f.spikes.peak_time ?? []).filter((t): t is number => t !== null), features };
 }
 
 /** 0 mV の横切りで数えた、元のモデルとの差。 */
@@ -250,7 +254,7 @@ export function seriesMetrics(
     pairs: {},
     crossings: {},
     summaries: {},
-    times: { original: original.map(f => f.crossings.times), columns: {} },
+    trains: { original: original.map(trainOf), columns: {} },
   };
   for (const [run, features] of Object.entries(columns)) {
     result.pairs[run] = features.map((f, k) => compare(original[k], f, distances[run][k]));
@@ -276,7 +280,7 @@ export function seriesMetrics(
             ],
     };
     result.summaries[run] = summary;
-    result.times.columns[run] = features.map(f => f.crossings.times);
+    result.trains.columns[run] = features.map(trainOf);
   }
   return result;
 }

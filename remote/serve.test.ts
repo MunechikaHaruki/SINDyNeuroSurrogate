@@ -175,7 +175,7 @@ test('an input compares the original with each model, keyed by model name', asyn
   expect(reply.points[0].voltages.map(v => v.model)).toEqual([null, 'm']);
   expect(reply.points[0].voltages[0].points.length).toBeLessThanOrEqual(800);
   expect(reply.crossings.m[0].gamma).toBeGreaterThan(0.9);
-  expect(reply.raster.original[0].length).toBe(reply.raster.columns.m[0].length);
+  expect(reply.spikes.original[0].times.length).toBe(reply.spikes.columns.m[0].times.length);
   expect(reply.training.m).toMatchObject({ 'h/nnz': 1, 'cost/surr-orig/mul': -3 });
   expect((await post('inputs', { experiment: 'e', input: 's', comp: 'dend' })).status).toBe(400);
 });
@@ -187,7 +187,6 @@ test('a model gives its learners and the comparison at one point, with the origi
   expect(reply.compare?.voltage.map(l => l.label)).toEqual(['原系', '置換系']);
   expect(Object.keys(reply.compare?.latents ?? {})).toEqual(['h.z1']);
   expect(reply.compare?.axes).toEqual({ x: 'V', y: 'h.z1' });
-  expect(reply.compare?.metrics?.rows.spike_count[1]).toBeGreaterThan(0);
 });
 
 test('the data and learner cards read their own runs', async () => {

@@ -80,11 +80,6 @@ test('a surrogate identical to the original has no error and the same spike shap
   expect(m.rows.mean_isi).toEqual([4.5, 4.5]);
   expect(m.rows.std_isi).toEqual([0, 0]);
   expect(m.scalars).toEqual({ rmse: 0, mae: 0, periodicity_gap: 0, spike_shape_corr: 1 });
-  expect(m.spikes.peak_voltage).toEqual([
-    [30, 30],
-    [30, 30],
-  ]);
-  expect(m.spikes.AHP_depth).toEqual([[], []]);
   expect(m.diverged).toBe(false);
 });
 
@@ -108,10 +103,11 @@ test('the crossing diff compares the last shared spike', () => {
 
 test('the series metrics pair each column with the original point by point', () => {
   const m = seriesMetrics([spiking], { r: [spiking] }, { r: [{ rmse: 0, mae: 0 }] }, [11.5], [5], 2);
-  expect(m.times).toEqual({ original: [[2.5, 7]], columns: { r: [[2.5, 7]] } });
   expect(m.crossings.r[0].count).toEqual([2, 2]);
   expect(m.crossings.r[0].gamma).toBeCloseTo(1);
   expect(m.pairs.r).toHaveLength(1);
+  expect(m.trains.columns.r[0].features.peak_voltage).toEqual([30, 30]);
+  expect(m.trains.original[0].features.AHP_depth).toEqual([]);
   expect(m.summaries.r).toEqual({ gamma: m.crossings.r[0].gamma, rheobase: [5, 5] });
 });
 
