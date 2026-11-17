@@ -8,10 +8,8 @@ import {
   RUN,
   variablesOf,
   type ArrayRef,
-  type PartJson,
   type WaveMeta,
 } from '../../shared/runs.ts';
-import type { Spec } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { type Context, modelOf, planOf, plans } from './experiments.ts';
 import { compOf, inputView, originalOf, spanOf, wavesOf } from './inputs.ts';
@@ -94,18 +92,8 @@ export function models(ctx: Context, request: ModelsRequest): ModelsReply {
   const plan = planOf(all, request.experiment);
   const model = modelOf(plan, request.model);
   const found = experimentStatus(ctx.runs, plan.id);
-  const built = found.models.find(m => m.model === model.name)!;
-  const done = built.state === 'done';
-  const parts = done ? built.parts.map(p => ({ run: p.id, json: ctx.files.json<PartJson>(p.id, RUN.part) })) : [];
-  const dataSpec = done ? ctx.files.json<Spec>(built.data.id, RUN.spec) : undefined;
   const reply: ModelsReply = {
     model: model.name,
-    method: model.method,
-    grouping: model.grouping,
-    build: built.state,
-    data: dataSpec?.kind === 'data' ? { run: built.data.id, stim: dataSpec.data.stim ?? 'soma' } : null,
-    parts: parts.map(p => ({ run: p.run, label: p.json.gates.map(g => g.toLowerCase()).join('+') })),
-    learned: parts[0]?.json.comps ?? [],
     input: null,
     comp: '',
     point: 0,

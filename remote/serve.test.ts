@@ -162,13 +162,13 @@ test('the experiments come in the declared order with their progress and run nam
   expect(reply.measures.coincidenceWindow).toBe(2);
 });
 
-test('an experiment gives its setup, the reduced states of each model and the state of each pair', async () => {
+test('an experiment gives its setup, the training data and learners of each model and the state of each pair', async () => {
   const { reply } = await post<ExperimentView>('experiment', { experiment: 'e' });
   expect(reply.setup.map(r => r.label)).toContain('系列');
-  expect(reply.models[0]).toMatchObject({ name: 'm', reduced: 0, build: { state: 'done' } });
+  expect(reply.models[0].name).toBe('m');
   expect(reply.data.map(d => d.name)).toEqual([reply.models[0].data]);
   expect(reply.parts.map(p => p.name)).toEqual(reply.models[0].parts);
-  expect(reply.pairs[0]).toMatchObject({ input: 's', model: 'm', run: { state: 'done', spec: 'e/sim/s/m.json' } });
+  expect(reply.pairs[0]).toEqual({ input: 's', model: 'm', state: 'done' });
   expect(reply.rerun.done).toBe(reply.rerun.total);
 });
 
@@ -178,16 +178,13 @@ test('an input compares the original with each model, keyed by model name', asyn
   expect(reply.columns.map(c => c.model)).toEqual(['m']);
   expect(reply.points[0].voltages.map(v => v.model)).toEqual([null, 'm']);
   expect(reply.points[0].voltages[0].points.length).toBeLessThanOrEqual(800);
-  expect(reply.crossings.m[0].gamma).toBeGreaterThan(0.9);
+  expect(reply.summaries.m.gamma).toBeGreaterThan(0.9);
   expect(reply.spikes.original[0].times.length).toBe(reply.spikes.columns.m[0].times.length);
-  expect(reply.training.m).toMatchObject({ 'h/nnz': 1, 'cost/surr-orig/mul': -3 });
   expect((await post('inputs', { experiment: 'e', input: 's', comp: 'dend' })).status).toBe(400);
 });
 
-test('a model gives its learners and the comparison at one point, with the original projected onto its latents', async () => {
+test('a model gives the comparison at one point, with the original projected onto its latents', async () => {
   const { reply } = await post<ModelsReply>('models', { experiment: 'e', model: 'm', comps: ['soma'] });
-  expect(reply.parts).toEqual([{ run: dirOf(PART), label: 'h' }]);
-  expect(reply.learned).toEqual(['soma']);
   expect(reply.compare?.voltage.map(l => l.label)).toEqual(['原系', '置換系']);
   expect(Object.keys(reply.compare?.latents ?? {})).toEqual(['h.z1']);
   expect(reply.compare?.axes).toEqual({ x: 'V', y: 'h.z1' });
@@ -199,16 +196,18 @@ test('the registry names each run by its place under runs/', async () => {
   expect(reply.runs.every(r => r.id.startsWith(`${r.place}/`))).toBe(true);
 });
 
-test('the data and learner cards read their own runs', async () => {
-  const data = await post<{ coverage: unknown[]; stim: string }>('data', { run: dirOf(DATA), comps: ['soma'] });
+test('the training data and learner pages read their runs by declared name', async () => {
+  const view = (await post<ExperimentView>('experiment', { experiment: 'e' })).reply;
+  const names = { data: view.models[0].data, part: view.models[0].parts[0] };
+  const data = await post<{ coverage: unknown[]; stim: string }>('data', { experiment: 'e', data: names.data, comps: ['soma'] });
   expect(data.reply.stim).toBe('soma');
   expect(data.reply.coverage).toHaveLength(1);
-  const part = await post<{ pca: { kept: number }; path: unknown[] }>('parts', { run: dirOf(PART), comps: ['soma'] });
+  const part = await post<{ pca: { kept: number }; path: unknown[] }>('parts', { experiment: 'e', part: names.part, comps: ['soma'] });
   expect(part.reply.pca.kept).toBe(1);
   expect(part.reply.path).toHaveLength(1);
-  const shown = await post<{ comps: string[]; shown: string[] }>('data', { run: dirOf(DATA) });
+  const shown = await post<{ comps: string[]; shown: string[] }>('data', { experiment: 'e', data: names.data });
   expect(shown.reply.shown).toEqual(['soma']);
-  expect((await post<{ shown: string[] }>('parts', { run: dirOf(PART) })).reply.shown).toEqual(['soma']);
+  expect((await post<{ shown: string[] }>('parts', { experiment: 'e', part: names.part })).reply.shown).toEqual(['soma']);
 });
 
 test('unknown ops and unknown jobs are refused', async () => {

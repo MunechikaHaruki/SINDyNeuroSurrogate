@@ -1,6 +1,6 @@
 // 入力（runs/inputs/<入力>/）の答え。実験の系列 1 つを、元のモデルと、回し終えたモデルの列で並べる：掃引の点ごとの電流と電位の線、原系との指標、ラスタ、列の学習側の指標。
 import type { ColumnView, InputsReply, InputsRequest, InputView, VoltageLine, Window } from '../../shared/api.ts';
-import { compArray, currentArray, RUN, type PartJson, type WaveMeta } from '../../shared/runs.ts';
+import { compArray, currentArray, RUN, type WaveMeta } from '../../shared/runs.ts';
 import type { ExperimentStatus, PlanEntry, RunStatus } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { type Context, modelOf, planOf, plans, reducedOf, stimulusOf } from './experiments.ts';
@@ -42,7 +42,7 @@ export function inputView(ctx: Context, plan: PlanEntry, name: string, original:
       stim: spec.stim ?? 'soma',
       current_params: spec.current_params,
     },
-    original: { state: original.state, spec: original.spec, run: original.id },
+    original: { state: original.state, run: original.id },
   };
 }
 
@@ -80,18 +80,6 @@ function columnsOf(plan: PlanEntry, found: ExperimentStatus, input: string, mode
     });
   }
   return list;
-}
-
-/** 列の学習側の指標。学習器ごとの指標（part.json の metrics、群の名前で修飾する）と、モデルの組んだ演算コスト（summary.json）。 */
-function trainingOf(ctx: Context, found: ExperimentStatus, model: string): Record<string, number | null> {
-  const built = found.models.find(m => m.model === model)!;
-  const summary: Record<string, number | null> = {};
-  for (const part of built.parts) {
-    const json = ctx.files.json<PartJson>(part.id, RUN.part);
-    const label = json.gates.map(g => g.toLowerCase()).join('+');
-    for (const [key, value] of Object.entries(json.metrics)) summary[`${label}/${key}`] = value;
-  }
-  return { ...summary, ...ctx.files.json<Record<string, number | null>>(built.run.id, RUN.summary) };
 }
 
 /** 入力 1 つを、回し終えたモデルの列と比べた答え。元のモデルをまだ回していなければ投げる。 */
@@ -140,10 +128,7 @@ export function inputs(ctx: Context, request: InputsRequest): InputsReply {
     comp,
     columns,
     points,
-    pairs: byModel(metrics.pairs),
-    crossings: byModel(metrics.crossings),
     summaries: byModel(metrics.summaries),
     spikes: { original: metrics.trains.original, columns: byModel(metrics.trains.columns) },
-    training: Object.fromEntries(columns.map(c => [c.model, trainingOf(ctx, found, c.model)])),
   };
 }

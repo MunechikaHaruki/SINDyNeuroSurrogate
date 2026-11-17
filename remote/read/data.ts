@@ -2,7 +2,7 @@
 import type { DataReply, DataRequest, Line } from '../../shared/api.ts';
 import { compArray, currentArray, RUN, type WaveMeta } from '../../shared/runs.ts';
 import type { Spec } from '../../shared/spec.ts';
-import type { Context } from './experiments.ts';
+import { learnedRun, type Context } from './experiments.ts';
 import { spanOf, wavesOf } from './inputs.ts';
 import { compact, histograms, line } from './waves.ts';
 
@@ -18,7 +18,7 @@ export function dataArray(run: string, meta: WaveMeta, name: string, variable: s
 
 /** 学習データ 1 本の、区画 comps の線と分布。 */
 export function data(ctx: Context, request: DataRequest): DataReply {
-  const { run } = request;
+  const run = learnedRun(ctx.runs, request.experiment, 'data', request.data);
   const spec = ctx.files.json<Spec>(run, RUN.spec);
   if (spec.kind !== 'data') throw new Error(`${run} は学習データの run でない`);
   const meta = wavesOf(ctx, run);

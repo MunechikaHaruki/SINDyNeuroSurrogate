@@ -188,7 +188,7 @@ export function bench(ctx: Context, request: BenchRequest): BenchReply {
     cells: declared.cells,
     ncu: declared.ncu,
     dt: spec.kind === 'bench' ? spec.input.spec.dt : 0.01,
-    run: { state: found.state, spec: found.run.spec, run: found.run.id },
+    run: { state: found.state, run: found.run.id },
     machine: meta && { device: meta.env.device, host: meta.env.host, created: meta.created },
     rows: done ? benchRows(ctx.files, found.run.id) : [],
     tools: TOOLS,

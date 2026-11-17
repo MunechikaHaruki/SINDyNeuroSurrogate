@@ -3,7 +3,7 @@ import type { Line, PartsReply, PartsRequest } from '../../shared/api.ts';
 import { fitArray, RUN, type PartJson } from '../../shared/runs.ts';
 import type { Spec } from '../../shared/spec.ts';
 import { dataArray } from './data.ts';
-import type { Context } from './experiments.ts';
+import { learnedRun, type Context } from './experiments.ts';
 import { spanOf, wavesOf } from './inputs.ts';
 import { line, trajectory } from './waves.ts';
 
@@ -16,7 +16,7 @@ export function pathAxes(part: PartJson): PartsReply['axes'] {
 
 /** 学習器 1 本の、区画 comps の線と中身。 */
 export function parts(ctx: Context, request: PartsRequest): PartsReply {
-  const { run } = request;
+  const run = learnedRun(ctx.runs, request.experiment, 'parts', request.part);
   const spec = ctx.files.json<Spec>(run, RUN.spec);
   if (spec.kind !== 'part') throw new Error(`${run} は学習器の run でない`);
   const part = ctx.files.json<PartJson>(run, RUN.part);

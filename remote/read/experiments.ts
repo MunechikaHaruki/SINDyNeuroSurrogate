@@ -165,7 +165,7 @@ export function rerunCost(found: ExperimentStatus, index: IndexEntry[]): Experim
 function learnedOf(plan: PlanEntry, found: ExperimentStatus): { data: NamedRun[]; parts: NamedRun[] } {
   const data: NamedRun[] = [];
   const parts: NamedRun[] = [];
-  const named = (r: RunStatus): NamedRun => ({ name: r.name, run: r.id, state: r.state });
+  const named = (r: RunStatus): NamedRun => ({ name: r.name, state: r.state });
   for (const m of plan.models) {
     const built = found.models.find(f => f.model === m.name);
     if (!built) continue;
@@ -175,6 +175,15 @@ function learnedOf(plan: PlanEntry, found: ExperimentStatus): { data: NamedRun[]
   return { data, parts };
 }
 
+/** 実験の学習データか学習器を宣言の名前で引き、その run の置き場（data/<id>・parts/<id>）を返す。無いかまだ回していなければ投げる。 */
+export function learnedRun(runs: string, id: string, place: 'data' | 'parts', name: string): string {
+  const found = experimentStatus(runs, planOf(plans(), id).id);
+  const run = found.models.flatMap(m => (place === 'data' ? [m.data] : m.parts)).find(r => r.name === name);
+  if (!run) throw new Error(`${id} に ${place} ${name} が無い`);
+  if (run.state !== 'done') throw new Error(`${id} の ${place} ${name} はまだ回していない`);
+  return run.id;
+}
+
 export function experiment(runs: string, id: string): ExperimentView {
   const all = plans();
   const plan = planOf(all, id);
@@ -182,7 +191,7 @@ export function experiment(runs: string, id: string): ExperimentView {
   const pairs: ExperimentView['pairs'] = [];
   for (const p of plan.pairs) {
     const run = found.pairs.find(q => q.series === p.series && q.model === p.model);
-    if (run) pairs.push({ input: p.series, model: p.model, run: { state: run.state, spec: run.run.spec } });
+    if (run) pairs.push({ input: p.series, model: p.model, state: run.state });
   }
   return {
     id,
@@ -190,26 +199,16 @@ export function experiment(runs: string, id: string): ExperimentView {
     description: plan.description,
     setup: setupOf(plan, all.measures.coincidence_window),
     rerun: rerunCost(found, scan(runs)),
-    groupings: plan.groupings,
-    methods: plan.methods,
     inputs: Object.keys(plan.series),
     models: plan.models.map(m => {
       const built = found.models.find(f => f.model === m.name)!;
-      return {
-        name: m.name,
-        method: m.method,
-        grouping: m.grouping,
-        reduced: reducedOf(m),
-        build: { state: built.state, spec: built.run.spec },
-        data: built.data.name,
-        parts: built.parts.map(p => p.name),
-      };
+      return { name: m.name, data: built.data.name, parts: built.parts.map(p => p.name) };
     }),
     ...learnedOf(plan, found),
     pairs,
     benches: plan.benches.map(b => {
       const run = found.benches.find(f => f.bench === b.name)!;
-      return { name: b.name, run: { state: run.state, spec: run.run.spec } };
+      return { name: b.name, state: run.state };
     }),
   };
 }

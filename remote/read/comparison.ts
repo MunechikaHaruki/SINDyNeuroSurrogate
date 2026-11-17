@@ -2,7 +2,21 @@
 // 波形 1 本の特徴量（eFEL・0 mV の上向きの横切り・山の平均の形・発散）、原系と置き換えた列の点ごとの指標（rmse・mae、ISI の統計、周期の差、形の相関、横切りで数えた差、
 // coincidence factor Γ）と、列ごとのまとめ（決まる点での Γ の平均、発火の始まり）。eFEL は Python（neurosurrogate/spikes.py）を子プロセスで起こし、波形を標準入力で渡す。
 // 物差しの値（Γ の許容幅 Δ）は手元が頼み方で渡す。run は書き換わらないので、特徴量は run・区画ごとに、答えは頼み方ごとに覚えておく。
-import type { ColumnSummary, CrossingRow, PairMetrics, SpikeTrain } from '../../shared/api.ts';
+import type { ColumnSummary, SpikeTrain } from '../../shared/api.ts';
+
+/** 1 ペア（原系, 置換系）の 1 区画の指標。rows は両方にある指標の [原系, 置換系]、scalars は比べて決まる指標。null は値が無い（nan）。答えには出さず、発散と Γ のまとめに使う。 */
+export type PairMetrics = {
+  rows: Record<string, [number | null, number | null]>;
+  scalars: Record<string, number | null>;
+  diverged: boolean;
+};
+/** 1 点の原系との差。count は 0 mV の横切りで数えた発火回数 [原系, 置換系]、peak は山の平均の差（置換系 − 原系）、lastShift は両方にある最後の山の時刻の差の大きさ、gamma は Γ。 */
+export type CrossingRow = {
+  count: [number, number];
+  peak: number | null;
+  lastShift: number | null;
+  gamma: number | null;
+};
 
 /** 元のモデルとの差（Γ を除く）。 */
 export type CrossingDiff = Omit<CrossingRow, 'gamma'>;

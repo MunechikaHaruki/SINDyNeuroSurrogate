@@ -26,8 +26,8 @@ export type ExperimentEntry = {
   progress: Progress;
   runs: Record<RunKind, string[]>;
 };
-/** 名前で引く run 1 本。run は runs/ の下の置き場（data/<id> など）、state はその状態。 */
-export type NamedRun = { name: string; run: string; state: State };
+/** 宣言の名前で引く run 1 本と、その状態。 */
+export type NamedRun = { name: string; state: State };
 /** 実験の目次。実験群と実験は宣言の順。running は回っている run の数、runs は完成した run の数（増えたら図を読み直す）。measures は比べ方の物差し。 */
 export type Experiments = {
   groups: { name: string; description: string; experiments: ExperimentEntry[] }[];
@@ -38,41 +38,23 @@ export type Experiments = {
 
 /** 設定の表の 1 行。label は軸、items は宣言の名前と、その名前が指す値。 */
 export type SetupRow = { label: string; items: { name: string; value: string }[] };
-/** 回せる run 1 本の状態と、回すときに渡す spec（resolved/ の下のパス）。 */
-export type Runnable = { state: State; spec: string };
-/** 実験 1 つ。並びは宣言の順。models の reduced はまとめて減らした状態の数（群ごとにゲートの数 − 潜在の本数の和と、膜電位へ吸収したゲートの数）。
- * rerun は実験が使う run の計算にかかった秒の和と、回した数・全部の数。 */
+/** 実験 1 つ。並びは宣言の順。rerun は実験が使う run の計算にかかった秒の和と、回した数・全部の数。models はモデルごとに組んだ学習データと学習器の名前、pairs は入力 × モデルの評価、benches は GPU の実測。 */
 export type ExperimentView = {
   id: string;
   group: string;
   description: string;
   setup: SetupRow[];
   rerun: { seconds: number; done: number; total: number };
-  groupings: string[];
-  methods: string[];
   inputs: string[];
-  models: { name: string; method: string; grouping: string; reduced: number; build: Runnable; data: string; parts: string[] }[];
+  models: { name: string; data: string; parts: string[] }[];
   data: NamedRun[];
   parts: NamedRun[];
-  pairs: { input: string; model: string; run: Runnable }[];
-  benches: { name: string; run: Runnable }[];
+  pairs: { input: string; model: string; state: State }[];
+  benches: NamedRun[];
 };
 
-/** 1 ペア（原系, 置換系）の 1 区画の指標。rows は両方にある指標の [原系, 置換系]、scalars は比べて決まる指標。null は値が無い（nan）。 */
-export type PairMetrics = {
-  rows: Record<string, [number | null, number | null]>;
-  scalars: Record<string, number | null>;
-  diverged: boolean;
-};
 /** 1 本の波形の発火。times は AP の山の時刻 [ms]、features は AP ごとの特徴量（eFEL。times と同じ順）。null は値が無い（nan）。 */
 export type SpikeTrain = { times: number[]; features: Record<string, (number | null)[]> };
-/** 1 点の原系との差。count は 0 mV の横切りで数えた発火回数 [原系, 置換系]、peak は山の平均の差（置換系 − 原系）、lastShift は両方にある最後の山の時刻の差の大きさ、gamma は Γ。 */
-export type CrossingRow = {
-  count: [number, number];
-  peak: number | null;
-  lastShift: number | null;
-  gamma: number | null;
-};
 /** 列 1 本のまとめ。gamma は決まる点での Γ の平均、rheobase は発火の始まり [原系, 置換系]（掃引しなければ null）。 */
 export type ColumnSummary = { gamma: number | null; rheobase: [number | null, number | null] };
 
@@ -90,7 +72,7 @@ export type InputView = {
   duration: number;
   dt: number;
   spec: { target: string; current_type: string; stim: string; current_params: Record<string, number> };
-  original: Runnable & { run: string };
+  original: { state: State; run: string };
 };
 /** 入力を 1 つのモデルで置き換えて回し終えた列。reduced は ExperimentView と同じ。 */
 export type ColumnView = { model: string; method: string; grouping: string; reduced: number; run: string };
@@ -99,17 +81,14 @@ export type VoltageLine = Line & { model: string | null };
 /** 入力の頼み方。comp は比べる区画（省けば置き換えた区画のうち刺激する区画、無ければ最初に置き換える区画）、models は重ねるモデル（省けば回し終えた全部）、window は線の時間の範囲、waves が false なら線を返さない（指標だけを使う実験のページ）。 */
 export type InputsRequest = { experiment: string; input: string; comp?: string; models?: string[]; window?: Window; waves?: boolean };
 /** 入力の答え。points は掃引の点ごとの注入電流と、原系と発散していない列の電位（縦軸を揃えられるよう全点）と、発散した列。
- * キーはどれもモデルの名前。spikes は掃引の点ごとの発火（原系と列）、training は列の学習側の指標（学習器の指標を群の名前で修飾したものと、モデルの演算コスト）。 */
+ * キーはどれもモデルの名前。summaries は列ごとのまとめ、spikes は掃引の点ごとの発火（原系と列）。 */
 export type InputsReply = {
   input: InputView;
   comp: string;
   columns: ColumnView[];
   points: { current: Point[]; voltages: VoltageLine[]; diverged: string[] }[];
-  pairs: Record<string, PairMetrics[]>;
-  crossings: Record<string, CrossingRow[]>;
   summaries: Record<string, ColumnSummary>;
   spikes: { original: SpikeTrain[]; columns: Record<string, SpikeTrain[]> };
-  training: Record<string, Record<string, number | null>>;
 };
 
 /** モデルのページの頼み方。input・comp・point は比べる入力・区画・掃引の点（省けば最初の入力、inputs と同じ区画、最後の点）、comps は全区画の図に出す区画、axes は相平面の軸（V か潜在の名前）。 */
@@ -134,16 +113,9 @@ export type ModelCompare = {
   internal: Line[];
   gates: Line[];
 };
-/** モデル 1 つ。build は組み立ての状態、data と parts は組んだ学習データと学習器（群の順）の run（組み終えていなければ null と空）、learned は学習した区画。
- * input は比べる入力（元のモデルをまだ回していなければ null）、compare は比べ（入力の置換系がまだなければ null と、その理由 waiting）。 */
+/** モデル 1 つの比べ。input は比べる入力（元のモデルをまだ回していなければ null）、compare は比べ（入力の置換系がまだなければ null と、その理由 waiting）。組んだ中身は data と parts の口が持つ。 */
 export type ModelsReply = {
   model: string;
-  method: string;
-  grouping: string;
-  build: State;
-  data: { run: string; stim: string } | null;
-  parts: { run: string; label: string }[];
-  learned: string[];
   input: InputView | null;
   comp: string;
   point: number;
@@ -151,8 +123,8 @@ export type ModelsReply = {
   waiting: string;
 };
 
-/** 学習データの頼み方。comps は描く区画（省けば刺激した区画）。 */
-export type DataRequest = { run: string; comps?: string[]; window?: Window };
+/** 学習データの頼み方。data は宣言の名前（実験の data の一覧）、comps は描く区画（省けば刺激した区画）。 */
+export type DataRequest = { experiment: string; data: string; comps?: string[]; window?: Window };
 /** 学習データ 1 本。current は注入電流、voltage は区画ごとの膜電位、coverage は区画ごとの学習が踏んだ電位の分布（x は電位、y は時刻の数）。 */
 export type DataReply = {
   run: string;
@@ -166,8 +138,8 @@ export type DataReply = {
   coverage: Line[];
 };
 
-/** 学習器の頼み方。comps は線を描く区画（学習データの上で。省けば学習した最初の区画）。 */
-export type PartsRequest = { run: string; comps?: string[]; window?: Window };
+/** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）。 */
+export type PartsRequest = { experiment: string; part: string; comps?: string[]; window?: Window };
 /** 学習器 1 本。label は群の名前（h+n）、gates は最初の区画の学習ゲート、recon は区画ごとの再構成誤差、path は区画ごとの潜在の軌跡（軸は axes）。
  * pca は寄与率（捨てた成分も）と保持した数、sindy は閉包項の係数（targets × features）。 */
 export type PartsReply = {
@@ -199,7 +171,7 @@ export type BenchReply = {
   cells: number[];
   ncu: boolean;
   dt: number;
-  run: Runnable & { run: string };
+  run: { state: State; run: string };
   machine: { device: string; host: string; created: string } | null;
   rows: BenchRow[];
   files?: Record<number, Record<string, string | null>>;
