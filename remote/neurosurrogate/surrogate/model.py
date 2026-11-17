@@ -508,8 +508,11 @@ def summary(s: Surrogate) -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class CompFit:
-    """学習区画 1 つの、学習器の潜在 (時刻 × 潜在) と再構成の RMSE (時刻ごと)。"""
+    """学習区画 1 つの、学習データの群の状態 (時刻 × 状態) と膜電位 (時刻ごと)、
+    学習器の潜在 (時刻 × 潜在) と再構成の RMSE (時刻ごと)。"""
 
+    gates: np.ndarray
+    voltage: np.ndarray
     latent: np.ndarray
     recon_rmse: np.ndarray
 
@@ -526,6 +529,8 @@ def describe_group(
     recons = [np.asarray(compressor.decode(jnp.asarray(z))) for z in latents]
     fits = {
         comp_id: CompFit(
+            gates=gates[pos],
+            voltage=np.asarray(potential(data, comp_id)),
             latent=latents[pos],
             recon_rmse=np.sqrt(np.mean((gates[pos] - recons[pos]) ** 2, axis=1)),
         )

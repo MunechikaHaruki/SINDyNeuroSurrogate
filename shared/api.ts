@@ -78,10 +78,24 @@ export type InputView = {
 export type ColumnView = { model: string; method: string; grouping: string; reduced: number; run: string };
 /** 電位の線 1 本。model は列のモデルの名前で、原系は null。 */
 export type VoltageLine = Line & { model: string | null };
-/** 入力の頼み方。comp は比べる区画（省けば置き換えた区画のうち刺激する区画、無ければ最初に置き換える区画）、models は重ねるモデル（省けば回し終えた全部）、window は線の時間の範囲、waves が false なら線を返さない（指標だけを使う実験のページ）。 */
-export type InputsRequest = { experiment: string; input: string; comp?: string; models?: string[]; window?: Window; waves?: boolean };
+/** 入力の頼み方。comp は比べる区画（省けば置き換えた区画のうち刺激する区画、無ければ最初に置き換える区画）、models は重ねるモデル（省けば回し終えた全部）、window は線の時間の範囲、waves が false なら線を返さない（指標だけを使う実験のページ）。
+ * pair は 1 組（元のモデルと、回し終えたモデル model の列）の掃引の点 point での潜在空間（axes は相平面の軸、V か潜在の名前）、whole は元のモデルの掃引の点 point の区画 comps の全区画の図。 */
+export type InputsRequest = {
+  experiment: string;
+  input: string;
+  comp?: string;
+  models?: string[];
+  window?: Window;
+  waves?: boolean;
+  pair?: { model: string; point: number; axes?: { x: string; y: string } };
+  whole?: { point: number; comps: string[] };
+};
+/** 1 組の潜在空間。latents と phase の原系は列の圧縮器で潜在へ写したもの（射影）。比べる区画を置き換えていなければ latents は空。置換系が発散した点では原系だけ。 */
+export type PairCompare = { model: string; latents: Record<string, Line[]>; phase: Line[]; axes: { x: string; y: string } };
+/** 元のモデルの、区画ごとの膜電位・内部電流・ゲート。 */
+export type WholeWaves = { voltage: Line[]; internal: Line[]; gates: Line[] };
 /** 入力の答え。points は掃引の点ごとの注入電流と、原系と発散していない列の電位（縦軸を揃えられるよう全点）と、発散した列。
- * キーはどれもモデルの名前。summaries は列ごとのまとめ、spikes は掃引の点ごとの発火（原系と列）。 */
+ * キーはどれもモデルの名前。summaries は列ごとのまとめ、spikes は掃引の点ごとの発火（原系と列）、pair と whole は頼んだときだけの 1 組と全区画の図。 */
 export type InputsReply = {
   input: InputView;
   comp: string;
@@ -89,38 +103,23 @@ export type InputsReply = {
   points: { current: Point[]; voltages: VoltageLine[]; diverged: string[] }[];
   summaries: Record<string, ColumnSummary>;
   spikes: { original: SpikeTrain[]; columns: Record<string, SpikeTrain[]> };
+  pair: PairCompare | null;
+  whole: WholeWaves | null;
 };
 
-/** モデルのページの頼み方。input・comp・point は比べる入力・区画・掃引の点（省けば最初の入力、inputs と同じ区画、最後の点）、comps は全区画の図に出す区画、axes は相平面の軸（V か潜在の名前）。 */
-export type ModelsRequest = {
-  experiment: string;
-  model: string;
-  input?: string;
-  comp?: string;
-  point?: number;
-  window?: Window;
-  comps?: string[];
-  axes?: { x: string; y: string };
-};
-/** モデル 1 つの、ある入力の掃引の 1 点での原系との比べ。latents と phase の原系は列の圧縮器で潜在へ写したもの。comps・internal・gates は全区画の図（原系）。 */
-export type ModelCompare = {
-  current: Line[];
-  voltage: Line[];
-  latents: Record<string, Line[]>;
-  phase: Line[];
-  axes: { x: string; y: string };
-  comps: Line[];
-  internal: Line[];
-  gates: Line[];
-};
-/** モデル 1 つの比べ。input は比べる入力（元のモデルをまだ回していなければ null）、compare は比べ（入力の置換系がまだなければ null と、その理由 waiting）。組んだ中身は data と parts の口が持つ。 */
+/** モデルのページの頼み方。model は宣言の名前（実験の models の一覧）。 */
+export type ModelsRequest = { experiment: string; model: string };
+/** 組んだ 1 刻みの演算の回数の 1 行。op は演算（exp・div・pm・mul）、diff は置換系 − 元のモデル。 */
+export type CostRow = { op: string; surrogate: number; original: number; diff: number };
+/** モデル 1 本（モデルの run だけ）。cell・form・absorbed は組み立て、parts は組んだ学習器の名前（群の順）、cost は組んだ 1 刻みの演算の回数（まだ回していなければ null）。 */
 export type ModelsReply = {
   model: string;
-  input: InputView | null;
-  comp: string;
-  point: number;
-  compare: ModelCompare | null;
-  waiting: string;
+  run: { state: State; run: string };
+  cell: string;
+  form: string;
+  absorbed: string[];
+  parts: string[];
+  cost: CostRow[] | null;
 };
 
 /** 学習データの頼み方。data は宣言の名前（実験の data の一覧）、comps は描く区画（省けば刺激した区画）。 */
@@ -141,9 +140,11 @@ export type DataReply = {
 /** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）。 */
 export type PartsRequest = { experiment: string; part: string; comps?: string[]; window?: Window };
 /** 学習器 1 本。label は群の名前（h+n）、gates は最初の区画の学習ゲート、recon は区画ごとの再構成誤差、path は区画ごとの潜在の軌跡（軸は axes）。
- * pca は寄与率（捨てた成分も）と保持した数、sindy は閉包項の係数（targets × features）。 */
+ * pca は寄与率（捨てた成分も）と保持した数、sindy は閉包項の係数（targets × features）。線はどれも学習器の run が写した学習データの上のもの。 */
 export type PartsReply = {
   run: string;
+  /** 学習した学習データの名前（実験の data の一覧）。 */
+  data: string;
   label: string;
   /** 学習した区画と、描いた区画。 */
   comps: string[];
@@ -189,9 +190,9 @@ export type Api = {
   experiments: { body: Record<string, never>; reply: Experiments };
   /** 実験 1 つの設定と、回す組の状態。 */
   experiment: { body: { experiment: string }; reply: ExperimentView };
-  /** 入力 1 つを、回し終えたモデルの列と比べたもの。 */
+  /** 入力 1 つを、回し終えたモデルの列と比べたもの（頼めば 1 組の潜在空間と全区画の図も）。 */
   inputs: { body: InputsRequest; reply: InputsReply };
-  /** モデル 1 つと、その入力での比べ。 */
+  /** モデル 1 本の組み立てと演算の回数。 */
   models: { body: ModelsRequest; reply: ModelsReply };
   /** 学習データ 1 本。 */
   data: { body: DataRequest; reply: DataReply };

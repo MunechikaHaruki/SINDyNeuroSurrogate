@@ -134,9 +134,17 @@ put(PART, 'part', {
     metrics: { nnz: 1 },
   },
 });
-for (const file of ['latent', 'recon_rmse'])
+write(join(runs, dirOf(PART), 'fit/meta.json'), JSON.stringify({ t0: 0, dt: DT, n: N, names: { soma: 0 } }));
+for (const file of ['gates', 'V', 'latent', 'recon_rmse'])
   write(join(runs, dirOf(PART), `fit/0/${file}.f64`), Buffer.from(new Float64Array(N).fill(0.5).buffer));
-put(MODEL, 'model', { 'summary.json': { 'cost/surr-orig/mul': -3 } });
+const cost = Object.fromEntries(
+  ['exp', 'div', 'pm', 'mul'].flatMap(op => [
+    [`cost/surrogate/${op}`, 2],
+    [`cost/original/${op}`, 5],
+    [`cost/surr-orig/${op}`, -3],
+  ]),
+);
+put(MODEL, 'model', { 'summary.json': cost });
 waves(join(put(ORIGINAL, 'original'), 'waves'), meta('H'), 10);
 const replaced = put(REPLACED, 'replaced');
 waves(join(replaced, 'waves'), meta('h.z1'), 11);
@@ -183,11 +191,27 @@ test('an input compares the original with each model, keyed by model name', asyn
   expect((await post('inputs', { experiment: 'e', input: 's', comp: 'dend' })).status).toBe(400);
 });
 
-test('a model gives the comparison at one point, with the original projected onto its latents', async () => {
-  const { reply } = await post<ModelsReply>('models', { experiment: 'e', model: 'm', comps: ['soma'] });
-  expect(reply.compare?.voltage.map(l => l.label)).toEqual(['原系', '置換系']);
-  expect(Object.keys(reply.compare?.latents ?? {})).toEqual(['h.z1']);
-  expect(reply.compare?.axes).toEqual({ x: 'V', y: 'h.z1' });
+test('a model gives only what its run holds: how it is built and the op cost', async () => {
+  const { reply } = await post<ModelsReply>('models', { experiment: 'e', model: 'm' });
+  expect(reply).toMatchObject({ model: 'm', cell: 'hh', form: 'hybrid', absorbed: [], run: { state: 'done' } });
+  expect(reply.parts).toHaveLength(1);
+  expect(reply.cost?.find(r => r.op === 'mul')).toEqual({ op: 'mul', surrogate: 2, original: 5, diff: -3 });
+});
+
+test('an input gives one pair in latent space, with the original projected, and the whole original on request', async () => {
+  const { reply } = await post<InputsReply>('inputs', {
+    experiment: 'e',
+    input: 's',
+    waves: false,
+    pair: { model: 'm', point: 0 },
+    whole: { point: 0, comps: ['soma'] },
+  });
+  expect(Object.keys(reply.pair?.latents ?? {})).toEqual(['h.z1']);
+  expect(reply.pair?.latents['h.z1'].map(l => l.label)).toEqual(['原系', '置換系']);
+  expect(reply.pair?.axes).toEqual({ x: 'V', y: 'h.z1' });
+  expect(reply.whole?.voltage.map(l => l.label)).toEqual(['soma']);
+  expect(reply.whole?.gates.map(l => l.label)).toEqual(['H']);
+  expect((await post('inputs', { experiment: 'e', input: 's', pair: { model: 'x', point: 0 } })).status).toBe(400);
 });
 
 test('the registry names each run by its place under runs/', async () => {
@@ -202,8 +226,10 @@ test('the training data and learner pages read their runs by declared name', asy
   const data = await post<{ coverage: unknown[]; stim: string }>('data', { experiment: 'e', data: names.data, comps: ['soma'] });
   expect(data.reply.stim).toBe('soma');
   expect(data.reply.coverage).toHaveLength(1);
-  const part = await post<{ pca: { kept: number }; path: unknown[] }>('parts', { experiment: 'e', part: names.part, comps: ['soma'] });
+  const part = await post<{ pca: { kept: number }; path: unknown[]; gates: unknown[]; data: string }>('parts', { experiment: 'e', part: names.part, comps: ['soma'] });
   expect(part.reply.pca.kept).toBe(1);
+  expect(part.reply.gates).toHaveLength(1);
+  expect(part.reply.data).toBe(names.data);
   expect(part.reply.path).toHaveLength(1);
   const shown = await post<{ comps: string[]; shown: string[] }>('data', { experiment: 'e', data: names.data });
   expect(shown.reply.shown).toEqual(['soma']);

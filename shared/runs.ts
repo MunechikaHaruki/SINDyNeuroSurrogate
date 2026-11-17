@@ -6,10 +6,11 @@
 export type ArrayRef = { run: string; file: string; column: number; n: number };
 
 /** run の中の置き場。波形の根 root は、回した波形（学習データの run では学習データ）waves か、原系を列の前処理で射影した projected(区画)。
- * part は学習器の run の中身、summary はモデルの run の組んだ演算コスト、spec はどの run も持つ回した条件。 */
+ * part は学習器の run の中身、fit はその学習区画の目録、summary はモデルの run の組んだ演算コスト、spec はどの run も持つ回した条件。 */
 export const RUN = {
   waves: 'waves',
   part: 'part.json',
+  fit: 'fit/meta.json',
   summary: 'summary.json',
   spec: 'spec.json',
   projected: (comp: string) => `projected/${comp}`,
@@ -65,15 +66,18 @@ export function internalArray(run: string, root: string, meta: WaveMeta, point: 
   return { run, file: `${root}/${point}/I_internal.f64`, column, n: meta.n[point] };
 }
 
-/** 学習器の run の、学習区画 compId の潜在 latent（column 列目）か再構成誤差 recon_rmse（1 列）。meta は学習データの目録。 */
+/** 学習器の run の fit/meta.json。学習データの t0・dt・長さ n と、学習区画の名前 → id。 */
+export type FitMeta = { t0: number; dt: number; n: number; names: Record<string, number> };
+
+/** 学習器の run の、学習区画 compId の学習データの群の状態 gates（column 列目）・膜電位 V（1 列）、潜在 latent（column 列目）か再構成誤差 recon_rmse（1 列）。 */
 export function fitArray(
   run: string,
-  meta: WaveMeta,
+  meta: FitMeta,
   compId: number,
-  file: 'latent' | 'recon_rmse',
+  file: 'gates' | 'V' | 'latent' | 'recon_rmse',
   column = 0,
 ): ArrayRef {
-  return { run, file: `fit/${compId}/${file}.f64`, column, n: meta.n[0] };
+  return { run, file: `fit/${compId}/${file}.f64`, column, n: meta.n };
 }
 
 /** 閉包項の中身。kind で表現を見分ける。 */

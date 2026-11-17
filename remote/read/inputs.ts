@@ -1,10 +1,11 @@
-// 入力（runs/inputs/<入力>/）の答え。実験の系列 1 つを、元のモデルと、回し終えたモデルの列で並べる：掃引の点ごとの電流と電位の線、原系との指標、ラスタ、列の学習側の指標。
-import type { ColumnView, InputsReply, InputsRequest, InputView, VoltageLine, Window } from '../../shared/api.ts';
-import { compArray, currentArray, RUN, type WaveMeta } from '../../shared/runs.ts';
+// 入力（runs/inputs/<入力>/）の答え。入力の下の run（元のモデル original/ と置き換えた列 <モデル>@<区画>/）だけを読み、実験の系列 1 つを元のモデルと回し終えたモデルの列で並べる：
+// 掃引の点ごとの電流と電位の線、原系との指標と発火、頼めば 1 組の潜在空間（原系は列の圧縮器で写した projected/）と、元のモデルの全区画の膜電位・内部電流・ゲート。
+import type { ColumnView, InputsReply, InputsRequest, InputView, Line, PairCompare, VoltageLine, WholeWaves, Window } from '../../shared/api.ts';
+import { compArray, currentArray, gatesOf, internalArray, RUN, variablesOf, type WaveMeta } from '../../shared/runs.ts';
 import type { ExperimentStatus, PlanEntry, RunStatus } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { type Context, modelOf, planOf, plans, reducedOf, stimulusOf } from './experiments.ts';
-import { line, type Span } from './waves.ts';
+import { line, trajectory, type Span } from './waves.ts';
 
 /** 元のモデルの run の目録（waves/meta.json）。 */
 export function wavesOf(ctx: Context, run: string): WaveMeta {
@@ -12,7 +13,7 @@ export function wavesOf(ctx: Context, run: string): WaveMeta {
 }
 
 /** 範囲 window（省けば全体）の、目録 meta の時刻の並び。 */
-export function spanOf(meta: WaveMeta, window: Window | undefined, duration: number): Span {
+export function spanOf(meta: { t0: number; dt: number }, window: Window | undefined, duration: number): Span {
   const [start, end] = window ?? [0, duration];
   return { t0: meta.t0, dt: meta.dt, start, end };
 }
@@ -82,6 +83,57 @@ function columnsOf(plan: PlanEntry, found: ExperimentStatus, input: string, mode
   return list;
 }
 
+/** 1 組（元のモデル original と列 run）の、掃引の点 k・区画 comp の潜在空間。axes は相平面の軸（無い名前なら V と最初の潜在）。
+ * projected でなければ（区画を置き換えていない）潜在は無く、replaced でなければ（発散した点）置換系を描かない。 */
+function pairOf(
+  ctx: Context,
+  at: { model: string; run: string; k: number; comp: string; id: number; projected: boolean; replaced: boolean },
+  span: Span,
+  axes: { x: string; y: string },
+): PairCompare {
+  const { run, k, id, replaced } = at;
+  const root = RUN.projected(at.comp);
+  const projected = at.projected ? ctx.files.json<WaveMeta>(run, RUN.meta(root)) : undefined;
+  const names = projected ? variablesOf(projected, id).filter(name => name !== 'V') : [];
+  const own = wavesOf(ctx, run);
+  const ownNames = variablesOf(own, id);
+  const latents: Record<string, Line[]> = {};
+  for (const name of names) {
+    latents[name] = [{ label: '原系', points: line(ctx.files, compArray(run, root, projected!, k, id, name), span) }];
+    if (replaced && ownNames.includes(name))
+      latents[name].push({ label: '置換系', points: line(ctx.files, compArray(run, RUN.waves, own, k, id, name), span) });
+  }
+  const choices = ['V', ...names];
+  const chosen = { x: choices.includes(axes.x) ? axes.x : 'V', y: choices.includes(axes.y) ? axes.y : (names[0] ?? 'V') };
+  const phase: Line[] = [];
+  if (projected) {
+    const x = compArray(run, root, projected, k, id, chosen.x);
+    const y = compArray(run, root, projected, k, id, chosen.y);
+    phase.push({ label: '原系（射影）', points: trajectory(ctx.files, x, y, span) });
+    if (replaced && ownNames.includes(chosen.x) && ownNames.includes(chosen.y)) {
+      const ownX = compArray(run, RUN.waves, own, k, id, chosen.x);
+      const ownY = compArray(run, RUN.waves, own, k, id, chosen.y);
+      phase.push({ label: '置換系', points: trajectory(ctx.files, ownX, ownY, span) });
+    }
+  }
+  return { model: at.model, latents, phase, axes: chosen };
+}
+
+/** 元のモデル original の掃引の点 k の、区画 comps の膜電位・内部電流・ゲート。 */
+function wholeOf(ctx: Context, original: string, meta: WaveMeta, k: number, comps: string[], span: Span): WholeWaves {
+  const draw = (label: string, ref: Parameters<typeof line>[1]): Line => ({ label, points: line(ctx.files, ref, span) });
+  const whole: WholeWaves = { voltage: [], internal: [], gates: [] };
+  for (const name of comps) {
+    const id = meta.names?.[name];
+    if (id === undefined) continue;
+    whole.voltage.push(draw(name, compArray(original, RUN.waves, meta, k, id, 'V')));
+    if (meta.nodes?.includes(id)) whole.internal.push(draw(name, internalArray(original, RUN.waves, meta, k, id)));
+    for (const gate of gatesOf(meta, id))
+      whole.gates.push(draw(comps.length > 1 ? `${gate}（${name}）` : gate, compArray(original, RUN.waves, meta, k, id, gate)));
+  }
+  return whole;
+}
+
 /** 入力 1 つを、回し終えたモデルの列と比べた答え。元のモデルをまだ回していなければ投げる。 */
 export function inputs(ctx: Context, request: InputsRequest): InputsReply {
   const all = plans();
@@ -123,6 +175,27 @@ export function inputs(ctx: Context, request: InputsRequest): InputsReply {
     return { current: line(ctx.files, currentArray(original.id, RUN.waves, meta, k), span), voltages, diverged };
   });
   const byModel = <T>(table: Record<string, T>) => Object.fromEntries(columns.map(c => [c.model, table[c.run]]));
+  const pointOf = (k: number) => Math.min(Math.max(0, k), meta.n.length - 1);
+  const paired = request.pair && columns.find(c => c.model === request.pair!.model);
+  if (request.pair && !paired) throw new Error(`${request.input} を ${request.pair.model} でまだ回していない`);
+  const pair =
+    paired && request.pair
+      ? pairOf(
+          ctx,
+          {
+            model: paired.model,
+            run: paired.run,
+            k: pointOf(request.pair.point),
+            comp,
+            id,
+            projected: input.replaceTargets.includes(comp),
+            replaced: !metrics.pairs[paired.run]?.[pointOf(request.pair.point)]?.diverged,
+          },
+          span,
+          request.pair.axes ?? { x: 'V', y: '' },
+        )
+      : null;
+  const whole = request.whole ? wholeOf(ctx, original.id, meta, pointOf(request.whole.point), request.whole.comps, span) : null;
   return {
     input,
     comp,
@@ -130,5 +203,7 @@ export function inputs(ctx: Context, request: InputsRequest): InputsReply {
     points,
     summaries: byModel(metrics.summaries),
     spikes: { original: metrics.trains.original, columns: byModel(metrics.trains.columns) },
+    pair,
+    whole,
   };
 }

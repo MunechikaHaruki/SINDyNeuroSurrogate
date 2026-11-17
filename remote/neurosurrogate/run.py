@@ -40,7 +40,9 @@ JSON の nan は null):
     data       waves/ (点は 1 つ)
     part       part.joblib (圧縮器と右辺)、part.json (状態・潜在・学習区画の名前、
                右辺と圧縮器の中身、学習側の指標)、
-               fit/<comp_id>/{latent,recon_rmse}.f64
+               fit/meta.json (学習データの t0, dt, 長さ n, 学習区画の名前 → id)、
+               fit/<comp_id>/{gates,V,latent,recon_rmse}.f64 (学習データの群の状態と膜電位の写し、
+               潜在、再構成の RMSE)
     model      summary.json (組んだ 1 刻みの演算コスト。学習器の指標は part.json)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
                original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ
@@ -104,7 +106,7 @@ from .surrogate.model import (
 
 # spec の種類ごとの形式の版。段取りが spec に入れる = 形式を変えたらその種類の鍵が変わる
 # (shared/spec.ts の FORMATS と揃える)
-_FORMATS = {"data": 11, "part": 11, "model": 11, "sim": 12, "bench": 11}
+_FORMATS = {"data": 11, "part": 12, "model": 11, "sim": 12, "bench": 11}
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _CLAIM_GRACE = 60.0  # [s] 書きかけを作ってから pid を置くまでの猶予 (これより古く pid の無いものは残骸)
@@ -235,9 +237,22 @@ def _part(root: Path, spec: dict) -> dict:
     save_part(root, part)
     description, fits = describe_group(config, group, part, data)
     _write_json(root / "part.json", description)
+    times = data["time"].to_numpy()
+    net = config.data.net
+    _write_json(
+        root / "fit" / "meta.json",
+        {
+            "t0": float(times[0]),
+            "dt": float(times[1] - times[0]),
+            "n": len(times),
+            "names": {net.nodes[i].name: i for i in fits},
+        },
+    )
     for comp_id, comp_fit in fits.items():
         folder = root / "fit" / str(comp_id)
         folder.mkdir(parents=True)
+        _write_f64(folder / "gates.f64", comp_fit.gates.T)
+        _write_f64(folder / "V.f64", comp_fit.voltage)
         _write_f64(folder / "latent.f64", comp_fit.latent.T)
         _write_f64(folder / "recon_rmse.f64", comp_fit.recon_rmse)
     return {}

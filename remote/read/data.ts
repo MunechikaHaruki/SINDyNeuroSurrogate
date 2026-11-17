@@ -10,7 +10,7 @@ import { compact, histograms, line } from './waves.ts';
 const BINS = 60;
 
 /** 学習データの run の区画 name の変数 1 つ。 */
-export function dataArray(run: string, meta: WaveMeta, name: string, variable: string) {
+function dataArray(run: string, meta: WaveMeta, name: string, variable: string) {
   const id = meta.names?.[name];
   if (id === undefined) throw new Error(`${run} に区画 ${name} が無い`);
   return compArray(run, RUN.waves, meta, 0, id, variable);

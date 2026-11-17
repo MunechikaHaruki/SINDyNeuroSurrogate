@@ -1,142 +1,40 @@
-// モデル（runs/models/<モデル>/）の答え。組んだ学習データと学習器の run と、入力の掃引の 1 点での原系との比べ（膜電位、潜在変数と相平面（原系は列の圧縮器で潜在へ写したもの）、全区画の膜電位・内部電流・ゲート、1 組の指標）。
-import type { Line, ModelCompare, ModelsReply, ModelsRequest } from '../../shared/api.ts';
-import {
-  compArray,
-  currentArray,
-  gatesOf,
-  internalArray,
-  RUN,
-  variablesOf,
-  type ArrayRef,
-  type WaveMeta,
-} from '../../shared/runs.ts';
+// モデル（runs/models/<モデル>/）の答え。モデルの run だけを読む：組み立て（spec の細胞・形・吸収と、組んだ学習器）と、組んだ 1 刻みの演算の回数（summary.json）。
+import type { CostRow, ModelsReply, ModelsRequest } from '../../shared/api.ts';
+import { RUN } from '../../shared/runs.ts';
+import type { Spec } from '../../shared/spec.ts';
+import { specAt } from '../run/places.ts';
 import { experimentStatus } from '../run/status.ts';
 import { type Context, modelOf, planOf, plans } from './experiments.ts';
-import { compOf, inputView, originalOf, spanOf, wavesOf } from './inputs.ts';
-import { line, trajectory, type Span } from './waves.ts';
 
-/** 原系の run original と置換系の run の、掃引の点 k・区画 comp の線。comps は全区画の図に出す区画、axes は相平面の軸（無い名前なら V と最初の潜在）。replaced でなければ（発散した点）置換系を描かない。 */
-function compareLines(
-  ctx: Context,
-  at: { original: string; run: string; k: number; comp: string; replaced: boolean; projected: boolean },
-  span: Span,
-  comps: string[],
-  axes: { x: string; y: string },
-): ModelCompare {
-  const { original, run, k, comp, replaced } = at;
-  const meta = wavesOf(ctx, original);
-  const own = wavesOf(ctx, run);
-  const id = meta.names?.[comp] ?? 0;
-  const draw = (label: string, ref: ArrayRef): Line => ({ label, points: line(ctx.files, ref, span) });
-  const root = RUN.projected(comp);
-  const projected = at.projected ? ctx.files.json<WaveMeta>(run, RUN.meta(root)) : undefined;
-  const names = projected ? variablesOf(projected, id).filter(name => name !== 'V') : [];
-  const ownNames = variablesOf(own, id);
-  const voltage = [draw('原系', compArray(original, RUN.waves, meta, k, id, 'V'))];
-  if (replaced) voltage.push(draw('置換系', compArray(run, RUN.waves, own, k, id, 'V')));
-  const latents: Record<string, Line[]> = {};
-  for (const name of names) {
-    latents[name] = [draw('原系', compArray(run, root, projected!, k, id, name))];
-    if (replaced && ownNames.includes(name))
-      latents[name].push(draw('置換系', compArray(run, RUN.waves, own, k, id, name)));
-  }
-  const choices = ['V', ...names];
-  const chosen = {
-    x: choices.includes(axes.x) ? axes.x : 'V',
-    y: choices.includes(axes.y) ? axes.y : (names[0] ?? 'V'),
-  };
-  const phase: Line[] = [];
-  if (names.length > 0) {
-    const x = compArray(run, root, projected!, k, id, chosen.x);
-    const y = compArray(run, root, projected!, k, id, chosen.y);
-    phase.push({ label: '原系（射影）', points: trajectory(ctx.files, x, y, span) });
-    if (replaced && ownNames.includes(chosen.x) && ownNames.includes(chosen.y))
-      phase.push({
-        label: '置換系',
-        points: trajectory(
-          ctx.files,
-          compArray(run, RUN.waves, own, k, id, chosen.x),
-          compArray(run, RUN.waves, own, k, id, chosen.y),
-          span,
-        ),
-      });
-  }
-  const all: Line[] = [];
-  const internal: Line[] = [];
-  const gates: Line[] = [];
-  for (const name of comps) {
-    const compId = meta.names?.[name];
-    if (compId === undefined) continue;
-    all.push(draw(name, compArray(original, RUN.waves, meta, k, compId, 'V')));
-    if (meta.nodes?.includes(compId)) internal.push(draw(name, internalArray(original, RUN.waves, meta, k, compId)));
-    for (const gate of gatesOf(meta, compId))
-      gates.push(
-        draw(comps.length > 1 ? `${gate}（${name}）` : gate, compArray(original, RUN.waves, meta, k, compId, gate)),
-      );
-  }
-  return {
-    current: [draw('I_ext', currentArray(original, RUN.waves, meta, k))],
-    voltage,
-    latents,
-    phase,
-    axes: chosen,
-    comps: all,
-    internal,
-    gates,
-  };
+/** 演算の並び（summary.json の cost/<側>/<演算>）。 */
+const OPS = ['exp', 'div', 'pm', 'mul'];
+
+/** summary.json の演算の回数を、演算ごとの行にする。 */
+function costRows(summary: Record<string, number>): CostRow[] {
+  return OPS.map(op => ({
+    op,
+    surrogate: summary[`cost/surrogate/${op}`],
+    original: summary[`cost/original/${op}`],
+    diff: summary[`cost/surr-orig/${op}`],
+  }));
 }
 
-/** モデル 1 つと、その入力での比べ。 */
+/** モデル 1 本の組み立てと演算の回数。組み立てはモデルの spec（回す前は送られてきた resolved/ の同じ spec）から読む。 */
 export function models(ctx: Context, request: ModelsRequest): ModelsReply {
-  const all = plans();
-  const plan = planOf(all, request.experiment);
+  const plan = planOf(plans(), request.experiment);
   const model = modelOf(plan, request.model);
-  const found = experimentStatus(ctx.runs, plan.id);
-  const reply: ModelsReply = {
+  const built = experimentStatus(ctx.runs, plan.id).models.find(m => m.model === model.name);
+  if (!built) throw new Error(`${plan.id} のモデル ${model.name} の spec が無い`);
+  const { run } = built;
+  const spec = run.state === 'done' ? ctx.files.json<Spec>(run.id, RUN.spec) : specAt(run.spec);
+  if (spec.kind !== 'model') throw new Error(`${run.id} はモデルの run でない`);
+  return {
     model: model.name,
-    input: null,
-    comp: '',
-    point: 0,
-    compare: null,
-    waiting: '',
+    run: { state: run.state, run: run.id },
+    cell: spec.cell,
+    form: spec.form,
+    absorbed: spec.absorbed ?? [],
+    parts: built.parts.map(p => p.name),
+    cost: run.state === 'done' ? costRows(ctx.files.json<Record<string, number>>(run.id, RUN.summary)) : null,
   };
-  const name = request.input ?? Object.keys(plan.series)[0];
-  if (!name) return { ...reply, waiting: '実験に入力が無い' };
-  const original = originalOf(found, name);
-  const input = inputView(ctx, plan, name, original);
-  if (!input) return { ...reply, waiting: `${name} の元のモデルをまだ回していない` };
-  const comp = compOf(input, request.comp);
-  const point = Math.min(Math.max(0, request.point ?? input.values.length - 1), Math.max(0, input.points.length - 1));
-  const pair = found.pairs.find(p => p.series === name && p.model === model.name);
-  if (pair?.state !== 'done')
-    return {
-      ...reply,
-      input,
-      comp,
-      point,
-      waiting: pair ? `${name} をこのモデルでまだ回していない` : `${name} はこのモデルで回す組に無い`,
-    };
-  const metrics = ctx.metrics({
-    original: original.id,
-    columns: [pair.run.id],
-    comp,
-    delta: all.measures.coincidence_window,
-  });
-  const diverged = metrics.pairs[pair.run.id]?.[point]?.diverged ?? false;
-  const span = spanOf(wavesOf(ctx, original.id), request.window, input.duration);
-  const lines = compareLines(
-    ctx,
-    {
-      original: original.id,
-      run: pair.run.id,
-      k: point,
-      comp,
-      replaced: !diverged,
-      projected: input.replaceTargets.includes(comp),
-    },
-    span,
-    request.comps ?? [],
-    request.axes ?? { x: 'V', y: '' },
-  );
-  return { ...reply, input, comp, point, compare: lines };
 }
