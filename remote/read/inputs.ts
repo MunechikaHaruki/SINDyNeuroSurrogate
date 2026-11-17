@@ -5,7 +5,7 @@ import { compArray, currentArray, gatesOf, internalArray, RUN, variablesOf, type
 import type { ExperimentStatus, PlanEntry, RunStatus } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { type Context, modelOf, planOf, plans, reducedOf, stimulusOf } from './experiments.ts';
-import { line, trajectory, type Span } from './waves.ts';
+import { isFraction, line, trajectory, type Span } from './waves.ts';
 
 /** 元のモデルの run の目録（waves/meta.json）。 */
 export function wavesOf(ctx: Context, run: string): WaveMeta {
@@ -119,17 +119,20 @@ function pairOf(
   return { model: at.model, latents, phase, axes: chosen };
 }
 
-/** 元のモデル original の掃引の点 k の、区画 comps の膜電位・内部電流・ゲート。 */
+/** 元のモデル original の掃引の点 k の、区画 comps の膜電位・内部電流・ゲート（0〜1 の状態）とゲートでない状態。 */
 function wholeOf(ctx: Context, original: string, meta: WaveMeta, k: number, comps: string[], span: Span): WholeWaves {
   const draw = (label: string, ref: Parameters<typeof line>[1]): Line => ({ label, points: line(ctx.files, ref, span) });
-  const whole: WholeWaves = { voltage: [], internal: [], gates: [] };
+  const whole: WholeWaves = { voltage: [], internal: [], gates: [], states: [] };
   for (const name of comps) {
     const id = meta.names?.[name];
     if (id === undefined) continue;
     whole.voltage.push(draw(name, compArray(original, RUN.waves, meta, k, id, 'V')));
     if (meta.nodes?.includes(id)) whole.internal.push(draw(name, internalArray(original, RUN.waves, meta, k, id)));
-    for (const gate of gatesOf(meta, id))
-      whole.gates.push(draw(comps.length > 1 ? `${gate}（${name}）` : gate, compArray(original, RUN.waves, meta, k, id, gate)));
+    for (const gate of gatesOf(meta, id)) {
+      const ref = compArray(original, RUN.waves, meta, k, id, gate);
+      const drawn = draw(comps.length > 1 ? `${gate}（${name}）` : gate, ref);
+      (isFraction(ctx.files.column(ref)) ? whole.gates : whole.states).push(drawn);
+    }
   }
   return whole;
 }

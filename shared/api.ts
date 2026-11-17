@@ -92,8 +92,8 @@ export type InputsRequest = {
 };
 /** 1 組の潜在空間。latents と phase の原系は列の圧縮器で潜在へ写したもの（射影）。比べる区画を置き換えていなければ latents は空。置換系が発散した点では原系だけ。 */
 export type PairCompare = { model: string; latents: Record<string, Line[]>; phase: Line[]; axes: { x: string; y: string } };
-/** 元のモデルの、区画ごとの膜電位・内部電流・ゲート。 */
-export type WholeWaves = { voltage: Line[]; internal: Line[]; gates: Line[] };
+/** 元のモデルの、区画ごとの膜電位・内部電流・ゲート（0〜1 の状態）・ゲートでない状態（Traub の Ca 濃度 XI など）。 */
+export type WholeWaves = { voltage: Line[]; internal: Line[]; gates: Line[]; states: Line[] };
 /** 入力の答え。points は掃引の点ごとの注入電流と、原系と発散していない列の電位（縦軸を揃えられるよう全点）と、発散した列。
  * キーはどれもモデルの名前。summaries は列ごとのまとめ、spikes は掃引の点ごとの発火（原系と列）、pair と whole は頼んだときだけの 1 組と全区画の図。 */
 export type InputsReply = {
@@ -124,7 +124,7 @@ export type ModelsReply = {
 
 /** 学習データの頼み方。data は宣言の名前（実験の data の一覧）、comps は描く区画（省けば刺激した区画）。 */
 export type DataRequest = { experiment: string; data: string; comps?: string[]; window?: Window };
-/** 学習データ 1 本。current は注入電流、voltage は区画ごとの膜電位、coverage は区画ごとの学習が踏んだ電位の分布（x は電位、y は時刻の数）。 */
+/** 学習データ 1 本（run が持つ波形そのもの）。current は注入電流、voltage は区画ごとの膜電位、gates は区画ごとのゲート（0〜1 の状態）、states はゲートでない状態（Traub の Ca 濃度 XI など）、internal は区画ごとの内部電流（区画が 2 つ以上の型だけ。単一区画では注入電流と同じ）。 */
 export type DataReply = {
   run: string;
   stim: string;
@@ -134,7 +134,9 @@ export type DataReply = {
   duration: number;
   current: Line[];
   voltage: Line[];
-  coverage: Line[];
+  gates: Line[];
+  states: Line[];
+  internal: Line[];
 };
 
 /** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）。 */

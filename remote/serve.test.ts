@@ -223,9 +223,9 @@ test('the registry names each run by its place under runs/', async () => {
 test('the training data and learner pages read their runs by declared name', async () => {
   const view = (await post<ExperimentView>('experiment', { experiment: 'e' })).reply;
   const names = { data: view.models[0].data, part: view.models[0].parts[0] };
-  const data = await post<{ coverage: unknown[]; stim: string }>('data', { experiment: 'e', data: names.data, comps: ['soma'] });
+  const data = await post<{ gates: { label: string }[]; stim: string }>('data', { experiment: 'e', data: names.data, comps: ['soma'] });
   expect(data.reply.stim).toBe('soma');
-  expect(data.reply.coverage).toHaveLength(1);
+  expect(data.reply.gates.map(l => l.label)).toEqual(['H']);
   const part = await post<{ pca: { kept: number }; path: unknown[]; gates: unknown[]; data: string }>('parts', { experiment: 'e', part: names.part, comps: ['soma'] });
   expect(part.reply.pca.kept).toBe(1);
   expect(part.reply.gates).toHaveLength(1);

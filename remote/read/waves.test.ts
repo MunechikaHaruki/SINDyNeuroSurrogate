@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { decimate, histogram, histograms, path } from './waves.ts';
+import { decimate, isFraction, path } from './waves.ts';
 
 test('decimation keeps each bucket’s extremes in time order, so a spike survives', () => {
   const values = new Float64Array(1000).fill(-65);
@@ -34,16 +34,7 @@ test('a path keeps time order and fewer than twice max points of the window', ()
   for (let i = 1; i < points.length; i++) expect(points[i].x).toBeGreaterThan(points[i - 1].x);
 });
 
-test('the histogram counts only finite values in range, and puts the top edge in the last bin', () => {
-  expect(histogram(new Float64Array([0, 0.5, 1, 2, NaN, -1]), 0, 2, 2)).toEqual([
-    { center: 0.5, count: 2 },
-    { center: 1.5, count: 2 },
-  ]);
-});
-
-test('histograms share one range across the columns', () => {
-  const [a, b] = histograms([new Float64Array([0, 1]), new Float64Array([2, 3])], 3);
-  expect(a.reduce((n, bin) => n + bin.count, 0)).toBe(2);
-  expect(b[2].count).toBe(2);
-  expect(histograms([new Float64Array([1, 1])], 3)).toEqual([[]]);
+test('a column is a fraction only when every finite value stays in 0 to 1', () => {
+  expect(isFraction(new Float64Array([0, 0.5, 1, NaN]))).toBe(true);
+  expect(isFraction(new Float64Array([0, 130]))).toBe(false);
 });

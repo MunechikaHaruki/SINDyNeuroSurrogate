@@ -1,11 +1,8 @@
-// 波形。run のファイルを読んで覚え（runs/ の外を指すパスは弾き、.f64 は丸ごと読んで古く使ったものから忘れる）、回線に出す形（表示の範囲で間引いた線・相平面の軌跡・分布、表示に要る桁）にする。
+// 波形。run のファイルを読んで覚え（runs/ の外を指すパスは弾き、.f64 は丸ごと読んで古く使ったものから忘れる）、回線に出す形（表示の範囲で間引いた線・相平面の軌跡、表示に要る桁）にする。
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import type { Point } from '../../shared/api.ts';
 import type { ArrayRef } from '../../shared/runs.ts';
-
-/** 分布の 1 区間。 */
-export type Bin = { center: number; count: number };
 
 // ---- run のファイルを読む
 
@@ -178,30 +175,9 @@ export function path(
   return points;
 }
 
-/** [low, high] を bins 個の等しい幅に分けて数える。範囲の外と有限でない値は数えない。 */
-export function histogram(values: Float64Array, low: number, high: number, bins: number): Bin[] {
-  const width = (high - low) / bins;
-  const counts = new Array<number>(bins).fill(0);
-  for (const value of values) {
-    if (!Number.isFinite(value) || value < low || value > high) continue;
-    const index = Math.min(bins - 1, Math.floor((value - low) / width));
-    counts[index] += 1;
-  }
-  const list: Bin[] = [];
-  for (let i = 0; i < bins; i++) list.push({ center: low + (i + 0.5) * width, count: counts[i] });
-  return list;
-}
-
-/** 列ごとの分布。区間は全部の列の有限な値の最小から最大でそろえる。 */
-export function histograms(values: Float64Array[], bins: number): Bin[][] {
-  let low = Infinity;
-  let high = -Infinity;
-  for (const array of values)
-    for (const v of array) {
-      if (!Number.isFinite(v)) continue;
-      low = Math.min(low, v);
-      high = Math.max(high, v);
-    }
-  if (!(low < high)) return values.map(() => []);
-  return values.map(array => histogram(array, low, high, bins));
+/** 1 列の有限な値がどれも 0〜1 に収まるか（ゲートの開いている割合か）。目録の gate の印は Traub の Ca 濃度 XI のような状態にも付くので、ゲートの図に載せるかは値で分ける。 */
+export function isFraction(values: Float64Array): boolean {
+  const slack = 1e-6;
+  for (const v of values) if (Number.isFinite(v) && (v < -slack || v > 1 + slack)) return false;
+  return true;
 }
