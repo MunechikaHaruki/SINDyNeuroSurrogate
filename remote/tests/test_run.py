@@ -90,7 +90,7 @@ def test_runs_round_trip_and_are_not_rerun(runs: Path) -> None:
 
 
 def test_runs_hold_what_the_figures_read(runs: Path) -> None:
-    """図が読むものは全部 run の中にある: 学習データ、学習器の中身 (学習データの写しも)、素の float64 の
+    """図が読むものは全部 run の中にある: 学習データ、学習器の中身、素の float64 の
     波形、置換した comp の射影、学習側の指標。JSON に nan は出さない
     (JS が読めない)。"""
     part = json.loads((runs / "parts/P/part.json").read_text())
@@ -99,13 +99,6 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     assert latent.size == len(part["latents"]) * n_time["n"][0]
     recon = np.fromfile(runs / "parts/P/fit/0/recon_rmse.f64", dtype="<f8")
     assert recon.size == n_time["n"][0]
-    # 学習器のページが学習データの run を読まずに済むよう、学習データの群の状態と膜電位を写す
-    fit = json.loads((runs / "parts/P/fit/meta.json").read_text())
-    assert fit["n"] == n_time["n"][0] and fit["names"] == {"soma": 0}
-    gates = np.fromfile(runs / "parts/P/fit/0/gates.f64", dtype="<f8")
-    assert gates.size == len(part["gates"]) * n_time["n"][0]
-    voltage = np.fromfile(runs / "parts/P/fit/0/V.f64", dtype="<f8")
-    assert voltage.size == n_time["n"][0]
     assert part["comps"] == ["soma"] and (runs / "parts/P/part.joblib").exists()
     kinds = [
         json.loads((runs / p / "meta.json").read_text())["kind"]

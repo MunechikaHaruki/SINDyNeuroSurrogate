@@ -231,9 +231,7 @@ JSON の nan は null):
     data       waves/ (点は 1 つ)
     part       part.joblib (圧縮器と右辺)、part.json (状態・潜在・学習区画の名前、
                右辺と圧縮器の中身、学習側の指標)、
-               fit/meta.json (学習データの t0, dt, 長さ n, 学習区画の名前 → id)、
-               fit/<comp_id>/{gates,V,latent,recon_rmse}.f64 (学習データの群の状態と膜電位の写し、
-               潜在、再構成の RMSE)
+               fit/<comp_id>/{latent,recon_rmse}.f64
     model      summary.json (組んだ 1 刻みの演算コスト。学習器の指標は part.json)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
                original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ

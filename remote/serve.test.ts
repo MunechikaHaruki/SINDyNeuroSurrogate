@@ -6,6 +6,13 @@ import { hashOf } from '../shared/hash.ts';
 import { FORMATS, type Plans, type Spec } from '../shared/spec.ts';
 import type { WaveMeta } from '../shared/runs.ts';
 import type { ExperimentView, Experiments, InputsReply, ModelsReply, RegistryReply } from '../shared/api.ts';
+import { seriesComparison } from './read/comparison.ts';
+import { data } from './read/data.ts';
+import type { Context } from './read/experiments.ts';
+import { inputs } from './read/inputs.ts';
+import { models } from './read/models.ts';
+import { parts } from './read/parts.ts';
+import { runFiles, type RunFiles } from './read/waves.ts';
 import { dirOf } from './run/places.ts';
 import { server } from './serve.ts';
 
@@ -134,8 +141,7 @@ put(PART, 'part', {
     metrics: { nnz: 1 },
   },
 });
-write(join(runs, dirOf(PART), 'fit/meta.json'), JSON.stringify({ t0: 0, dt: DT, n: N, names: { soma: 0 } }));
-for (const file of ['gates', 'V', 'latent', 'recon_rmse'])
+for (const file of ['latent', 'recon_rmse'])
   write(join(runs, dirOf(PART), `fit/0/${file}.f64`), Buffer.from(new Float64Array(N).fill(0.5).buffer));
 const cost = Object.fromEntries(
   ['exp', 'div', 'pm', 'mul'].flatMap(op => [
@@ -241,4 +247,32 @@ test('unknown ops and unknown jobs are refused', async () => {
   expect((await post('json', { run: '..', path: 'etc/passwd.json' })).status).toBe(404);
   expect((await post('launch', { job: { action: 'rm' } })).status).toBe(400);
   expect((await post('experiment', { experiment: 'x' })).status).toBe(400);
+});
+
+/** 開いた run を数える読み口。口ごとに、開いた run の集合を返す。 */
+function recording(): { ctx: Context; opened: Set<string> } {
+  const files = runFiles(runs);
+  const opened = new Set<string>();
+  const note = (run: string) => opened.add(run);
+  const watched: RunFiles = {
+    column: ref => (note(ref.run), files.column(ref)),
+    json: <T>(run: string, file: string): T => (note(run), files.json<T>(run, file)),
+    text: (run, file) => (note(run), files.text(run, file)),
+    dirs: (run, dir) => (note(run), files.dirs(run, dir)),
+  };
+  return { ctx: { runs, files: watched, metrics: seriesComparison(watched) }, opened };
+}
+
+test('each place opens only its own run and the runs its spec points to by hash', async () => {
+  const view = (await post<ExperimentView>('experiment', { experiment: 'e' })).reply;
+  const read = (answer: (ctx: Context) => unknown) => {
+    const { ctx, opened } = recording();
+    answer(ctx);
+    return [...opened].sort();
+  };
+  expect(read(ctx => data(ctx, { experiment: 'e', data: view.models[0].data }))).toEqual([dirOf(DATA)]);
+  expect(read(ctx => parts(ctx, { experiment: 'e', part: view.models[0].parts[0] }))).toEqual([dirOf(DATA), dirOf(PART)].sort());
+  expect(read(ctx => models(ctx, { experiment: 'e', model: 'm' }))).toEqual([dirOf(MODEL)]);
+  const pair = { input: 's', pair: { model: 'm', point: 0 }, whole: { point: 0, comps: ['soma'] } };
+  expect(read(ctx => inputs(ctx, { experiment: 'e', ...pair }))).toEqual([dirOf(ORIGINAL), dirOf(REPLACED)].sort());
 });

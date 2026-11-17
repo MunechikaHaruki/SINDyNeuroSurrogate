@@ -87,9 +87,8 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 data/<ハッシュ>/    waves/                    学習データ (下の waves と同じ形式、点は 1 つ)
 parts/<ハッシュ>/   part.joblib               学習器 (圧縮器と右辺)
                     part.json                 状態・潜在 (群の名前で修飾し学習器の中で z1 から。h+n.z1。どのモデルの波形でも同じ名前)・学習 comp の名前、右辺と圧縮器の中身、学習側の指標 (describe_group)
-                    fit/meta.json             学習データの t0, dt, 長さ n, 学習 comp の名前 → id
-                    fit/<comp_id>/{gates,V,latent,recon_rmse}.f64
-                                              学習 comp ごとの学習データの群の状態と膜電位の写し、潜在 (列ごとに連続) と再構成 RMSE
+                    fit/<comp_id>/{latent,recon_rmse}.f64
+                                              学習 comp ごとの潜在 (列ごとに連続) と再構成 RMSE
 models/<ハッシュ>/  summary.json              surrogate.summary (組んだ 1 刻みの演算コスト。学習器の指標は part.json だけが持つ)
 inputs/<ハッシュ>/  input.json                電流と掃引 (段取りが書く)
                     original/ waves/          下の形式。meta.json に comp 名 → id も入る
@@ -116,7 +115,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - **比べた束 (どの列を並べたか) は残さない。** 図が選び直すたびに描く
 - 形式の版は spec の種類 (data・part・model・sim・bench) ごとに持つ。形式を変えたら、変えた種類の版を `remote/neurosurrogate/run.py` の `_FORMATS` と `shared/spec.ts` の `FORMATS` で上げる (揃っているかは `remote/run/places.test.ts`)。spec に入るので、
   その種類の古い run と、ハッシュでそれを指す後ろの run (学習器を変えればモデル・置換系・GPU の実測) だけが置き場が合わず回し直される。元のモデルの評価や学習データは、変えなければ残る
-- **置き場のページは自分の run だけを読む**: data・parts・models・inputs・bench の口は、その置き場の run だけから答えを組む。ページが要るものは、その置き場の run に書く (学習器は学習データの群の状態と膜電位を写す。原系と置換系の比べは、両方を持つ入力の口が返す)。ほかの run は名前で指すだけ
+- **置き場の口は自分の run と、自分の spec がハッシュで指す run だけを読む**: data・parts・models・inputs・bench の口が開ける run は、その run と spec の欄が指す run (学習器なら学習データ、モデルなら学習器、評価と GPU の実測ならモデルと隣の元のモデル) だけ。原系と置換系の比べは、両方を持つ入力の口が返す。ほかの run は名前で指すだけ (`remote/serve.test.ts` が口ごとの読み先を確かめる)
 - **記録した run を描画が書き換えない**: 図は読むだけ
 - JSON に nan は書かない (null)。JS の JSON が読めないため
 - **書きかけと印**: `<置き場>.partial/` は書きかけで、中の `pid` が書いているプロセス (生きていれば計算中、死んでいれば残骸として次に片付ける。同じ run を二つのプロセスが書かないよう、生きた書き手がいれば run.py は終了コード 4 で退き、段取りは終わるのを待つ)。`<置き場>.unreplaceable` は置換できないと分かったモデルの印 (置換できるかは Python だけが知るので答えを覚える)。`.jobs/<組のハッシュ>.{json,pid,log,exit}` は外の画面が `--job` で起こした段取りの中身・pid・ログ・終了コード (同じ組の二重起動を pid で弾き、終了コードが 0 でないか書かずに消えたものを失敗として返す)
