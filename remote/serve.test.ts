@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { hashOf } from '../shared/hash.ts';
 import { FORMATS, type Plans, type Spec } from '../shared/spec.ts';
 import type { WaveMeta } from '../shared/runs.ts';
-import type { Experiments, ExperimentView, InputsReply, ModelsReply } from '../shared/api.ts';
+import type { ExperimentView, Experiments, InputsReply, ModelsReply, RegistryReply } from '../shared/api.ts';
 import { dirOf } from './run/places.ts';
 import { server } from './serve.ts';
 
@@ -156,7 +156,9 @@ async function post<T>(op: string, body: unknown): Promise<{ status: number; rep
 test('the experiments come in the declared order with their progress and run names', async () => {
   const { reply } = await post<Experiments>('experiments', {});
   expect(reply.groups.map(g => g.name)).toEqual(['g']);
-  expect(reply.groups[0].experiments[0]).toMatchObject({ id: 'e', progress: '結果あり', models: ['m'], inputs: ['s'] });
+  expect(reply.groups[0].experiments[0]).toMatchObject({ id: 'e', progress: '結果あり', runs: { models: ['m'], inputs: ['s'], bench: [] } });
+  expect(reply.groups[0].experiments[0].runs.data).toHaveLength(1);
+  expect(reply.groups[0].experiments[0].runs.parts).toHaveLength(1);
   expect(reply.measures.coincidenceWindow).toBe(2);
 });
 
@@ -164,6 +166,8 @@ test('an experiment gives its setup, the reduced states of each model and the st
   const { reply } = await post<ExperimentView>('experiment', { experiment: 'e' });
   expect(reply.setup.map(r => r.label)).toContain('系列');
   expect(reply.models[0]).toMatchObject({ name: 'm', reduced: 0, build: { state: 'done' } });
+  expect(reply.data.map(d => d.name)).toEqual([reply.models[0].data]);
+  expect(reply.parts.map(p => p.name)).toEqual(reply.models[0].parts);
   expect(reply.pairs[0]).toMatchObject({ input: 's', model: 'm', run: { state: 'done', spec: 'e/sim/s/m.json' } });
   expect(reply.rerun.done).toBe(reply.rerun.total);
 });
@@ -189,6 +193,12 @@ test('a model gives its learners and the comparison at one point, with the origi
   expect(reply.compare?.axes).toEqual({ x: 'V', y: 'h.z1' });
 });
 
+test('the registry names each run by its place under runs/', async () => {
+  const { reply } = await post<RegistryReply>('registry', {});
+  expect(new Set(reply.runs.map(r => r.place))).toEqual(new Set(['data', 'parts', 'models', 'inputs']));
+  expect(reply.runs.every(r => r.id.startsWith(`${r.place}/`))).toBe(true);
+});
+
 test('the data and learner cards read their own runs', async () => {
   const data = await post<{ coverage: unknown[]; stim: string }>('data', { run: dirOf(DATA), comps: ['soma'] });
   expect(data.reply.stim).toBe('soma');
@@ -196,6 +206,9 @@ test('the data and learner cards read their own runs', async () => {
   const part = await post<{ pca: { kept: number }; path: unknown[] }>('parts', { run: dirOf(PART), comps: ['soma'] });
   expect(part.reply.pca.kept).toBe(1);
   expect(part.reply.path).toHaveLength(1);
+  const shown = await post<{ comps: string[]; shown: string[] }>('data', { run: dirOf(DATA) });
+  expect(shown.reply.shown).toEqual(['soma']);
+  expect((await post<{ shown: string[] }>('parts', { run: dirOf(PART) })).reply.shown).toEqual(['soma']);
 });
 
 test('unknown ops and unknown jobs are refused', async () => {

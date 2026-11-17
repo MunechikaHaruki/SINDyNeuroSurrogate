@@ -17,15 +17,17 @@ export type Window = [number, number];
 
 /** 実験の進み具合。置換できない組は済んだものとして数え、回す run が無ければ未着手。 */
 export type Progress = '結果あり' | '計算中' | '途中' | '未着手';
-/** 目次の実験 1 つ。models・inputs・benches は実験の run の名前（宣言の順）。 */
+/** run の置き場（runs/ の直下）の名前。目次も画面の URL もこの名前で run を分ける。 */
+export type RunKind = 'data' | 'parts' | 'models' | 'inputs' | 'bench';
+/** 目次の実験 1 つ。runs は置き場ごとの、実験の run の名前（宣言の順。data・parts は使うモデルの宣言の順）。 */
 export type ExperimentEntry = {
   id: string;
   description: string;
   progress: Progress;
-  models: string[];
-  inputs: string[];
-  benches: string[];
+  runs: Record<RunKind, string[]>;
 };
+/** 名前で引く run 1 本。run は runs/ の下の置き場（data/<id> など）、state はその状態。 */
+export type NamedRun = { name: string; run: string; state: State };
 /** 実験の目次。実験群と実験は宣言の順。running は回っている run の数、runs は完成した run の数（増えたら図を読み直す）。measures は比べ方の物差し。 */
 export type Experiments = {
   groups: { name: string; description: string; experiments: ExperimentEntry[] }[];
@@ -49,7 +51,9 @@ export type ExperimentView = {
   groupings: string[];
   methods: string[];
   inputs: string[];
-  models: { name: string; method: string; grouping: string; reduced: number; build: Runnable }[];
+  models: { name: string; method: string; grouping: string; reduced: number; build: Runnable; data: string; parts: string[] }[];
+  data: NamedRun[];
+  parts: NamedRun[];
   pairs: { input: string; model: string; run: Runnable }[];
   benches: { name: string; run: Runnable }[];
 };
@@ -147,25 +151,31 @@ export type ModelsReply = {
   waiting: string;
 };
 
-/** 学習データのカードの頼み方。comps は描く区画。 */
-export type DataRequest = { run: string; comps: string[]; window?: Window };
+/** 学習データの頼み方。comps は描く区画（省けば刺激した区画）。 */
+export type DataRequest = { run: string; comps?: string[]; window?: Window };
 /** 学習データ 1 本。current は注入電流、voltage は区画ごとの膜電位、coverage は区画ごとの学習が踏んだ電位の分布（x は電位、y は時刻の数）。 */
 export type DataReply = {
   run: string;
   stim: string;
+  /** run が持つ区画と、描いた区画。 */
+  comps: string[];
+  shown: string[];
   duration: number;
   current: Line[];
   voltage: Line[];
   coverage: Line[];
 };
 
-/** 学習器のカードの頼み方。comps は線を描く区画（学習データの上で）。 */
-export type PartsRequest = { run: string; comps: string[]; window?: Window };
+/** 学習器の頼み方。comps は線を描く区画（学習データの上で。省けば学習した最初の区画）。 */
+export type PartsRequest = { run: string; comps?: string[]; window?: Window };
 /** 学習器 1 本。label は群の名前（h+n）、gates は最初の区画の学習ゲート、recon は区画ごとの再構成誤差、path は区画ごとの潜在の軌跡（軸は axes）。
  * pca は寄与率（捨てた成分も）と保持した数、sindy は閉包項の係数（targets × features）。 */
 export type PartsReply = {
   run: string;
   label: string;
+  /** 学習した区画と、描いた区画。 */
+  comps: string[];
+  shown: string[];
   latents: string[];
   compressor: string;
   closure: string;
@@ -196,8 +206,8 @@ export type BenchReply = {
   tools: Record<string, string>;
 };
 
-/** run の一覧の 1 行。name は宣言から引いた名前（どの実験にも当たらなければ null、そのときは回したときの名前 given）。 */
-export type RegistryRun = { id: string; kind: string; name: string | null; given: string; created: string };
+/** run の一覧の 1 行。place は置き場（id の先頭）、name は宣言から引いた名前（どの実験にも当たらなければ null、そのときは回したときの名前 given）。 */
+export type RegistryRun = { id: string; place: RunKind; name: string | null; given: string; created: string };
 /** run の一覧（新しい順）と、外の画面から起こした仕事。 */
 export type RegistryReply = { runs: RegistryRun[]; jobs: JobState[] };
 

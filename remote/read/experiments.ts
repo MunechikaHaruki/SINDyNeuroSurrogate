@@ -2,8 +2,8 @@
 // 宣言そのものは読まない（手元の local/ は import しない）。読むのは手元が書いて送った plans.json と resolved/ の spec と runs だけ。
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Experiments, ExperimentView, Progress, RegistryReply, SetupRow } from '../../shared/api.ts';
-import type { ExperimentStatus, IndexEntry, PlanEntry, PlanModel, Plans, State } from '../../shared/spec.ts';
+import type { Experiments, ExperimentView, NamedRun, Progress, RegistryReply, RunKind, SetupRow } from '../../shared/api.ts';
+import type { ExperimentStatus, IndexEntry, PlanEntry, PlanModel, Plans, RunStatus, State } from '../../shared/spec.ts';
 import { jobs } from '../run-spec.ts';
 import { resolvedDir, scan } from '../run/places.ts';
 import { experimentStatus } from '../run/status.ts';
@@ -79,9 +79,13 @@ export function experiments(runs: string): Experiments {
           id: plan.id,
           description: plan.description,
           progress: progressOf(plan, found),
-          models: plan.models.map(m => m.name),
-          inputs: Object.keys(plan.series),
-          benches: plan.benches.map(b => b.name),
+          runs: {
+            data: learnedOf(plan, found).data.map(r => r.name),
+            parts: learnedOf(plan, found).parts.map(r => r.name),
+            models: plan.models.map(m => m.name),
+            inputs: Object.keys(plan.series),
+            bench: plan.benches.map(b => b.name),
+          },
         };
       }),
   }));
@@ -157,6 +161,20 @@ export function rerunCost(found: ExperimentStatus, index: IndexEntry[]): Experim
 }
 
 /** 実験 1 つの設定と、回す組の状態。並びは宣言の順。 */
+/** 実験のモデルが使う学習データと学習器（モデルの宣言の順に、重ねずに）。 */
+function learnedOf(plan: PlanEntry, found: ExperimentStatus): { data: NamedRun[]; parts: NamedRun[] } {
+  const data: NamedRun[] = [];
+  const parts: NamedRun[] = [];
+  const named = (r: RunStatus): NamedRun => ({ name: r.name, run: r.id, state: r.state });
+  for (const m of plan.models) {
+    const built = found.models.find(f => f.model === m.name);
+    if (!built) continue;
+    if (!data.some(d => d.name === built.data.name)) data.push(named(built.data));
+    for (const p of built.parts) if (!parts.some(q => q.name === p.name)) parts.push(named(p));
+  }
+  return { data, parts };
+}
+
 export function experiment(runs: string, id: string): ExperimentView {
   const all = plans();
   const plan = planOf(all, id);
@@ -183,8 +201,11 @@ export function experiment(runs: string, id: string): ExperimentView {
         grouping: m.grouping,
         reduced: reducedOf(m),
         build: { state: built.state, spec: built.run.spec },
+        data: built.data.name,
+        parts: built.parts.map(p => p.name),
       };
     }),
+    ...learnedOf(plan, found),
     pairs,
     benches: plan.benches.map(b => {
       const run = found.benches.find(f => f.bench === b.name)!;
@@ -210,7 +231,7 @@ export function registry(runs: string): RegistryReply {
   return {
     runs: scan(runs).map(r => ({
       id: r.id,
-      kind: r.kind,
+      place: r.id.split('/')[0] as RunKind,
       name: names[r.id] ?? null,
       given: r.name,
       created: r.created,

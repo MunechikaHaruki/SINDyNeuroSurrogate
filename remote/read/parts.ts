@@ -16,10 +16,11 @@ export function pathAxes(part: PartJson): PartsReply['axes'] {
 
 /** 学習器 1 本の、区画 comps の線と中身。 */
 export function parts(ctx: Context, request: PartsRequest): PartsReply {
-  const { run, comps } = request;
+  const { run } = request;
   const spec = ctx.files.json<Spec>(run, RUN.spec);
   if (spec.kind !== 'part') throw new Error(`${run} は学習器の run でない`);
   const part = ctx.files.json<PartJson>(run, RUN.part);
+  const comps = request.comps ?? part.comps.slice(0, 1);
   const data = `data/${spec.data}`;
   const meta = wavesOf(ctx, data);
   const duration = meta.n[0] * meta.dt;
@@ -36,6 +37,8 @@ export function parts(ctx: Context, request: PartsRequest): PartsReply {
   return {
     run,
     label: part.gates.map(gate => gate.toLowerCase()).join('+'),
+    comps: part.comps,
+    shown: comps,
     latents: part.latents,
     compressor: part.preprocessor.kind,
     closure: part.closure.kind,

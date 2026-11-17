@@ -18,10 +18,13 @@ export function dataArray(run: string, meta: WaveMeta, name: string, variable: s
 
 /** 学習データ 1 本の、区画 comps の線と分布。 */
 export function data(ctx: Context, request: DataRequest): DataReply {
-  const { run, comps } = request;
+  const { run } = request;
   const spec = ctx.files.json<Spec>(run, RUN.spec);
   if (spec.kind !== 'data') throw new Error(`${run} は学習データの run でない`);
   const meta = wavesOf(ctx, run);
+  const stim = spec.data.stim ?? 'soma';
+  const all = meta.names ? Object.keys(meta.names) : [stim];
+  const comps = request.comps ?? [all.includes(stim) ? stim : all[0]];
   const duration = meta.n[0] * meta.dt;
   const span = spanOf(meta, request.window, duration);
   const voltages = comps.map(name => ctx.files.column(dataArray(run, meta, name, 'V')));
@@ -31,7 +34,9 @@ export function data(ctx: Context, request: DataRequest): DataReply {
   }));
   return {
     run,
-    stim: spec.data.stim ?? 'soma',
+    stim,
+    comps: all,
+    shown: comps,
     duration,
     current: [{ label: 'I_ext', points: line(ctx.files, currentArray(run, RUN.waves, meta, 0), span) }],
     voltage: comps.map(name => ({ label: name, points: line(ctx.files, dataArray(run, meta, name, 'V'), span) })),
