@@ -1,4 +1,4 @@
-// 行きの JSON（resolved/ の spec.json）の形と、計算する機械が返す run の一覧と状態の形。手元（../local/）と計算する機械（../remote/）が受け渡すのはこの形と隣の api.ts・runs.ts だけ。
+// 行きの JSON（resolved/ の spec.json と、宣言の写し plans.json）の形と、計算する機械が返す run の一覧と状態の形。手元（../local/）と計算する機械（../remote/）が受け渡すのはこの形と隣の api.ts・runs.ts だけ。
 // node や bun に依存しない（ブラウザで動く画面も import する）。
 
 /** 1 回のシミュレーションの仕様（Python の SimSpec）。 */
@@ -104,6 +104,35 @@ export type Spec =
       ncu: boolean;
     };
 
+/** 宣言の系列 1 つ。入力と、置き換える区画。 */
+export type PlanSeries = Input & { replace_targets: string[] };
+/** 宣言のモデル 1 つ。name は `<仕方>.<群分け>`、method と grouping はその仕方と群分けの名前。 */
+export type PlanModel = { name: string; method: string; grouping: string; config: SurrogateConfig };
+/** 宣言の GPU の実測 1 つ。model が null なら元のモデル。 */
+export type PlanBench = { name: string; model: string | null; series: string; cells: number[]; ncu: boolean };
+/** 宣言の実験 1 つ。groupings と methods は画面が絞り込みに使う名前、gates は群分けを全部回すときの、群分けを組むゲート。 */
+export type PlanEntry = {
+  id: string;
+  group: string;
+  description: string;
+  groupings: string[];
+  methods: string[];
+  gates?: string[];
+  models: PlanModel[];
+  series: Record<string, PlanSeries>;
+  pairs: { model: string; series: string }[];
+  benches: PlanBench[];
+};
+/**
+ * 宣言の写し（resolved/plans.json）。手元が宣言から書き、計算する機械が実験の画面の答え（設定、目次、並びの順）を組むのに読む。run の同一性には入らない。
+ * groups と experiments は宣言の順、measures は比べ方の物差し（Γ の許容幅 Δ [ms]）。
+ */
+export type Plans = {
+  groups: { name: string; description: string }[];
+  experiments: PlanEntry[];
+  measures: { coincidence_window: number };
+};
+
 /** 回した環境（run.py が meta.json に書く。同一性に入らない）。code と image は段取りが渡した版。 */
 export type RunEnv = {
   backend: string;
@@ -137,7 +166,7 @@ export type JobState = { job: Job; started: string; state: 'running' | 'done' | 
 
 /** resolved/ の spec 1 つの名前・場所・状態。id は runs/ の下のパスで、図はここを読む。spec は回す resolved/ の下のパス。 */
 export type RunStatus = { name: string; id: string; spec: string; state: State };
-/** 実験（resolved/ の下のディレクトリ）1 つの状態。モデル（とその学習器と学習データ）、系列の元のモデル、組（系列 × モデルの置換系）を名前の順に並べる（宣言の順は手元が持つ）。state は起こした仕事も見た状態。 */
+/** 実験（resolved/ の下のディレクトリ）1 つの状態。モデル（とその学習器と学習データ）、系列の元のモデル、組（系列 × モデルの置換系）を名前の順に並べる（宣言の順は API の答えが宣言の写しで並べる）。state は起こした仕事も見た状態。 */
 export type ExperimentStatus = {
   name: string;
   /** モデルごとの組み立ての run と、組んだ学習器（群の順）と、学習器が学習した学習データ。state は学習器と学習データも見た状態。 */

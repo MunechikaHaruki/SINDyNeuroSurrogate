@@ -1,6 +1,11 @@
-// GPU の実測の集計。run の <細胞の数>/ に置いたツールごとの出力（bench.py が測ったもの、JAX の memory_stats、nvidia-smi と ncu の CSV）を読み、細胞の数ごとの 1 行（BenchRow）に集める。
+// GPU の実測（runs/bench/<実測>/）の答えと集計。run の <細胞の数>/ に置いたツールごとの出力（bench.py が測ったもの、JAX の memory_stats、nvidia-smi と ncu の CSV）を読み、細胞の数ごとの 1 行（BenchRow）に集める。
 // run は生の出力だけを持ち、ここが頼まれるたびに計算する。ncu の区画ごとのカーネルの合わせ方（量は和、レジスタは最大、当たり率は global の読み書きの量で重み付け）もここが持つ。
+import type { BenchReply, BenchRequest } from '../../shared/api.ts';
 import { BENCH, type BenchOwn, type BenchRow } from '../../shared/runs.ts';
+import type { RunEnv } from '../../shared/spec.ts';
+import { specAt } from '../run/places.ts';
+import { experimentStatus } from '../run/status.ts';
+import { type Context, planOf, plans } from './experiments.ts';
 import type { RunFiles } from './waves.ts';
 
 /** ncu の指標の名前 → 行の欄。 */
@@ -155,4 +160,42 @@ export function benchRows(files: RunFiles, run: string): BenchRow[] {
     );
   }
   return rows;
+}
+
+/** 細胞の数ごとのファイルの名前 → それを書いたツール。 */
+const TOOLS: Record<string, string> = {
+  [BENCH.own]: 'bench.py',
+  [BENCH.jaxPlaced]: 'JAX',
+  [BENCH.jaxAfter]: 'JAX',
+  [BENCH.smiApps]: 'nvidia-smi',
+  [BENCH.smiGpu]: 'nvidia-smi',
+  [BENCH.ncu]: 'ncu',
+};
+
+/** GPU の実測 1 本。まだ回していなければ行は空。files なら細胞の数ごとのツールの出力そのものも返す。 */
+export function bench(ctx: Context, request: BenchRequest): BenchReply {
+  const plan = planOf(plans(), request.experiment);
+  const declared = plan.benches.find(b => b.name === request.bench);
+  if (!declared) throw new Error(`${plan.id} に GPU の実測 ${request.bench} が無い`);
+  const found = experimentStatus(ctx.runs, plan.id).benches.find(b => b.bench === declared.name)!;
+  const done = found.state === 'done';
+  const spec = specAt(found.run.spec);
+  const meta = done ? ctx.files.json<{ env: RunEnv; created: string }>(found.run.id, 'meta.json') : null;
+  const reply: BenchReply = {
+    name: declared.name,
+    input: declared.series,
+    model: declared.model === 'original' ? null : declared.model,
+    cells: declared.cells,
+    ncu: declared.ncu,
+    dt: spec.kind === 'bench' ? spec.input.spec.dt : 0.01,
+    run: { state: found.state, spec: found.run.spec, run: found.run.id },
+    machine: meta && { device: meta.env.device, host: meta.env.host, created: meta.created },
+    rows: done ? benchRows(ctx.files, found.run.id) : [],
+    tools: TOOLS,
+  };
+  if (!request.files || !done) return reply;
+  const files: Record<number, Record<string, string | null>> = {};
+  for (const cells of declared.cells)
+    files[cells] = Object.fromEntries(Object.keys(TOOLS).map(file => [file, ctx.files.text(found.run.id, BENCH.at(cells, file))]));
+  return { ...reply, files };
 }

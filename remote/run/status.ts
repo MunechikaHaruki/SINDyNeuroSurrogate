@@ -1,4 +1,4 @@
-// 実験の状態。resolved/ の実験ごとに、モデル（とその学習器・学習データ）・系列と組・GPU の実測の置き場と状態を組み、画面から起こした仕事と合わせて返す。並びは名前の順で、宣言の順は手元が持つ。
+// 実験の状態。resolved/ の実験ごとに、モデル（とその学習器・学習データ）・系列と組・GPU の実測の置き場と状態を組み、画面から起こした仕事と合わせて返す。並びは名前の順で、宣言の順は答えを組む側（../read/）が宣言の写しで並べる。
 import { join } from 'node:path';
 import type { ExperimentStatus, RunStatus, State, Status } from '../../shared/spec.ts';
 import { jobRunning, jobs } from '../run-spec.ts';
@@ -52,7 +52,7 @@ function modelState(runs: string, run: RunStatus, pointed: RunStatus[]): State {
 }
 
 /** resolved/<実験>/ の spec の、置き場と状態。モデルは models/（指す学習器は parts/、学習データは data/）、系列は sim/<系列>/ の original とモデルの名前、GPU の実測は bench/。並びは名前の順で、宣言の順は使う側が持つ。 */
-function experimentStatus(runs: string, name: string): ExperimentStatus {
+export function experimentStatus(runs: string, name: string): ExperimentStatus {
   const root = join(resolvedDir(), name);
   const result: ExperimentStatus = { name, models: [], series: [], pairs: [], benches: [] };
   const parts = byHash(runs, name, 'parts');

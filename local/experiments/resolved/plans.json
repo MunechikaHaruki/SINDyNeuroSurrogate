@@ -1,0 +1,4363 @@
+{
+  "groups": [
+    {
+      "name": "1comp",
+      "description": "単一区画の Traub で、群分けと縮約の仕方を比べる実験群"
+    },
+    {
+      "name": "19comp",
+      "description": "単一区画で学習した縮約を Traub の 19 区画に当てる実験群"
+    },
+    {
+      "name": "gpu",
+      "description": "元のモデルと縮約を GPU に並べ、VRAM とレジスタを測る実験群"
+    },
+    {
+      "name": "neuro2026",
+      "description": "NEURO2026 で発表した形を今の研究コードで回し直す決め打ちの実験"
+    }
+  ],
+  "experiments": [
+    {
+      "id": "all-groupings-1comp",
+      "description": "ゲート h, n, a, c の全部の群分けを KAM・PCA・AE で縮約し、定常電流の掃引で元のモデルの発火をどこまで再現するかを比べる。物差しは coincidence factor Γ（±Δ 以内で一致した発火の数を、偶然の一致を引いて正規化したもの。[Kistler et al. 1997](https://doi.org/10.1152/jn.1997.77.5.2390)）。",
+      "groupings": [
+        "a+c",
+        "h+a",
+        "h+c",
+        "h+n",
+        "n+a",
+        "n+c",
+        "h+a_n+c",
+        "h+a+c",
+        "h+c_n+a",
+        "h+n_a+c",
+        "h+n+a",
+        "h+n+c",
+        "n+a+c",
+        "h+n+a+c"
+      ],
+      "methods": [
+        "kam",
+        "kam-absorb-m",
+        "pca-sindy",
+        "ae-sindy"
+      ],
+      "models": [
+        {
+          "name": "kam.a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "a+c"
+        },
+        {
+          "name": "kam.h+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+a"
+        },
+        {
+          "name": "kam.h+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+c"
+        },
+        {
+          "name": "kam.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+n"
+        },
+        {
+          "name": "kam.n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "n+a"
+        },
+        {
+          "name": "kam.n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "n+c"
+        },
+        {
+          "name": "kam.h+a_n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              },
+              {
+                "gates": [
+                  "N",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+a_n+c"
+        },
+        {
+          "name": "kam.h+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+a+c"
+        },
+        {
+          "name": "kam.h+c_n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              },
+              {
+                "gates": [
+                  "N",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+c_n+a"
+        },
+        {
+          "name": "kam.h+n_a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              },
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+n_a+c"
+        },
+        {
+          "name": "kam.h+n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+n+a"
+        },
+        {
+          "name": "kam.h+n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+n+c"
+        },
+        {
+          "name": "kam.n+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "n+a+c"
+        },
+        {
+          "name": "kam.h+n+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+n+a+c"
+        },
+        {
+          "name": "kam-absorb-m.a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "a+c"
+        },
+        {
+          "name": "kam-absorb-m.h+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+a"
+        },
+        {
+          "name": "kam-absorb-m.h+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+c"
+        },
+        {
+          "name": "kam-absorb-m.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+n"
+        },
+        {
+          "name": "kam-absorb-m.n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "n+a"
+        },
+        {
+          "name": "kam-absorb-m.n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "n+c"
+        },
+        {
+          "name": "kam-absorb-m.h+a_n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              },
+              {
+                "gates": [
+                  "N",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+a_n+c"
+        },
+        {
+          "name": "kam-absorb-m.h+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+a+c"
+        },
+        {
+          "name": "kam-absorb-m.h+c_n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              },
+              {
+                "gates": [
+                  "N",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+c_n+a"
+        },
+        {
+          "name": "kam-absorb-m.h+n_a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              },
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+n_a+c"
+        },
+        {
+          "name": "kam-absorb-m.h+n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "A"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+n+a"
+        },
+        {
+          "name": "kam-absorb-m.h+n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+n+c"
+        },
+        {
+          "name": "kam-absorb-m.n+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "n+a+c"
+        },
+        {
+          "name": "kam-absorb-m.h+n+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null,
+            "absorbed": [
+              "M"
+            ]
+          },
+          "method": "kam-absorb-m",
+          "grouping": "h+n+a+c"
+        },
+        {
+          "name": "pca-sindy.a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "a+c"
+        },
+        {
+          "name": "pca-sindy.h+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+a"
+        },
+        {
+          "name": "pca-sindy.h+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+c"
+        },
+        {
+          "name": "pca-sindy.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+n"
+        },
+        {
+          "name": "pca-sindy.n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "A"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "n+a"
+        },
+        {
+          "name": "pca-sindy.n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "n+c"
+        },
+        {
+          "name": "pca-sindy.h+a_n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              },
+              {
+                "gates": [
+                  "N",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+a_n+c"
+        },
+        {
+          "name": "pca-sindy.h+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+a+c"
+        },
+        {
+          "name": "pca-sindy.h+c_n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              },
+              {
+                "gates": [
+                  "N",
+                  "A"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+c_n+a"
+        },
+        {
+          "name": "pca-sindy.h+n_a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              },
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+n_a+c"
+        },
+        {
+          "name": "pca-sindy.h+n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "A"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+n+a"
+        },
+        {
+          "name": "pca-sindy.h+n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+n+c"
+        },
+        {
+          "name": "pca-sindy.n+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "A",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "n+a+c"
+        },
+        {
+          "name": "pca-sindy.h+n+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "A",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+n+a+c"
+        },
+        {
+          "name": "ae-sindy.a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "a+c"
+        },
+        {
+          "name": "ae-sindy.h+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+a"
+        },
+        {
+          "name": "ae-sindy.h+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+c"
+        },
+        {
+          "name": "ae-sindy.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+n"
+        },
+        {
+          "name": "ae-sindy.n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "A"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "n+a"
+        },
+        {
+          "name": "ae-sindy.n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "n+c"
+        },
+        {
+          "name": "ae-sindy.h+a_n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              },
+              {
+                "gates": [
+                  "N",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+a_n+c"
+        },
+        {
+          "name": "ae-sindy.h+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "A",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+a+c"
+        },
+        {
+          "name": "ae-sindy.h+c_n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              },
+              {
+                "gates": [
+                  "N",
+                  "A"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+c_n+a"
+        },
+        {
+          "name": "ae-sindy.h+n_a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              },
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+n_a+c"
+        },
+        {
+          "name": "ae-sindy.h+n+a",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "A"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+n+a"
+        },
+        {
+          "name": "ae-sindy.h+n+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+n+c"
+        },
+        {
+          "name": "ae-sindy.n+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "N",
+                  "A",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "n+a+c"
+        },
+        {
+          "name": "ae-sindy.h+n+a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N",
+                  "A",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+n+a+c"
+        }
+      ],
+      "series": {
+        "traub-1comp-steady": {
+          "spec": {
+            "target": "traub",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 300
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "model": "kam.a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+n",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+a_n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+c_n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+n_a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.n+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+n+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+n",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+a_n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+c_n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+n_a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.n+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam-absorb-m.h+n+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+a_n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+c_n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+n_a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.n+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+n+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+n",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+a_n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+c_n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+n_a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+n+a",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+n+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.n+a+c",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+n+a+c",
+          "series": "traub-1comp-steady"
+        }
+      ],
+      "benches": [],
+      "gates": [
+        "h",
+        "n",
+        "a",
+        "c"
+      ],
+      "group": "1comp"
+    },
+    {
+      "id": "fluctuating-input-1comp",
+      "description": "h+n をまとめた KAM・PCA・AE が、定常電流の外の入力（Kistler 1997 の揺らぐ電流）でも元のモデルの発火を再現するかを、定常電流と同じ物差しで比べる。",
+      "groupings": [
+        "h+n"
+      ],
+      "methods": [
+        "kam",
+        "pca-sindy",
+        "ae-sindy"
+      ],
+      "models": [
+        {
+          "name": "kam.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+n"
+        },
+        {
+          "name": "pca-sindy.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+n"
+        },
+        {
+          "name": "ae-sindy.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+n"
+        }
+      ],
+      "series": {
+        "traub-1comp-steady": {
+          "spec": {
+            "target": "traub",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 300
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ]
+        },
+        "traub-1comp-kistler": {
+          "spec": {
+            "target": "traub",
+            "current_type": "random&kistler",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 2000,
+              "mean": 0,
+              "seed": 0
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "sigma",
+          "values": [
+            10,
+            15,
+            20,
+            30
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "model": "kam.h+n",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+n",
+          "series": "traub-1comp-kistler"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-1comp-kistler"
+        },
+        {
+          "model": "ae-sindy.h+n",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "ae-sindy.h+n",
+          "series": "traub-1comp-kistler"
+        }
+      ],
+      "benches": [],
+      "group": "1comp"
+    },
+    {
+      "id": "test-1comp",
+      "description": "テスト用。形式やコードを変えたらまず回す。KAM・PCA・AE を短い学習データで 2 つの学習器を持つ h+n_a+c に縮約し、短い定常電流の 2 点で回す。",
+      "groupings": [
+        "h+n_a+c"
+      ],
+      "methods": [
+        "kam-test",
+        "pca-sindy-test",
+        "ae-sindy-test"
+      ],
+      "models": [
+        {
+          "name": "kam-test.h+n_a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 1000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              },
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam-test",
+          "grouping": "h+n_a+c"
+        },
+        {
+          "name": "pca-sindy-test.h+n_a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 1000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              },
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy-test",
+          "grouping": "h+n_a+c"
+        },
+        {
+          "name": "ae-sindy-test.h+n_a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 1000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              },
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy-test",
+          "grouping": "h+n_a+c"
+        }
+      ],
+      "series": {
+        "traub-1comp-steady-test": {
+          "spec": {
+            "target": "traub",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 100
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            10
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "model": "kam-test.h+n_a+c",
+          "series": "traub-1comp-steady-test"
+        },
+        {
+          "model": "pca-sindy-test.h+n_a+c",
+          "series": "traub-1comp-steady-test"
+        },
+        {
+          "model": "ae-sindy-test.h+n_a+c",
+          "series": "traub-1comp-steady-test"
+        }
+      ],
+      "benches": [],
+      "group": "1comp"
+    },
+    {
+      "id": "transfer-to-19comp",
+      "description": "h+n と a+c をまとめた縮約（単一区画で学習）を Traub の 19 区画に当て、soma だけを置き換えるときと、Na と DR を持つ 5 区画を置き換えるときで、元のモデルの発火をどこまで再現するかを見る。",
+      "groupings": [
+        "h+n",
+        "a+c"
+      ],
+      "methods": [
+        "kam",
+        "pca-sindy",
+        "ae-sindy"
+      ],
+      "models": [
+        {
+          "name": "kam.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+n"
+        },
+        {
+          "name": "kam.a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "a+c"
+        },
+        {
+          "name": "pca-sindy.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+n"
+        },
+        {
+          "name": "pca-sindy.a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "a+c"
+        },
+        {
+          "name": "ae-sindy.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "h+n"
+        },
+        {
+          "name": "ae-sindy.a+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "A",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy",
+          "grouping": "a+c"
+        }
+      ],
+      "series": {
+        "traub-19comp-steady-replace-soma": {
+          "spec": {
+            "target": "traub19",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 300
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ]
+        },
+        "traub-19comp-steady-replace-na-dr": {
+          "spec": {
+            "target": "traub19",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 300
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "c05",
+            "c07",
+            "soma",
+            "c09",
+            "c11"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "model": "kam.h+n",
+          "series": "traub-19comp-steady-replace-soma"
+        },
+        {
+          "model": "kam.h+n",
+          "series": "traub-19comp-steady-replace-na-dr"
+        },
+        {
+          "model": "kam.a+c",
+          "series": "traub-19comp-steady-replace-soma"
+        },
+        {
+          "model": "kam.a+c",
+          "series": "traub-19comp-steady-replace-na-dr"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-19comp-steady-replace-soma"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-19comp-steady-replace-na-dr"
+        },
+        {
+          "model": "pca-sindy.a+c",
+          "series": "traub-19comp-steady-replace-soma"
+        },
+        {
+          "model": "pca-sindy.a+c",
+          "series": "traub-19comp-steady-replace-na-dr"
+        },
+        {
+          "model": "ae-sindy.h+n",
+          "series": "traub-19comp-steady-replace-soma"
+        },
+        {
+          "model": "ae-sindy.h+n",
+          "series": "traub-19comp-steady-replace-na-dr"
+        },
+        {
+          "model": "ae-sindy.a+c",
+          "series": "traub-19comp-steady-replace-soma"
+        },
+        {
+          "model": "ae-sindy.a+c",
+          "series": "traub-19comp-steady-replace-na-dr"
+        }
+      ],
+      "benches": [],
+      "group": "19comp"
+    },
+    {
+      "id": "test-19comp",
+      "description": "テスト用。形式やコードを変えたらまず回す。h+n の KAM・PCA・AE を短い学習データで学習し、19 区画の soma を置き換えて短い定常電流の 2 点で回す。",
+      "groupings": [
+        "h+n"
+      ],
+      "methods": [
+        "kam-test",
+        "pca-sindy-test",
+        "ae-sindy-test"
+      ],
+      "models": [
+        {
+          "name": "kam-test.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 1000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam-test",
+          "grouping": "h+n"
+        },
+        {
+          "name": "pca-sindy-test.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 1000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy-test",
+          "grouping": "h+n"
+        },
+        {
+          "name": "ae-sindy-test.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 1000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "ae",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "ae-sindy-test",
+          "grouping": "h+n"
+        }
+      ],
+      "series": {
+        "traub-19comp-steady-replace-soma-test": {
+          "spec": {
+            "target": "traub19",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 100
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            10
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "model": "kam-test.h+n",
+          "series": "traub-19comp-steady-replace-soma-test"
+        },
+        {
+          "model": "pca-sindy-test.h+n",
+          "series": "traub-19comp-steady-replace-soma-test"
+        },
+        {
+          "model": "ae-sindy-test.h+n",
+          "series": "traub-19comp-steady-replace-soma-test"
+        }
+      ],
+      "benches": [],
+      "group": "19comp"
+    },
+    {
+      "id": "gpu-memory",
+      "description": "単一区画と 19 区画の Traub を、元のモデル・h+n の KAM・h+n の PCA と SINDy のサロゲート（19 区画では soma だけ、または Na と DR を持つ 5 区画を置き換える）で、細胞を並べ、刻みごとに全細胞をそろえて GPU で回す。1 スレッドが 1 区画を持つ。刻みをまたいで持ち越す状態（V、潜在 z、縮約しなかったゲート）は VRAM に置いて毎刻み読み書きし、刻みの中だけで使う値（z から作り直すゲートなど）はキャッシュ（レジスタ）に置く。ncu で 1 刻みの VRAM の読み書きの量とレジスタの数、レジスタから溢れた分を測り、持ち越す状態の少なさが VRAM の量に現れるかをモデルごとに確かめる。",
+      "groupings": [
+        "h+n"
+      ],
+      "methods": [
+        "kam",
+        "pca-sindy"
+      ],
+      "models": [
+        {
+          "name": "kam.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam",
+          "grouping": "h+n"
+        },
+        {
+          "name": "pca-sindy.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 9000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "pca",
+                "d": 1,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "pca-sindy",
+          "grouping": "h+n"
+        }
+      ],
+      "series": {
+        "traub-1comp-steady": {
+          "spec": {
+            "target": "traub",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 300
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ]
+        },
+        "traub-19comp-steady-replace-soma": {
+          "spec": {
+            "target": "traub19",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 300
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ]
+        },
+        "traub-19comp-steady-replace-na-dr": {
+          "spec": {
+            "target": "traub19",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 300
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "c05",
+            "c07",
+            "soma",
+            "c09",
+            "c11"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "model": "kam.h+n",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "kam.h+n",
+          "series": "traub-19comp-steady-replace-soma"
+        },
+        {
+          "model": "kam.h+n",
+          "series": "traub-19comp-steady-replace-na-dr"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-1comp-steady"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-19comp-steady-replace-soma"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-19comp-steady-replace-na-dr"
+        }
+      ],
+      "benches": [
+        {
+          "name": "original@traub-1comp-steady",
+          "model": null,
+          "series": "traub-1comp-steady",
+          "cells": [
+            1024,
+            1048576
+          ],
+          "ncu": true
+        },
+        {
+          "name": "kam.h+n@traub-1comp-steady",
+          "model": "kam.h+n",
+          "series": "traub-1comp-steady",
+          "cells": [
+            1024,
+            1048576
+          ],
+          "ncu": true
+        },
+        {
+          "name": "pca-sindy.h+n@traub-1comp-steady",
+          "model": "pca-sindy.h+n",
+          "series": "traub-1comp-steady",
+          "cells": [
+            1024,
+            1048576
+          ],
+          "ncu": true
+        },
+        {
+          "name": "original@traub-19comp-steady-replace-soma",
+          "model": null,
+          "series": "traub-19comp-steady-replace-soma",
+          "cells": [
+            1024,
+            1048576
+          ],
+          "ncu": true
+        },
+        {
+          "name": "kam.h+n@traub-19comp-steady-replace-soma",
+          "model": "kam.h+n",
+          "series": "traub-19comp-steady-replace-soma",
+          "cells": [
+            1024,
+            1048576
+          ],
+          "ncu": true
+        },
+        {
+          "name": "pca-sindy.h+n@traub-19comp-steady-replace-soma",
+          "model": "pca-sindy.h+n",
+          "series": "traub-19comp-steady-replace-soma",
+          "cells": [
+            1024,
+            1048576
+          ],
+          "ncu": true
+        },
+        {
+          "name": "original@traub-19comp-steady-replace-na-dr",
+          "model": null,
+          "series": "traub-19comp-steady-replace-na-dr",
+          "cells": [
+            1024,
+            1048576
+          ],
+          "ncu": true
+        },
+        {
+          "name": "kam.h+n@traub-19comp-steady-replace-na-dr",
+          "model": "kam.h+n",
+          "series": "traub-19comp-steady-replace-na-dr",
+          "cells": [
+            1024,
+            1048576
+          ],
+          "ncu": true
+        },
+        {
+          "name": "pca-sindy.h+n@traub-19comp-steady-replace-na-dr",
+          "model": "pca-sindy.h+n",
+          "series": "traub-19comp-steady-replace-na-dr",
+          "cells": [
+            1024,
+            1048576
+          ],
+          "ncu": true
+        }
+      ],
+      "group": "gpu"
+    },
+    {
+      "id": "test-gpu",
+      "description": "テスト用。形式やコードを変えたらまず回す。h+n の KAM を短い学習データで学習し、単一区画の短い定常電流で元のモデルと並べて 1024 細胞を GPU で測る（ncu も）。",
+      "groupings": [
+        "h+n"
+      ],
+      "methods": [
+        "kam-test"
+      ],
+      "models": [
+        {
+          "name": "kam-test.h+n",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 1000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "H",
+                  "N"
+                ],
+                "compressor": "kam",
+                "d": 1,
+                "rhs": "kam",
+                "compressor_params": {},
+                "rhs_params": {}
+              }
+            ],
+            "train_comp": null
+          },
+          "method": "kam-test",
+          "grouping": "h+n"
+        }
+      ],
+      "series": {
+        "traub-1comp-steady-test": {
+          "spec": {
+            "target": "traub",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 100
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            10
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "model": "kam-test.h+n",
+          "series": "traub-1comp-steady-test"
+        }
+      ],
+      "benches": [
+        {
+          "name": "original@traub-1comp-steady-test",
+          "model": null,
+          "series": "traub-1comp-steady-test",
+          "cells": [
+            1024
+          ],
+          "ncu": true
+        },
+        {
+          "name": "kam-test.h+n@traub-1comp-steady-test",
+          "model": "kam-test.h+n",
+          "series": "traub-1comp-steady-test",
+          "cells": [
+            1024
+          ],
+          "ncu": true
+        }
+      ],
+      "group": "gpu"
+    },
+    {
+      "id": "neuro2026-rerun",
+      "description": "NEURO2026 で発表した形（6 ゲートを 1 つの AutoEncoder で潜在 5 本へ縮め、右辺を SINDy で同定する。19 区画の軌道で学習する）を今の研究コードで回し直し、19 区画の soma を置き換えて発表時の結果と比べる。",
+      "groupings": [
+        "m+h+n+a+b+c"
+      ],
+      "methods": [
+        "ae-latent5-sindy"
+      ],
+      "models": [
+        {
+          "name": "ae-latent5-sindy.m+h+n+a+b+c",
+          "method": "ae-latent5-sindy",
+          "grouping": "m+h+n+a+b+c",
+          "config": {
+            "cell": "traub",
+            "form": "hybrid",
+            "data": {
+              "target": "traub19",
+              "current_type": "train",
+              "dt": 0.01,
+              "current_params": {
+                "duration": 1000
+              }
+            },
+            "groups": [
+              {
+                "gates": [
+                  "M",
+                  "H",
+                  "N",
+                  "A",
+                  "B",
+                  "C"
+                ],
+                "compressor": "ae",
+                "d": 5,
+                "rhs": "sindy",
+                "compressor_params": {},
+                "rhs_params": {
+                  "library_specs": [
+                    {
+                      "type": "traub_gate_forward"
+                    },
+                    {
+                      "type": "traub_gate_backward"
+                    },
+                    {
+                      "type": "traub_gate_forward_product"
+                    },
+                    {
+                      "type": "traub_gate_backward_product"
+                    },
+                    {
+                      "type": "basis"
+                    }
+                  ]
+                }
+              }
+            ],
+            "train_comp": null
+          }
+        }
+      ],
+      "series": {
+        "traub-19comp-steady-replace-soma": {
+          "spec": {
+            "target": "traub19",
+            "current_type": "lin&steady",
+            "dt": 0.01,
+            "current_params": {
+              "silence_duration": 10,
+              "duration": 300
+            },
+            "stim": "soma"
+          },
+          "replace_targets": [
+            "soma"
+          ],
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "model": "ae-latent5-sindy.m+h+n+a+b+c",
+          "series": "traub-19comp-steady-replace-soma"
+        }
+      ],
+      "benches": [],
+      "group": "neuro2026"
+    }
+  ],
+  "measures": {
+    "coincidence_window": 2
+  }
+}

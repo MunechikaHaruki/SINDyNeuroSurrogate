@@ -1,7 +1,9 @@
-// run のファイルの形（計算する機械の Python が書き、API の json の口で手元に返る小さい JSON）と、その読み方。形式の正本は remote/neurosurrogate/run.py。
-// run の中のどこに何があるか（RUN と、.f64 の 1 列を指す compArray など）もここが持ち、計算する機械の API と手元の両方が使う。
-// node や bun に依存しない（ブラウザで動く画面も import する）。
-import type { ArrayRef } from './api.ts';
+// run のファイルの形（計算する機械の Python が書く小さい JSON と .f64）と、その読み方。形式の正本は remote/neurosurrogate/run.py。
+// run の中のどこに何があるか（RUN と、.f64 の 1 列を指す compArray など）もここが持つ。読むのは計算する機械の API で、手元は run の形を知らない（API の答えの BenchRow だけが運ばれる）。
+// node や bun に依存しない。
+
+/** run の中の .f64 の 1 列。file は run の下のパス、変数ごとに n 個ずつ続いて並んだうちの column 番目。 */
+export type ArrayRef = { run: string; file: string; column: number; n: number };
 
 /** run の中の置き場。波形の根 root は、回した波形（学習データの run では学習データ）waves か、原系を列の前処理で射影した projected(区画)。
  * part は学習器の run の中身、summary はモデルの run の組んだ演算コスト、spec はどの run も持つ回した条件。 */

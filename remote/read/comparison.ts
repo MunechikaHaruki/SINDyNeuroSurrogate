@@ -2,7 +2,19 @@
 // 波形 1 本の特徴量（eFEL・0 mV の上向きの横切り・山の平均の形・発散）、原系と置き換えた列の点ごとの指標（rmse・mae、ISI の統計、周期の差、形の相関、横切りで数えた差、
 // coincidence factor Γ）と、列ごとのまとめ（決まる点での Γ の平均、発火の始まり）。eFEL は Python（neurosurrogate/spikes.py）を子プロセスで起こし、波形を標準入力で渡す。
 // 物差しの値（Γ の許容幅 Δ）は手元が頼み方で渡す。run は書き換わらないので、特徴量は run・区画ごとに、答えは頼み方ごとに覚えておく。
-import type { ColumnSummary, CrossingDiff, CrossingRow, PairMetrics, SeriesMetrics, SeriesRequest } from '../../shared/api.ts';
+import type { ColumnSummary, CrossingRow, PairMetrics } from '../../shared/api.ts';
+
+/** 元のモデルとの差（Γ を除く）。 */
+export type CrossingDiff = Omit<CrossingRow, 'gamma'>;
+/** 系列 1 つの、原系と置き換えた列（run の id）の 1 区画の指標の頼み方。delta は Γ の許容幅 Δ [ms]。 */
+export type SeriesRequest = { original: string; columns: string[]; comp: string; delta: number };
+/** 系列の指標。キーは列の run の id、並びは掃引の点。times は 0 mV を上向きに越えた時刻（ラスタ）。 */
+export type SeriesMetrics = {
+  pairs: Record<string, PairMetrics[]>;
+  crossings: Record<string, CrossingRow[]>;
+  summaries: Record<string, ColumnSummary>;
+  times: { original: number[][]; columns: Record<string, number[][]> };
+};
 import { compArray, RUN, type WaveMeta } from '../../shared/runs.ts';
 import type { Spec } from '../../shared/spec.ts';
 import { PROJECT, PYTHON } from '../run/places.ts';

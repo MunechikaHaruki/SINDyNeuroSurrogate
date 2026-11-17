@@ -18,15 +18,15 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | API に送る前処理の TS。宣言を解く部品（プリセットを混ぜ、系列とモデルの形を持つ `presets.ts`、実験層と決め打ちの JSON から解決済みの実験を組む `schema.ts`、並べる `experiments.ts`） | `local/experiments/schema/` |
 | 入口。送る spec を組んで `local/experiments/resolved/` に書く（write）、古くないか確かめる（check） | `local/resolve.ts` |
 | 手元の側の通信。計算する機械へ ssh でコードを送り、イメージを用意して API を立て、段取りとテストを回す script | `local/remote.sh` |
-| 入口で、使う側の一つ。エージェント用の CLI（API の実験の状態を直に読み、実験を状態ごとに並べて書く） | `local/cli.ts` |
+| 入口で、使う側の一つ。エージェント用の CLI（API の実験の目次を読み、実験を状態ごとに並べて書く） | `local/cli.ts` |
 | 手元の TS の npm の依存 | `local/package.json`、`local/bun.lock` |
-| 宣言から組んだ、送る spec.json そのものと、テスト専用の学習の設定 `tests.json`（生成物。手で書き換えない。計算する機械へは `local/remote.sh` が向こうの resolved/ に写し、計算する機械の側は `SINDY_RESOLVED` でその場所を受け取る） | `local/experiments/resolved/` |
-| 手元と計算する機械が受け渡す形（行きの spec と run の一覧と状態 `spec.ts`、spec の鍵 `hash.ts`、API の口と返事 `api.ts`、run のファイルの形と置き場と読み方 `runs.ts`） | `shared/` |
+| 宣言から組んだ、送る spec.json そのものと、テスト専用の学習の設定 `tests.json` と、API が画面の答えを組むのに読む宣言の写し `plans.json`（生成物。手で書き換えない。計算する機械へは `local/remote.sh` が向こうの resolved/ に写し、計算する機械の側は `SINDY_RESOLVED` でその場所を受け取る） | `local/experiments/resolved/` |
+| 手元と計算する機械が受け渡す形（行きの spec と run の一覧と状態 `spec.ts`、spec の鍵 `hash.ts`、API の口と返事 `api.ts`、run のファイルの形と置き場と読み方 `runs.ts`（読むのは計算する機械だけ）） | `shared/` |
 | 数値計算の Python（元のモデル `remote/neurosurrogate/physics/`、学習と置換 `remote/neurosurrogate/surrogate/`、計算の入口 `remote/neurosurrogate/run.py`、GPU の実測 `remote/neurosurrogate/bench.py`、API が呼ぶ eFEL の特徴量 `remote/neurosurrogate/spikes.py`）とそのテスト | `remote/neurosurrogate/`、`remote/tests/` |
 | 入口。送られてきた resolved/ の spec を回す段取り（先に要る run を用意し、Python の計算の入口を起こす。画面から起こした仕事と、run・list の CLI もここ） | `remote/run-spec.ts` |
 | 段取りの部品。実験の状態 `status.ts`、置き場（resolved/ からパスで spec を引く、runs/ の置き場と run 1 本の状態）`places.ts` | `remote/run/` |
-| API の答えを作る部品。run のファイルを読んで覚え、回線に出す形（間引き・軌跡・分布）にする `waves.ts`、波形から先の統計量を全部、頼まれるたびに純粋関数で計算する `comparison.ts`（波形 1 本の eFEL の特徴量・0 mV の横切り・山の平均の形・発散、原系と列の点ごとの rmse・mae・ISI の統計・周期の差・形の相関・横切りの差・Γ、列ごとの Γ の平均と発火の始まり）、GPU の実測のツールごとの出力を細胞の数ごとの行に集める `bench.ts`（ncu の区画ごとのカーネルの合わせ方もここ） | `remote/read/` |
-| 計算する機械の側の通信。結果を小さい JSON で返す API（口を `remote/run-spec.ts`・`remote/run/`・`remote/read/` の関数に渡すだけ） | `remote/serve.ts` |
+| API の答えを作る部品。口ごとの答えを組む `experiments.ts`（目次・実験 1 つ・run の一覧）と、run の置き場ごとの `inputs.ts`・`models.ts`・`data.ts`・`parts.ts`・`bench.ts`、run のファイルを読んで覚え、回線に出す形（間引き・軌跡・分布）にする `waves.ts`、波形から先の統計量を全部、頼まれるたびに純粋関数で計算する `comparison.ts`（波形 1 本の eFEL の特徴量・0 mV の横切り・山の平均の形・発散、原系と列の点ごとの rmse・mae・ISI の統計・周期の差・形の相関・横切りの差・Γ、列ごとの Γ の平均と発火の始まり）、GPU の実測のツールごとの出力を細胞の数ごとの行に集める `bench.ts`（ncu の区画ごとのカーネルの合わせ方もここ） | `remote/read/` |
+| 計算する機械の側の通信。答えを小さい JSON で返す API（口は実験の目次と実験 1 つ、run の置き場ごとの inputs・models・data・parts・bench、run の一覧、仕事を起こす口。口を `remote/run-spec.ts`・`remote/run/`・`remote/read/` の関数に渡すだけ） | `remote/serve.ts` |
 | 計算する機械のイメージと Python の依存 | `remote/Dockerfile`、`remote/pyproject.toml`、`remote/uv.lock` |
 | run | 計算する機械の `~/sindy/runs/`（手元の runs は `local/remote.sh fetch` の写しだけ。どちらも Git の外） |
 
@@ -51,13 +51,13 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 - `local/` と `remote/` は互いのコードを import せず、両方が使うのは `shared/` だけ（`local/experiments/schema/boundary.test.ts`）。
 - 人やエージェントが直に走らせる入口は `local/` と `remote/` の直下だけに置く。マシン間の通信もここが受け持つ（手元は `local/remote.sh`、計算する機械は `remote/serve.ts`）。
 - 計算する機械へ送るのは `remote/`・`shared/` と、手元が組んだ `local/experiments/resolved/` の写しだけで、宣言と手元のコードは送らない（`local/remote.sh`）。計算する機械は宣言を知らず、送られてきた resolved/（場所は `SINDY_RESOLVED`）の spec を回し、run の量を返すだけ。
-- runs は生データ（波形と学習の書き出し、GPU の実測で使ったツールの出力をツールごとのファイルのまま）だけを持つ。波形から先の統計量（eFEL の特徴量から Γ と列ごとのまとめまで）は全部、計算する機械が頼まれるたびに純粋関数で計算して返し（`remote/read/comparison.ts`）、使う側は API で受け取るだけ。比べる物差し（Γ の許容幅 Δ）は宣言（`local/experiments/config/presets.json` の `measures`）が持ち、使う側がそこから読んで API の `series` の頼み方で渡す。どの列を比べるかの組み立てと見せ方（時刻まで合うとみなす Γ の線）は使う側が持つ。`shared/` に置くのは両方が使う形だけで、宣言の形（`Series`・`ModelDecl`）は `local/experiments/schema/presets.ts`、`Bench`・`Plan` は `local/experiments/schema/schema.ts` が持つ。run の中の置き場（`RUN`、`.f64` の 1 列を指す `compArray` など）は両方が使うので `shared/runs.ts` が持つ。
+- runs は生データ（波形と学習の書き出し、GPU の実測で使ったツールの出力をツールごとのファイルのまま）だけを持つ。波形から先の統計量（eFEL の特徴量から Γ と列ごとのまとめまで）も、どの列を比べるかの組み立ても、設定の表も、計算する機械の API が頼まれるたびに計算して組み、すぐ描ける形で返す（`remote/read/`）。使う側は口の型（`shared/api.ts`）だけを知り、run のパスや列の位置（`shared/runs.ts`）も宣言（`local/experiments/`）も読まず、描き方（色、凡例、数式の書き方）と選んでいる状態だけを持つ。比べる物差し（Γ の許容幅 Δ）は宣言（`local/experiments/config/presets.json` の `measures`）が持ち、宣言の写し `plans.json` で API に渡る。見せ方の線（時刻まで合うとみなす Γ の線）は API（`remote/read/experiments.ts`）が持つ。`shared/` に置くのは両方が使う形だけで、宣言の形（`Series`・`ModelDecl`）は `local/experiments/schema/presets.ts`、`Bench`・`Plan` は `local/experiments/schema/schema.ts` が持ち、その写しの形（`Plans`）だけを `shared/spec.ts` が持つ。
 
 | 渡るもの | 書く側 | 読む側 |
 | --- | --- | --- |
-| 実験の条件（spec.json。`local/experiments/resolved/<実験>/` に置いたものをそのまま渡す）、テスト専用の学習の設定（`local/experiments/resolved/tests.json`） | 手元（`local/resolve.ts`） | 段取りが Python へ、pytest |
+| 実験の条件（spec.json。`local/experiments/resolved/<実験>/` に置いたものをそのまま渡す）、テスト専用の学習の設定（`local/experiments/resolved/tests.json`）、宣言の写し（`local/experiments/resolved/plans.json`） | 手元（`local/resolve.ts`） | 段取りが Python へ、pytest、API |
 | 実験の結果（runs/） | Python | 計算する機械の API |
-| 実験ごとの状態、間引いた線、指標、run の小さい JSON（口の形は `shared/api.ts`、run のファイルの形は `shared/runs.ts`） | 計算する機械の API | 使う側（`local/cli.ts` と repo の外の冊） |
+| 実験の目次と実験 1 つ、run の置き場ごとの答え（間引いた線、指標、表の値。口の形は `shared/api.ts`） | 計算する機械の API | 使う側（`local/cli.ts` と repo の外の冊） |
 | ゲートのレートの式（physics/ の JSON） | 人 | Python |
 
 ## 用語
@@ -148,7 +148,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - **数値を変えないリファクタは、新旧の出力を突き合わせる。** 同じ spec を変更前と変更後のコードで回し、run の中身 (学習の書き出し、指標、変数ごとの波形) が一致することを確かめる。
 - **後方互換は取らない。** 保存形式を変えたら、変えた種類の版を `run.py` の `_FORMATS` と `spec.ts` の `FORMATS` で上げ、古い run は回し直す。互換の shim は入れない。
 - **実行経路を二重に持たない。** 重い計算は `run.py`、回すのは送られてきた resolved/ の spec だけで段取りは `remote/run-spec.ts`、統計量を計算して小さくして返すのは `remote/read/` と `remote/serve.ts`、描画は repo の外の図だけ。
-- **波形は回線に出さない。** runs は計算する機械に置いたまま、図は API に間引いた線と指標を頼む。帯域の細い回線（テザリング）でも回る量に保つ。
+- **波形は回線に出さない。** runs は計算する機械に置いたまま、図は API に、間引いた線と指標を組んだ答えを頼む。帯域の細い回線（テザリング）でも回る量に保つ。
 - **数値の振る舞いが変わる変更は、手を止めて報告する。**
 - **git は明示指示があるときだけ。**
 

@@ -1,7 +1,11 @@
 // 波形。run のファイルを読んで覚え（runs/ の外を指すパスは弾き、.f64 は丸ごと読んで古く使ったものから忘れる）、回線に出す形（表示の範囲で間引いた線・相平面の軌跡・分布、表示に要る桁）にする。
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, normalize } from 'node:path';
-import type { ArrayRef, Bin, Point } from '../../shared/api.ts';
+import type { Point } from '../../shared/api.ts';
+import type { ArrayRef } from '../../shared/runs.ts';
+
+/** 分布の 1 区間。 */
+export type Bin = { center: number; count: number };
 
 // ---- run のファイルを読む
 
@@ -92,6 +96,24 @@ export function runFiles(runs: string): RunFiles {
 }
 
 // ---- 回線に出す形
+
+/** 時間の線を間引くときの区間の数。1 本あたり最大でこの 2 倍の点になる。 */
+export const BUCKETS = 400;
+/** 相平面と潜在の軌跡の 1 本あたりの点の上限。軌跡の形が見える数に留め、回線に出す量を抑える。 */
+export const PATH_POINTS = 2000;
+
+/** 時刻の並び（t0 と dt）と、時間の範囲 [start, end] ms。 */
+export type Span = { t0: number; dt: number; start: number; end: number };
+
+/** .f64 の 1 列を、範囲 span で BUCKETS 区間に間引いた線。 */
+export function line(files: RunFiles, ref: ArrayRef, span: Span): Point[] {
+  return compact(decimate(files.column(ref), span.t0, span.dt, span.start, span.end, BUCKETS));
+}
+
+/** .f64 の 2 列を、範囲 span で PATH_POINTS 点までの軌跡にしたもの。 */
+export function trajectory(files: RunFiles, x: ArrayRef, y: ArrayRef, span: Span): Point[] {
+  return compact(path(files.column(x), files.column(y), span.t0, span.dt, span.start, span.end, PATH_POINTS));
+}
 
 /** 回線に出す線の点。表示に要る桁だけに丸める（時刻は 0.01 ms の刻みが 1 万 ms まで残る 7 桁、値は 6 桁）。 */
 export function compact(points: Point[]): Point[] {

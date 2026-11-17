@@ -12,7 +12,7 @@ description: "研究コードの repo の入口。要約と、全体の地図・
 
 ## 全体の地図
 
-手元と計算する機械は JSON だけを受け渡す。結果を読むのは使う側（CLI と repo の外の冊）で、どちらも API を直に叩いて自分で組み立てる。行きは手元が組んだ spec（`local/experiments/resolved/`）、帰りは API の小さい JSON。両方が使うコードは `shared/` だけ。最上位も `local/`（手元）・`remote/`（計算する機械）・`shared/` に分かれていて、計算する機械へ送るのは `remote/`・`shared/` と spec の写しだけ。
+手元と計算する機械は JSON だけを受け渡す。行きは手元が組んだ spec と宣言の写し（`local/experiments/resolved/`）、帰りは API の答え。run の形を知り、指標を計算し、答えを組み立てるのは計算する機械の API で、使う側（CLI と repo の外の冊）は口の型（`shared/api.ts`）だけを知って描くか書く。両方が使うコードは `shared/` だけ。最上位も `local/`（手元）・`remote/`（計算する機械）・`shared/` に分かれていて、計算する機械へ送るのは `remote/`・`shared/` と spec の写しだけ。
 
 ```mermaid
 flowchart LR

@@ -1,15 +1,20 @@
 // 計算する機械の側の通信。runs の隣に立つ API（Bun.serve、POST /<口>、既定のポート 8787）。口の形は shared/api.ts で、ここは口を回す側（run/）と答えを作る側（read/）の関数に渡すだけ。
-// 波形は回線に出さず、間引いた線・軌跡・分布・指標にしてから返す。宣言は読まない。知っているのは resolved/ と runs だけ。回すのは段取りの関数だけで、任意のコマンドは通さない。
+// 口は実験の目次と実験 1 つ、run の置き場ごとの答え（inputs・models・data・parts・bench）、run の一覧、仕事を起こす口。run の保存の形を知るのはこちらだけで、
+// 波形は回線に出さず、間引いた線・軌跡・分布・指標にしてから返す。宣言は読まない。知っているのは resolved/（spec と宣言の写し plans.json）と runs だけ。回すのは段取りの関数だけで、任意のコマンドは通さない。
 // runs の置き場は SINDY_RUNS（イメージでは /runs）。
 //   bun remote/serve.ts
-import { FORMATS, type Job } from '../shared/spec.ts';
+import type { Job } from '../shared/spec.ts';
 import type { Api } from '../shared/api.ts';
-import { benchRows } from './read/bench.ts';
+import { bench } from './read/bench.ts';
 import { seriesComparison } from './read/comparison.ts';
-import { compact, decimate, histograms, path, runFiles } from './read/waves.ts';
+import { data } from './read/data.ts';
+import { type Context, experiment, experiments, registry } from './read/experiments.ts';
+import { inputs } from './read/inputs.ts';
+import { models } from './read/models.ts';
+import { parts } from './read/parts.ts';
+import { runFiles } from './read/waves.ts';
 import { launch } from './run-spec.ts';
-import { status } from './run/status.ts';
-import { RUNS, scan } from './run/places.ts';
+import { RUNS } from './run/places.ts';
 
 const PORT = Number(process.env.SINDY_PORT ?? 8787);
 
@@ -24,19 +29,17 @@ function checkJob(job: Job): Job {
 /** runs の置き場 1 つの口。読んだ .f64・特徴量・指標はこの中で覚える。 */
 export function handlers(runs: string): Handlers {
   const files = runFiles(runs);
+  const ctx: Context = { runs, files, metrics: seriesComparison(files) };
   return {
-    index: () => scan(runs).filter(e => e.spec.format === FORMATS[e.spec.kind]),
-    status: () => status(runs),
+    experiments: () => experiments(runs),
+    experiment: body => experiment(runs, body.experiment),
+    inputs: body => inputs(ctx, body),
+    models: body => models(ctx, body),
+    data: body => data(ctx, body),
+    parts: body => parts(ctx, body),
+    bench: body => bench(ctx, body),
+    registry: () => registry(runs),
     launch: body => ({ started: launch(runs, checkJob(body.job)) }),
-    json: body => files.json(body.run, body.path),
-    text: body => files.text(body.run, body.path),
-    bench: body => benchRows(files, body.run),
-    traces: body =>
-      body.requests.map(r => compact(decimate(files.column(r.array), r.t0, r.dt, r.start, r.end, r.buckets))),
-    paths: body =>
-      body.requests.map(r => compact(path(files.column(r.x), files.column(r.y), r.t0, r.dt, r.start, r.end, r.max))),
-    histograms: body => histograms(body.arrays.map(files.column), body.bins),
-    series: seriesComparison(files),
   };
 }
 

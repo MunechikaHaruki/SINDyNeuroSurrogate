@@ -1,4 +1,4 @@
-// 手元の側の出口。宣言（../config/ と隣の TS）から、実験ごとに送る spec.json を組んで resolved/ に置く。テスト専用の学習の設定も resolved/tests.json（計算する機械の pytest が読む）に置く。計算する機械（../../remote/）は宣言を読まず、ここが書いた resolved/ だけを受け取って回す。
+// 手元の側の出口。宣言（../config/ と隣の TS）から、実験ごとに送る spec.json を組んで resolved/ に置く。テスト専用の学習の設定も resolved/tests.json（計算する機械の pytest が読む）に、宣言の写しを resolved/plans.json（計算する機械の API が画面の答えを組むのに読む）に置く。計算する機械（../../remote/）は宣言を読まず、ここが書いた resolved/ だけを受け取って回す。
 // パスは識別のための名前で、送るのは中身だけ：学習データ `<実験>/data/<対象>.<電流>.<パラメータ>.json`、学習器 `<実験>/parts/<圧縮器と右辺>.<群>.json`、それを組んだモデル `<実験>/models/<モデル>.json`、
 // `<実験>/sim/<系列>/original.json`（元のモデル）と `<モデル>.json`、`<実験>/bench/<GPU の実測>.json`。宣言のモデル 1 つは、学習データ 1 つ・群ごとの学習器・それを組んだモデルの spec に分かれる。
 // どちらも名前は中身から付け、同じ中身は実験の中で 1 ファイルにまとめ、同じ名前に違う中身が来たら投げる（名前に出ない違いがある）。
@@ -8,10 +8,10 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { METHOD_NAMES, TESTS, type ModelDecl, type Series } from './experiments/schema/presets.ts';
-import { EXPERIMENTS, MODELS, SERIES, modelOf, seriesOf, type GroupedPlan } from './experiments/schema/experiments.ts';
+import { MEASURES, METHOD_NAMES, TESTS, type ModelDecl, type Series } from './experiments/schema/presets.ts';
+import { EXPERIMENTS, GROUPS, MODELS, SERIES, modelOf, seriesOf, type GroupedPlan } from './experiments/schema/experiments.ts';
 import { hashOf } from '../shared/hash.ts';
-import { FORMATS, type Device, type Group, type Input, type Spec } from '../shared/spec.ts';
+import { FORMATS, type Device, type Group, type Input, type Plans, type Spec } from '../shared/spec.ts';
 import type { Bench } from './experiments/schema/schema.ts';
 
 /** 送る spec.json の置き場。 */
@@ -119,9 +119,18 @@ function testConfigs(): Record<string, ModelDecl['config']> {
   return Object.fromEntries(Object.entries(TESTS).map(([name, train]) => [name, train.config]));
 }
 
-/** 全部の実験の、送る spec.json と、テスト専用の学習（tests.json）。 */
+/** 宣言の写し。実験群と実験を宣言の順に、比べ方の物差しと一緒に。 */
+export function plans(): Plans {
+  return {
+    groups: Object.entries(GROUPS).map(([name, description]) => ({ name, description })),
+    experiments: EXPERIMENTS,
+    measures: MEASURES,
+  };
+}
+
+/** 全部の実験の、送る spec.json と、テスト専用の学習（tests.json）と、宣言の写し（plans.json）。 */
 function expected(): Record<string, unknown> {
-  const files: Record<string, unknown> = { 'tests.json': testConfigs() };
+  const files: Record<string, unknown> = { 'tests.json': testConfigs(), 'plans.json': plans() };
   for (const e of EXPERIMENTS) Object.assign(files, resolved(e));
   return files;
 }
