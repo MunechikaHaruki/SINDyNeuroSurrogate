@@ -96,15 +96,20 @@ def criterion(cell: str, gates: list[str], params: Any) -> float:
 
 
 class KamCompressor:
-    """群のゲート ↔ ψ。encode は各ゲートの等価電位の平均 (射影と初期値に使う)。"""
+    """群のゲート ↔ ψ。学習データを使わず、区画の型と params から組む。
 
-    gate_inits: list[float]
-    reconstruction: dict[str, float]
+    encode は各ゲートの等価電位の平均 (射影と初期値に使う)。ψ の初期値 gate_inits は
+    区画の型の静止状態 (V やほかの状態の初期値と同じ所) を encode したもの。
+    """
 
     def __init__(self, cell: str, gates: list[str], params: Any) -> None:
         self.cell = cell
         self.gates = gates
-        self.params = params  # レートは区画の定数によらないので、学習区画のもの
+        self.params = params  # レートは区画の定数によらないので、区画の型の既定のもの
+        c = CELLS[cell]
+        rest = c.inits(params)
+        x = np.array([[rest[1 + c.states.index(g)] for g in gates]])
+        self.gate_inits: list[float] = self.encode(x)[0].tolist()
 
     def encode(self, x: np.ndarray) -> np.ndarray:
         x = np.asarray(x, dtype=float)
@@ -124,14 +129,14 @@ class KamCompressor:
         """ψ → ゲートの値の並び (decode を配列にまとめずに書いたもの)。"""
         return [_steady(self.cell, g, self.params)(z[0]) for g in self.gates]
 
-    def metrics(self) -> dict[str, float]:
-        return {
-            **{f"kam/{k}": v for k, v in self.reconstruction.items()},
-            "kam/criterion": criterion(self.cell, self.gates, self.params),
-        }
+    psi_range = _RANGE  # decode の曲線を描く ψ の範囲 [mV]
 
     def describe(self) -> dict[str, Any]:
-        return {"kind": "kam", "gates": self.gates}
+        """KAM の条件 (区画の型の静止状態で)。"""
+        return {
+            "kind": "kam",
+            "criterion": criterion(self.cell, self.gates, self.params),
+        }
 
     def opcost(self) -> OpCost:
         """decode: ゲートごとに ψ でのレートの組と x̄ の割り算。"""
@@ -195,11 +200,9 @@ class KamRhs:
 
         return dpsi
 
-    def metrics(self) -> dict[str, float]:
-        return {}
-
     def describe(self) -> dict[str, Any]:
-        return {"kind": "kam", "gates": self.gates}
+        """右辺は元の式から組むので、学習した中身は無い。"""
+        return {"kind": "kam"}
 
     def opcost(self) -> OpCost:
         """ゲートごとに V での元の式、ψ での x̄' (レート 2 組分)、D_i と積和。目安。"""

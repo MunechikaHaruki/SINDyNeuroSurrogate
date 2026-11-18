@@ -63,10 +63,15 @@ export function experimentStatus(runs: string, name: string): ExperimentStatus {
     if (spec.kind !== 'model') throw new Error(`resolved/${path} はモデルの spec でない`);
     const run = runStatus(runs, path, model);
     const own = spec.parts.map(hash => parts.get(hash)!);
-    const first = specAt(own[0].spec);
-    if (first.kind !== 'part') throw new Error(`resolved/${own[0].spec} は学習器の spec でない`);
-    const trained = data.get(first.data)!;
-    result.models.push({ model, state: modelState(runs, run, [...own, trained]), run, parts: own, data: trained });
+    const pointed = own.map(p => specAt(p.spec)).find(s => s.kind === 'part' && s.data !== undefined);
+    const trained = pointed?.kind === 'part' && pointed.data !== undefined ? data.get(pointed.data)! : null;
+    result.models.push({
+      model,
+      state: modelState(runs, run, trained ? [...own, trained] : own),
+      run,
+      parts: own,
+      data: trained,
+    });
   }
   for (const series of subdirs(join(root, 'sim'))) {
     const original = runStatus(runs, `${name}/sim/${series}/original.json`, series);

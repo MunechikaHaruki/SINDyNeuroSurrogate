@@ -1,7 +1,7 @@
 """群のゲート ↔ 潜在の圧縮器 (PCA と AutoEncoder)。
 
-どちらも encode・decode・指標・中身・decode の演算コストを持つ。fit の末尾で、学習
-データの先頭の潜在 (置換シミュの初期値 gate_inits) と再構成の統計を埋める。
+どちらも encode・decode・中身・decode の演算コストを持つ。fit の末尾で、学習
+データの先頭の潜在 (置換シミュの初期値 gate_inits) を埋める。
 """
 
 import logging
@@ -23,15 +23,8 @@ TANH_COST = OpCost(exp=1, div=1, pm=2, mul=1)
 
 
 def fill_fit_results(compressor: Any, train_gate: np.ndarray) -> None:
-    """学習データ先頭の潜在と、再構成の統計を埋める。"""
-    latent = compressor.encode(train_gate)
-    reconstructed = np.asarray(compressor.decode(jnp.asarray(latent)))
-    mse = float(np.mean((train_gate - reconstructed) ** 2))
-    compressor.gate_inits = latent[0].tolist()
-    compressor.reconstruction = {
-        "reconstruction_mse": mse,
-        "reconstruction_mse_ratio": mse / float(np.var(train_gate)),
-    }
+    """学習データ先頭の潜在 (置換シミュの初期値 gate_inits) を埋める。"""
+    compressor.gate_inits = compressor.encode(train_gate)[0].tolist()
 
 
 # --- PCA -------------------------------------------------------------------------
@@ -39,7 +32,6 @@ def fill_fit_results(compressor: Any, train_gate: np.ndarray) -> None:
 
 class PCA:
     gate_inits: list[float]
-    reconstruction: dict[str, float]
 
     def __init__(self, components, mean, explained_variance_ratio, full_ratio):
         self.components = components
@@ -65,23 +57,13 @@ class PCA:
             gates.append(value)
         return gates
 
-    def metrics(self) -> dict[str, float]:
-        ratios = {}
-        for i, r in enumerate(self.explained_variance_ratio):
-            ratios[f"pca/explained_variance_ratio_{i + 1}"] = float(r)
-        return {
-            **ratios,
-            "pca/cumulative_explained_variance_ratio": float(
-                self.explained_variance_ratio.sum()
-            ),
-            **{f"pca/{k}": v for k, v in self.reconstruction.items()},
-        }
-
     def describe(self) -> dict[str, Any]:
         return {
             "kind": "pca",
             "explained_variance_ratio": self.full_explained_variance_ratio.tolist(),
             "n_components": len(self.explained_variance_ratio),
+            "components": np.asarray(self.components).tolist(),
+            "mean": np.asarray(self.mean).tolist(),
         }
 
     def opcost(self) -> OpCost:
@@ -118,7 +100,6 @@ def decoder(params, z):
 
 class AE:
     gate_inits: list[float]
-    reconstruction: dict[str, float]
 
     def __init__(self, enc_params, dec_params, x_mean, x_std):
         self.enc_params = enc_params
@@ -137,9 +118,6 @@ class AE:
         params = {k: jnp.asarray(v) for k, v in self.dec_params.items()}
         x_hat = decoder(params, z)
         return jnp.asarray(x_hat * jnp.asarray(self.x_std) + jnp.asarray(self.x_mean))
-
-    def metrics(self) -> dict[str, float]:
-        return {f"ae/{k}": v for k, v in self.reconstruction.items()}
 
     def describe(self) -> dict[str, Any]:
         return {"kind": "ae", "hidden": int(self.dec_params["W1"].shape[1])}

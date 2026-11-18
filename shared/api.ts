@@ -46,7 +46,7 @@ export type ExperimentView = {
   setup: SetupRow[];
   rerun: { seconds: number; done: number; total: number };
   inputs: string[];
-  models: { name: string; data: string; parts: string[] }[];
+  models: { name: string; data: string | null; parts: string[] }[];
   data: NamedRun[];
   parts: NamedRun[];
   pairs: { input: string; model: string; state: State }[];
@@ -96,6 +96,8 @@ export type PairCompare = {
   latents: Record<string, Line[]>;
   phase: Line[];
   axes: { x: string; y: string };
+  /** 原系の軌道の上の潜在の傾きの比べ（列の学習器の右辺と正解）。置き換えていない区画か、右辺を評価しない形（form=sindy）なら null。error は掃引の点の全区間。 */
+  slopes: SlopeCompare | null;
 };
 /** 元のモデルの、区画ごとの膜電位・内部電流・ゲート（0〜1 の状態）・ゲートでない状態（Traub の Ca 濃度 XI など）。 */
 export type WholeWaves = { voltage: Line[]; internal: Line[]; gates: Line[]; states: Line[] };
@@ -144,53 +146,43 @@ export type DataReply = {
   internal: Line[];
 };
 
-/** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）、window は線の時間の範囲（省けば全体）。 */
+/** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）、window は線の時間の範囲（省けば全体）。KAM の学習器は学習データを持たないので comps と window を使わない。 */
 export type PartsRequest = { experiment: string; part: string; comps?: string[]; window?: Window };
-/** 圧縮器がどれも持つ、再構成の指標。mse は学習データの全区間・学習した全区画で群のゲートを潜在へ落として戻したときの二乗誤差の平均、
- * ratio はそれをゲートの分散で割ったもの（part.json の metrics の <圧縮器>/reconstruction_mse と _ratio）、rmse は学習した区画ごとの時刻ごとの RMSE の全区間の平均と最大。 */
-export type Reconstruction = {
-  mse: number | null;
-  ratio: number | null;
-  rmse: { comp: string; mean: number; max: number }[];
-};
 /** SINDy の右辺の 1 本（対象 target の時間微分）。項をレートの因子 rate（α_n(V) や (α_n + β_n)(V)。無ければ空）ごとにまとめ、
  * 因子ごとに残りの単項 monomial（1、z_{1}、V など）と係数 xi を項ライブラリの順に並べる。どれも sympy の LaTeX のまま。 */
 export type SindyEquation = {
   target: string;
   groups: { rate: string; terms: { monomial: string; xi: number }[] }[];
 };
-/** SINDy の学習器が持つ、圧縮器の中身。共通の再構成の指標と、圧縮器ごとの中身 own（PCA は寄与率（捨てた成分も）と保持した数、AE は隠れ層の幅）。 */
-export type SindyCompressor = {
-  kind: string;
-  reconstruction: Reconstruction;
-  own: { kind: 'pca'; ratios: number[]; kept: number } | { kind: 'ae'; hidden: number };
+/** 元のモデルの軌道の上の、潜在の傾きの比べ。正解は軌道を潜在へ写した z(t) の前進差分、学習器はその時刻の潜在と状態に右辺が返す dz/dt。
+ * lines は潜在ごとの時系列（正解・学習器）、match は潜在ごとの正解 × 学習器の散布（対角に乗れば一致）、error は潜在ごとの全区間の
+ * 差の RMSE と正解の標準偏差（RMSE ÷ 標準偏差が、傾きの動きに対するずれの大きさ）。区画が 2 つ以上なら名前に区画を添える。 */
+export type SlopeCompare = {
+  lines: Record<string, Line[]>;
+  match: Line[];
+  error: { latent: string; rmse: number; scale: number }[];
 };
-/** 学習器の型ごとの中身。KAM は学習しない縮約で、KAM の条件（Kepler 1992 の式 (10) の左辺の最大）と再構成の指標。
- * SINDy は学習した右辺（項ライブラリ、ほかの設定、0 でない係数の数と全係数の数、対象ごとの式）と、群を潜在へ落とす圧縮器。 */
-export type Learner =
-  | { kind: 'kam'; criterion: number | null; reconstruction: Reconstruction }
-  | {
-      kind: 'sindy';
-      rhs: { library: string[]; settings: string[]; nnz: number; size: number; equations: SindyEquation[] };
-      compressor: SindyCompressor;
-    };
-/** 学習器 1 本。どの学習器にもある中身と、型ごとの中身 learner。label は群の名前（h+n）、setup は組み立ての表（細胞・形・群のゲート・圧縮器・潜在・右辺・学習した区画）。
- * 線はどれも学習データ（spec が指す data の run）の上の、描いた区画の時間の範囲 window のもの：voltage は膜電位、gates は群のゲート、latent は潜在、recon は再構成誤差、
- * manifold はゲートを最初の潜在に対して描いた軌跡（圧縮器が群をどう 1 本の座標にまとめたか）、path は潜在の軌跡（軸は axes）。区画が 2 つ以上なら名前に区画を添える。 */
-export type PartsReply = {
-  run: string;
+/** 圧縮器に固有の中身（compressor/own.json）。PCA は寄与率（捨てた成分も）と保持した数と、主成分の向き components（保持した成分 × 群のゲート）と平均 mean（群のゲートごと）、AE は隠れ層の幅、KAM は KAM の条件（Kepler 1992 の式 (10) の左辺の最大、区画の型の静止状態で）。 */
+export type CompressorOwn =
+  | { kind: 'pca'; ratios: number[]; kept: number; components: number[][]; mean: number[] }
+  | { kind: 'ae'; hidden: number }
+  | { kind: 'kam'; criterion: number | null };
+/** 右辺に固有の中身（rhs/own.json）。SINDy は項ライブラリ、ほかの設定、0 でない係数の数と全係数の数、対象ごとの式。UDE は層の形と学習の損失。KAM は元の式から組むので kind だけ。 */
+export type RhsOwn =
+  | { kind: 'sindy'; library: string[]; settings: string[]; nnz: number; size: number; equations: SindyEquation[] }
+  | { kind: 'ude'; layers: number[][]; losses: Record<string, number | null> }
+  | { kind: 'kam' };
+/** 学習データの上の中身（fit/<区画>/。学習データから学習した学習器だけ）。線はどれも描いた区画の時間の範囲 window のもの：voltage は膜電位、gates は群のゲート、
+ * latent は潜在、recon は再構成誤差、manifold はゲートを最初の潜在に対して描いた軌跡、path は潜在の軌跡（軸は axes）、slopes は傾きの比べ。
+ * reconstruction は学習した区画ごとの全区間のまとめ：再構成の MSE と、それをゲートの分散で割ったもの（summary.json）、時刻ごとの RMSE の平均と最大。 */
+export type Fit = {
   /** 学習した学習データの名前（実験の data の一覧）。 */
   data: string;
-  label: string;
-  setup: { label: string; value: string }[];
   /** 学習した区画と、描いた区画。 */
   comps: string[];
   shown: string[];
-  latents: string[];
   duration: number;
   window: Window;
-  /** 細胞の全ゲートの並び（学習データの目録の順）。ゲートの色をほかのページと揃えるのに使う。 */
-  gateOrder: string[];
   voltage: Line[];
   gates: Line[];
   latent: Line[];
@@ -198,7 +190,23 @@ export type PartsReply = {
   manifold: Line[];
   path: Line[];
   axes: { x: string; y: string; xIsVoltage: boolean };
-  learner: Learner;
+  slopes: SlopeCompare;
+  reconstruction: { comp: string; mse: number | null; ratio: number | null; mean: number; max: number }[];
+};
+/** 学習器 1 本。欄は学習器の run の置き場に 1 つずつ対応する：組み立て（spec.json）の label・setup・latents、decode の曲線（compressor/decode.json）、
+ * 圧縮器に固有の中身（compressor/own.json）、右辺に固有の中身（rhs/own.json）、学習データの上の中身（fit/。無ければ null）。
+ * label は群の名前（h+n）、setup は組み立ての表、gateOrder は区画の型の状態の並び（ゲートの色をほかのページと揃えるのに使う）、
+ * decode は潜在の軸ごとの、ほかの軸を学習データの平均（KAM は 0）に置いて掃いた decode の曲線（線はゲートごと）。 */
+export type PartsReply = {
+  run: string;
+  label: string;
+  setup: { label: string; value: string }[];
+  latents: string[];
+  gateOrder: string[];
+  decode: { latent: string; lines: Line[] }[];
+  compressor: CompressorOwn;
+  rhs: RhsOwn;
+  fit: Fit | null;
 };
 
 /** GPU の実測の頼み方。files ならツールの出力のファイルそのものも返す。 */

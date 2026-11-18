@@ -93,13 +93,15 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     """図が読むものは全部 run の中にある: 学習データ、学習器の中身、素の float64 の
     波形、置換した comp の射影、学習側の指標。JSON に nan は出さない
     (JS が読めない)。"""
-    part = json.loads((runs / "parts/P/part.json").read_text())
+    decode = json.loads((runs / "parts/P/compressor/decode.json").read_text())
+    latents = [axis["latent"] for axis in decode["axes"]]
     n_time = json.loads((runs / "data/D/waves/meta.json").read_text())
     latent = np.fromfile(runs / "parts/P/fit/0/latent.f64", dtype="<f8")
-    assert latent.size == len(part["latents"]) * n_time["n"][0]
+    assert latent.size == len(latents) * n_time["n"][0]
     recon = np.fromfile(runs / "parts/P/fit/0/recon_rmse.f64", dtype="<f8")
     assert recon.size == n_time["n"][0]
-    assert part["comps"] == ["soma"] and (runs / "parts/P/part.joblib").exists()
+    assert [p.name for p in (runs / "parts/P/fit").iterdir()] == ["0"]
+    assert (runs / "parts/P/learner.joblib").exists()
     kinds = [
         json.loads((runs / p / "meta.json").read_text())["kind"]
         for p in ("data/D", "parts/P", "models/M")
@@ -122,10 +124,12 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     # run は生データだけを持つ。スパイクの特徴量は API が頼まれるたびに計算する
     assert not any(runs.glob("inputs/I/*/spikes.json"))
     assert "cost/surr-orig/mul" in strict("models/M/summary.json")
-    assert "nnz" in strict("parts/P/part.json")["metrics"]
+    assert strict("parts/P/rhs/own.json")["kind"] == "sindy"
+    assert strict("parts/P/compressor/own.json")["kind"] == "pca"
+    assert "reconstruction_mse_ratio" in strict("parts/P/fit/0/summary.json")
     projected = json.loads((runs / "inputs/I/R/projected/soma/meta.json").read_text())
     names = [v for _, v, _ in projected["features"]]
-    assert names[0] == "V" and names[1:] == part["latents"]
+    assert names[0] == "V" and names[1:] == latents
     assert all(
         m["elapsed"] >= 0
         for m in map(

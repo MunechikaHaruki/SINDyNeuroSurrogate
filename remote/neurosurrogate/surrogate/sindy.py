@@ -223,10 +223,6 @@ class SINDy:
 
         return theta
 
-    def metrics(self) -> dict[str, float]:
-        nnz = int((self.xi != 0).sum())
-        return {"nnz": nnz, "nnz_ratio": nnz / self.xi.size}
-
     def describe(self) -> dict[str, Any]:
         return {
             "kind": "sindy",

@@ -9,7 +9,15 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MEASURES, METHOD_NAMES, TESTS, type ModelDecl, type Series } from './experiments/schema/presets.ts';
-import { EXPERIMENTS, GROUPS, MODELS, SERIES, modelOf, seriesOf, type GroupedPlan } from './experiments/schema/experiments.ts';
+import {
+  EXPERIMENTS,
+  GROUPS,
+  MODELS,
+  SERIES,
+  modelOf,
+  seriesOf,
+  type GroupedPlan,
+} from './experiments/schema/experiments.ts';
 import { hashOf } from '../shared/hash.ts';
 import { FORMATS, type Device, type Group, type Input, type Plans, type Spec } from '../shared/spec.ts';
 import type { Bench } from './experiments/schema/schema.ts';
@@ -27,19 +35,16 @@ export function dataSpec(model: ModelDecl): Spec {
   return { format: FORMATS.data, device: 'cpu', kind: 'data', data: model.config.data };
 }
 
-/** 群 1 つの学習器の spec。学習データをハッシュで指す。 */
+/** 学習データから学習する群か。KAM は学習せず、区画の型の式だけから組む。 */
+export function learns(group: Group): boolean {
+  return group.compressor !== 'kam';
+}
+
+/** 群 1 つの学習器の spec。学習する群は学習データをハッシュで指し、KAM は学習データも学習区画も持たない。 */
 export function partSpec(model: ModelDecl, group: Group): Spec {
   const { cell, form, train_comp } = model.config;
-  return {
-    format: FORMATS.part,
-    device: trainDevice(model),
-    kind: 'part',
-    data: hashOf(dataSpec(model)),
-    cell,
-    form,
-    train_comp,
-    group,
-  };
+  const trained = learns(group) ? { data: hashOf(dataSpec(model)), train_comp } : {};
+  return { format: FORMATS.part, device: trainDevice(model), kind: 'part', cell, form, group, ...trained };
 }
 
 /** 学習器の並び（群の順）を組んだモデルの spec。組むだけなので CPU。 */
@@ -98,7 +103,7 @@ export function resolved(plan: GroupedPlan): Record<string, Spec> {
   };
   const modelHash = (model: string) => hashOf(modelSpec(modelOf(model)));
   for (const m of plan.models) {
-    put(`${plan.id}/data/${dataName(m)}.json`, dataSpec(m));
+    if (m.config.groups.some(learns)) put(`${plan.id}/data/${dataName(m)}.json`, dataSpec(m));
     for (const group of m.config.groups) put(`${plan.id}/parts/${partName(group)}.json`, partSpec(m, group));
     put(`${plan.id}/models/${m.name}.json`, modelSpec(m));
   }

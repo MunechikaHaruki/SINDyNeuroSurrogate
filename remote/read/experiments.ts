@@ -2,7 +2,15 @@
 // 宣言そのものは読まない（手元の local/ は import しない）。読むのは手元が書いて送った plans.json と resolved/ の spec と runs だけ。
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Experiments, ExperimentView, NamedRun, Progress, RegistryReply, RunKind, SetupRow } from '../../shared/api.ts';
+import type {
+  Experiments,
+  ExperimentView,
+  NamedRun,
+  Progress,
+  RegistryReply,
+  RunKind,
+  SetupRow,
+} from '../../shared/api.ts';
 import type { ExperimentStatus, IndexEntry, PlanEntry, PlanModel, Plans, RunStatus, State } from '../../shared/spec.ts';
 import { jobs } from '../run-spec.ts';
 import { resolvedDir, scan } from '../run/places.ts';
@@ -145,7 +153,8 @@ function setupOf(plan: PlanEntry, window: number): SetupRow[] {
 /** 実験が使う run（モデル・学習器・学習データ・元のモデル・組・GPU の実測）の、計算にかかった秒（meta.json の elapsed）の和と、回した数・全部の数。 */
 export function rerunCost(found: ExperimentStatus, index: IndexEntry[]): ExperimentView['rerun'] {
   const ids = new Set<string>();
-  for (const m of found.models) [m.run.id, m.data.id, ...m.parts.map(p => p.id)].forEach(id => ids.add(id));
+  for (const m of found.models)
+    [m.run.id, ...(m.data ? [m.data.id] : []), ...m.parts.map(p => p.id)].forEach(id => ids.add(id));
   for (const s of found.series) ids.add(s.original.id);
   for (const p of found.pairs) ids.add(p.run.id);
   for (const b of found.benches) ids.add(b.run.id);
@@ -169,7 +178,7 @@ function learnedOf(plan: PlanEntry, found: ExperimentStatus): { data: NamedRun[]
   for (const m of plan.models) {
     const built = found.models.find(f => f.model === m.name);
     if (!built) continue;
-    if (!data.some(d => d.name === built.data.name)) data.push(named(built.data));
+    if (built.data && !data.some(d => d.name === built.data!.name)) data.push(named(built.data));
     for (const p of built.parts) if (!parts.some(q => q.name === p.name)) parts.push(named(p));
   }
   return { data, parts };
@@ -178,7 +187,9 @@ function learnedOf(plan: PlanEntry, found: ExperimentStatus): { data: NamedRun[]
 /** 実験の学習データか学習器を宣言の名前で引き、その run の置き場（data/<id>・parts/<id>）を返す。無いかまだ回していなければ投げる。 */
 export function learnedRun(runs: string, id: string, place: 'data' | 'parts', name: string): string {
   const found = experimentStatus(runs, planOf(plans(), id).id);
-  const run = found.models.flatMap(m => (place === 'data' ? [m.data] : m.parts)).find(r => r.name === name);
+  const run = found.models
+    .flatMap(m => (place === 'data' ? (m.data ? [m.data] : []) : m.parts))
+    .find(r => r.name === name);
   if (!run) throw new Error(`${id} に ${place} ${name} が無い`);
   if (run.state !== 'done') throw new Error(`${id} の ${place} ${name} はまだ回していない`);
   return run.id;
@@ -202,7 +213,7 @@ export function experiment(runs: string, id: string): ExperimentView {
     inputs: Object.keys(plan.series),
     models: plan.models.map(m => {
       const built = found.models.find(f => f.model === m.name)!;
-      return { name: m.name, data: built.data.name, parts: built.parts.map(p => p.name) };
+      return { name: m.name, data: built.data?.name ?? null, parts: built.parts.map(p => p.name) };
     }),
     ...learnedOf(plan, found),
     pairs,
@@ -221,7 +232,7 @@ export function registry(runs: string): RegistryReply {
     for (const series of found.series) names[series.original.id] = series.series;
     for (const model of found.models) {
       names[model.run.id] = model.model;
-      names[model.data.id] = `${model.data.name} の学習データ`;
+      if (model.data) names[model.data.id] = `${model.data.name} の学習データ`;
       for (const part of model.parts) names[part.id] = part.name;
     }
     for (const pair of found.pairs) names[pair.run.id] = `${pair.series} × ${pair.model}`;

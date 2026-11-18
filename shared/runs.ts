@@ -5,14 +5,21 @@
 /** run の中の .f64 の 1 列。file は run の下のパス、変数ごとに n 個ずつ続いて並んだうちの column 番目。 */
 export type ArrayRef = { run: string; file: string; column: number; n: number };
 
-/** run の中の置き場。波形の根 root は、回した波形（学習データの run では学習データ）waves か、原系を列の前処理で射影した projected(区画)。
- * part は学習器の run の中身、summary はモデルの run の組んだ演算コスト、spec はどの run も持つ回した条件。 */
+/** run の中の置き場。波形の根 root は、回した波形（学習データの run では学習データ）waves か、原系を列の前処理で射影した projected(区画)、
+ * その上の潜在の傾きの正解（射影の前進差分）slope(区画) と、列の学習器の右辺が返す dz/dt の rhs(区画)。
+ * decode・compressor・rhs_own・fit は学習器の run の置き場（decode の曲線、圧縮器と右辺に固有の中身、学習データの上の中身）、summary はモデルの run の組んだ演算コスト、spec はどの run も持つ回した条件。 */
 export const RUN = {
   waves: 'waves',
-  part: 'part.json',
+  decode: 'compressor/decode.json',
+  compressor: 'compressor/own.json',
+  rhs_own: 'rhs/own.json',
+  fit: 'fit',
+  fitSummary: (compId: number) => `fit/${compId}/summary.json`,
   summary: 'summary.json',
   spec: 'spec.json',
   projected: (comp: string) => `projected/${comp}`,
+  slope: (comp: string) => `slope/${comp}`,
+  rhs: (comp: string) => `rhs/${comp}`,
   meta: (root: string) => `${root}/meta.json`,
 };
 
@@ -65,36 +72,35 @@ export function internalArray(run: string, root: string, meta: WaveMeta, point: 
   return { run, file: `${root}/${point}/I_internal.f64`, column, n: meta.n[point] };
 }
 
-/** 学習器の run の、学習区画 compId の潜在 latent（column 列目）か再構成誤差 recon_rmse（1 列）。meta は学習データの目録。 */
+/** 学習器の run の、学習区画 compId の潜在 latent・潜在の傾きの正解 slope（前進差分）・学習器の右辺 rhs（どれも column 列目）か再構成誤差 recon_rmse（1 列）。meta は学習データの目録。 */
 export function fitArray(
   run: string,
   meta: WaveMeta,
   compId: number,
-  file: 'latent' | 'recon_rmse',
+  file: 'latent' | 'recon_rmse' | 'slope' | 'rhs',
   column = 0,
 ): ArrayRef {
   return { run, file: `fit/${compId}/${file}.f64`, column, n: meta.n[0] };
 }
 
-/** 閉包項の中身。kind で表現を見分ける。 */
-export type ClosureJson =
-  | { kind: 'sindy'; targets: string[]; features: string[]; xi: number[][] }
-  | { kind: 'ude'; layers: number[][] }
-  | { kind: string };
-/** 前処理の中身。PCA は捨てた成分も含めた寄与率、AE は隠れ層の幅を持つ。 */
-export type PreprocessorJson =
-  | { kind: 'pca'; explained_variance_ratio: number[]; n_components: number }
-  | { kind: 'ae'; hidden: number }
-  | { kind: string };
-/** 学習器の run の中身（part.json）。latents は潜在の名前（群の名前で修飾し学習器の中で z1 から。h+n.z1。どのモデルの波形でも同じ名前）、comps は学習区画の名前（fit/<区画の id>/）。 */
-export type PartJson = {
+/** 学習器の run の decode の曲線（compressor/decode.json）。gates は群のゲート、order は区画の型の状態の並び、axes は潜在の軸ごとの格子 z と、ゲートごとの値（gates の順 × z の点）。 */
+export type DecodeJson = {
   gates: string[];
-  latents: string[];
-  comps: string[];
-  closure: ClosureJson;
-  preprocessor: PreprocessorJson;
-  metrics: Record<string, number | null>;
+  order: string[];
+  axes: { latent: string; z: number[]; gates: number[][] }[];
 };
+/** 学習器の run の、圧縮器に固有の中身（compressor/own.json）。 */
+export type CompressorJson =
+  | { kind: 'pca'; explained_variance_ratio: number[]; n_components: number; components: number[][]; mean: number[] }
+  | { kind: 'ae'; hidden: number }
+  | { kind: 'kam'; criterion: number | null };
+/** 学習器の run の、右辺に固有の中身（rhs/own.json）。 */
+export type RhsJson =
+  | { kind: 'sindy'; targets: string[]; features: string[]; xi: number[][] }
+  | { kind: 'ude'; layers: number[][]; losses: Record<string, number | null> }
+  | { kind: 'kam' };
+/** 学習器の run の、学習区画ごとの全区間のまとめ（fit/<区画の id>/summary.json）。 */
+export type FitSummary = { reconstruction_mse: number | null; reconstruction_mse_ratio: number | null };
 
 /** GPU の実測の run の中身。細胞の数ごとのディレクトリ `<細胞の数>/` に、使ったツールの出力を加工せずにツールごとのファイルで置く（remote/neurosurrogate/bench.py と揃える）。
  * own は bench.py が自分で測ったもの（BenchOwn）、jaxPlaced と jaxAfter は入力を置いた後と回した後の JAX の memory_stats、smiApps と smiGpu は nvidia-smi の CSV（このプロセスの使用量と GPU の全容量）、

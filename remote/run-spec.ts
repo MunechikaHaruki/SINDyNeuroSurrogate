@@ -43,9 +43,9 @@ export function runSpec(runs: string, path: string): void {
   if (ensure(runs, spec, name) === undefined) console.log(`${name}: 置換できないので回さない`);
 }
 
-/** spec が指す run のハッシュ。学習器は学習データを、モデルは学習器を、評価と GPU の実測はモデルを指す。 */
+/** spec が指す run のハッシュ。学習器は学習データを（KAM は指さない）、モデルは学習器を、評価と GPU の実測はモデルを指す。 */
 function pointsTo(spec: Spec): string[] {
-  if (spec.kind === 'part') return [spec.data];
+  if (spec.kind === 'part') return spec.data === undefined ? [] : [spec.data];
   if (spec.kind === 'model') return spec.parts;
   if ((spec.kind === 'sim' || spec.kind === 'bench') && spec.model !== null) return [spec.model.surrogate];
   return [];

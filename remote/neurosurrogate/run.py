@@ -10,7 +10,8 @@ spec の種類は 5 つ (`kind`)。学習データ → 学習器 → モデル �
 - `data`  学習データ。`data` (SimSpec) を元のモデルで回す。
           置き場は `runs/data/<ハッシュ>/`
 - `part`  学習器 1 つ (群 1 つの圧縮器と右辺)。`data` は学習データのハッシュで、
-          `cell`・`form`・`train_comp`・`group` で学習する。
+          `cell`・`form`・`train_comp`・`group` で学習する。学習しない KAM は
+          `data` と `train_comp` を持たず、`cell`・`form`・`group` だけで組む。
           置き場は `runs/parts/<ハッシュ>/`
 - `model` 学習器の並びを組んだモデル。`parts` は学習器のハッシュの並び (群の順)、
           `cell`・`form`・`absorbed`。学習はせず、組んだ演算コストを書く。
@@ -38,13 +39,18 @@ JSON の nan は null):
                name, created, elapsed = 計算にかかった秒, 掃引の単位, env = 回した環境:
                backend、device、jax と python の版、host、コードとイメージの版)
     data       waves/ (点は 1 つ)
-    part       part.joblib (圧縮器と右辺)、part.json (状態・潜在・学習区画の名前、
-               右辺と圧縮器の中身、学習側の指標)、
-               fit/<comp_id>/{latent,recon_rmse}.f64
-    model      summary.json (組んだ 1 刻みの演算コスト。学習器の指標は part.json)
+    part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 → ゲートの曲線を
+               潜在の軸ごとに。区画の型の状態の並びも)、compressor/own.json と
+               rhs/own.json (圧縮器と右辺に固有の中身。kind で形が変わる。PCA は向きと
+               平均も、KAM の右辺は kind だけ)、学習データから学習した学習器は fit/<comp_id>/ に
+               {latent,recon_rmse,slope,rhs}.f64 (slope は潜在の前進差分、rhs は学習器の
+               右辺がその時刻に返す dz/dt) と summary.json (再構成の MSE と分散比)
+    model      summary.json (組んだ 1 刻みの演算コスト。学習器の中身は学習器の run)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
-               original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ
-               だけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
+               original/ のゲートを潜在へ射影したもの。waves と同じ形) と、その上の
+               その上の潜在の傾きの正解 (射影の前進差分) slope/<comp>/ と、学習器の
+               右辺が返す dz/dt の rhs/<comp>/ (どちらも同じ形)。
+               run は生データだけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
                頼まれるたびに波形から計算する
     bench      <細胞の数>/ に、bench.json (bench.py が自分で測った時間・状態の置き方・
                発火の回数)、jax.memory_stats.{placed,after}.json、nvidia-smi.{apps,gpu}.csv、
@@ -98,13 +104,14 @@ from .surrogate.model import (
     describe_group,
     fit_group,
     group_latents,
+    latent_slopes,
     replace,
     summary,
 )
 
 # spec の種類ごとの形式の版。段取りが spec に入れる = 形式を変えたらその種類の鍵が変わる
 # (shared/spec.ts の FORMATS と揃える)
-_FORMATS = {"data": 11, "part": 11, "model": 11, "sim": 12, "bench": 11}
+_FORMATS = {"data": 11, "part": 14, "model": 11, "sim": 13, "bench": 11}
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _CLAIM_GRACE = 60.0  # [s] 書きかけを作ってから pid を置くまでの猶予 (これより古く pid の無いものは残骸)
@@ -226,20 +233,27 @@ def _data(root: Path, spec: dict) -> dict:
 
 
 def _part(root: Path, spec: dict) -> dict:
-    """学習データを読んで学習器 1 つを学習し、その中身を書く。"""
+    """学習データを読んで学習器 1 つを学習し、その中身を書く (KAM は学習データを読まない)。"""
     runs = root.parents[1]
     config = part_config(runs, spec)
-    [data] = _read_waves(runs / "data" / spec["data"] / "waves")
+    data = None
+    if "data" in spec:
+        [data] = _read_waves(runs / "data" / spec["data"] / "waves")
     group = config.groups[0]
     part = fit_group(config, group, data)
     save_part(root, part)
-    description, fits = describe_group(config, group, part, data)
-    _write_json(root / "part.json", description)
+    files, fits = describe_group(config, group, part, data)
+    for path, value in files.items():
+        _write_json(root / path, value)
     for comp_id, comp_fit in fits.items():
         folder = root / "fit" / str(comp_id)
         folder.mkdir(parents=True)
         _write_f64(folder / "latent.f64", comp_fit.latent.T)
         _write_f64(folder / "recon_rmse.f64", comp_fit.recon_rmse)
+        _write_json(folder / "summary.json", comp_fit.summary)
+        if comp_fit.slope is not None and comp_fit.rhs is not None:
+            _write_f64(folder / "slope.f64", comp_fit.slope.T)
+            _write_f64(folder / "rhs.f64", comp_fit.rhs.T)
     return {}
 
 
@@ -264,6 +278,22 @@ def _project(surrogate: Surrogate, ds: xr.Dataset, comp_id: int) -> xr.Dataset:
         i_internal(ds, comp_id),
         comp_id,
         float(ds["time"][1] - ds["time"][0]),
+    )
+
+
+def _slopes(
+    surrogate: Surrogate, ds: xr.Dataset, comp_id: int, net: Any
+) -> tuple[xr.Dataset, xr.Dataset] | None:
+    """元のモデルの区画の軌道の上の、潜在の傾きの正解と学習器の右辺 ([V, 潜在] の形)。"""
+    slopes = latent_slopes(surrogate, ds, comp_id, net.nodes[comp_id].resolved_params)
+    if slopes is None:
+        return None
+    names = [n for g in surrogate.config.groups for n in group_latents(g)]
+    dt = float(ds["time"][1] - ds["time"][0])
+    v, u = potential(ds, comp_id), i_internal(ds, comp_id)
+    return (
+        latent_dataset(v, slopes[0], names, u, comp_id, dt),
+        latent_dataset(v, slopes[1], names, u, comp_id, dt),
     )
 
 
@@ -301,6 +331,13 @@ def _sim(root: Path, spec: dict) -> dict:
     for comp in targets:
         projected = [_project(surrogate, ds, net.index(comp)) for ds in originals]
         _write_waves(root / "projected" / comp, projected)
+        slopes = [
+            _slopes(surrogate, ds, net.index(comp), point.net)
+            for ds, point in zip(originals, series.points, strict=True)
+        ]
+        if all(pair is not None for pair in slopes):
+            _write_waves(root / "slope" / comp, [p[0] for p in slopes])  # type: ignore[index]
+            _write_waves(root / "rhs" / comp, [p[1] for p in slopes])  # type: ignore[index]
     return {"unit": series.unit}
 
 

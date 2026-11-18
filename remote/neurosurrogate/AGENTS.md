@@ -106,8 +106,8 @@ dψ/dt = Σ_i D_i ẋ_i / Σ_j D_j x̄_j'(ψ)、D_i = ∂(dV/dt)/∂x_i で動�
 群のゲート ↔ 潜在の圧縮器 (PCA と AutoEncoder)。
 
 ```text
-どちらも encode・decode・指標・中身・decode の演算コストを持つ。fit の末尾で、学習
-データの先頭の潜在 (置換シミュの初期値 gate_inits) と再構成の統計を埋める。
+どちらも encode・decode・中身・decode の演算コストを持つ。fit の末尾で、学習
+データの先頭の潜在 (置換シミュの初期値 gate_inits) を埋める。
 ```
 
 ## surrogate/sindy.py
@@ -159,7 +159,8 @@ run の置き場の学習器とモデル: 学習器を書いて読み、モデ�
 ```text
 置き場は `runs/data/<ハッシュ>/` (学習データ)、`runs/parts/<ハッシュ>/` (学習器 1 つ)、
 `runs/models/<ハッシュ>/` (学習器の並びを組んだモデル)。どれも spec.json を持ち、
-学習器の spec は学習データを、モデルの spec は学習器をハッシュで指す。
+学習器の spec は学習データを (学習しない KAM は指さない)、モデルの spec は学習器を
+ハッシュで指す。
 ```
 
 ## bench.py
@@ -201,7 +202,8 @@ spec の種類は 5 つ (`kind`)。学習データ → 学習器 → モデル �
 - `data`  学習データ。`data` (SimSpec) を元のモデルで回す。
           置き場は `runs/data/<ハッシュ>/`
 - `part`  学習器 1 つ (群 1 つの圧縮器と右辺)。`data` は学習データのハッシュで、
-          `cell`・`form`・`train_comp`・`group` で学習する。
+          `cell`・`form`・`train_comp`・`group` で学習する。学習しない KAM は
+          `data` と `train_comp` を持たず、`cell`・`form`・`group` だけで組む。
           置き場は `runs/parts/<ハッシュ>/`
 - `model` 学習器の並びを組んだモデル。`parts` は学習器のハッシュの並び (群の順)、
           `cell`・`form`・`absorbed`。学習はせず、組んだ演算コストを書く。
@@ -229,13 +231,18 @@ JSON の nan は null):
                name, created, elapsed = 計算にかかった秒, 掃引の単位, env = 回した環境:
                backend、device、jax と python の版、host、コードとイメージの版)
     data       waves/ (点は 1 つ)
-    part       part.joblib (圧縮器と右辺)、part.json (状態・潜在・学習区画の名前、
-               右辺と圧縮器の中身、学習側の指標)、
-               fit/<comp_id>/{latent,recon_rmse}.f64
-    model      summary.json (組んだ 1 刻みの演算コスト。学習器の指標は part.json)
+    part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 → ゲートの曲線を
+               潜在の軸ごとに。区画の型の状態の並びも)、compressor/own.json と
+               rhs/own.json (圧縮器と右辺に固有の中身。kind で形が変わる。PCA は向きと
+               平均も、KAM の右辺は kind だけ)、学習データから学習した学習器は fit/<comp_id>/ に
+               {latent,recon_rmse,slope,rhs}.f64 (slope は潜在の前進差分、rhs は学習器の
+               右辺がその時刻に返す dz/dt) と summary.json (再構成の MSE と分散比)
+    model      summary.json (組んだ 1 刻みの演算コスト。学習器の中身は学習器の run)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
-               original/ のゲートを潜在へ射影したもの。waves と同じ形)。run は生データ
-               だけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
+               original/ のゲートを潜在へ射影したもの。waves と同じ形) と、その上の
+               その上の潜在の傾きの正解 (射影の前進差分) slope/<comp>/ と、学習器の
+               右辺が返す dz/dt の rhs/<comp>/ (どちらも同じ形)。
+               run は生データだけを持ち、スパイクの特徴量 (spikes.py) と元のモデルとの差は API が
                頼まれるたびに波形から計算する
     bench      <細胞の数>/ に、bench.json (bench.py が自分で測った時間・状態の置き方・
                発火の回数)、jax.memory_stats.{placed,after}.json、nvidia-smi.{apps,gpu}.csv、

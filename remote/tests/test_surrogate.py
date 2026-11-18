@@ -31,6 +31,7 @@ from neurosurrogate.surrogate.model import (
     fit,
     fit_group,
     group_latents,
+    latent_slopes,
     rejections,
     replace,
     summary,
@@ -150,6 +151,21 @@ def test_any_grouping_with_exact_parts_reproduces_the_original(cell, groups) -> 
     np.testing.assert_allclose(replaced, original, rtol=0, atol=1e-9)
 
 
+def test_exact_parts_give_the_slope_of_the_original() -> None:
+    """恒等の圧縮と真の右辺なら、学習器の右辺は元のモデルの潜在の傾き (前進差分) と
+    一致する。右辺へ渡す状態の組み立てと潜在の並びの担保。"""
+    s = _identity_surrogate("traub", [["N", "H"], ["A", "C"]])
+    spec = _dc("traub", value=10.0)
+    slopes = latent_slopes(
+        s, simulate(spec.run_input()), 0, spec.net.nodes[0].resolved_params
+    )
+    assert slopes is not None
+    slope, rhs = slopes
+    assert slope.shape == rhs.shape and slope.shape[1] == 4
+    np.testing.assert_allclose(rhs[:-1], slope[:-1], rtol=0, atol=1e-9)
+    assert np.isnan(slope[-1]).all()
+
+
 # --- 宣言したテスト専用の学習 ------------------------------------------------------
 
 
@@ -169,6 +185,7 @@ def test_any_grouping_with_exact_parts_reproduces_the_original(cell, groups) -> 
 def test_declared_fit_and_replace_finitely(name: str) -> None:
     """学習した入力で置き換えて回すと有限に走る (短い学習の質までは見ない)。"""
     s = fit_declared(name)
+    assert s.config.data is not None
     run = replace(s, s.config.data.run_input(), ["soma"])
     assert np.isfinite(potential(simulate(run), 0)).all()
     cell = surrogate_cell(s)
@@ -337,22 +354,44 @@ def test_replace_swaps_only_the_named_compartments() -> None:
 def test_a_learner_describes_itself_and_lines_up() -> None:
     s = fit_declared("_test_hh_sindy")
     [group] = s.config.groups
-    description, fits = describe_group(s.config, group, s.parts[0], s.training_data)
-    json.dumps(description)
-    assert description["closure"]["kind"] == "sindy"
-    assert np.shape(description["closure"]["xi"]) == (
-        len(description["closure"]["targets"]),
-        len(description["closure"]["features"]),
-    )
-    assert description["comps"] == ["soma"]
+    files, fits = describe_group(s.config, group, s.parts[0], s.training_data)
+    json.dumps(files)
+    rhs = files["rhs/own.json"]
+    assert rhs["kind"] == "sindy"
+    assert np.shape(rhs["xi"]) == (len(rhs["targets"]), len(rhs["features"]))
+    assert files["compressor/own.json"]["kind"] == "pca"
+    decode = files["compressor/decode.json"]
+    latents = [axis["latent"] for axis in decode["axes"]]
+    assert np.shape(decode["axes"][0]["gates"]) == (len(group.gates), 201)
+    assert list(fits) == [0]
     n_time = s.training_data.sizes["time"]
     comp_fit = fits[0]
-    assert comp_fit.latent.shape == (n_time, len(description["latents"]))
+    assert comp_fit.latent.shape == (n_time, len(latents))
     assert comp_fit.recon_rmse.shape == (n_time,)
-    compressor = s.parts[0][0]
     assert float(np.mean(comp_fit.recon_rmse**2)) == pytest.approx(
-        compressor.reconstruction["reconstruction_mse"]
+        comp_fit.summary["reconstruction_mse"]
     )
+
+
+def test_kam_describes_itself_without_training_data() -> None:
+    """KAM は学習データを読まずに、ψ の範囲の decode の曲線と KAM の条件を書き、
+    右辺の中身も学習区画も持たない。曲線の ψ = V_rest では静止状態のゲートに戻る。"""
+    config = Config.from_dict({**declared_config("_test_traub_kam"), "data": None})
+    group = config.groups[0]
+    part = fit_group(config, group, None)
+    files, fits = describe_group(config, group, part, None)
+    assert fits == {} and files["rhs/own.json"] == {"kind": "kam"}
+    assert files["compressor/own.json"]["criterion"] >= 0
+    [axis] = files["compressor/decode.json"]["axes"]
+    traub = CELLS["traub"]
+    assert traub.param_cls is not None
+    rest = traub.inits(traub.param_cls())
+    psi = part[0].gate_inits[0]
+    assert psi == pytest.approx(rest[0], abs=1e-6)
+    at = [np.interp(psi, axis["z"], curve) for curve in axis["gates"]]
+    states = CELLS["traub"].states
+    expected = [rest[1 + states.index(g)] for g in group.gates]
+    assert at == pytest.approx(expected, abs=1e-3)
 
 
 def test_a_learner_does_not_depend_on_the_other_groups() -> None:
@@ -361,12 +400,12 @@ def test_a_learner_does_not_depend_on_the_other_groups() -> None:
     data = s.training_data
     for group, part in zip(s.config.groups, s.parts, strict=True):
         alone = Config.from_dict({**s.config.to_dict(), "groups": [group.__dict__]})
-        description, _ = describe_group(alone, group, part, data)
-        assert description["latents"] == [
+        files, _ = describe_group(alone, group, part, data)
+        assert [axis["latent"] for axis in files["compressor/decode.json"]["axes"]] == [
             f"{'+'.join(g.lower() for g in group.gates)}.z1"
         ]
         refit = describe_group(alone, group, fit_group(alone, group, data), data)[0]
-        assert refit["closure"] == description["closure"]
+        assert refit["rhs/own.json"] == files["rhs/own.json"]
     assert [g.gates for g in s.config.groups] == [["N", "H"], ["A", "C"]]
     assert surrogate_cell(s).states[:2] == ["n+h.z1", "a+c.z1"]
 

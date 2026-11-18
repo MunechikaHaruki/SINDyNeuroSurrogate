@@ -1,25 +1,42 @@
-// 学習器（runs/parts/<学習器>/）の答え。学習器の run と、その spec が指す学習データの run（data/<spec.data>/）だけを読む。
-// どの学習器にもある中身（組み立ての表、学習データの上の膜電位・群のゲート・潜在・再構成誤差の時系列、ゲートと潜在の軌跡）と、
-// 型ごとの中身（KAM の条件と再構成、SINDy の学習した右辺と圧縮器の再構成・圧縮器ごとの中身）を分けて返す。
-import type { Learner, Line, PartsReply, PartsRequest, Reconstruction, SindyEquation } from '../../shared/api.ts';
-import { compArray, fitArray, gatesOf, RUN, type ArrayRef, type PartJson } from '../../shared/runs.ts';
+// 学習器（runs/parts/<学習器>/）の答え。学習器の run と、その spec が指す学習データの run（data/<spec.data>/。学習しない KAM は指さない）だけを読む。
+// 答えの欄は学習器の run の置き場に 1 つずつ対応する：組み立て（spec.json）、decode の曲線（compressor/decode.json）、圧縮器と右辺に固有の中身
+// （compressor/own.json・rhs/own.json）、学習データの上の中身（fit/<区画>/：潜在・再構成誤差・潜在の傾きの正解（前進差分）・学習器の右辺の時系列と、全区間のまとめ）。
+import type { CompressorOwn, Fit, Line, PartsReply, PartsRequest, RhsOwn, SindyEquation } from '../../shared/api.ts';
+import {
+  compArray,
+  fitArray,
+  RUN,
+  type ArrayRef,
+  type CompressorJson,
+  type DecodeJson,
+  type FitSummary,
+  type RhsJson,
+  type WaveMeta,
+} from '../../shared/runs.ts';
 import type { Spec } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { learnedRun, type Context } from './experiments.ts';
 import { spanOf, wavesOf } from './inputs.ts';
-import { line, trajectory } from './waves.ts';
+import { line, slopeCompare, trajectory } from './waves.ts';
+
+type PartSpec = Extract<Spec, { kind: 'part' }>;
+
+/** 群の潜在の名前（群の名前で修飾し z1 から。h+n.z1）。 */
+export function latentNames(spec: PartSpec): string[] {
+  const label = spec.group.gates.map(gate => gate.toLowerCase()).join('+');
+  return Array.from({ length: spec.group.d }, (_, i) => `${label}.z${i + 1}`);
+}
 
 /** 潜在の軌跡の軸。群の潜在が 2 次元以上なら先頭の 2 つ、1 次元なら V とその潜在。 */
-export function pathAxes(part: PartJson): PartsReply['axes'] {
-  const names = part.latents;
-  if (names.length >= 2) return { x: names[0], y: names[1], xIsVoltage: false };
-  return { x: 'V', y: names[0] ?? '', xIsVoltage: true };
+export function pathAxes(latents: string[]): Fit['axes'] {
+  if (latents.length >= 2) return { x: latents[0], y: latents[1], xIsVoltage: false };
+  return { x: 'V', y: latents[0] ?? '', xIsVoltage: true };
 }
 
 /** 学習器が学習した学習データの、実験の中の名前。 */
 function dataName(runs: string, experiment: string, run: string): string {
   const model = experimentStatus(runs, experiment).models.find(m => m.parts.some(p => p.id === run));
-  if (!model) throw new Error(`${experiment} に ${run} を使うモデルが無い`);
+  if (!model?.data) throw new Error(`${experiment} に ${run} を学習データの上で使うモデルが無い`);
   return model.data.name;
 }
 
@@ -30,17 +47,16 @@ function params(values: Record<string, unknown>): string[] {
   );
 }
 
-/** 組み立ての表。spec の細胞・形・群から。右辺の中身（項ライブラリなど）は型ごとの中身が持つ。 */
-export function setupOf(spec: Extract<Spec, { kind: 'part' }>, part: PartJson): PartsReply['setup'] {
+/** 組み立ての表（spec.json）。細胞・形・群のゲート・圧縮器・潜在・右辺。 */
+export function setupOf(spec: PartSpec): PartsReply['setup'] {
   const { group } = spec;
   return [
     { label: '細胞', value: spec.cell },
     { label: '形', value: spec.form },
     { label: '群のゲート', value: group.gates.join('・') },
     { label: '圧縮器', value: [group.compressor, ...params(group.compressor_params)].join('・') },
-    { label: '潜在', value: `${part.latents.join('・')}（${group.d} 次元）` },
+    { label: '潜在', value: `${latentNames(spec).join('・')}（${group.d} 次元）` },
     { label: '右辺', value: group.rhs },
-    { label: '学習した区画', value: part.comps.join('・') },
   ];
 }
 
@@ -83,56 +99,60 @@ function meanMax(values: Float64Array): { mean: number; max: number } {
   return { mean: count > 0 ? sum / count : NaN, max };
 }
 
-/** 型ごとの中身。右辺の種類で分け、圧縮器の再構成の指標は鍵の頭の圧縮器の種類で読む。 */
-export function learnerOf(
-  spec: Extract<Spec, { kind: 'part' }>,
-  part: PartJson,
-  rmse: Reconstruction['rmse'],
-): Learner {
-  const metric = (key: string) => part.metrics[key] ?? null;
-  const reconstruction = (kind: string): Reconstruction => ({
-    mse: metric(`${kind}/reconstruction_mse`),
-    ratio: metric(`${kind}/reconstruction_mse_ratio`),
-    rmse,
-  });
-  const { closure, preprocessor } = part;
-  if (closure.kind === 'kam')
-    return { kind: 'kam', criterion: metric('kam/criterion'), reconstruction: reconstruction('kam') };
-  if (closure.kind !== 'sindy') throw new Error(`右辺 ${closure.kind} の学習器は答えの形を持たない`);
-  const sindy = closure as { targets: string[]; features: string[]; xi: number[][] };
-  const own = (): Extract<Learner, { kind: 'sindy' }>['compressor']['own'] => {
-    if (preprocessor.kind === 'pca') {
-      const pca = preprocessor as { explained_variance_ratio: number[]; n_components: number };
-      return { kind: 'pca', ratios: pca.explained_variance_ratio, kept: pca.n_components };
-    }
-    if (preprocessor.kind === 'ae') return { kind: 'ae', hidden: (preprocessor as { hidden: number }).hidden };
-    throw new Error(`圧縮器 ${preprocessor.kind} は答えの形を持たない`);
-  };
+/** decode の曲線（compressor/decode.json）を、潜在の軸ごとのゲートの線にする。 */
+export function decodeOf(decode: DecodeJson): PartsReply['decode'] {
+  return decode.axes.map(axis => ({
+    latent: axis.latent,
+    lines: decode.gates.map((gate, i) => ({ label: gate, points: axis.z.map((x, j) => ({ x, y: axis.gates[i][j] })) })),
+  }));
+}
+
+/** 圧縮器に固有の中身（compressor/own.json）。 */
+export function compressorOf(own: CompressorJson): CompressorOwn {
+  if (own.kind === 'pca')
+    return {
+      kind: 'pca',
+      ratios: own.explained_variance_ratio,
+      kept: own.n_components,
+      components: own.components,
+      mean: own.mean,
+    };
+  return own;
+}
+
+/** 右辺に固有の中身（rhs/own.json）。SINDy は項を式にまとめ、項ライブラリとほかの設定は spec から。 */
+export function rhsOf(spec: PartSpec, own: RhsJson): RhsOwn {
+  if (own.kind !== 'sindy') return own;
   const { library_specs: library, ...rest } = spec.group.rhs_params;
   let nnz = 0;
-  for (const row of sindy.xi) for (const v of row) if (v !== 0) nnz += 1;
+  for (const row of own.xi) for (const v of row) if (v !== 0) nnz += 1;
   return {
     kind: 'sindy',
-    rhs: {
-      library: (library ?? []).map(l => (l.gates ? `${l.type}（${l.gates}）` : l.type)),
-      settings: params(rest),
-      nnz,
-      size: sindy.xi.length * sindy.features.length,
-      equations: equationsOf(sindy),
-    },
-    compressor: { kind: preprocessor.kind, reconstruction: reconstruction(preprocessor.kind), own: own() },
+    library: (library ?? []).map(l => (l.gates ? `${l.type}（${l.gates}）` : l.type)),
+    settings: params(rest),
+    nnz,
+    size: own.xi.length * own.features.length,
+    equations: equationsOf(own),
   };
 }
 
-/** 学習器 1 本の、区画 comps の線と中身。 */
-export function parts(ctx: Context, request: PartsRequest): PartsReply {
-  const run = learnedRun(ctx.runs, request.experiment, 'parts', request.part);
-  const spec = ctx.files.json<Spec>(run, RUN.spec);
-  if (spec.kind !== 'part') throw new Error(`${run} は学習器の run でない`);
-  const part = ctx.files.json<PartJson>(run, RUN.part);
-  const comps = request.comps ?? part.comps.slice(0, 1);
-  const data = `data/${spec.data}`;
-  const meta = wavesOf(ctx, data);
+/** 学習データの上の中身（fit/）。学習データの run の目録 meta の上で、区画 comps の線と、学習した全区画の全区間のまとめ。 */
+function fitOf(
+  ctx: Context,
+  request: PartsRequest,
+  run: string,
+  data: string,
+  meta: WaveMeta,
+  gates: string[],
+  latents: string[],
+): Fit {
+  const nameOf = (id: number) => Object.entries(meta.names ?? {}).find(([, v]) => v === id)?.[0] ?? String(id);
+  const learned = ctx.files
+    .dirs(run, RUN.fit)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const comps = learned.map(nameOf);
+  const shown = request.comps ?? comps.slice(0, 1);
   const duration = meta.n[0] * meta.dt;
   const span = spanOf(meta, request.window, duration);
   const idOf = (name: string) => {
@@ -141,46 +161,82 @@ export function parts(ctx: Context, request: PartsRequest): PartsReply {
     return id;
   };
   const dataOf = (name: string, variable: string) => compArray(data, RUN.waves, meta, 0, idOf(name), variable);
-  const latentOf = (name: string, latent: string) =>
-    fitArray(run, meta, idOf(name), 'latent', part.latents.indexOf(latent));
-  const named = (name: string, comp: string) => (comps.length > 1 ? `${name}（${comp}）` : name);
+  const arrayOf = (name: string, file: 'latent' | 'slope' | 'rhs', latent: string) =>
+    fitArray(run, meta, idOf(name), file, latents.indexOf(latent));
+  const named = (name: string, comp: string) => (shown.length > 1 ? `${name}（${comp}）` : name);
   const draw = (label: string, ref: ArrayRef): Line => ({ label, points: line(ctx.files, ref, span) });
-  const axes = pathAxes(part);
-  const rmse = part.comps.map(name => ({
-    comp: name,
-    ...meanMax(ctx.files.column(fitArray(run, meta, idOf(name), 'recon_rmse'))),
-  }));
+  const axes = pathAxes(latents);
   return {
-    run,
     data: dataName(ctx.runs, request.experiment, run),
-    label: part.gates.map(gate => gate.toLowerCase()).join('+'),
-    setup: setupOf(spec, part),
-    comps: part.comps,
-    shown: comps,
-    latents: part.latents,
+    comps,
+    shown,
     duration,
     window: [span.start, span.end],
-    gateOrder: gatesOf(meta, idOf(part.comps[0] ?? comps[0])),
-    voltage: comps.map(name => draw(name, dataOf(name, 'V'))),
-    gates: comps.flatMap(name => part.gates.map(gate => draw(named(gate, name), dataOf(name, gate)))),
-    latent: comps.flatMap(name => part.latents.map(latent => draw(named(latent, name), latentOf(name, latent)))),
-    recon: comps.map(name => draw(name, fitArray(run, meta, idOf(name), 'recon_rmse'))),
-    manifold: comps.flatMap(name =>
-      part.gates.map(gate => ({
+    voltage: shown.map(name => draw(name, dataOf(name, 'V'))),
+    gates: shown.flatMap(name => gates.map(gate => draw(named(gate, name), dataOf(name, gate)))),
+    latent: shown.flatMap(name => latents.map(latent => draw(named(latent, name), arrayOf(name, 'latent', latent)))),
+    recon: shown.map(name => draw(name, fitArray(run, meta, idOf(name), 'recon_rmse'))),
+    manifold: shown.flatMap(name =>
+      gates.map(gate => ({
         label: named(gate, name),
-        points: trajectory(ctx.files, latentOf(name, part.latents[0]), dataOf(name, gate), span),
+        points: trajectory(ctx.files, arrayOf(name, 'latent', latents[0]), dataOf(name, gate), span),
       })),
     ),
-    path: comps.map(name => ({
+    path: shown.map(name => ({
       label: name,
       points: trajectory(
         ctx.files,
-        axes.xIsVoltage ? dataOf(name, 'V') : latentOf(name, axes.x),
-        latentOf(name, axes.y),
+        axes.xIsVoltage ? dataOf(name, 'V') : arrayOf(name, 'latent', axes.x),
+        arrayOf(name, 'latent', axes.y),
         span,
       ),
     })),
     axes,
-    learner: learnerOf(spec, part, rmse),
+    slopes: slopeCompare(
+      ctx.files,
+      shown.flatMap(name =>
+        latents.map(latent => ({
+          label: named(latent, name),
+          slope: arrayOf(name, 'slope', latent),
+          rhs: arrayOf(name, 'rhs', latent),
+        })),
+      ),
+      span,
+    ),
+    reconstruction: learned.map(id => {
+      const summary = ctx.files.json<FitSummary>(run, RUN.fitSummary(id));
+      return {
+        comp: nameOf(id),
+        mse: summary.reconstruction_mse,
+        ratio: summary.reconstruction_mse_ratio,
+        ...meanMax(ctx.files.column(fitArray(run, meta, id, 'recon_rmse'))),
+      };
+    }),
+  };
+}
+
+/** 学習器 1 本の答え。置き場ごとに 1 欄。学習データを指さない（KAM の）学習器は学習器の run だけを読む。 */
+export function parts(ctx: Context, request: PartsRequest): PartsReply {
+  const run = learnedRun(ctx.runs, request.experiment, 'parts', request.part);
+  const spec = ctx.files.json<Spec>(run, RUN.spec);
+  if (spec.kind !== 'part') throw new Error(`${run} は学習器の run でない`);
+  const latents = latentNames(spec);
+  const decode = ctx.files.json<DecodeJson>(run, RUN.decode);
+  let fit: Fit | null = null;
+  if (spec.data !== undefined) {
+    const data = `data/${spec.data}`;
+    const meta = wavesOf(ctx, data);
+    fit = fitOf(ctx, request, run, data, meta, spec.group.gates, latents);
+  }
+  return {
+    run,
+    label: spec.group.gates.map(gate => gate.toLowerCase()).join('+'),
+    setup: setupOf(spec),
+    latents,
+    gateOrder: decode.order,
+    decode: decodeOf(decode),
+    compressor: compressorOf(ctx.files.json<CompressorJson>(run, RUN.compressor)),
+    rhs: rhsOf(spec, ctx.files.json<RhsJson>(run, RUN.rhs_own)),
+    fit,
   };
 }

@@ -1,11 +1,21 @@
 // 入力（runs/inputs/<入力>/）の答え。入力の下の run（元のモデル original/ と置き換えた列 <モデル>@<区画>/）だけを読み、実験の系列 1 つを元のモデルと回し終えたモデルの列で並べる：
 // 掃引の点ごとの電流と電位の線、原系との指標と発火、頼めば 1 組の潜在空間（原系は列の圧縮器で写した projected/）と、元のモデルの全区画の膜電位・内部電流・ゲート。
-import type { ColumnView, InputsReply, InputsRequest, InputView, Line, PairCompare, VoltageLine, WholeWaves, Window } from '../../shared/api.ts';
+import type {
+  ColumnView,
+  InputsReply,
+  InputsRequest,
+  InputView,
+  Line,
+  PairCompare,
+  VoltageLine,
+  WholeWaves,
+  Window,
+} from '../../shared/api.ts';
 import { compArray, currentArray, gatesOf, internalArray, RUN, variablesOf, type WaveMeta } from '../../shared/runs.ts';
 import type { ExperimentStatus, PlanEntry, RunStatus } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { type Context, modelOf, planOf, plans, reducedOf, stimulusOf } from './experiments.ts';
-import { isFraction, line, trajectory, type Span } from './waves.ts';
+import { isFraction, line, slopeCompare, trajectory, type Span } from './waves.ts';
 
 /** 元のモデルの run の目録（waves/meta.json）。 */
 export function wavesOf(ctx: Context, run: string): WaveMeta {
@@ -101,10 +111,16 @@ function pairOf(
   for (const name of names) {
     latents[name] = [{ label: '原系', points: line(ctx.files, compArray(run, root, projected!, k, id, name), span) }];
     if (replaced && ownNames.includes(name))
-      latents[name].push({ label: '置換系', points: line(ctx.files, compArray(run, RUN.waves, own, k, id, name), span) });
+      latents[name].push({
+        label: '置換系',
+        points: line(ctx.files, compArray(run, RUN.waves, own, k, id, name), span),
+      });
   }
   const choices = ['V', ...names];
-  const chosen = { x: choices.includes(axes.x) ? axes.x : 'V', y: choices.includes(axes.y) ? axes.y : (names[0] ?? 'V') };
+  const chosen = {
+    x: choices.includes(axes.x) ? axes.x : 'V',
+    y: choices.includes(axes.y) ? axes.y : (names[0] ?? 'V'),
+  };
   const phase: Line[] = [];
   if (projected) {
     const x = compArray(run, root, projected, k, id, chosen.x);
@@ -116,12 +132,27 @@ function pairOf(
       phase.push({ label: '置換系', points: trajectory(ctx.files, ownX, ownY, span) });
     }
   }
-  return { model: at.model, latents, phase, axes: chosen };
+  const slopes =
+    projected && ctx.files.text(run, RUN.meta(RUN.slope(at.comp))) !== null
+      ? slopeCompare(
+          ctx.files,
+          names.map(name => ({
+            label: name,
+            slope: compArray(run, RUN.slope(at.comp), projected, k, id, name),
+            rhs: compArray(run, RUN.rhs(at.comp), projected, k, id, name),
+          })),
+          span,
+        )
+      : null;
+  return { model: at.model, latents, phase, axes: chosen, slopes };
 }
 
 /** 元のモデル original の掃引の点 k の、区画 comps の膜電位・内部電流・ゲート（0〜1 の状態）とゲートでない状態。 */
 function wholeOf(ctx: Context, original: string, meta: WaveMeta, k: number, comps: string[], span: Span): WholeWaves {
-  const draw = (label: string, ref: Parameters<typeof line>[1]): Line => ({ label, points: line(ctx.files, ref, span) });
+  const draw = (label: string, ref: Parameters<typeof line>[1]): Line => ({
+    label,
+    points: line(ctx.files, ref, span),
+  });
   const whole: WholeWaves = { voltage: [], internal: [], gates: [], states: [] };
   for (const name of comps) {
     const id = meta.names?.[name];
@@ -198,7 +229,9 @@ export function inputs(ctx: Context, request: InputsRequest): InputsReply {
           request.pair.axes ?? { x: 'V', y: '' },
         )
       : null;
-  const whole = request.whole ? wholeOf(ctx, original.id, meta, pointOf(request.whole.point), request.whole.comps, span) : null;
+  const whole = request.whole
+    ? wholeOf(ctx, original.id, meta, pointOf(request.whole.point), request.whole.comps, span)
+    : null;
   return {
     input,
     comp,

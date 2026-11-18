@@ -1,11 +1,9 @@
 {
-  "format": 11,
+  "format": 14,
   "device": "gpu",
   "kind": "part",
-  "data": "5b988859260a",
   "cell": "traub",
   "form": "hybrid",
-  "train_comp": null,
   "group": {
     "gates": [
       "M",
@@ -38,5 +36,7 @@
         }
       ]
     }
-  }
+  },
+  "data": "5b988859260a",
+  "train_comp": null
 }

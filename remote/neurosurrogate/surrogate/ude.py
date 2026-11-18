@@ -56,11 +56,12 @@ class UDE:
 
         return dz
 
-    def metrics(self) -> dict[str, float]:
-        return {f"ude/{k}": float(v) for k, v in self.losses.items()}
-
     def describe(self) -> dict[str, Any]:
-        return {"kind": "ude", "layers": [list(ly["W"].shape) for ly in self.layers]}
+        return {
+            "kind": "ude",
+            "layers": [list(ly["W"].shape) for ly in self.layers],
+            "losses": {k: float(v) for k, v in self.losses.items()},
+        }
 
     def opcost(self) -> OpCost:
         """V の正規化、各層の行列積と tanh、復元力。"""

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import xarray as xr
@@ -28,7 +29,7 @@ from ..physics.simulate import (
     simulate,
     times,
 )
-from .compress import FITS, fill_fit_results
+from .compress import FITS
 from .sindy import Roles, fit_sindy
 from .ude import fit_ude
 
@@ -51,7 +52,7 @@ class Group:
 class Config:
     cell: str  # 区画の型 (cells.CELLS の鍵)
     form: str  # "hybrid" | "sindy"
-    data: SimSpec  # 学習データを取るシミュレーション
+    data: SimSpec | None  # 学習データを取るシミュレーション (群が KAM だけなら無い)
     groups: list[Group]
     train_comp: str | None = None  # 学習を 1 区画へ絞る名前 (None は同じ型の全区画)
     # 膜電位へ吸収するゲート (KAM の φ 群)。V での定常値に置き、状態を持たない
@@ -62,7 +63,7 @@ class Config:
         config = cls(
             cell=d["cell"],
             form=d["form"],
-            data=SimSpec.from_dict(d["data"]),
+            data=SimSpec.from_dict(d["data"]) if d.get("data") is not None else None,
             groups=[Group(**g) for g in d["groups"]],
             train_comp=d.get("train_comp"),
             absorbed=d.get("absorbed", []),
@@ -74,7 +75,7 @@ class Config:
         return {
             "cell": self.cell,
             "form": self.form,
-            "data": self.data.to_dict(),
+            "data": self.data.to_dict() if self.data is not None else None,
             "groups": [g.__dict__ for g in self.groups],
             "train_comp": self.train_comp,
             **({"absorbed": self.absorbed} if self.absorbed else {}),
@@ -100,6 +101,8 @@ class Config:
                 raise ValueError("kam は圧縮器と右辺の両方を kam にする")
             if kam and (group.d != 1 or len(group.gates) < 2 or self.form != "hybrid"):
                 raise ValueError("kam は 2 つ以上のゲートを d=1 の ψ にまとめる hybrid")
+            if not kam and self.data is None:
+                raise ValueError("KAM でない群は学習データから学習する")
         if self.form == "sindy" and (
             len(self.groups) != 1 or learned != self.cell_type.states
         ):
@@ -119,9 +122,15 @@ class Config:
         """群の状態の、型の states での位置。"""
         return [self.cell_type.states.index(g) for g in group.gates]
 
+    def _net(self) -> Net:
+        """学習データのネット。群が KAM だけの設定は学習データも学習区画も持たない。"""
+        if self.data is None:
+            raise ValueError("学習データの無い設定は学習区画を持たない")
+        return self.data.net
+
     def train_node(self) -> Compartment:
         """params と初期値の基準にする学習区画。"""
-        net = self.data.net
+        net = self._net()
         if self.train_comp is not None:
             return net.nodes[net.index(self.train_comp)]
         return next(c for c in net.nodes if c.type.name == self.cell)
@@ -135,7 +144,7 @@ class Config:
         return comp.resolved_params == self.train_node().resolved_params
 
     def train_ids(self) -> list[int]:
-        net = self.data.net
+        net = self._net()
         if self.train_comp is not None:
             return [net.index(self.train_comp)]
         return [i for i, c in enumerate(net.nodes) if self.in_domain(c)]
@@ -154,6 +163,8 @@ class Surrogate:
     @cached_property
     def training_data(self) -> xr.Dataset:
         """学習データ。設定から決定的に作り直す。"""
+        if self.config.data is None:
+            raise ValueError("群が KAM だけのサロゲートは学習データを持たない")
         return simulate(self.config.data.run_input())
 
 
@@ -226,6 +237,7 @@ def _fit_rhs(config: Config, group: Group, compressor, data):
     if group.rhs == "ude":
         gates = _group_gates(config, group, data)
         volts = [potential(data, i) for i in config.train_ids()]
+        assert config.data is not None
         return fit_ude(
             compressor,
             jnp.asarray(np.stack(gates), dtype=jnp.float32),
@@ -251,17 +263,19 @@ def _fit_rhs(config: Config, group: Group, compressor, data):
     )
 
 
-def fit_group(config: Config, group: Group, data: xr.Dataset) -> tuple[Any, Any]:
+def fit_group(config: Config, group: Group, data: xr.Dataset | None) -> tuple[Any, Any]:
     """群 1 つの学習器 (圧縮器, 右辺) を学習する。
 
-    圧縮器を学習してから右辺を同定し、ほかの群には依らない。
+    圧縮器を学習してから右辺を同定し、ほかの群には依らない。KAM は学習しないので
+    学習データを読まず、区画の型の既定の params で組む。
     """
-    gates = np.concatenate(_group_gates(config, group, data), axis=0)
     if group.compressor == "kam":
-        params = config.train_node().resolved_params
+        params = config.cell_type.param_cls()  # type: ignore[misc]
         kam = KamCompressor(config.cell, group.gates, params)
-        fill_fit_results(kam, gates)
         return kam, KamRhs(config.cell, group.gates)
+    if data is None:
+        raise ValueError(f"{group.compressor} の群は学習データから学習する")
+    gates = np.concatenate(_group_gates(config, group, data), axis=0)
     compressor = FITS[group.compressor](gates, group.d, **group.compressor_params)
     return compressor, _fit_rhs(config, group, compressor, data)
 
@@ -273,14 +287,15 @@ def fit(config_dict: dict) -> Surrogate:
     設定で学習する。
     """
     config = Config.from_dict(config_dict)
-    data = simulate(config.data.run_input())
+    data = simulate(config.data.run_input()) if config.data is not None else None
     alone = [
         Config.from_dict({**config_dict, "groups": [group.__dict__], "absorbed": []})
         for group in config.groups
     ]
     parts = [fit_group(c, c.groups[0], data) for c in alone]
     surrogate = Surrogate(config, parts)
-    surrogate.training_data = data
+    if data is not None:
+        surrogate.training_data = data
     return surrogate
 
 
@@ -506,37 +521,152 @@ def summary(s: Surrogate) -> dict[str, Any]:
     }
 
 
+_SLOPE_CHUNK = 100_000  # 右辺を一度に評価する時刻の数 (メモリを抑える)
+
+
+def latent_slopes(
+    s: Surrogate, ds: xr.Dataset, comp_id: int, params: Any
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """元のモデルの区画 comp_id の軌道の上の、潜在の傾き 2 つ (どちらも時刻 × 潜在)。
+
+    正解は各群の圧縮器で写した潜在の前進差分 (シミュレータの前進 Euler と同じ向き。
+    最後の時刻は nan)、学習器はサロゲートの右辺がその時刻の潜在と状態に返す dz/dt。
+    右辺に渡す状態は置換系の kernel と同じく、群のゲートを潜在から作り直し、吸収した
+    ゲートを V での定常値にし、残りは元のモデルの値。
+    膜電位も同定する form=sindy は右辺が流入電流を読むので、ここでは扱わない (None)。
+    """
+    config, cell = s.config, s.config.cell_type
+    if config.form != "hybrid":
+        return None
+    x = gate_matrix(ds, comp_id)
+    v = potential(ds, comp_id)
+    dt = float(ds["time"][1] - ds["time"][0])
+    pairs = list(zip(s.parts, config.groups, _offsets(config), strict=True))
+    z = np.concatenate(
+        [np.asarray(c.encode(x[:, config.positions(g)])) for (c, _), g, _ in pairs],
+        axis=1,
+    )
+    blocks = [
+        (g.gates, start, start + g.d, c.decode, _rhs_fn(r))
+        for (c, r), g, start in pairs
+    ]
+
+    def one(zt, vt, xt):
+        st = {name: xt[i] for i, name in enumerate(cell.states)}
+        st |= absorbed(cell.name, config.absorbed, params, vt)
+        for gates, a, b, decode, _ in blocks:
+            values = decode(zt[a:b])
+            for j, gate in enumerate(gates):
+                st[gate] = values[j]
+        return jnp.concatenate(
+            [jnp.atleast_1d(rhs(zt[a:b], vt, st, params)) for _, a, b, _, rhs in blocks]
+        )
+
+    batch = jax.jit(jax.vmap(one))
+    learned = np.concatenate(
+        [
+            np.asarray(
+                batch(
+                    z[i : i + _SLOPE_CHUNK],
+                    v[i : i + _SLOPE_CHUNK],
+                    x[i : i + _SLOPE_CHUNK],
+                )
+            )
+            for i in range(0, len(v), _SLOPE_CHUNK)
+        ],
+        axis=0,
+    )
+    slope = np.full_like(z, np.nan)
+    slope[:-1] = np.diff(z, axis=0) / dt
+    return slope, learned
+
+
 @dataclass(frozen=True)
 class CompFit:
-    """学習区画 1 つの、学習器の潜在 (時刻 × 潜在) と再構成の RMSE (時刻ごと)。"""
+    """学習区画 1 つの、学習器の潜在 (時刻 × 潜在)、再構成の RMSE (時刻ごと)、
+    潜在の傾きの正解 slope (前進差分) と学習器の右辺が返す dz/dt の rhs
+    (どちらも時刻 × 潜在。form=sindy は None)、
+    全区間のまとめ summary (再構成の MSE と、それをゲートの分散で割ったもの)。"""
 
     latent: np.ndarray
     recon_rmse: np.ndarray
+    slope: np.ndarray | None
+    rhs: np.ndarray | None
+    summary: dict[str, float]
+
+
+_CURVE = 201  # decode の曲線の点の数
+
+
+def decode_curves(
+    compressor: Any,
+    latents: list[str],
+    ranges: list[tuple[float, float]],
+    center: np.ndarray,
+) -> list[dict]:
+    """潜在の軸ごとに、ほかの軸を center に置いて範囲 ranges を掃いた decode の曲線。"""
+    axes = []
+    for k, name in enumerate(latents):
+        grid = np.linspace(*ranges[k], _CURVE)
+        z = np.tile(np.asarray(center, dtype=float), (_CURVE, 1))
+        z[:, k] = grid
+        gates = np.asarray(compressor.decode(jnp.asarray(z)))
+        axes.append({"latent": name, "z": grid.tolist(), "gates": gates.T.tolist()})
+    return axes
 
 
 def describe_group(
-    config: Config, group: Group, part: tuple[Any, Any], data: xr.Dataset
-) -> tuple[dict, dict[int, CompFit]]:
-    """学習器 1 つの、図が読む中身 (part.json) と学習区画ごとの CompFit。"""
+    config: Config, group: Group, part: tuple[Any, Any], data: xr.Dataset | None
+) -> tuple[dict[str, dict], dict[int, CompFit]]:
+    """学習器 1 つの、図が読むファイル (run の中のパス → 中身) と学習区画の CompFit。
+
+    compressor/decode.json は潜在 → ゲートの曲線 (潜在の軸ごと) と区画の型の状態の
+    並び、compressor/own.json と rhs/own.json は圧縮器と右辺に固有の中身 (PCA は向きと
+    平均も、KAM の右辺は kind だけ)。学習しない KAM は学習データを読まず、ψ の範囲で
+    曲線を描き、学習区画も CompFit も持たない。学習する学習器は、学習データの上の
+    潜在の範囲と平均で曲線を描く。
+    """
     compressor, rhs = part
-    net = config.data.net
+    latent_names = group_latents(group)
+    files: dict[str, dict] = {
+        "compressor/own.json": compressor.describe(),
+        "rhs/own.json": rhs.describe(),
+    }
+
+    def decode(ranges: list[tuple[float, float]], center: np.ndarray) -> dict:
+        return {
+            "gates": group.gates,
+            "order": config.cell_type.states,
+            "axes": decode_curves(compressor, latent_names, ranges, center),
+        }
+
+    if group.compressor == "kam":
+        files["compressor/decode.json"] = decode([compressor.psi_range], np.zeros(1))
+        return files, {}
+    if data is None:
+        raise ValueError(f"{group.compressor} の群は学習データの上で書き出す")
+    net = config._net()
     ids = config.train_ids()
     gates = _group_gates(config, group, data)
     latents = [np.asarray(compressor.encode(g)) for g in gates]
     recons = [np.asarray(compressor.decode(jnp.asarray(z))) for z in latents]
-    fits = {
-        comp_id: CompFit(
+    every = np.concatenate(latents, axis=0)
+    low, high = every.min(0), every.max(0)
+    ranges = [(float(lo), float(hi)) for lo, hi in zip(low, high, strict=True)]
+    files["compressor/decode.json"] = decode(ranges, every.mean(0))
+    alone = Surrogate(config, [part])
+    fits = {}
+    for pos, comp_id in enumerate(ids):
+        slopes = latent_slopes(alone, data, comp_id, net.nodes[comp_id].resolved_params)
+        mse = float(np.mean((gates[pos] - recons[pos]) ** 2))
+        fits[comp_id] = CompFit(
             latent=latents[pos],
             recon_rmse=np.sqrt(np.mean((gates[pos] - recons[pos]) ** 2, axis=1)),
+            slope=slopes[0] if slopes else None,
+            rhs=slopes[1] if slopes else None,
+            summary={
+                "reconstruction_mse": mse,
+                "reconstruction_mse_ratio": mse / float(np.var(gates[pos])),
+            },
         )
-        for pos, comp_id in enumerate(ids)
-    }
-    description = {
-        "gates": group.gates,
-        "latents": group_latents(group),
-        "comps": [net.nodes[i].name for i in ids],
-        "closure": rhs.describe(),
-        "preprocessor": compressor.describe(),
-        "metrics": {**rhs.metrics(), **compressor.metrics()},
-    }
-    return description, fits
+    return files, fits

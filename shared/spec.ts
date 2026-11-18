@@ -48,7 +48,7 @@ export type SurrogateConfig = {
  * spec の形式の版。spec の種類ごとに持ち、neurosurrogate/run.py の _FORMATS と揃える（remote/run/places.test.ts が確かめる）。
  * spec に入るので、変えるとその種類の鍵が変わり、その run と、ハッシュでそれを指す後ろの run（学習器なら、モデル・置換系・GPU の実測）だけが回し直される。
  */
-export const FORMATS = { data: 11, part: 11, model: 11, sim: 12, bench: 11 } as const;
+export const FORMATS = { data: 11, part: 14, model: 11, sim: 13, bench: 11 } as const;
 
 /** 回す backend。同じ spec でも計算の順序が変わって結果がずれるので、spec に入れて run を分ける。 */
 export type Device = 'cpu' | 'gpu';
@@ -74,12 +74,12 @@ export type Spec =
       format: number;
       device: Device;
       kind: 'part';
-      /** 学習データ（runs/data/）のハッシュ。 */
-      data: string;
       cell: string;
       form: SurrogateConfig['form'];
-      train_comp: string | null;
       group: Group;
+      /** 学習データ（runs/data/）のハッシュと、学習を絞る区画。学習しない KAM の学習器は持たない。 */
+      data?: string;
+      train_comp?: string | null;
     }
   | {
       format: number;
@@ -169,8 +169,8 @@ export type RunStatus = { name: string; id: string; spec: string; state: State }
 /** 実験（resolved/ の下のディレクトリ）1 つの状態。モデル（とその学習器と学習データ）、系列の元のモデル、組（系列 × モデルの置換系）を名前の順に並べる（宣言の順は API の答えが宣言の写しで並べる）。state は起こした仕事も見た状態。 */
 export type ExperimentStatus = {
   name: string;
-  /** モデルごとの組み立ての run と、組んだ学習器（群の順）と、学習器が学習した学習データ。state は学習器と学習データも見た状態。 */
-  models: { model: string; state: State; run: RunStatus; parts: RunStatus[]; data: RunStatus }[];
+  /** モデルごとの組み立ての run と、組んだ学習器（群の順）と、学習器が学習した学習データ（学習器が KAM だけなら null）。state は学習器と学習データも見た状態。 */
+  models: { model: string; state: State; run: RunStatus; parts: RunStatus[]; data: RunStatus | null }[];
   series: { series: string; original: RunStatus }[];
   pairs: { series: string; model: string; state: State; run: RunStatus }[];
   benches: { bench: string; state: State; run: RunStatus }[];

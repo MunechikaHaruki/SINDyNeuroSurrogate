@@ -1,7 +1,7 @@
 // 波形。run のファイルを読んで覚え（runs/ の外を指すパスは弾き、.f64 は丸ごと読んで古く使ったものから忘れる）、回線に出す形（表示の範囲で間引いた線・相平面の軌跡、表示に要る桁）にする。
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, normalize } from 'node:path';
-import type { Point } from '../../shared/api.ts';
+import type { Line, Point, SlopeCompare } from '../../shared/api.ts';
 import type { ArrayRef } from '../../shared/runs.ts';
 
 // ---- run のファイルを読む
@@ -180,4 +180,43 @@ export function isFraction(values: Float64Array): boolean {
   const slack = 1e-6;
   for (const v of values) if (Number.isFinite(v) && (v < -slack || v > 1 + slack)) return false;
   return true;
+}
+
+/** 2 列の、どちらも有限な時刻での差の RMSE と、1 列目（正解）の標準偏差。有限な時刻が無ければどちらも NaN。 */
+export function gapOf(truth: Float64Array, guess: Float64Array): { rmse: number; scale: number } {
+  let count = 0;
+  let sum = 0;
+  let squares = 0;
+  let gap = 0;
+  for (let i = 0; i < truth.length; i++) {
+    const t = truth[i];
+    const g = guess[i];
+    if (!Number.isFinite(t) || !Number.isFinite(g)) continue;
+    count += 1;
+    sum += t;
+    squares += t * t;
+    gap += (g - t) ** 2;
+  }
+  if (count === 0) return { rmse: NaN, scale: NaN };
+  const mean = sum / count;
+  return { rmse: Math.sqrt(gap / count), scale: Math.sqrt(Math.max(0, squares / count - mean * mean)) };
+}
+
+/** 潜在ごとの傾きの比べ。slope は正解（前進差分）、rhs は学習器の右辺の列。線と散布は範囲 span、ずれは全区間。 */
+export function slopeCompare(
+  files: RunFiles,
+  latents: { label: string; slope: ArrayRef; rhs: ArrayRef }[],
+  span: Span,
+): SlopeCompare {
+  const lines: Record<string, Line[]> = {};
+  for (const l of latents)
+    lines[l.label] = [
+      { label: '正解', points: line(files, l.slope, span) },
+      { label: '学習器', points: line(files, l.rhs, span) },
+    ];
+  return {
+    lines,
+    match: latents.map(l => ({ label: l.label, points: trajectory(files, l.slope, l.rhs, span) })),
+    error: latents.map(l => ({ latent: l.label, ...gapOf(files.column(l.slope), files.column(l.rhs)) })),
+  };
 }

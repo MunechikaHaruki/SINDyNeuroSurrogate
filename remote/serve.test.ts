@@ -58,6 +58,24 @@ const MODEL: Spec = {
   form: 'hybrid',
   parts: [hashOf(PART)],
 };
+/** 学習しない KAM の学習器と、それだけを組んだモデル（学習データを指さない）。 */
+const KAM_GROUP = {
+  gates: ['M', 'H'],
+  compressor: 'kam' as const,
+  d: 1,
+  rhs: 'kam' as const,
+  compressor_params: {},
+  rhs_params: {},
+};
+const KAM_PART: Spec = {
+  format: FORMATS.part,
+  device: 'cpu',
+  kind: 'part',
+  cell: 'hh',
+  form: 'hybrid',
+  group: KAM_GROUP,
+};
+const KAM_MODEL: Spec = { ...MODEL, parts: [hashOf(KAM_PART)] } as Spec;
 const INPUT = { spec: { ...SIM, stim: 'soma' }, param: null, values: [] };
 const ORIGINAL: Spec = { format: FORMATS.sim, device: 'cpu', kind: 'sim', input: INPUT, model: null };
 const REPLACED: Spec = { ...ORIGINAL, model: { surrogate: hashOf(MODEL), replace_targets: ['soma'] } };
@@ -80,6 +98,24 @@ const PLANS: Plans = {
       ],
       series: { s: { ...INPUT, replace_targets: ['soma'] } },
       pairs: [{ model: 'm', series: 's' }],
+      benches: [],
+    },
+    {
+      id: 'k',
+      group: 'g',
+      description: 'KAM だけの実験',
+      groupings: ['m+h'],
+      methods: ['kam'],
+      models: [
+        {
+          name: 'n',
+          method: 'kam',
+          grouping: 'm+h',
+          config: { cell: 'hh', form: 'hybrid', data: SIM, groups: [KAM_GROUP], train_comp: null },
+        },
+      ],
+      series: {},
+      pairs: [],
       benches: [],
     },
   ],
@@ -134,21 +170,45 @@ for (const [path, spec] of Object.entries({
   'e/models/m': MODEL,
   'e/sim/s/original': ORIGINAL,
   'e/sim/s/m': REPLACED,
+  'k/parts/q': KAM_PART,
+  'k/models/n': KAM_MODEL,
 }))
   write(join(resolved, `${path}.json`), JSON.stringify(spec));
 write(join(resolved, 'plans.json'), JSON.stringify(PLANS));
 waves(join(put(DATA, 'data'), 'waves'), meta('H'), 10);
+const curve = { latent: 'h.z1', z: [-1, 1], gates: [[0, 1]] };
 put(PART, 'part', {
-  'part.json': {
-    gates: ['H'],
-    latents: ['h.z1'],
-    comps: ['soma'],
-    closure: { kind: 'sindy', targets: ['z'], features: ['1'], xi: [[0.5]] },
-    preprocessor: { kind: 'pca', explained_variance_ratio: [0.9, 0.1], n_components: 1 },
-    metrics: { nnz: 1, 'pca/reconstruction_mse': 0.01, 'pca/reconstruction_mse_ratio': 0.1 },
+  'compressor/decode.json': { gates: ['H'], order: ['M', 'H', 'N'], axes: [curve] },
+  'compressor/own.json': {
+    kind: 'pca',
+    explained_variance_ratio: [0.9, 0.1],
+    n_components: 1,
+    components: [[1]],
+    mean: [0.5],
   },
+  'rhs/own.json': { kind: 'sindy', targets: ['z'], features: ['1'], xi: [[0.5]] },
+  'fit/0/summary.json': { reconstruction_mse: 0.01, reconstruction_mse_ratio: 0.1 },
 });
-for (const file of ['latent', 'recon_rmse'])
+put(KAM_PART, 'part', {
+  'compressor/decode.json': {
+    gates: ['M', 'H'],
+    order: ['M', 'H', 'N'],
+    axes: [
+      {
+        ...curve,
+        latent: 'm+h.z1',
+        gates: [
+          [0, 1],
+          [1, 0],
+        ],
+      },
+    ],
+  },
+  'compressor/own.json': { kind: 'kam', criterion: 0.2 },
+  'rhs/own.json': { kind: 'kam' },
+});
+put(KAM_MODEL, 'model');
+for (const file of ['latent', 'recon_rmse', 'slope', 'rhs'])
   write(join(runs, dirOf(PART), `fit/0/${file}.f64`), Buffer.from(new Float64Array(N).fill(0.5).buffer));
 const cost = Object.fromEntries(
   ['exp', 'div', 'pm', 'mul'].flatMap(op => [
@@ -191,7 +251,7 @@ test('an experiment gives its setup, the training data and learners of each mode
   const { reply } = await post<ExperimentView>('experiment', { experiment: 'e' });
   expect(reply.setup.map(r => r.label)).toContain('系列');
   expect(reply.models[0].name).toBe('m');
-  expect(reply.data.map(d => d.name)).toEqual([reply.models[0].data]);
+  expect(reply.data.map(d => d.name)).toEqual([reply.models[0].data!]);
   expect(reply.parts.map(p => p.name)).toEqual(reply.models[0].parts);
   expect(reply.pairs[0]).toEqual({ input: 's', model: 'm', state: 'done' });
   expect(reply.rerun.done).toBe(reply.rerun.total);
@@ -239,7 +299,7 @@ test('the registry names each run by its place under runs/', async () => {
 
 test('the training data and learner pages read their runs by declared name', async () => {
   const view = (await post<ExperimentView>('experiment', { experiment: 'e' })).reply;
-  const names = { data: view.models[0].data, part: view.models[0].parts[0] };
+  const names = { data: view.models[0].data!, part: view.models[0].parts[0] };
   const data = await post<{ gates: { label: string }[]; stim: string }>('data', {
     experiment: 'e',
     data: names.data,
@@ -253,29 +313,47 @@ test('the training data and learner pages read their runs by declared name', asy
     comps: ['soma'],
     window: [10, 50],
   });
-  expect(part.reply.window).toEqual([10, 50]);
   expect(part.reply.setup.find(r => r.label === '群のゲート')?.value).toBe('H');
   expect(part.reply.setup.find(r => r.label === '圧縮器')?.value).toBe('pca');
-  expect(part.reply.latent.map(l => l.label)).toEqual(['h.z1']);
-  expect(part.reply.manifold.map(l => l.label)).toEqual(['H']);
-  const learner = part.reply.learner;
-  if (learner.kind !== 'sindy') throw new Error('SINDy の学習器のはず');
-  expect(learner.rhs.nnz).toBe(1);
-  expect(learner.rhs.equations).toEqual([{ target: 'z', groups: [{ rate: '', terms: [{ monomial: '1', xi: 0.5 }] }] }]);
-  expect(learner.compressor.reconstruction).toEqual({
-    mse: 0.01,
-    ratio: 0.1,
-    rmse: [{ comp: 'soma', mean: 0.5, max: 0.5 }],
-  });
-  expect(learner.compressor.own).toEqual({ kind: 'pca', ratios: [0.9, 0.1], kept: 1 });
-  expect(part.reply.gates).toHaveLength(1);
-  expect(part.reply.data).toBe(names.data);
-  expect(part.reply.path).toHaveLength(1);
+  const reply = part.reply;
+  const fit = reply.fit!;
+  expect(fit.window).toEqual([10, 50]);
+  expect(fit.latent.map(l => l.label)).toEqual(['h.z1']);
+  expect(fit.manifold.map(l => l.label)).toEqual(['H']);
+  expect(fit.slopes.lines['h.z1'].map(l => l.label)).toEqual(['正解', '学習器']);
+  expect(fit.slopes.error).toEqual([{ latent: 'h.z1', rmse: 0, scale: 0 }]);
+  expect(fit.reconstruction).toEqual([{ comp: 'soma', mse: 0.01, ratio: 0.1, mean: 0.5, max: 0.5 }]);
+  expect(fit.gates).toHaveLength(1);
+  expect(fit.data).toBe(names.data);
+  expect(fit.path).toHaveLength(1);
+  expect(reply.gateOrder).toEqual(['M', 'H', 'N']);
+  expect(reply.decode).toEqual([
+    {
+      latent: 'h.z1',
+      lines: [
+        {
+          label: 'H',
+          points: [
+            { x: -1, y: 0 },
+            { x: 1, y: 1 },
+          ],
+        },
+      ],
+    },
+  ]);
+  expect(reply.compressor).toEqual({ kind: 'pca', ratios: [0.9, 0.1], kept: 1, components: [[1]], mean: [0.5] });
+  if (reply.rhs?.kind !== 'sindy') throw new Error('SINDy の右辺のはず');
+  expect(reply.rhs.nnz).toBe(1);
+  expect(reply.rhs.equations).toEqual([{ target: 'z', groups: [{ rate: '', terms: [{ monomial: '1', xi: 0.5 }] }] }]);
   const shown = await post<{ comps: string[]; shown: string[] }>('data', { experiment: 'e', data: names.data });
   expect(shown.reply.shown).toEqual(['soma']);
-  expect((await post<{ shown: string[] }>('parts', { experiment: 'e', part: names.part })).reply.shown).toEqual([
-    'soma',
-  ]);
+  expect((await post<PartsReply>('parts', { experiment: 'e', part: names.part })).reply.fit?.shown).toEqual(['soma']);
+  const kam = (await post<PartsReply>('parts', { experiment: 'k', part: 'q' })).reply;
+  expect(kam.fit).toBeNull();
+  expect(kam.rhs).toEqual({ kind: 'kam' });
+  expect(kam.compressor).toEqual({ kind: 'kam', criterion: 0.2 });
+  expect(kam.decode[0].lines.map(l => l.label)).toEqual(['M', 'H']);
+  expect((await post<ExperimentView>('experiment', { experiment: 'k' })).reply.models[0].data).toBeNull();
 });
 
 test('unknown ops and unknown jobs are refused', async () => {
@@ -306,10 +384,11 @@ test('each place opens only its own run and the runs its spec points to by hash'
     answer(ctx);
     return [...opened].sort();
   };
-  expect(read(ctx => data(ctx, { experiment: 'e', data: view.models[0].data }))).toEqual([dirOf(DATA)]);
+  expect(read(ctx => data(ctx, { experiment: 'e', data: view.models[0].data! }))).toEqual([dirOf(DATA)]);
   expect(read(ctx => parts(ctx, { experiment: 'e', part: view.models[0].parts[0] }))).toEqual(
     [dirOf(DATA), dirOf(PART)].sort(),
   );
+  expect(read(ctx => parts(ctx, { experiment: 'k', part: 'q' }))).toEqual([dirOf(KAM_PART)]);
   expect(read(ctx => models(ctx, { experiment: 'e', model: 'm' }))).toEqual([dirOf(MODEL)]);
   const pair = { input: 's', pair: { model: 'm', point: 0 }, whole: { point: 0, comps: ['soma'] } };
   expect(read(ctx => inputs(ctx, { experiment: 'e', ...pair }))).toEqual([dirOf(ORIGINAL), dirOf(REPLACED)].sort());
