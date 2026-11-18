@@ -91,7 +91,12 @@ export type InputsRequest = {
   whole?: { point: number; comps: string[] };
 };
 /** 1 組の潜在空間。latents と phase の原系は列の圧縮器で潜在へ写したもの（射影）。比べる区画を置き換えていなければ latents は空。置換系が発散した点では原系だけ。 */
-export type PairCompare = { model: string; latents: Record<string, Line[]>; phase: Line[]; axes: { x: string; y: string } };
+export type PairCompare = {
+  model: string;
+  latents: Record<string, Line[]>;
+  phase: Line[];
+  axes: { x: string; y: string };
+};
 /** 元のモデルの、区画ごとの膜電位・内部電流・ゲート（0〜1 の状態）・ゲートでない状態（Traub の Ca 濃度 XI など）。 */
 export type WholeWaves = { voltage: Line[]; internal: Line[]; gates: Line[]; states: Line[] };
 /** 入力の答え。points は掃引の点ごとの注入電流と、原系と発散していない列の電位（縦軸を揃えられるよう全点）と、発散した列。
@@ -139,15 +144,18 @@ export type DataReply = {
   internal: Line[];
 };
 
-/** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）。 */
+/** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）、window は線の時間の範囲（省けば全体）。 */
 export type PartsRequest = { experiment: string; part: string; comps?: string[]; window?: Window };
-/** 学習器 1 本。label は群の名前（h+n）、gates は最初の区画の学習ゲート、recon は区画ごとの再構成誤差、path は区画ごとの潜在の軌跡（軸は axes）。
- * pca は寄与率（捨てた成分も）と保持した数、sindy は閉包項の係数（targets × features）。線はどれも学習器の run が写した学習データの上のもの。 */
+/** 学習器 1 本。label は群の名前（h+n）、setup は組み立ての表（細胞・形・群のゲート・圧縮器・潜在・右辺・項ライブラリ・学習した区画）。
+ * 線はどれも学習データ（spec が指す data の run）の上の、描いた区画の時間の範囲 window のもの：voltage は膜電位、gates は群のゲート、latent は潜在、recon は再構成誤差、
+ * manifold はゲートを最初の潜在に対して描いた軌跡（圧縮器が群をどう 1 本の座標にまとめたか）、path は潜在の軌跡（軸は axes）。区画が 2 つ以上なら名前に区画を添える。
+ * metrics は学習の指標（part.json のまま）、fit は学習した区画ごとの再構成誤差の全区間の平均と最大、pca は寄与率（捨てた成分も）と保持した数、sindy は右辺の係数（targets × features）。 */
 export type PartsReply = {
   run: string;
   /** 学習した学習データの名前（実験の data の一覧）。 */
   data: string;
   label: string;
+  setup: { label: string; value: string }[];
   /** 学習した区画と、描いた区画。 */
   comps: string[];
   shown: string[];
@@ -155,10 +163,18 @@ export type PartsReply = {
   compressor: string;
   closure: string;
   duration: number;
+  window: Window;
+  /** 細胞の全ゲートの並び（学習データの目録の順）。ゲートの色をほかのページと揃えるのに使う。 */
+  gateOrder: string[];
+  voltage: Line[];
   gates: Line[];
+  latent: Line[];
   recon: Line[];
+  manifold: Line[];
   path: Line[];
   axes: { x: string; y: string; xIsVoltage: boolean };
+  metrics: Record<string, number | null>;
+  fit: { comp: string; mean: number; max: number }[];
   pca: { ratios: number[]; kept: number } | null;
   sindy: { targets: string[]; features: string[]; xi: number[][] } | null;
 };
