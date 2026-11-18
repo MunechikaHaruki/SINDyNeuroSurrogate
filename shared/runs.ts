@@ -81,9 +81,11 @@ export type ClosureJson =
   | { kind: 'sindy'; targets: string[]; features: string[]; xi: number[][] }
   | { kind: 'ude'; layers: number[][] }
   | { kind: string };
-/** 前処理の中身。PCA は捨てた成分も含めた寄与率を持つ。 */
+/** 前処理の中身。PCA は捨てた成分も含めた寄与率、AE は隠れ層の幅を持つ。 */
 export type PreprocessorJson =
-  { kind: 'pca'; explained_variance_ratio: number[]; n_components: number } | { kind: string };
+  | { kind: 'pca'; explained_variance_ratio: number[]; n_components: number }
+  | { kind: 'ae'; hidden: number }
+  | { kind: string };
 /** 学習器の run の中身（part.json）。latents は潜在の名前（群の名前で修飾し学習器の中で z1 から。h+n.z1。どのモデルの波形でも同じ名前）、comps は学習区画の名前（fit/<区画の id>/）。 */
 export type PartJson = {
   gates: string[];

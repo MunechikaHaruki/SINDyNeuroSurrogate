@@ -146,10 +146,37 @@ export type DataReply = {
 
 /** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）、window は線の時間の範囲（省けば全体）。 */
 export type PartsRequest = { experiment: string; part: string; comps?: string[]; window?: Window };
-/** 学習器 1 本。label は群の名前（h+n）、setup は組み立ての表（細胞・形・群のゲート・圧縮器・潜在・右辺・項ライブラリ・学習した区画）。
+/** 圧縮器がどれも持つ、再構成の指標。mse は学習データの全区間・学習した全区画で群のゲートを潜在へ落として戻したときの二乗誤差の平均、
+ * ratio はそれをゲートの分散で割ったもの（part.json の metrics の <圧縮器>/reconstruction_mse と _ratio）、rmse は学習した区画ごとの時刻ごとの RMSE の全区間の平均と最大。 */
+export type Reconstruction = {
+  mse: number | null;
+  ratio: number | null;
+  rmse: { comp: string; mean: number; max: number }[];
+};
+/** SINDy の右辺の 1 本（対象 target の時間微分）。項をレートの因子 rate（α_n(V) や (α_n + β_n)(V)。無ければ空）ごとにまとめ、
+ * 因子ごとに残りの単項 monomial（1、z_{1}、V など）と係数 xi を項ライブラリの順に並べる。どれも sympy の LaTeX のまま。 */
+export type SindyEquation = {
+  target: string;
+  groups: { rate: string; terms: { monomial: string; xi: number }[] }[];
+};
+/** SINDy の学習器が持つ、圧縮器の中身。共通の再構成の指標と、圧縮器ごとの中身 own（PCA は寄与率（捨てた成分も）と保持した数、AE は隠れ層の幅）。 */
+export type SindyCompressor = {
+  kind: string;
+  reconstruction: Reconstruction;
+  own: { kind: 'pca'; ratios: number[]; kept: number } | { kind: 'ae'; hidden: number };
+};
+/** 学習器の型ごとの中身。KAM は学習しない縮約で、KAM の条件（Kepler 1992 の式 (10) の左辺の最大）と再構成の指標。
+ * SINDy は学習した右辺（項ライブラリ、ほかの設定、0 でない係数の数と全係数の数、対象ごとの式）と、群を潜在へ落とす圧縮器。 */
+export type Learner =
+  | { kind: 'kam'; criterion: number | null; reconstruction: Reconstruction }
+  | {
+      kind: 'sindy';
+      rhs: { library: string[]; settings: string[]; nnz: number; size: number; equations: SindyEquation[] };
+      compressor: SindyCompressor;
+    };
+/** 学習器 1 本。どの学習器にもある中身と、型ごとの中身 learner。label は群の名前（h+n）、setup は組み立ての表（細胞・形・群のゲート・圧縮器・潜在・右辺・学習した区画）。
  * 線はどれも学習データ（spec が指す data の run）の上の、描いた区画の時間の範囲 window のもの：voltage は膜電位、gates は群のゲート、latent は潜在、recon は再構成誤差、
- * manifold はゲートを最初の潜在に対して描いた軌跡（圧縮器が群をどう 1 本の座標にまとめたか）、path は潜在の軌跡（軸は axes）。区画が 2 つ以上なら名前に区画を添える。
- * metrics は学習の指標（part.json のまま）、fit は学習した区画ごとの再構成誤差の全区間の平均と最大、pca は寄与率（捨てた成分も）と保持した数、sindy は右辺の係数（targets × features）。 */
+ * manifold はゲートを最初の潜在に対して描いた軌跡（圧縮器が群をどう 1 本の座標にまとめたか）、path は潜在の軌跡（軸は axes）。区画が 2 つ以上なら名前に区画を添える。 */
 export type PartsReply = {
   run: string;
   /** 学習した学習データの名前（実験の data の一覧）。 */
@@ -160,8 +187,6 @@ export type PartsReply = {
   comps: string[];
   shown: string[];
   latents: string[];
-  compressor: string;
-  closure: string;
   duration: number;
   window: Window;
   /** 細胞の全ゲートの並び（学習データの目録の順）。ゲートの色をほかのページと揃えるのに使う。 */
@@ -173,10 +198,7 @@ export type PartsReply = {
   manifold: Line[];
   path: Line[];
   axes: { x: string; y: string; xIsVoltage: boolean };
-  metrics: Record<string, number | null>;
-  fit: { comp: string; mean: number; max: number }[];
-  pca: { ratios: number[]; kept: number } | null;
-  sindy: { targets: string[]; features: string[]; xi: number[][] } | null;
+  learner: Learner;
 };
 
 /** GPU の実測の頼み方。files ならツールの出力のファイルそのものも返す。 */

@@ -1,6 +1,7 @@
-// 学習器（runs/parts/<学習器>/）の答え。学習器の run と、その spec が指す学習データの run（data/<spec.data>/）だけを読む：
-// 組み立ての表、学習データの上の膜電位・群のゲート・潜在・再構成誤差の時系列、ゲートと潜在の軌跡、学習の指標、PCA の寄与率、SINDy の係数。
-import type { Line, PartsReply, PartsRequest } from '../../shared/api.ts';
+// 学習器（runs/parts/<学習器>/）の答え。学習器の run と、その spec が指す学習データの run（data/<spec.data>/）だけを読む。
+// どの学習器にもある中身（組み立ての表、学習データの上の膜電位・群のゲート・潜在・再構成誤差の時系列、ゲートと潜在の軌跡）と、
+// 型ごとの中身（KAM の条件と再構成、SINDy の学習した右辺と圧縮器の再構成・圧縮器ごとの中身）を分けて返す。
+import type { Learner, Line, PartsReply, PartsRequest, Reconstruction, SindyEquation } from '../../shared/api.ts';
 import { compArray, fitArray, gatesOf, RUN, type ArrayRef, type PartJson } from '../../shared/runs.ts';
 import type { Spec } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
@@ -22,37 +23,50 @@ function dataName(runs: string, experiment: string, run: string): string {
   return model.data.name;
 }
 
-/** 設定の値の並び（{ hidden: 16 } → hidden 16）。 */
+/** 設定の値の並び（{ threshold: 0.1 } → threshold 0.1）。 */
 function params(values: Record<string, unknown>): string[] {
   return Object.entries(values).map(
     ([key, value]) => `${key} ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`,
   );
 }
 
-/** 圧縮器の中身のうち、組み立ての表の圧縮器の行に添えない欄。 */
-const ELSEWHERE = new Set(['kind', 'gates', 'explained_variance_ratio', 'n_components']);
-
-/** 組み立ての表。spec の群と、part.json の圧縮器の中身（AE の隠れ層など）から。 */
+/** 組み立ての表。spec の細胞・形・群から。右辺の中身（項ライブラリなど）は型ごとの中身が持つ。 */
 export function setupOf(spec: Extract<Spec, { kind: 'part' }>, part: PartJson): PartsReply['setup'] {
   const { group } = spec;
-  // 種類・ゲート・寄与率は表のほかの行やほかの図が持つので、残りの中身（AE の隠れ層など）だけを圧縮器の行に添える
-  const inner = Object.fromEntries(Object.entries(part.preprocessor).filter(([key]) => !ELSEWHERE.has(key)));
-  const { library_specs: library, ...rhs } = group.rhs_params;
-  const rows = [
+  return [
     { label: '細胞', value: spec.cell },
     { label: '形', value: spec.form },
     { label: '群のゲート', value: group.gates.join('・') },
-    { label: '圧縮器', value: [group.compressor, ...params({ ...group.compressor_params, ...inner })].join('・') },
+    { label: '圧縮器', value: [group.compressor, ...params(group.compressor_params)].join('・') },
     { label: '潜在', value: `${part.latents.join('・')}（${group.d} 次元）` },
-    { label: '右辺', value: [group.rhs, ...params(rhs)].join('・') },
+    { label: '右辺', value: group.rhs },
+    { label: '学習した区画', value: part.comps.join('・') },
   ];
-  if (library?.length)
-    rows.push({
-      label: '項ライブラリ',
-      value: library.map(l => (l.gates ? `${l.type}（${l.gates}）` : l.type)).join('・'),
-    });
-  rows.push({ label: '学習した区画', value: part.comps.join('・') });
-  return rows;
+}
+
+/** sympy の LaTeX のレート関数 1 つ（α_{n traub}(V)）。 */
+const RATE_CALL = String.raw`\\(?:alpha|beta)_\{[^}]*\}\{\\left\(V \\right\)\}`;
+/** 項の中のレートの因子。レートの和の括弧（(α_n + β_n)(V)）か、レート関数 1 つ。 */
+const RATE = new RegExp(String.raw`\\left\(${RATE_CALL}(?: \+ ${RATE_CALL})+\\right\)|${RATE_CALL}`);
+
+/** 項の LaTeX を、レートの因子（無ければ空）と残りの単項（無ければ 1）に分ける。 */
+export function factorOf(feature: string): { rate: string; monomial: string } {
+  const rate = feature.match(RATE)?.[0] ?? '';
+  const monomial = feature.replace(rate, '').replace(/\s+/g, ' ').trim();
+  return { rate, monomial: monomial || '1' };
+}
+
+/** SINDy の右辺を、対象ごとに、レートの因子ごとの項の並びにする。因子は項ライブラリに現れる順で、因子の無い項は最後。 */
+export function equationsOf(sindy: { targets: string[]; features: string[]; xi: number[][] }): SindyEquation[] {
+  const factors = sindy.features.map(factorOf);
+  const rates = [...new Set(factors.map(f => f.rate))].sort((a, b) => Number(a === '') - Number(b === ''));
+  return sindy.targets.map((target, t) => ({
+    target,
+    groups: rates.map(rate => ({
+      rate,
+      terms: factors.flatMap((f, i) => (f.rate === rate ? [{ monomial: f.monomial, xi: sindy.xi[t][i] }] : [])),
+    })),
+  }));
 }
 
 /** 1 列の有限な値の平均と最大。 */
@@ -67,6 +81,47 @@ function meanMax(values: Float64Array): { mean: number; max: number } {
     max = Math.max(max, v);
   }
   return { mean: count > 0 ? sum / count : NaN, max };
+}
+
+/** 型ごとの中身。右辺の種類で分け、圧縮器の再構成の指標は鍵の頭の圧縮器の種類で読む。 */
+export function learnerOf(
+  spec: Extract<Spec, { kind: 'part' }>,
+  part: PartJson,
+  rmse: Reconstruction['rmse'],
+): Learner {
+  const metric = (key: string) => part.metrics[key] ?? null;
+  const reconstruction = (kind: string): Reconstruction => ({
+    mse: metric(`${kind}/reconstruction_mse`),
+    ratio: metric(`${kind}/reconstruction_mse_ratio`),
+    rmse,
+  });
+  const { closure, preprocessor } = part;
+  if (closure.kind === 'kam')
+    return { kind: 'kam', criterion: metric('kam/criterion'), reconstruction: reconstruction('kam') };
+  if (closure.kind !== 'sindy') throw new Error(`右辺 ${closure.kind} の学習器は答えの形を持たない`);
+  const sindy = closure as { targets: string[]; features: string[]; xi: number[][] };
+  const own = (): Extract<Learner, { kind: 'sindy' }>['compressor']['own'] => {
+    if (preprocessor.kind === 'pca') {
+      const pca = preprocessor as { explained_variance_ratio: number[]; n_components: number };
+      return { kind: 'pca', ratios: pca.explained_variance_ratio, kept: pca.n_components };
+    }
+    if (preprocessor.kind === 'ae') return { kind: 'ae', hidden: (preprocessor as { hidden: number }).hidden };
+    throw new Error(`圧縮器 ${preprocessor.kind} は答えの形を持たない`);
+  };
+  const { library_specs: library, ...rest } = spec.group.rhs_params;
+  let nnz = 0;
+  for (const row of sindy.xi) for (const v of row) if (v !== 0) nnz += 1;
+  return {
+    kind: 'sindy',
+    rhs: {
+      library: (library ?? []).map(l => (l.gates ? `${l.type}（${l.gates}）` : l.type)),
+      settings: params(rest),
+      nnz,
+      size: sindy.xi.length * sindy.features.length,
+      equations: equationsOf(sindy),
+    },
+    compressor: { kind: preprocessor.kind, reconstruction: reconstruction(preprocessor.kind), own: own() },
+  };
 }
 
 /** 学習器 1 本の、区画 comps の線と中身。 */
@@ -91,12 +146,10 @@ export function parts(ctx: Context, request: PartsRequest): PartsReply {
   const named = (name: string, comp: string) => (comps.length > 1 ? `${name}（${comp}）` : name);
   const draw = (label: string, ref: ArrayRef): Line => ({ label, points: line(ctx.files, ref, span) });
   const axes = pathAxes(part);
-  const pca =
-    part.preprocessor.kind === 'pca'
-      ? (part.preprocessor as { explained_variance_ratio: number[]; n_components: number })
-      : null;
-  const sindy =
-    part.closure.kind === 'sindy' ? (part.closure as { targets: string[]; features: string[]; xi: number[][] }) : null;
+  const rmse = part.comps.map(name => ({
+    comp: name,
+    ...meanMax(ctx.files.column(fitArray(run, meta, idOf(name), 'recon_rmse'))),
+  }));
   return {
     run,
     data: dataName(ctx.runs, request.experiment, run),
@@ -105,8 +158,6 @@ export function parts(ctx: Context, request: PartsRequest): PartsReply {
     comps: part.comps,
     shown: comps,
     latents: part.latents,
-    compressor: part.preprocessor.kind,
-    closure: part.closure.kind,
     duration,
     window: [span.start, span.end],
     gateOrder: gatesOf(meta, idOf(part.comps[0] ?? comps[0])),
@@ -130,12 +181,6 @@ export function parts(ctx: Context, request: PartsRequest): PartsReply {
       ),
     })),
     axes,
-    metrics: part.metrics,
-    fit: part.comps.map(name => ({
-      comp: name,
-      ...meanMax(ctx.files.column(fitArray(run, meta, idOf(name), 'recon_rmse'))),
-    })),
-    pca: pca && { ratios: pca.explained_variance_ratio, kept: pca.n_components },
-    sindy: sindy && { targets: sindy.targets, features: sindy.features, xi: sindy.xi },
+    learner: learnerOf(spec, part, rmse),
   };
 }

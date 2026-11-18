@@ -5,7 +5,14 @@ import { dirname, join } from 'node:path';
 import { hashOf } from '../shared/hash.ts';
 import { FORMATS, type Plans, type Spec } from '../shared/spec.ts';
 import type { WaveMeta } from '../shared/runs.ts';
-import type { ExperimentView, Experiments, InputsReply, ModelsReply, PartsReply, RegistryReply } from '../shared/api.ts';
+import type {
+  ExperimentView,
+  Experiments,
+  InputsReply,
+  ModelsReply,
+  PartsReply,
+  RegistryReply,
+} from '../shared/api.ts';
 import { seriesComparison } from './read/comparison.ts';
 import { data } from './read/data.ts';
 import type { Context } from './read/experiments.ts';
@@ -138,7 +145,7 @@ put(PART, 'part', {
     comps: ['soma'],
     closure: { kind: 'sindy', targets: ['z'], features: ['1'], xi: [[0.5]] },
     preprocessor: { kind: 'pca', explained_variance_ratio: [0.9, 0.1], n_components: 1 },
-    metrics: { nnz: 1 },
+    metrics: { nnz: 1, 'pca/reconstruction_mse': 0.01, 'pca/reconstruction_mse_ratio': 0.1 },
   },
 });
 for (const file of ['latent', 'recon_rmse'])
@@ -170,7 +177,11 @@ async function post<T>(op: string, body: unknown): Promise<{ status: number; rep
 test('the experiments come in the declared order with their progress and run names', async () => {
   const { reply } = await post<Experiments>('experiments', {});
   expect(reply.groups.map(g => g.name)).toEqual(['g']);
-  expect(reply.groups[0].experiments[0]).toMatchObject({ id: 'e', progress: '結果あり', runs: { models: ['m'], inputs: ['s'], bench: [] } });
+  expect(reply.groups[0].experiments[0]).toMatchObject({
+    id: 'e',
+    progress: '結果あり',
+    runs: { models: ['m'], inputs: ['s'], bench: [] },
+  });
   expect(reply.groups[0].experiments[0].runs.data).toHaveLength(1);
   expect(reply.groups[0].experiments[0].runs.parts).toHaveLength(1);
   expect(reply.measures.coincidenceWindow).toBe(2);
@@ -229,24 +240,42 @@ test('the registry names each run by its place under runs/', async () => {
 test('the training data and learner pages read their runs by declared name', async () => {
   const view = (await post<ExperimentView>('experiment', { experiment: 'e' })).reply;
   const names = { data: view.models[0].data, part: view.models[0].parts[0] };
-  const data = await post<{ gates: { label: string }[]; stim: string }>('data', { experiment: 'e', data: names.data, comps: ['soma'] });
+  const data = await post<{ gates: { label: string }[]; stim: string }>('data', {
+    experiment: 'e',
+    data: names.data,
+    comps: ['soma'],
+  });
   expect(data.reply.stim).toBe('soma');
   expect(data.reply.gates.map(l => l.label)).toEqual(['H']);
-  const part = await post<PartsReply>('parts', { experiment: 'e', part: names.part, comps: ['soma'], window: [10, 50] });
-  expect(part.reply.pca?.kept).toBe(1);
+  const part = await post<PartsReply>('parts', {
+    experiment: 'e',
+    part: names.part,
+    comps: ['soma'],
+    window: [10, 50],
+  });
   expect(part.reply.window).toEqual([10, 50]);
   expect(part.reply.setup.find(r => r.label === '群のゲート')?.value).toBe('H');
   expect(part.reply.setup.find(r => r.label === '圧縮器')?.value).toBe('pca');
   expect(part.reply.latent.map(l => l.label)).toEqual(['h.z1']);
   expect(part.reply.manifold.map(l => l.label)).toEqual(['H']);
-  expect(part.reply.fit).toEqual([{ comp: 'soma', mean: 0.5, max: 0.5 }]);
-  expect(part.reply.metrics.nnz).toBe(1);
+  const learner = part.reply.learner;
+  if (learner.kind !== 'sindy') throw new Error('SINDy の学習器のはず');
+  expect(learner.rhs.nnz).toBe(1);
+  expect(learner.rhs.equations).toEqual([{ target: 'z', groups: [{ rate: '', terms: [{ monomial: '1', xi: 0.5 }] }] }]);
+  expect(learner.compressor.reconstruction).toEqual({
+    mse: 0.01,
+    ratio: 0.1,
+    rmse: [{ comp: 'soma', mean: 0.5, max: 0.5 }],
+  });
+  expect(learner.compressor.own).toEqual({ kind: 'pca', ratios: [0.9, 0.1], kept: 1 });
   expect(part.reply.gates).toHaveLength(1);
   expect(part.reply.data).toBe(names.data);
   expect(part.reply.path).toHaveLength(1);
   const shown = await post<{ comps: string[]; shown: string[] }>('data', { experiment: 'e', data: names.data });
   expect(shown.reply.shown).toEqual(['soma']);
-  expect((await post<{ shown: string[] }>('parts', { experiment: 'e', part: names.part })).reply.shown).toEqual(['soma']);
+  expect((await post<{ shown: string[] }>('parts', { experiment: 'e', part: names.part })).reply.shown).toEqual([
+    'soma',
+  ]);
 });
 
 test('unknown ops and unknown jobs are refused', async () => {
@@ -278,7 +307,9 @@ test('each place opens only its own run and the runs its spec points to by hash'
     return [...opened].sort();
   };
   expect(read(ctx => data(ctx, { experiment: 'e', data: view.models[0].data }))).toEqual([dirOf(DATA)]);
-  expect(read(ctx => parts(ctx, { experiment: 'e', part: view.models[0].parts[0] }))).toEqual([dirOf(DATA), dirOf(PART)].sort());
+  expect(read(ctx => parts(ctx, { experiment: 'e', part: view.models[0].parts[0] }))).toEqual(
+    [dirOf(DATA), dirOf(PART)].sort(),
+  );
   expect(read(ctx => models(ctx, { experiment: 'e', model: 'm' }))).toEqual([dirOf(MODEL)]);
   const pair = { input: 's', pair: { model: 'm', point: 0 }, whole: { point: 0, comps: ['soma'] } };
   expect(read(ctx => inputs(ctx, { experiment: 'e', ...pair }))).toEqual([dirOf(ORIGINAL), dirOf(REPLACED)].sort());
