@@ -636,14 +636,10 @@ def latent_slopes(
 @dataclass(frozen=True)
 class CompFit:
     """学習区画 1 つの、学習器の潜在 (時刻 × 潜在)、再構成の RMSE (時刻ごと)、
-    潜在の傾きの正解 slope (前進差分) と学習器の右辺が返す dz/dt の rhs
-    (どちらも時刻 × 潜在。form=sindy は None)、
     全区間のまとめ summary (再構成の MSE と、それをゲートの分散で割ったもの)。"""
 
     latent: np.ndarray
     recon_rmse: np.ndarray
-    slope: np.ndarray | None
-    rhs: np.ndarray | None
     summary: dict[str, float]
 
 
@@ -706,6 +702,79 @@ def gate_planes(
     return planes
 
 
+_FIELD_V = 121  # 右辺の格子の、膜電位の点の数
+_FIELD_Z = 81  # 右辺の格子の、潜在の点の数
+_FIELD_STEP = 1e-3  # 元のモデルの潜在の速さを中心差分で読む刻み [ms]
+
+
+def rhs_field(
+    config: Config,
+    group: Group,
+    part: tuple[Any, Any],
+    data: xr.Dataset,
+    params: Any,
+) -> dict | None:
+    """学習器の右辺 f(z, V) と、元のモデルの潜在の速さ g(z, V) を (V, z) の格子で読む。
+
+    g は群のゲートを decoder の曲線の上 x = decode(z) に置き、元のゲートの式 ẋ(x, V)
+    で動かしたときの潜在の速さ (encode(x ± h ẋ) の中心差分)。群に入らない状態は学習
+    データの平均に置く。範囲は学習データの膜電位と潜在の幅を少し広げたもの。潜在が
+    2 本以上なら潜在ごとに、ほかの潜在を学習データの平均に置いた断面で読む。値は
+    潜在ごとに z の行 × V の列。膜電位も同定する form=sindy は扱わない (None)。
+    """
+    if config.form != "hybrid":
+        return None
+    compressor, rhs = part
+    cell = config.cell_type
+    assert cell.derivs is not None
+    ids = config.train_ids()
+    states = np.concatenate([gate_matrix(data, i) for i in ids], axis=0)
+    volts = np.concatenate([potential(data, i) for i in ids], axis=0)
+    gates = states[:, config.positions(group)]
+    latents = np.asarray(compressor.encode(gates))
+    v_grid = np.linspace(*_padded(float(volts.min()), float(volts.max())), _FIELD_V)
+    mean_state = dict(zip(cell.states, states.mean(0), strict=True))
+    mean_z = latents.mean(0)
+    learned_fn = jax.jit(jax.vmap(lambda z, v: _rhs_fn(rhs)(z, v, {}, params)))
+    derivs = cell.derivs
+
+    def original_x_dot(x: np.ndarray, v: np.ndarray) -> np.ndarray:
+        """群のゲート x (点 × ゲート) と膜電位 v での、元のゲートの式の ẋ。"""
+        xs, vs = jnp.asarray(x), jnp.asarray(v)
+        st = {name: jnp.full_like(vs, value) for name, value in mean_state.items()}
+        for j, gate in enumerate(group.gates):
+            st[gate] = xs[:, j]
+        return np.stack(
+            [np.asarray(derivs[g](params, vs, st)) for g in group.gates], axis=1
+        )
+
+    out = []
+    for k, name in enumerate(group_latents(group)):
+        z_axis = np.linspace(
+            *_padded(float(latents[:, k].min()), float(latents[:, k].max())), _FIELD_Z
+        )
+        zz, vv = np.meshgrid(z_axis, v_grid, indexing="ij")
+        z = np.tile(mean_z, (zz.size, 1))
+        z[:, k] = zz.ravel()
+        v = vv.ravel()
+        learned = np.asarray(learned_fn(jnp.asarray(z), jnp.asarray(v)))[:, k]
+        x = np.asarray(compressor.decode(jnp.asarray(z)))
+        x_dot = original_x_dot(x, v)
+        h = _FIELD_STEP
+        ahead = np.asarray(compressor.encode(x + h * x_dot))[:, k]
+        behind = np.asarray(compressor.encode(x - h * x_dot))[:, k]
+        original = (ahead - behind) / (2 * h)
+        out.append(
+            {
+                "latent": name,
+                "z": z_axis.tolist(),
+                "learned": learned.reshape(zz.shape).tolist(),
+                "original": original.reshape(zz.shape).tolist(),
+            }
+        )
+    return {"V": v_grid.tolist(), "latents": out}
+
+
 def _padded(low: float, high: float) -> tuple[float, float]:
     """学習データの幅を両側へ広げる。図の端 (0 と 1) で格子が切れないよう [0, 1] には
     収めない (encoder は範囲の外の値も写せる)。"""
@@ -723,6 +792,7 @@ def describe_group(
     (等高線に使う。範囲は群の全ゲートを合わせた学習データの幅を少し広げたもので、
     どの軸も同じ。ほかのゲートは学習データの平均。PCA は軸に
     垂直な直線になり、KAM は学習データの軌道を持たないので書かない)、
+    rhs/field.json は学習器の右辺と元のモデルの潜在の速さの (V, z) の格子 (rhs_field)、
     compressor/own.json と rhs/own.json は圧縮器と右辺に固有の中身 (PCA は向きと
     平均も、KAM の右辺は kind だけ)。学習しない KAM は学習データを読まず、ψ の範囲で
     曲線を描き、学習区画も CompFit も持たない。学習する学習器は、学習データの上の
@@ -763,16 +833,15 @@ def describe_group(
                 compressor, group.gates, latent_names, gate_ranges, stacked.mean(0)
             )
         }
-    alone = Surrogate(config, [part])
+    field = rhs_field(config, group, part, data, net.nodes[ids[0]].resolved_params)
+    if field is not None:
+        files["rhs/field.json"] = field
     fits = {}
     for pos, comp_id in enumerate(ids):
-        slopes = latent_slopes(alone, data, comp_id, net.nodes[comp_id].resolved_params)
         mse = float(np.mean((gates[pos] - recons[pos]) ** 2))
         fits[comp_id] = CompFit(
             latent=latents[pos],
             recon_rmse=np.sqrt(np.mean((gates[pos] - recons[pos]) ** 2, axis=1)),
-            slope=slopes[0] if slopes else None,
-            rhs=slopes[1] if slopes else None,
             summary={
                 "reconstruction_mse": mse,
                 "reconstruction_mse_ratio": mse / float(np.var(gates[pos])),

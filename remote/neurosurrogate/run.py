@@ -10,11 +10,11 @@ spec の種類は 5 つ (`kind`)。学習データ → 学習器 → モデル �
 - `data`  学習データ。`data` (SimSpec) を元のモデルで回す。
           置き場は `runs/data/<ハッシュ>/`
 - `part`  学習器 1 つ (群 1 つの圧縮器と右辺)。`data` は学習データのハッシュで、
-          `cell`・`form`・`train_comp`・`group` で学習する。学習しない KAM は
-          `data` と `train_comp` を持たず、`cell`・`form`・`group` だけで組む。
+          `cell`・`form`・`train_comp`・`group` で学習する。
           置き場は `runs/parts/<ハッシュ>/`
 - `model` 学習器の並びを組んだモデル。`parts` は学習器のハッシュの並び (群の順)、
-          `cell`・`form`・`absorbed`。学習はせず、組んだ演算コストを書く。
+          `cell`・`form`・`absorbed`。学習はせず、組んだ演算コストを書く。KAM の
+          モデルは `parts` が空で、`kam` に群と学習データのハッシュと区画を持つ。
           置き場は `runs/models/<ハッシュ>/`
 - `sim`   入力 × モデルのシミュレーション。`input` は `EvalSeries.to_dict`
           から置換範囲を除いたもの (電流と掃引)。`model` は
@@ -42,10 +42,10 @@ JSON の nan は null):
     part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 →
                ゲートの曲線を潜在の軸ごとに。区画の型の状態の並びも)、
                compressor/plane.json (AE だけ。群のゲート 2 本ずつの平面の上で
-               encoder が返す潜在の格子)、compressor/own.json と
+               encoder が返す潜在の格子)、rhs/field.json (学習器の右辺と、元のモデルの
+               潜在の速さの (V, z) の格子)、compressor/own.json と
                rhs/own.json (圧縮器と右辺に固有の中身。kind で形が変わる。PCA は
-               向きと平均も)、fit/<comp_id>/ に {latent,recon_rmse,slope,rhs}.f64
-               (slope は潜在の前進差分、rhs は学習器の右辺がその時刻に返す dz/dt) と
+               向きと平均も)、fit/<comp_id>/ に {latent,recon_rmse}.f64 と
                summary.json (再構成の MSE と分散比)
     model      summary.json (組んだ 1 刻みの演算コスト。学習器の中身は学習器の
                run)。KAM のモデルは加えて kam.json (区画、吸収したゲート、群ごとの
@@ -119,7 +119,7 @@ from .surrogate.model import (
 
 # spec の種類ごとの形式の版。段取りが spec に入れる = 形式を変えたらその種類の鍵が変わる
 # (shared/spec.ts の FORMATS と揃える)
-_FORMATS = {"data": 11, "part": 20, "model": 13, "sim": 13, "bench": 11}
+_FORMATS = {"data": 11, "part": 22, "model": 13, "sim": 13, "bench": 11}
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _CLAIM_GRACE = 60.0  # [s] 書きかけを作ってから pid を置くまでの猶予 (これより古く pid の無いものは残骸)
@@ -257,9 +257,6 @@ def _part(root: Path, spec: dict) -> dict:
         _write_f64(folder / "latent.f64", comp_fit.latent.T)
         _write_f64(folder / "recon_rmse.f64", comp_fit.recon_rmse)
         _write_json(folder / "summary.json", comp_fit.summary)
-        if comp_fit.slope is not None and comp_fit.rhs is not None:
-            _write_f64(folder / "slope.f64", comp_fit.slope.T)
-            _write_f64(folder / "rhs.f64", comp_fit.rhs.T)
     return {}
 
 

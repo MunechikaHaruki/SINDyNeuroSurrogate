@@ -371,6 +371,7 @@ def test_a_learner_describes_itself_and_lines_up() -> None:
     latents = [axis["latent"] for axis in decode["axes"]]
     assert np.shape(decode["axes"][0]["gates"]) == (len(group.gates), 201)
     assert "compressor/plane.json" not in files  # PCA の等高線は軸に垂直な直線
+    assert "rhs/field.json" not in files  # 膜電位も同定する形は右辺が電流を読む
     assert list(fits) == [0]
     n_time = s.training_data.sizes["time"]
     comp_fit = fits[0]
@@ -379,6 +380,24 @@ def test_a_learner_describes_itself_and_lines_up() -> None:
     assert float(np.mean(comp_fit.recon_rmse**2)) == pytest.approx(
         comp_fit.summary["reconstruction_mse"]
     )
+
+
+def test_a_hybrid_learner_reads_its_rhs_and_the_original_on_one_grid() -> None:
+    """hybrid の学習器は、学習器の右辺と元のモデルの潜在の速さを (V, z) の同じ格子で
+    書く。どちらも有限で、V を固定すると z の増える向きに正から負へ 0 を横切る
+    (z が落ち着く先がある) 列を持つ。"""
+    s = fit_declared("_test_traub_hybrid_hn")
+    [group] = s.config.groups
+    files, _ = describe_group(s.config, group, s.parts[0], s.training_data)
+    field = files["rhs/field.json"]
+    assert [f["latent"] for f in field["latents"]] == group_latents(group)
+    for f in field["latents"]:
+        shape = (len(f["z"]), len(field["V"]))
+        for name in ("learned", "original"):
+            grid = np.asarray(f[name])
+            assert grid.shape == shape and np.all(np.isfinite(grid))
+            falls = (grid[:-1] > 0) & (grid[1:] <= 0)
+            assert falls.any(axis=0).any()
 
 
 def test_an_ae_grid_covers_every_gate_on_one_common_range() -> None:

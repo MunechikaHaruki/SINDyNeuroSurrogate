@@ -1,6 +1,6 @@
 // 学習器（runs/parts/<学習器>/）の答え。学習器の run と、その spec が指す学習データの run（data/<spec.data>/）だけを読む。KAM は学習器を持たず、モデルの答え（models.ts）が持つ。
 // 答えの欄は学習器の run の置き場に 1 つずつ対応する：組み立て（spec.json）、ゲートの空間（compressor/decode.json の曲線、学習データの軌道、AE は compressor/plane.json の encoder の格子）、圧縮器と右辺に固有の中身
-// （compressor/own.json・rhs/own.json）、学習データの上の中身（fit/<区画>/：潜在・再構成誤差・潜在の傾きの正解（前進差分）・学習器の右辺の時系列と、全区間のまとめ）。
+// （compressor/own.json・rhs/own.json）、学習データの上の中身（fit/<区画>/：潜在・再構成誤差の時系列と、全区間のまとめ）。
 import type {
   CompressorOwn,
   Fit,
@@ -8,6 +8,7 @@ import type {
   Line,
   PartsReply,
   PartsRequest,
+  RhsField,
   RhsOwn,
   SindyEquation,
 } from '../../shared/api.ts';
@@ -20,6 +21,7 @@ import {
   type DecodeJson,
   type FitSummary,
   type PlaneJson,
+  type FieldJson,
   type RhsJson,
   type WaveMeta,
 } from '../../shared/runs.ts';
@@ -27,7 +29,7 @@ import type { Spec } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { learnedRun, type Context } from './experiments.ts';
 import { spanOf, wavesOf } from './inputs.ts';
-import { line, slopeCompare, trajectory } from './waves.ts';
+import { line, trajectory } from './waves.ts';
 
 type PartSpec = Extract<Spec, { kind: 'part' }>;
 
@@ -132,9 +134,65 @@ export function axesOf(decode: DecodeJson): GateSpace['axes'] {
   }));
 }
 
-/** compressor/plane.json の文字を読む。無ければ null。 */
-function planeOf(text: string | null): PlaneJson | null {
-  return text === null ? null : (JSON.parse(text) as PlaneJson);
+/** 右辺の 1 列（V を固定した z の並びの値 f）の、安定な 0（z の増える向きに正から負へ横切る所）の z と、そこでの傾き ∂f/∂z。
+ * 安定な 0 が 2 つ以上あれば、前の列の z（near）に近いもの。無ければ null。 */
+export function stableRoot(
+  z: number[],
+  f: (number | null)[],
+  near: number | null,
+): { z: number; slope: number } | null {
+  let best: { z: number; slope: number } | null = null;
+  for (let i = 0; i + 1 < z.length; i++) {
+    const a = f[i];
+    const b = f[i + 1];
+    if (a === null || b === null || !(a > 0 && b <= 0)) continue;
+    const root = z[i] + (a / (a - b)) * (z[i + 1] - z[i]);
+    const slope = (b - a) / (z[i + 1] - z[i]);
+    if (best === null || (near !== null && Math.abs(root - near) < Math.abs(best.z - near))) best = { z: root, slope };
+  }
+  return best;
+}
+
+/** 右辺の格子（z の行 × V の列）から、V ごとの z∞(V) と τ(V) = −1/(∂f/∂z) の線を求める。安定な 0 の無い V は飛ばす。 */
+export function steadyOf(
+  v: number[],
+  z: number[],
+  grid: (number | null)[][],
+  label: string,
+): { steady: Line; tau: Line } {
+  const steady: Line = { label, points: [] };
+  const tau: Line = { label, points: [] };
+  let near: number | null = null;
+  for (let col = 0; col < v.length; col++) {
+    const root = stableRoot(
+      z,
+      grid.map(row => row[col]),
+      near,
+    );
+    if (root === null) continue;
+    near = root.z;
+    steady.points.push({ x: v[col], y: root.z });
+    if (root.slope < 0) tau.points.push({ x: v[col], y: -1 / root.slope });
+  }
+  return { steady, tau };
+}
+
+/** 右辺の格子（rhs/field.json）に、学習器と元のモデルの z∞(V) と τ(V) を添える。無ければ（膜電位も同定する形）null。 */
+export function fieldOf(field: FieldJson | null): RhsField | null {
+  if (!field) return null;
+  return {
+    V: field.V,
+    latents: field.latents.map(entry => {
+      const learned = steadyOf(field.V, entry.z, entry.learned, '学習器');
+      const original = steadyOf(field.V, entry.z, entry.original, '元のモデル');
+      return { ...entry, steady: [original.steady, learned.steady], tau: [original.tau, learned.tau] };
+    }),
+  };
+}
+
+/** run の中の .json の文字を読む。無ければ null。 */
+function jsonOrNull<T>(text: string | null): T | null {
+  return text === null ? null : (JSON.parse(text) as T);
 }
 
 /** encoder の等高線の格子（compressor/plane.json）。ゲートの名前を群のゲートの中の位置にする。無ければ（PCA）空。 */
@@ -204,7 +262,7 @@ function fitOf(
     return id;
   };
   const dataOf = (name: string, variable: string) => compArray(data, RUN.waves, meta, 0, idOf(name), variable);
-  const arrayOf = (name: string, file: 'latent' | 'slope' | 'rhs', latent: string) =>
+  const arrayOf = (name: string, file: 'latent', latent: string) =>
     fitArray(run, meta, idOf(name), file, latents.indexOf(latent));
   const named = (name: string, comp: string) => (shown.length > 1 ? `${name}（${comp}）` : name);
   const draw = (label: string, ref: ArrayRef): Line => ({ label, points: line(ctx.files, ref, span) });
@@ -240,17 +298,6 @@ function fitOf(
       ),
     })),
     axes,
-    slopes: slopeCompare(
-      ctx.files,
-      shown.flatMap(name =>
-        latents.map(latent => ({
-          label: named(latent, name),
-          slope: arrayOf(name, 'slope', latent),
-          rhs: arrayOf(name, 'rhs', latent),
-        })),
-      ),
-      span,
-    ),
     reconstruction: learned.map(id => {
       const summary = ctx.files.json<FitSummary>(run, RUN.fitSummary(id));
       return {
@@ -283,8 +330,9 @@ export function parts(ctx: Context, request: PartsRequest): PartsReply {
     space: {
       axes: axesOf(decode),
       data: trail,
-      levels: levelsOf(planeOf(ctx.files.text(run, RUN.plane)), decode.gates),
+      levels: levelsOf(jsonOrNull<PlaneJson>(ctx.files.text(run, RUN.plane)), decode.gates),
     },
+    field: fieldOf(jsonOrNull<FieldJson>(ctx.files.text(run, RUN.field))),
     compressor: compressorOf(ctx.files.json<CompressorJson>(run, RUN.compressor)),
     rhs: rhsOf(spec, ctx.files.json<RhsJson>(run, RUN.rhs_own)),
     fit,

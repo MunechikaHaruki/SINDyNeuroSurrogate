@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { equationsOf, factorOf, levelsOf, strided } from './parts.ts';
+import { equationsOf, factorOf, levelsOf, stableRoot, steadyOf, strided } from './parts.ts';
 import { sameScale } from './inputs.ts';
 
 // sympy の sp.latex の出力そのまま（研究コードの項のカタログの形）。
@@ -96,4 +96,30 @@ test('a phase plane has the same scale when both axes share a unit: two latents,
   expect(sameScale({ x: 'h+n.z1', y: 'a+c.z1' }, false)).toBe(true);
   expect(sameScale({ x: 'V', y: 'h+n.z1' }, false)).toBe(false);
   expect(sameScale({ x: 'V', y: 'h+n.z1' }, true)).toBe(true);
+});
+
+test('the steady latent is where the right-hand side falls through zero as z grows, and tau is minus one over its slope there', () => {
+  // f = 2 − z（z∞ = 2、∂f/∂z = −1 なので τ = 1）
+  const z = [0, 1, 2, 3, 4];
+  expect(stableRoot(z, [2, 1, 0, -1, -2], null)).toEqual({ z: 2, slope: -1 });
+  // 負から正へ横切る 0 は不安定なので取らない
+  expect(stableRoot(z, [-2, -1, 0.5, 1, 2], null)).toBeNull();
+  // 安定な 0 が 2 つなら、前の列に近い方
+  expect(stableRoot(z, [1, -1, 1, -1, -1], 2.4)?.z).toBe(2.5);
+  const grid = [
+    [2, 4],
+    [1, 2],
+    [0, 0],
+    [-1, -2],
+    [-2, -4],
+  ];
+  const { steady, tau } = steadyOf([-60, -40], z, grid, '学習器');
+  expect(steady.points).toEqual([
+    { x: -60, y: 2 },
+    { x: -40, y: 2 },
+  ]);
+  expect(tau.points).toEqual([
+    { x: -60, y: 1 },
+    { x: -40, y: 0.5 },
+  ]);
 });

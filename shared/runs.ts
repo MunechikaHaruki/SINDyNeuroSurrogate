@@ -7,11 +7,12 @@ export type ArrayRef = { run: string; file: string; column: number; n: number };
 
 /** run の中の置き場。波形の根 root は、回した波形（学習データの run では学習データ）waves か、原系を列の前処理で射影した projected(区画)、
  * その上の潜在の傾きの正解（射影の前進差分）slope(区画) と、列の学習器の右辺が返す dz/dt の rhs(区画)。
- * decode・plane・compressor・rhs_own・fit は学習器の run の置き場（decode の曲線、ゲートの平面の上の encoder の格子（AE だけ）、圧縮器と右辺に固有の中身、学習データの上の中身）、summary はモデルの run の組んだ演算コスト、kam・equivalent・reduced は KAM のモデルの run の条件と、元のモデルの等価電位の波形と、縮約の波形、spec はどの run も持つ回した条件。 */
+ * decode・plane・field・compressor・rhs_own・fit は学習器の run の置き場（decode の曲線、ゲートの平面の上の encoder の格子（AE だけ）、右辺の (V, z) の格子、圧縮器と右辺に固有の中身、学習データの上の中身）、summary はモデルの run の組んだ演算コスト、kam・equivalent・reduced は KAM のモデルの run の条件と、元のモデルの等価電位の波形と、縮約の波形、spec はどの run も持つ回した条件。 */
 export const RUN = {
   waves: 'waves',
   decode: 'compressor/decode.json',
   plane: 'compressor/plane.json',
+  field: 'rhs/field.json',
   compressor: 'compressor/own.json',
   rhs_own: 'rhs/own.json',
   fit: 'fit',
@@ -76,12 +77,12 @@ export function internalArray(run: string, root: string, meta: WaveMeta, point: 
   return { run, file: `${root}/${point}/I_internal.f64`, column, n: meta.n[point] };
 }
 
-/** 学習器の run の、学習区画 compId の潜在 latent・潜在の傾きの正解 slope（前進差分）・学習器の右辺 rhs（どれも column 列目）か再構成誤差 recon_rmse（1 列）。meta は学習データの目録。 */
+/** 学習器の run の、学習区画 compId の潜在 latent（column 列目）か再構成誤差 recon_rmse（1 列）。meta は学習データの目録。 */
 export function fitArray(
   run: string,
   meta: WaveMeta,
   compId: number,
-  file: 'latent' | 'recon_rmse' | 'slope' | 'rhs',
+  file: 'latent' | 'recon_rmse',
   column = 0,
 ): ArrayRef {
   return { run, file: `fit/${compId}/${file}.f64`, column, n: meta.n[0] };
@@ -102,6 +103,12 @@ export type PlaneJson = {
     ys: number[];
     latents: { latent: string; values: (number | null)[][] }[];
   }[];
+};
+/** 学習器の run の右辺の格子（rhs/field.json。膜電位も同定する形は無い）。V は膜電位の格子、latents は潜在ごとの z の格子と、学習器の右辺 learned と
+ * 元のモデルの潜在の速さ original（群のゲートを decoder の曲線の上に置き、元のゲートの式で動かしたもの）。値は z の行 × V の列で、有限でなければ null。 */
+export type FieldJson = {
+  V: number[];
+  latents: { latent: string; z: number[]; learned: (number | null)[][]; original: (number | null)[][] }[];
 };
 /** KAM のモデルの run の条件（kam.json）。comp は描いた区画、absorbed は吸収したゲート、groups は群ごとのゲートと潜在の名前と、Kepler 1992 の式(6)の重みと式(10)の条件。 */
 export type KamJson = {

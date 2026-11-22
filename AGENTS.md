@@ -87,11 +87,12 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 data/<ハッシュ>/    waves/                    学習データ (下の waves と同じ形式、点は 1 つ)
 parts/<ハッシュ>/   learner.joblib            学習器 (圧縮器と右辺)
                     compressor/decode.json    潜在 → 群のゲートの曲線を潜在の軸ごとに (ほかの軸は学習データの平均)。区画の型の状態の並びも
-                    compressor/plane.json     AE だけ。群のゲート 2 本ずつの平面の上で encoder が返す潜在の格子 (等高線に使う。範囲は学習データの幅、ほかのゲートは学習データの平均)
+                    compressor/plane.json     AE だけ。群のゲート 2 本ずつの平面の上で encoder が返す潜在の格子 (等高線に使う。範囲は群の全ゲートを合わせた学習データの幅を少し広げたもので、どの軸も同じ。ほかのゲートは学習データの平均)
+                    rhs/field.json            hybrid だけ。学習器の右辺と、元のモデルの潜在の速さ (群のゲートを decoder の曲線の上に置いて元の式で動かしたもの) の (V, z) の格子
                     compressor/own.json       圧縮器に固有の中身 (kind で形が変わる。PCA の寄与率と向きと平均、AE の隠れ層)
                     rhs/own.json              右辺に固有の中身 (kind で形が変わる。SINDy の項と係数、UDE の層と損失)
-                    fit/<comp_id>/{latent,recon_rmse,slope,rhs}.f64
-                                              学習 comp ごとの潜在 (列ごとに連続)、再構成 RMSE、潜在の傾きの正解 (潜在の前進差分) と学習器の右辺の dz/dt
+                    fit/<comp_id>/{latent,recon_rmse}.f64
+                                              学習 comp ごとの潜在 (列ごとに連続) と再構成 RMSE
                     fit/<comp_id>/summary.json 学習 comp の全区間の再構成の MSE と、それをゲートの分散で割ったもの
 models/<ハッシュ>/  summary.json              surrogate.summary (組んだ 1 刻みの演算コスト。学習器の中身は学習器の run だけが持つ)
                     kam.json                  KAM のモデルだけ。描いた区画、吸収したゲート、群ごとのゲートと潜在の名前と Kepler 1992 の式(6)の重みと式(10)の条件

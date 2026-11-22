@@ -48,7 +48,7 @@ export type SurrogateConfig = {
  * spec の形式の版。spec の種類ごとに持ち、neurosurrogate/run.py の _FORMATS と揃える（remote/run/places.test.ts が確かめる）。
  * spec に入るので、変えるとその種類の鍵が変わり、その run と、ハッシュでそれを指す後ろの run（学習器なら、モデル・置換系・GPU の実測）だけが回し直される。
  */
-export const FORMATS = { data: 11, part: 20, model: 13, sim: 13, bench: 11 } as const;
+export const FORMATS = { data: 11, part: 22, model: 13, sim: 13, bench: 11 } as const;
 
 /** 回す backend。同じ spec でも計算の順序が変わって結果がずれるので、spec に入れて run を分ける。 */
 export type Device = 'cpu' | 'gpu';

@@ -189,8 +189,23 @@ export type CompressorOwn =
 export type RhsOwn =
   | { kind: 'sindy'; library: string[]; settings: string[]; nnz: number; size: number; equations: SindyEquation[] }
   | { kind: 'ude'; layers: number[][]; losses: Record<string, number | null> };
-/** 学習データの上の中身（fit/<区画>/。学習データから学習した学習器だけ）。線はどれも描いた区画の時間の範囲 window のもの：voltage は膜電位、gates は群のゲート、
- * latent は潜在、recon は再構成誤差、path は潜在の軌跡（軸は axes。sameScale は縦横の単位が同じか）、slopes は傾きの比べ。
+/** 学習器の右辺を関数として見るもの（rhs/field.json）。V は膜電位の格子 [mV]、latents は潜在ごとに、z の格子と、学習器の右辺 learned と元のモデルの潜在の速さ original の
+ * (V, z) の格子（z の行 × V の列、有限でなければ null。元のモデルは群のゲートを decoder の曲線の上に置き、元のゲートの式で動かしたもの）、
+ * steady は V を固定したとき z が落ち着く先 z∞(V)（右辺が z の増える向きに正から負へ 0 を横切る所）、tau はそこへ戻る時定数 τ(V) = −1/(∂f/∂z) [ms]。
+ * steady と tau の線は元のモデルと学習器の 2 本。潜在が 2 本以上ならほかの潜在を学習データの平均に置いた断面。 */
+export type RhsField = {
+  V: number[];
+  latents: {
+    latent: string;
+    z: number[];
+    learned: (number | null)[][];
+    original: (number | null)[][];
+    steady: Line[];
+    tau: Line[];
+  }[];
+};
+/** 学習データの上の中身（fit/<区画>/）。線はどれも描いた区画の時間の範囲 window のもの：voltage は膜電位、gates は群のゲート、
+ * latent は潜在、recon は再構成誤差、path は潜在の軌跡（軸は axes。sameScale は縦横の単位が同じか）。
  * reconstruction は学習した区画ごとの全区間のまとめ：再構成の MSE と、それをゲートの分散で割ったもの（summary.json）、時刻ごとの RMSE の平均と最大。 */
 export type Fit = {
   /** 学習した学習データの名前（実験の data の一覧）。 */
@@ -206,7 +221,6 @@ export type Fit = {
   recon: Line[];
   path: Line[];
   axes: { x: string; y: string; xIsVoltage: boolean; sameScale: boolean };
-  slopes: SlopeCompare;
   reconstruction: { comp: string; mse: number | null; ratio: number | null; mean: number; max: number }[];
 };
 /** 群のゲートの空間（座標は gates の順）。圧縮器がゲートの動きをどの軸へ潰すかを見る。
@@ -227,7 +241,7 @@ export type GateSpace = {
 };
 /** 学習器 1 本。欄は学習器の run の置き場に 1 つずつ対応する：組み立て（spec.json）の label・setup・latents・gates、ゲートの空間（compressor/decode.json と学習データ）、
  * 圧縮器に固有の中身（compressor/own.json）、右辺に固有の中身（rhs/own.json）、学習データの上の中身（fit/）。
- * label は群の名前（h+n）、setup は組み立ての表、gates は群のゲート、gateOrder は区画の型の状態の並び（ゲートの色をほかのページと揃えるのに使う）、space は群のゲートの空間の軌道と圧縮の軸。 */
+ * label は群の名前（h+n）、setup は組み立ての表、gates は群のゲート、gateOrder は区画の型の状態の並び（ゲートの色をほかのページと揃えるのに使う）、space は群のゲートの空間の軌道と圧縮の軸、field は右辺を関数として見るもの（膜電位も同定する形は null）。 */
 export type PartsReply = {
   run: string;
   label: string;
@@ -238,6 +252,7 @@ export type PartsReply = {
   space: GateSpace;
   compressor: CompressorOwn;
   rhs: RhsOwn;
+  field: RhsField | null;
   fit: Fit;
 };
 

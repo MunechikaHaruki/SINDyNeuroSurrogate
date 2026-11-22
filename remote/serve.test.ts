@@ -196,6 +196,25 @@ put(PART, 'part', {
     mean: [0.5],
   },
   'rhs/own.json': { kind: 'sindy', targets: ['z'], features: ['1'], xi: [[0.5]] },
+  'rhs/field.json': {
+    V: [-60, -40],
+    latents: [
+      {
+        latent: 'h.z1',
+        z: [0, 1, 2],
+        learned: [
+          [1, 1],
+          [0, 0],
+          [-1, -1],
+        ],
+        original: [
+          [2, 2],
+          [1, 1],
+          [0, 0],
+        ],
+      },
+    ],
+  },
   'fit/0/summary.json': { reconstruction_mse: 0.01, reconstruction_mse_ratio: 0.1 },
 });
 const kamRun = put(KAM_MODEL, 'model', {
@@ -208,7 +227,7 @@ const kamRun = put(KAM_MODEL, 'model', {
 });
 manyWaves(join(kamRun, 'equivalent'), ['V', 'M', 'H', 'm+h.z1']);
 manyWaves(join(kamRun, 'reduced'), ['V', 'm+h.z1']);
-for (const file of ['latent', 'recon_rmse', 'slope', 'rhs'])
+for (const file of ['latent', 'recon_rmse'])
   write(join(runs, dirOf(PART), `fit/0/${file}.f64`), Buffer.from(new Float64Array(N).fill(0.5).buffer));
 const cost = Object.fromEntries(
   ['exp', 'div', 'pm', 'mul'].flatMap(op => [
@@ -319,14 +338,17 @@ test('the training data and learner pages read their runs by declared name', asy
   const fit = reply.fit!;
   expect(fit.window).toEqual([10, 50]);
   expect(fit.latent.map(l => l.label)).toEqual(['h.z1']);
-  expect(fit.slopes.lines['h.z1'].map(l => l.label)).toEqual(['正解', '学習器']);
-  expect(fit.slopes.error).toEqual([{ latent: 'h.z1', rmse: 0, scale: 0 }]);
   expect(fit.reconstruction).toEqual([{ comp: 'soma', mse: 0.01, ratio: 0.1, mean: 0.5, max: 0.5 }]);
   expect(fit.gates).toHaveLength(1);
   expect(fit.data).toBe(names.data);
   expect(fit.path).toHaveLength(1);
   expect(reply.gateOrder).toEqual(['M', 'H', 'N']);
   expect(reply.gates).toEqual(['H']);
+  expect(reply.field?.latents[0].steady.map(l => l.label)).toEqual(['元のモデル', '学習器']);
+  expect(reply.field?.latents[0].steady[1].points).toEqual([
+    { x: -60, y: 1 },
+    { x: -40, y: 1 },
+  ]);
   expect(reply.space?.axes).toEqual([{ latent: 'h.z1', points: [[0], [1]], z: [-1, 1] }]);
   expect(reply.space?.data.map(d => d.label)).toEqual(['soma']);
   expect(reply.space?.levels).toEqual([]);
