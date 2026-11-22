@@ -1,5 +1,5 @@
 {
-  "format": 11,
+  "format": 13,
   "device": "cpu",
   "kind": "model",
   "cell": "traub",
@@ -7,8 +7,33 @@
   "absorbed": [
     "M"
   ],
-  "parts": [
-    "4e98b838a523",
-    "abd7cbc7267a"
-  ]
+  "parts": [],
+  "kam": {
+    "groups": [
+      {
+        "gates": [
+          "H",
+          "A"
+        ],
+        "compressor": "kam",
+        "d": 1,
+        "rhs": "kam",
+        "compressor_params": {},
+        "rhs_params": {}
+      },
+      {
+        "gates": [
+          "N",
+          "C"
+        ],
+        "compressor": "kam",
+        "d": 1,
+        "rhs": "kam",
+        "compressor_params": {},
+        "rhs_params": {}
+      }
+    ],
+    "data": "a9806f86a63e",
+    "train_comp": null
+  }
 }

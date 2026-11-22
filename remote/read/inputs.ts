@@ -93,11 +93,26 @@ function columnsOf(plan: PlanEntry, found: ExperimentStatus, input: string, mode
   return list;
 }
 
-/** 1 組（元のモデル original と列 run）の、掃引の点 k・区画 comp の潜在空間。axes は相平面の軸（無い名前なら V と最初の潜在）。
+/** 相平面の軸の単位が同じか。潜在どうしは同じ単位、V と潜在は、潜在が等価電位（KAM の ψ、mV）のときだけ同じ。 */
+export function sameScale(axes: { x: string; y: string }, kam: boolean): boolean {
+  const unit = (name: string) => (name === 'V' || kam ? 'mV' : 'latent');
+  return unit(axes.x) === unit(axes.y);
+}
+
+/** 1 組（元のモデル original と列 run）の、掃引の点 k・区画 comp の潜在空間。axes は相平面の軸（無い名前なら V と最初の潜在）。kam はモデルが KAM か（潜在が mV）。
  * projected でなければ（区画を置き換えていない）潜在は無く、replaced でなければ（発散した点）置換系を描かない。 */
 function pairOf(
   ctx: Context,
-  at: { model: string; run: string; k: number; comp: string; id: number; projected: boolean; replaced: boolean },
+  at: {
+    model: string;
+    run: string;
+    k: number;
+    comp: string;
+    id: number;
+    projected: boolean;
+    replaced: boolean;
+    kam: boolean;
+  },
   span: Span,
   axes: { x: string; y: string },
 ): PairCompare {
@@ -144,7 +159,7 @@ function pairOf(
           span,
         )
       : null;
-  return { model: at.model, latents, phase, axes: chosen, slopes };
+  return { model: at.model, latents, phase, axes: { ...chosen, sameScale: sameScale(chosen, at.kam) }, slopes };
 }
 
 /** 元のモデル original の掃引の点 k の、区画 comps の膜電位・内部電流・ゲート（0〜1 の状態）とゲートでない状態。 */
@@ -224,6 +239,7 @@ export function inputs(ctx: Context, request: InputsRequest): InputsReply {
             id,
             projected: input.replaceTargets.includes(comp),
             replaced: !metrics.pairs[paired.run]?.[pointOf(request.pair.point)]?.diverged,
+            kam: modelOf(plan, paired.model).config.groups.every(g => g.compressor === 'kam'),
           },
           span,
           request.pair.axes ?? { x: 'V', y: '' },

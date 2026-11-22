@@ -48,7 +48,7 @@ export type SurrogateConfig = {
  * spec の形式の版。spec の種類ごとに持ち、neurosurrogate/run.py の _FORMATS と揃える（remote/run/places.test.ts が確かめる）。
  * spec に入るので、変えるとその種類の鍵が変わり、その run と、ハッシュでそれを指す後ろの run（学習器なら、モデル・置換系・GPU の実測）だけが回し直される。
  */
-export const FORMATS = { data: 11, part: 14, model: 11, sim: 13, bench: 11 } as const;
+export const FORMATS = { data: 11, part: 20, model: 13, sim: 13, bench: 11 } as const;
 
 /** 回す backend。同じ spec でも計算の順序が変わって結果がずれるので、spec に入れて run を分ける。 */
 export type Device = 'cpu' | 'gpu';
@@ -65,7 +65,7 @@ export type Model = { surrogate: string; replace_targets: string[] };
 
 /**
  * run.py に渡す spec.json。学習データ → 学習器 → モデル → シミュレーションの順に、後ろの spec が前の run をハッシュで指す。
- * 学習データは runs/data/ に、学習器（群 1 つの圧縮器と右辺）は runs/parts/ に、学習器の並びを組んだモデルは runs/models/ に、
+ * 学習データは runs/data/ に、学習器（群 1 つの圧縮器と右辺）は runs/parts/ に、学習器の並びを組んだモデル（KAM は学習器を持たず、群と学習データを指す）は runs/models/ に、
  * 入力 × モデルは runs/inputs/<入力>/ に、GPU の実測は runs/bench/ に置く。sim と bench の model が null なら元のモデル。
  */
 export type Spec =
@@ -77,9 +77,9 @@ export type Spec =
       cell: string;
       form: SurrogateConfig['form'];
       group: Group;
-      /** 学習データ（runs/data/）のハッシュと、学習を絞る区画。学習しない KAM の学習器は持たない。 */
-      data?: string;
-      train_comp?: string | null;
+      /** 学習データ（runs/data/）のハッシュと、学習を絞る区画。 */
+      data: string;
+      train_comp: string | null;
     }
   | {
       format: number;
@@ -89,8 +89,11 @@ export type Spec =
       form: SurrogateConfig['form'];
       /** 膜電位へ吸収するゲート。書かなければ無い。 */
       absorbed?: string[];
-      /** 学習器（runs/parts/）のハッシュの並び（群の順）。 */
+      /** 学習器（runs/parts/）のハッシュの並び（群の順）。KAM のモデルは空。 */
       parts: string[];
+      /** KAM のモデル（Kepler 1992 の縮約。学習せず、区画の型の式から群を等価電位 1 本ずつにまとめる）だけが持つ。groups は群（圧縮器と右辺はどちらも kam）、
+       * data と train_comp は、元のモデルと縮約したモデルの等価電位と膜電位を描く学習データ（runs/data/）のハッシュと区画。 */
+      kam?: { groups: Group[]; data: string; train_comp: string | null };
     }
   | { format: number; device: Device; kind: 'sim'; input: Input; model: Model | null }
   | {

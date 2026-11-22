@@ -64,16 +64,31 @@ def _equivalent(steady, x: np.ndarray, low: float, high: float) -> np.ndarray:
     return np.asarray((lo + hi) / 2)
 
 
-def criterion(cell: str, gates: list[str], params: Any) -> float:
-    """群の式(10) の左辺 |Σ_j α_j k_j − k_i| / Σ_j k_j の最大 (Kepler 1992)。
+def equivalent_potentials(
+    cell: str, gates: list[str], params: Any, x: np.ndarray
+) -> np.ndarray:
+    """ゲートの値 x (時刻 × gates) の等価電位 v_i = x̄_i⁻¹(x_i) (時刻 × gates) [mV]。
 
-    区画の初期の静止状態で読む。
+    Kepler 1992 の §2。値域の外の x は探す範囲の端に寄る。
+    """
+    x = np.asarray(x, dtype=float)
+    columns = []
+    for j, gate in enumerate(gates):
+        low, high = _RANGES.get(gate, _RANGE)
+        columns.append(_equivalent(_steady(cell, gate, params), x[:, j], low, high))
+    return np.stack(columns, axis=1)
 
-    α_j = D_j / Σ D は式(6) の重み、D_j = (∂(dV/dt)/∂x_j) x̄_j'(V) は感度、
-    k_j = α + β は緩和の速さ。1 本の群は 0。
+
+def conditions(cell: str, gates: list[str], params: Any) -> dict[str, Any]:
+    """群の KAM の条件 (Kepler 1992)。区画の初期の静止状態で読む。
+
+    weights は式(6) の重み α_j = D_j / Σ D (どれも正であること)、
+    D_j = (∂(dV/dt)/∂x_j) x̄_j'(V) は感度。criterion は式(10) の左辺
+    |Σ_j α_j k_j − k_i| / Σ_j k_j の最大 (小さいこと)、k_j = α + β は緩和の速さ。
+    1 本の群は重み 1、criterion 0。
     """
     if len(gates) < 2:
-        return 0.0
+        return {"criterion": 0.0, "weights": [1.0] * len(gates)}
     c = CELLS[cell]
     assert c.dv is not None and c.derivs is not None
     init = c.inits(params)
@@ -92,7 +107,13 @@ def criterion(cell: str, gates: list[str], params: Any) -> float:
         speeds.append(float(opening - closing))
     weights = [d / sum(sensitivities) for d in sensitivities]
     mean = sum(w * k for w, k in zip(weights, speeds, strict=True))
-    return max(abs(mean - k) / sum(speeds) for k in speeds)
+    worst = max(abs(mean - k) / sum(speeds) for k in speeds)
+    return {"criterion": worst, "weights": weights}
+
+
+def criterion(cell: str, gates: list[str], params: Any) -> float:
+    """群の式(10) の左辺の最大 (conditions の criterion)。"""
+    return float(conditions(cell, gates, params)["criterion"])
 
 
 class KamCompressor:
@@ -112,13 +133,8 @@ class KamCompressor:
         self.gate_inits: list[float] = self.encode(x)[0].tolist()
 
     def encode(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x, dtype=float)
-        potentials = []
-        for j, gate in enumerate(self.gates):
-            low, high = _RANGES.get(gate, _RANGE)
-            steady = _steady(self.cell, gate, self.params)
-            potentials.append(_equivalent(steady, x[:, j], low, high))
-        return np.mean(potentials, axis=0)[:, None]
+        potentials = equivalent_potentials(self.cell, self.gates, self.params, x)
+        return np.mean(potentials, axis=1)[:, None]
 
     def decode(self, z: jnp.ndarray) -> jnp.ndarray:
         psi = z[..., 0]

@@ -1,10 +1,25 @@
 {
-  "format": 11,
+  "format": 13,
   "device": "cpu",
   "kind": "model",
   "cell": "traub",
   "form": "hybrid",
-  "parts": [
-    "9413fb5b3e2f"
-  ]
+  "parts": [],
+  "kam": {
+    "groups": [
+      {
+        "gates": [
+          "H",
+          "N"
+        ],
+        "compressor": "kam",
+        "d": 1,
+        "rhs": "kam",
+        "compressor_params": {},
+        "rhs_params": {}
+      }
+    ],
+    "data": "28de744a0214",
+    "train_comp": null
+  }
 }

@@ -159,8 +159,8 @@ run の置き場の学習器とモデル: 学習器を書いて読み、モデ�
 ```text
 置き場は `runs/data/<ハッシュ>/` (学習データ)、`runs/parts/<ハッシュ>/` (学習器 1 つ)、
 `runs/models/<ハッシュ>/` (学習器の並びを組んだモデル)。どれも spec.json を持ち、
-学習器の spec は学習データを (学習しない KAM は指さない)、モデルの spec は学習器を
-ハッシュで指す。
+学習器の spec は学習データを、モデルの spec は学習器をハッシュで指す。KAM のモデルは
+学習器を持たず、群を spec に直に持ち、学習データ (図を描く軌道) をハッシュで指す。
 ```
 
 ## bench.py
@@ -231,13 +231,20 @@ JSON の nan は null):
                name, created, elapsed = 計算にかかった秒, 掃引の単位, env = 回した環境:
                backend、device、jax と python の版、host、コードとイメージの版)
     data       waves/ (点は 1 つ)
-    part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 → ゲートの曲線を
-               潜在の軸ごとに。区画の型の状態の並びも)、compressor/own.json と
-               rhs/own.json (圧縮器と右辺に固有の中身。kind で形が変わる。PCA は向きと
-               平均も、KAM の右辺は kind だけ)、学習データから学習した学習器は fit/<comp_id>/ に
-               {latent,recon_rmse,slope,rhs}.f64 (slope は潜在の前進差分、rhs は学習器の
-               右辺がその時刻に返す dz/dt) と summary.json (再構成の MSE と分散比)
-    model      summary.json (組んだ 1 刻みの演算コスト。学習器の中身は学習器の run)
+    part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 →
+               ゲートの曲線を潜在の軸ごとに。区画の型の状態の並びも)、
+               compressor/plane.json (AE だけ。群のゲート 2 本ずつの平面の上で
+               encoder が返す潜在の格子)、compressor/own.json と
+               rhs/own.json (圧縮器と右辺に固有の中身。kind で形が変わる。PCA は
+               向きと平均も)、fit/<comp_id>/ に {latent,recon_rmse,slope,rhs}.f64
+               (slope は潜在の前進差分、rhs は学習器の右辺がその時刻に返す dz/dt) と
+               summary.json (再構成の MSE と分散比)
+    model      summary.json (組んだ 1 刻みの演算コスト。学習器の中身は学習器の
+               run)。KAM のモデルは加えて kam.json (区画、吸収したゲート、群ごとの
+               ゲートと潜在の名前と Kepler 1992 の式(6)の重みと式(10)の条件)、
+               equivalent/ (学習データの区画の元のモデルの軌道を等価電位にしたもの:
+               V、吸収したゲートと群のゲートの等価電位、群ごとの ψ。waves と同じ形)、
+               reduced/ (同じ電流を縮約で回した waves)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
                original/ のゲートを潜在へ射影したもの。waves と同じ形) と、その上の
                その上の潜在の傾きの正解 (射影の前進差分) slope/<comp>/ と、学習器の

@@ -7,15 +7,19 @@ export type ArrayRef = { run: string; file: string; column: number; n: number };
 
 /** run の中の置き場。波形の根 root は、回した波形（学習データの run では学習データ）waves か、原系を列の前処理で射影した projected(区画)、
  * その上の潜在の傾きの正解（射影の前進差分）slope(区画) と、列の学習器の右辺が返す dz/dt の rhs(区画)。
- * decode・compressor・rhs_own・fit は学習器の run の置き場（decode の曲線、圧縮器と右辺に固有の中身、学習データの上の中身）、summary はモデルの run の組んだ演算コスト、spec はどの run も持つ回した条件。 */
+ * decode・plane・compressor・rhs_own・fit は学習器の run の置き場（decode の曲線、ゲートの平面の上の encoder の格子（AE だけ）、圧縮器と右辺に固有の中身、学習データの上の中身）、summary はモデルの run の組んだ演算コスト、kam・equivalent・reduced は KAM のモデルの run の条件と、元のモデルの等価電位の波形と、縮約の波形、spec はどの run も持つ回した条件。 */
 export const RUN = {
   waves: 'waves',
   decode: 'compressor/decode.json',
+  plane: 'compressor/plane.json',
   compressor: 'compressor/own.json',
   rhs_own: 'rhs/own.json',
   fit: 'fit',
   fitSummary: (compId: number) => `fit/${compId}/summary.json`,
   summary: 'summary.json',
+  kam: 'kam.json',
+  equivalent: 'equivalent',
+  reduced: 'reduced',
   spec: 'spec.json',
   projected: (comp: string) => `projected/${comp}`,
   slope: (comp: string) => `slope/${comp}`,
@@ -89,16 +93,30 @@ export type DecodeJson = {
   order: string[];
   axes: { latent: string; z: number[]; gates: number[][] }[];
 };
+/** 学習器の run のゲートの平面（compressor/plane.json。AE だけ）。群のゲート 2 本 x・y ずつ、格子 xs × ys の上で encoder が返す潜在の値（潜在ごとに ys の行 × xs の列。有限でなければ null）。ほかのゲートは学習データの平均に置いたもの。 */
+export type PlaneJson = {
+  planes: {
+    x: string;
+    y: string;
+    xs: number[];
+    ys: number[];
+    latents: { latent: string; values: (number | null)[][] }[];
+  }[];
+};
+/** KAM のモデルの run の条件（kam.json）。comp は描いた区画、absorbed は吸収したゲート、groups は群ごとのゲートと潜在の名前と、Kepler 1992 の式(6)の重みと式(10)の条件。 */
+export type KamJson = {
+  comp: string;
+  absorbed: string[];
+  groups: { gates: string[]; latent: string; weights: number[]; criterion: number }[];
+};
 /** 学習器の run の、圧縮器に固有の中身（compressor/own.json）。 */
 export type CompressorJson =
   | { kind: 'pca'; explained_variance_ratio: number[]; n_components: number; components: number[][]; mean: number[] }
-  | { kind: 'ae'; hidden: number }
-  | { kind: 'kam'; criterion: number | null };
+  | { kind: 'ae'; hidden: number };
 /** 学習器の run の、右辺に固有の中身（rhs/own.json）。 */
 export type RhsJson =
   | { kind: 'sindy'; targets: string[]; features: string[]; xi: number[][] }
-  | { kind: 'ude'; layers: number[][]; losses: Record<string, number | null> }
-  | { kind: 'kam' };
+  | { kind: 'ude'; layers: number[][]; losses: Record<string, number | null> };
 /** 学習器の run の、学習区画ごとの全区間のまとめ（fit/<区画の id>/summary.json）。 */
 export type FitSummary = { reconstruction_mse: number | null; reconstruction_mse_ratio: number | null };
 

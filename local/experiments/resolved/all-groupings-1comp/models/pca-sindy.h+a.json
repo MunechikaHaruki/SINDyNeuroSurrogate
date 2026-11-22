@@ -1,10 +1,10 @@
 {
-  "format": 11,
+  "format": 13,
   "device": "cpu",
   "kind": "model",
   "cell": "traub",
   "form": "hybrid",
   "parts": [
-    "06b3e071ce84"
+    "06623f6b8d0a"
   ]
 }

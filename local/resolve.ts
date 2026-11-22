@@ -1,6 +1,7 @@
 // 手元の側の出口。宣言（../config/ と隣の TS）から、実験ごとに送る spec.json を組んで resolved/ に置く。テスト専用の学習の設定も resolved/tests.json（計算する機械の pytest が読む）に、宣言の写しを resolved/plans.json（計算する機械の API が画面の答えを組むのに読む）に置く。計算する機械（../../remote/）は宣言を読まず、ここが書いた resolved/ だけを受け取って回す。
 // パスは識別のための名前で、送るのは中身だけ：学習データ `<実験>/data/<対象>.<電流>.<パラメータ>.json`、学習器 `<実験>/parts/<圧縮器と右辺>.<群>.json`、それを組んだモデル `<実験>/models/<モデル>.json`、
 // `<実験>/sim/<系列>/original.json`（元のモデル）と `<モデル>.json`、`<実験>/bench/<GPU の実測>.json`。宣言のモデル 1 つは、学習データ 1 つ・群ごとの学習器・それを組んだモデルの spec に分かれる。
+// KAM のモデル（全部の群が kam）は学習器を持たず、群と学習データ（元のモデルと縮約を描くのに使う）をモデルの spec が直に持つ。KAM と学習器を混ぜたモデルは組まない。
 // どちらも名前は中身から付け、同じ中身は実験の中で 1 ファイルにまとめ、同じ名前に違う中身が来たら投げる（名前に出ない違いがある）。
 //   bun local/resolve.ts write        resolved/ を今の宣言から書き直す
 //   … check                                          resolved/ が今の宣言と同じか（違えば挙げて終了コード 1。local/remote.sh up が送る前に見る）
@@ -35,23 +36,47 @@ export function dataSpec(model: ModelDecl): Spec {
   return { format: FORMATS.data, device: 'cpu', kind: 'data', data: model.config.data };
 }
 
-/** 学習データから学習する群か。KAM は学習せず、区画の型の式だけから組む。 */
-export function learns(group: Group): boolean {
-  return group.compressor !== 'kam';
+/** KAM の群か。KAM は学習せず、区画の型の式だけから組む。 */
+export function isKam(group: Group): boolean {
+  return group.compressor === 'kam';
 }
 
-/** 群 1 つの学習器の spec。学習する群は学習データをハッシュで指し、KAM は学習データも学習区画も持たない。 */
+/** KAM のモデルか（全部の群が kam）。KAM と学習器を混ぜたモデルは投げる。 */
+export function kamModel(model: ModelDecl): boolean {
+  const kam = model.config.groups.filter(isKam).length;
+  if (kam > 0 && kam < model.config.groups.length) throw new Error(`${model.name} は KAM と学習器を混ぜている`);
+  return kam > 0;
+}
+
+/** 群 1 つの学習器の spec。学習データをハッシュで指す。KAM の群は学習器を持たない。 */
 export function partSpec(model: ModelDecl, group: Group): Spec {
+  if (isKam(group)) throw new Error(`${model.name} の KAM の群は学習器を持たない`);
   const { cell, form, train_comp } = model.config;
-  const trained = learns(group) ? { data: hashOf(dataSpec(model)), train_comp } : {};
-  return { format: FORMATS.part, device: trainDevice(model), kind: 'part', cell, form, group, ...trained };
+  return {
+    format: FORMATS.part,
+    device: trainDevice(model),
+    kind: 'part',
+    cell,
+    form,
+    group,
+    data: hashOf(dataSpec(model)),
+    train_comp,
+  };
 }
 
-/** 学習器の並び（群の順）を組んだモデルの spec。組むだけなので CPU。 */
+/** モデルの spec。組むだけなので CPU。学習器を組むモデルは学習器の並び（群の順）を、KAM のモデルは群と学習データを持つ。 */
 export function modelSpec(model: ModelDecl): Spec {
-  const { cell, form, absorbed, groups } = model.config;
-  const parts = groups.map(group => hashOf(partSpec(model, group)));
-  return { format: FORMATS.model, device: 'cpu', kind: 'model', cell, form, ...(absorbed ? { absorbed } : {}), parts };
+  const { cell, form, absorbed, groups, train_comp } = model.config;
+  const base = {
+    format: FORMATS.model,
+    device: 'cpu' as const,
+    kind: 'model' as const,
+    cell,
+    form,
+    ...(absorbed ? { absorbed } : {}),
+  };
+  if (kamModel(model)) return { ...base, parts: [], kam: { groups, data: hashOf(dataSpec(model)), train_comp } };
+  return { ...base, parts: groups.map(group => hashOf(partSpec(model, group))) };
 }
 
 /** 学習データのファイルの名前。中身から決める（traub.train.duration-9000）。 */
@@ -103,8 +128,9 @@ export function resolved(plan: GroupedPlan): Record<string, Spec> {
   };
   const modelHash = (model: string) => hashOf(modelSpec(modelOf(model)));
   for (const m of plan.models) {
-    if (m.config.groups.some(learns)) put(`${plan.id}/data/${dataName(m)}.json`, dataSpec(m));
-    for (const group of m.config.groups) put(`${plan.id}/parts/${partName(group)}.json`, partSpec(m, group));
+    put(`${plan.id}/data/${dataName(m)}.json`, dataSpec(m));
+    if (!kamModel(m))
+      for (const group of m.config.groups) put(`${plan.id}/parts/${partName(group)}.json`, partSpec(m, group));
     put(`${plan.id}/models/${m.name}.json`, modelSpec(m));
   }
   for (const [name, s] of Object.entries(plan.series)) files[`${plan.id}/sim/${name}/original.json`] = simSpec(s, null);

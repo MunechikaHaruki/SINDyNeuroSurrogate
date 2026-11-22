@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { equationsOf, factorOf } from './parts.ts';
+import { equationsOf, factorOf, levelsOf, strided } from './parts.ts';
+import { sameScale } from './inputs.ts';
 
 // sympy の sp.latex の出力そのまま（研究コードの項のカタログの形）。
 const ALPHA = String.raw`\alpha_{n traub}{\left(V \right)}`;
@@ -38,4 +39,61 @@ test('equations group the terms by rate factor in library order, terms without a
       ],
     },
   ]);
+});
+
+test('the gate-space trail keeps every step-th point within the range, up to the limit, and drops non-finite points', () => {
+  const h = new Float64Array([0, 0.1, 0.2, 0.3, NaN, 0.5]);
+  const n = new Float64Array([1, 0.9, 0.8, 0.7, 0.6, 0.5]);
+  expect(strided([h, n], 1, 5, 3)).toEqual([
+    [0.1, 0.9],
+    [0.3, 0.7],
+    [0.5, 0.5],
+  ]);
+  expect(strided([h, n], 0, 3, 10)).toHaveLength(4);
+});
+
+test('the encoder grid names its gates by position in the group, and a learner without one (PCA) has no levels', () => {
+  const plane = {
+    planes: [
+      {
+        x: 'N',
+        y: 'H',
+        xs: [0, 1],
+        ys: [0, 1],
+        latents: [
+          {
+            latent: 'z1',
+            values: [
+              [0, 1],
+              [1, null],
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  expect(levelsOf(plane, ['H', 'N'])).toEqual([
+    {
+      x: 1,
+      y: 0,
+      xs: [0, 1],
+      ys: [0, 1],
+      latents: [
+        {
+          latent: 'z1',
+          values: [
+            [0, 1],
+            [1, null],
+          ],
+        },
+      ],
+    },
+  ]);
+  expect(levelsOf(null, ['H', 'N'])).toEqual([]);
+});
+
+test('a phase plane has the same scale when both axes share a unit: two latents, or V with a KAM equivalent potential', () => {
+  expect(sameScale({ x: 'h+n.z1', y: 'a+c.z1' }, false)).toBe(true);
+  expect(sameScale({ x: 'V', y: 'h+n.z1' }, false)).toBe(false);
+  expect(sameScale({ x: 'V', y: 'h+n.z1' }, true)).toBe(true);
 });

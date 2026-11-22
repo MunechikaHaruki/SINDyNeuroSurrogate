@@ -139,6 +139,25 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     )
 
 
+def test_a_kam_model_holds_what_kepler_draws(tmp_path: Path) -> None:
+    """KAM のモデルは学習器を持たず、学習データを指して、条件 (kam.json) と、
+    元のモデルの等価電位 (equivalent/) と、同じ電流で回した縮約 (reduced/) を書く。"""
+    config = declared_config("_test_traub_kam")
+    _put(tmp_path, "data/D", {"kind": "data", "data": config["data"]})
+    kam = {"groups": config["groups"], "data": "D", "train_comp": None}
+    model = {"kind": "model", "cell": config["cell"], "form": config["form"]}
+    root = _put(tmp_path, "models/K", {**model, "parts": [], "kam": kam})
+    files = json.loads((root / "kam.json").read_text())
+    assert [g["gates"] for g in files["groups"]] == [["N", "H"], ["A", "C"]]
+    equivalent = json.loads((root / "equivalent/meta.json").read_text())
+    assert equivalent["names"] == {"soma": 0}
+    assert [v for _, v, _ in equivalent["features"]][:3] == ["V", "N", "H"]
+    reduced = json.loads((root / "reduced/meta.json").read_text())
+    data = json.loads((tmp_path / "runs/data/D/waves/meta.json").read_text())
+    assert reduced["n"] == data["n"]
+    assert "cost/surr-orig/mul" in json.loads((root / "summary.json").read_text())
+
+
 def _unreplaceable() -> dict:
     """hh で学習した run では置換できない traub の系列。"""
     return {

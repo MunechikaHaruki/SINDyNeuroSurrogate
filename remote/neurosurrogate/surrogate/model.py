@@ -17,13 +17,21 @@ import numpy as np
 import xarray as xr
 
 from ..physics.cells import CELLS, CellType, ColumnCell, Compartment, Net, total
-from ..physics.kam import KamCompressor, KamRhs, absorbed, absorbed_cost
+from ..physics.kam import (
+    KamCompressor,
+    KamRhs,
+    absorbed,
+    absorbed_cost,
+    conditions,
+    equivalent_potentials,
+)
 from ..physics.simulate import (
     EvalSeries,
     RunInput,
     SimSpec,
     gate_matrix,
     i_internal,
+    latent_dataset,
     latent_names,
     potential,
     simulate,
@@ -521,6 +529,50 @@ def summary(s: Surrogate) -> dict[str, Any]:
     }
 
 
+def describe_kam(
+    s: Surrogate, data: xr.Dataset
+) -> tuple[dict[str, Any], xr.Dataset, xr.Dataset]:
+    """KAM のモデルの、図が読む中身 (Kepler 1992 の図 2〜4 にあたる)。
+
+    返すのは kam.json (群ごとのゲートと潜在の名前と、式(6)の重みと式(10)の条件。
+    区画の型の静止状態で読む)、学習データの区画の元のモデルの軌道を等価電位に
+    したもの (膜電位、吸収したゲートと群のゲートの等価電位、群ごとの ψ = Σ α_i v_i。
+    原著の重み付きの平均で、α_i は静止状態の値)、同じ電流を縮約したモデルで回した
+    軌道。区画は学習区画の先頭。
+    """
+    config = s.config
+    params = config.cell_type.param_cls()  # type: ignore[misc]
+    net = config._net()
+    comp_id = config.train_ids()[0]
+    states = gate_matrix(data, comp_id)
+    gates = config.absorbed + [g for group in config.groups for g in group.gates]
+    columns = [config.cell_type.states.index(g) for g in gates]
+    potentials = equivalent_potentials(config.cell, gates, params, states[:, columns])
+    groups = []
+    psis = []
+    offset = len(config.absorbed)
+    for group in config.groups:
+        held = conditions(config.cell, group.gates, params)
+        own = potentials[:, offset : offset + len(group.gates)]
+        psis.append(own @ np.asarray(held["weights"])[:, None])
+        offset += len(group.gates)
+        groups.append({"gates": group.gates, "latent": group_latents(group)[0], **held})
+    latents = [n for group in config.groups for n in group_latents(group)]
+    dt = float(data["time"][1] - data["time"][0])
+    equivalent = latent_dataset(
+        potential(data, comp_id),
+        np.concatenate([potentials, *psis], axis=1),
+        gates + latents,
+        i_internal(data, comp_id),
+        comp_id,
+        dt,
+    )
+    comp = net.nodes[comp_id].name
+    reduced = simulate(replace(s, config.data.run_input(), [comp]))  # type: ignore[union-attr]
+    files = {"comp": comp, "absorbed": config.absorbed, "groups": groups}
+    return files, equivalent, reduced
+
+
 _SLOPE_CHUNK = 100_000  # 右辺を一度に評価する時刻の数 (メモリを抑える)
 
 
@@ -596,6 +648,9 @@ class CompFit:
 
 
 _CURVE = 201  # decode の曲線の点の数
+_PLANE = 61  # 等高線の格子の、軸ごとの点の数
+_PLANE_MARGIN = 0.1  # 等高線の格子の範囲を、学習データの幅に対して両側へ広げる割合
+# (図は縦横同じ範囲で両側 5% しか広げないので、格子の端は図の外に出る)
 
 
 def decode_curves(
@@ -615,13 +670,60 @@ def decode_curves(
     return axes
 
 
+def gate_planes(
+    compressor: Any,
+    gates: list[str],
+    latents: list[str],
+    ranges: list[tuple[float, float]],
+    center: np.ndarray,
+) -> list[dict]:
+    """群のゲート 2 本ずつの平面の上で encoder が返す潜在の格子 (等高線に使う)。
+
+    ほかのゲートは center に置く。values は潜在ごとの、ys の行 × xs の列の値。
+    """
+    planes = []
+    for i in range(len(gates)):
+        for j in range(i + 1, len(gates)):
+            xs = np.linspace(*ranges[i], _PLANE)
+            ys = np.linspace(*ranges[j], _PLANE)
+            grid_x, grid_y = np.meshgrid(xs, ys)
+            x = np.tile(np.asarray(center, dtype=float), (grid_x.size, 1))
+            x[:, i] = grid_x.ravel()
+            x[:, j] = grid_y.ravel()
+            z = np.asarray(compressor.encode(x)).reshape(_PLANE, _PLANE, len(latents))
+            planes.append(
+                {
+                    "x": gates[i],
+                    "y": gates[j],
+                    "xs": xs.tolist(),
+                    "ys": ys.tolist(),
+                    "latents": [
+                        {"latent": name, "values": z[:, :, k].tolist()}
+                        for k, name in enumerate(latents)
+                    ],
+                }
+            )
+    return planes
+
+
+def _padded(low: float, high: float) -> tuple[float, float]:
+    """学習データの幅を両側へ広げる。図の端 (0 と 1) で格子が切れないよう [0, 1] には
+    収めない (encoder は範囲の外の値も写せる)。"""
+    pad = max(high - low, 1e-3) * _PLANE_MARGIN
+    return low - pad, high + pad
+
+
 def describe_group(
     config: Config, group: Group, part: tuple[Any, Any], data: xr.Dataset | None
 ) -> tuple[dict[str, dict], dict[int, CompFit]]:
     """学習器 1 つの、図が読むファイル (run の中のパス → 中身) と学習区画の CompFit。
 
     compressor/decode.json は潜在 → ゲートの曲線 (潜在の軸ごと) と区画の型の状態の
-    並び、compressor/own.json と rhs/own.json は圧縮器と右辺に固有の中身 (PCA は向きと
+    並び、compressor/plane.json は AE の、群のゲート 2 本ずつの平面の上の潜在の格子
+    (等高線に使う。範囲は群の全ゲートを合わせた学習データの幅を少し広げたもので、
+    どの軸も同じ。ほかのゲートは学習データの平均。PCA は軸に
+    垂直な直線になり、KAM は学習データの軌道を持たないので書かない)、
+    compressor/own.json と rhs/own.json は圧縮器と右辺に固有の中身 (PCA は向きと
     平均も、KAM の右辺は kind だけ)。学習しない KAM は学習データを読まず、ψ の範囲で
     曲線を描き、学習区画も CompFit も持たない。学習する学習器は、学習データの上の
     潜在の範囲と平均で曲線を描く。
@@ -640,9 +742,6 @@ def describe_group(
             "axes": decode_curves(compressor, latent_names, ranges, center),
         }
 
-    if group.compressor == "kam":
-        files["compressor/decode.json"] = decode([compressor.psi_range], np.zeros(1))
-        return files, {}
     if data is None:
         raise ValueError(f"{group.compressor} の群は学習データの上で書き出す")
     net = config._net()
@@ -654,6 +753,16 @@ def describe_group(
     low, high = every.min(0), every.max(0)
     ranges = [(float(lo), float(hi)) for lo, hi in zip(low, high, strict=True)]
     files["compressor/decode.json"] = decode(ranges, every.mean(0))
+    if group.compressor == "ae":
+        stacked = np.concatenate(gates, axis=0)
+        # 図は縦横を同じ範囲で描くので、格子も群の全ゲートを合わせた共通の範囲で作る
+        common = _padded(float(stacked.min()), float(stacked.max()))
+        gate_ranges = [common] * len(group.gates)
+        files["compressor/plane.json"] = {
+            "planes": gate_planes(
+                compressor, group.gates, latent_names, gate_ranges, stacked.mean(0)
+            )
+        }
     alone = Surrogate(config, [part])
     fits = {}
     for pos, comp_id in enumerate(ids):

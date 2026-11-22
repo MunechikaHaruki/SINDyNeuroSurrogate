@@ -58,7 +58,7 @@ const MODEL: Spec = {
   form: 'hybrid',
   parts: [hashOf(PART)],
 };
-/** 学習しない KAM の学習器と、それだけを組んだモデル（学習データを指さない）。 */
+/** KAM のモデル。学習器を持たず、群と学習データ（図を描く軌道）を spec に直に持つ。 */
 const KAM_GROUP = {
   gates: ['M', 'H'],
   compressor: 'kam' as const,
@@ -67,15 +67,11 @@ const KAM_GROUP = {
   compressor_params: {},
   rhs_params: {},
 };
-const KAM_PART: Spec = {
-  format: FORMATS.part,
-  device: 'cpu',
-  kind: 'part',
-  cell: 'hh',
-  form: 'hybrid',
-  group: KAM_GROUP,
-};
-const KAM_MODEL: Spec = { ...MODEL, parts: [hashOf(KAM_PART)] } as Spec;
+const KAM_MODEL: Spec = {
+  ...MODEL,
+  parts: [],
+  kam: { groups: [KAM_GROUP], data: hashOf(DATA), train_comp: null },
+} as Spec;
 const INPUT = { spec: { ...SIM, stim: 'soma' }, param: null, values: [] };
 const ORIGINAL: Spec = { format: FORMATS.sim, device: 'cpu', kind: 'sim', input: INPUT, model: null };
 const REPLACED: Spec = { ...ORIGINAL, model: { surrogate: hashOf(MODEL), replace_targets: ['soma'] } };
@@ -140,6 +136,19 @@ function waves(dir: string, meta: WaveMeta, shift: number): void {
   write(join(dir, '0/I_ext.f64'), Buffer.from(new Float64Array(N).fill(1).buffer));
 }
 
+/** 変数 variables（先頭は膜電位）の波形。膜電位は 2 ms ごとに 0 mV を越え、ほかは i / N。 */
+function manyWaves(dir: string, variables: string[]): void {
+  const values = new Float64Array(variables.length * N);
+  for (let i = 0; i < N; i++) {
+    values[i] = i % 20 === 0 ? 30 : -65;
+    for (let k = 1; k < variables.length; k++) values[k * N + i] = i / N;
+  }
+  const features = variables.map((v, k) => [0, v, k > 0] as [number, string, boolean]);
+  write(join(dir, 'meta.json'), JSON.stringify({ t0: 0, dt: DT, n: [N], features, nodes: null, names: { soma: 0 } }));
+  write(join(dir, '0/comp0.f64'), Buffer.from(values.buffer));
+  write(join(dir, '0/I_ext.f64'), Buffer.from(new Float64Array(N).fill(1).buffer));
+}
+
 /** spec の run を置く。 */
 function put(spec: Spec, kind: string, files: Record<string, unknown> = {}): string {
   const dir = join(runs, dirOf(spec));
@@ -170,7 +179,7 @@ for (const [path, spec] of Object.entries({
   'e/models/m': MODEL,
   'e/sim/s/original': ORIGINAL,
   'e/sim/s/m': REPLACED,
-  'k/parts/q': KAM_PART,
+  'k/data/d': DATA,
   'k/models/n': KAM_MODEL,
 }))
   write(join(resolved, `${path}.json`), JSON.stringify(spec));
@@ -189,25 +198,16 @@ put(PART, 'part', {
   'rhs/own.json': { kind: 'sindy', targets: ['z'], features: ['1'], xi: [[0.5]] },
   'fit/0/summary.json': { reconstruction_mse: 0.01, reconstruction_mse_ratio: 0.1 },
 });
-put(KAM_PART, 'part', {
-  'compressor/decode.json': {
-    gates: ['M', 'H'],
-    order: ['M', 'H', 'N'],
-    axes: [
-      {
-        ...curve,
-        latent: 'm+h.z1',
-        gates: [
-          [0, 1],
-          [1, 0],
-        ],
-      },
-    ],
+const kamRun = put(KAM_MODEL, 'model', {
+  'summary.json': {},
+  'kam.json': {
+    comp: 'soma',
+    absorbed: [],
+    groups: [{ gates: ['M', 'H'], latent: 'm+h.z1', weights: [0.4, 0.6], criterion: 0.2 }],
   },
-  'compressor/own.json': { kind: 'kam', criterion: 0.2 },
-  'rhs/own.json': { kind: 'kam' },
 });
-put(KAM_MODEL, 'model');
+manyWaves(join(kamRun, 'equivalent'), ['V', 'M', 'H', 'm+h.z1']);
+manyWaves(join(kamRun, 'reduced'), ['V', 'm+h.z1']);
 for (const file of ['latent', 'recon_rmse', 'slope', 'rhs'])
   write(join(runs, dirOf(PART), `fit/0/${file}.f64`), Buffer.from(new Float64Array(N).fill(0.5).buffer));
 const cost = Object.fromEntries(
@@ -285,7 +285,7 @@ test('an input gives one pair in latent space, with the original projected, and 
   });
   expect(Object.keys(reply.pair?.latents ?? {})).toEqual(['h.z1']);
   expect(reply.pair?.latents['h.z1'].map(l => l.label)).toEqual(['原系', '置換系']);
-  expect(reply.pair?.axes).toEqual({ x: 'V', y: 'h.z1' });
+  expect(reply.pair?.axes).toEqual({ x: 'V', y: 'h.z1', sameScale: false });
   expect(reply.whole?.voltage.map(l => l.label)).toEqual(['soma']);
   expect(reply.whole?.gates.map(l => l.label)).toEqual(['H']);
   expect((await post('inputs', { experiment: 'e', input: 's', pair: { model: 'x', point: 0 } })).status).toBe(400);
@@ -319,7 +319,6 @@ test('the training data and learner pages read their runs by declared name', asy
   const fit = reply.fit!;
   expect(fit.window).toEqual([10, 50]);
   expect(fit.latent.map(l => l.label)).toEqual(['h.z1']);
-  expect(fit.manifold.map(l => l.label)).toEqual(['H']);
   expect(fit.slopes.lines['h.z1'].map(l => l.label)).toEqual(['正解', '学習器']);
   expect(fit.slopes.error).toEqual([{ latent: 'h.z1', rmse: 0, scale: 0 }]);
   expect(fit.reconstruction).toEqual([{ comp: 'soma', mse: 0.01, ratio: 0.1, mean: 0.5, max: 0.5 }]);
@@ -327,20 +326,12 @@ test('the training data and learner pages read their runs by declared name', asy
   expect(fit.data).toBe(names.data);
   expect(fit.path).toHaveLength(1);
   expect(reply.gateOrder).toEqual(['M', 'H', 'N']);
-  expect(reply.decode).toEqual([
-    {
-      latent: 'h.z1',
-      lines: [
-        {
-          label: 'H',
-          points: [
-            { x: -1, y: 0 },
-            { x: 1, y: 1 },
-          ],
-        },
-      ],
-    },
-  ]);
+  expect(reply.gates).toEqual(['H']);
+  expect(reply.space?.axes).toEqual([{ latent: 'h.z1', points: [[0], [1]], z: [-1, 1] }]);
+  expect(reply.space?.data.map(d => d.label)).toEqual(['soma']);
+  expect(reply.space?.levels).toEqual([]);
+  expect(reply.space?.data[0].points.length).toBeGreaterThan(0);
+  expect(reply.space?.data[0].points.every(p => p.length === 1)).toBe(true);
   expect(reply.compressor).toEqual({ kind: 'pca', ratios: [0.9, 0.1], kept: 1, components: [[1]], mean: [0.5] });
   if (reply.rhs?.kind !== 'sindy') throw new Error('SINDy の右辺のはず');
   expect(reply.rhs.nnz).toBe(1);
@@ -348,12 +339,24 @@ test('the training data and learner pages read their runs by declared name', asy
   const shown = await post<{ comps: string[]; shown: string[] }>('data', { experiment: 'e', data: names.data });
   expect(shown.reply.shown).toEqual(['soma']);
   expect((await post<PartsReply>('parts', { experiment: 'e', part: names.part })).reply.fit?.shown).toEqual(['soma']);
-  const kam = (await post<PartsReply>('parts', { experiment: 'k', part: 'q' })).reply;
-  expect(kam.fit).toBeNull();
-  expect(kam.rhs).toEqual({ kind: 'kam' });
-  expect(kam.compressor).toEqual({ kind: 'kam', criterion: 0.2 });
-  expect(kam.decode[0].lines.map(l => l.label)).toEqual(['M', 'H']);
-  expect((await post<ExperimentView>('experiment', { experiment: 'k' })).reply.models[0].data).toBeNull();
+});
+
+test('a KAM model has no learners, points to its training data and answers its conditions and Kepler-style figures', async () => {
+  const view = (await post<ExperimentView>('experiment', { experiment: 'k' })).reply;
+  expect(view.models[0].parts).toEqual([]);
+  expect(view.models[0].data).not.toBeNull();
+  const { reply } = await post<ModelsReply>('models', { experiment: 'k', model: 'n', window: [0, 50] });
+  expect(reply.parts).toEqual([]);
+  expect(reply.kam?.groups).toEqual([{ gates: ['M', 'H'], latent: 'm+h.z1', weights: [0.4, 0.6], criterion: 0.2 }]);
+  const figures = reply.kam?.figures;
+  expect(figures?.window).toEqual([0, 50]);
+  expect(figures?.current.map(l => l.label)).toEqual(['I']);
+  expect(figures?.membrane.map(l => l.label)).toEqual(['V']);
+  expect(figures?.potentials.map(p => p.lines.map(l => l.label))).toEqual([['v_m', 'v_h', 'ψ']]);
+  expect(figures?.voltage.map(l => l.label)).toEqual(['元のモデル', '縮約']);
+  expect(figures?.phase[0].lines.every(l => l.points.length > 0)).toBe(true);
+  const plain = (await post<ModelsReply>('models', { experiment: 'e', model: 'm' })).reply;
+  expect(plain.kam).toBeNull();
 });
 
 test('unknown ops and unknown jobs are refused', async () => {
@@ -388,7 +391,7 @@ test('each place opens only its own run and the runs its spec points to by hash'
   expect(read(ctx => parts(ctx, { experiment: 'e', part: view.models[0].parts[0] }))).toEqual(
     [dirOf(DATA), dirOf(PART)].sort(),
   );
-  expect(read(ctx => parts(ctx, { experiment: 'k', part: 'q' }))).toEqual([dirOf(KAM_PART)]);
+  expect(read(ctx => models(ctx, { experiment: 'k', model: 'n' }))).toEqual([dirOf(KAM_MODEL)]);
   expect(read(ctx => models(ctx, { experiment: 'e', model: 'm' }))).toEqual([dirOf(MODEL)]);
   const pair = { input: 's', pair: { model: 'm', point: 0 }, whole: { point: 0, comps: ['soma'] } };
   expect(read(ctx => inputs(ctx, { experiment: 'e', ...pair }))).toEqual([dirOf(ORIGINAL), dirOf(REPLACED)].sort());

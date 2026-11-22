@@ -19,7 +19,13 @@ from sympy.core.function import AppliedUndef
 
 from neurosurrogate.physics.cells import CELLS, NETS, OpCost, column_cell
 from neurosurrogate.physics.kam import absorbed
-from neurosurrogate.physics.simulate import EvalSeries, SimSpec, potential, simulate
+from neurosurrogate.physics.simulate import (
+    EvalSeries,
+    SimSpec,
+    gate_matrix,
+    potential,
+    simulate,
+)
 from neurosurrogate.spikes import FEATURES, spike_features
 from neurosurrogate.spikes import main as spikes_main
 from neurosurrogate.surrogate.compress import AE, fit_ae
@@ -28,6 +34,7 @@ from neurosurrogate.surrogate.model import (
     Surrogate,
     applicable,
     describe_group,
+    describe_kam,
     fit,
     fit_group,
     group_latents,
@@ -363,6 +370,7 @@ def test_a_learner_describes_itself_and_lines_up() -> None:
     decode = files["compressor/decode.json"]
     latents = [axis["latent"] for axis in decode["axes"]]
     assert np.shape(decode["axes"][0]["gates"]) == (len(group.gates), 201)
+    assert "compressor/plane.json" not in files  # PCA の等高線は軸に垂直な直線
     assert list(fits) == [0]
     n_time = s.training_data.sizes["time"]
     comp_fit = fits[0]
@@ -373,25 +381,45 @@ def test_a_learner_describes_itself_and_lines_up() -> None:
     )
 
 
-def test_kam_describes_itself_without_training_data() -> None:
-    """KAM は学習データを読まずに、ψ の範囲の decode の曲線と KAM の条件を書き、
-    右辺の中身も学習区画も持たない。曲線の ψ = V_rest では静止状態のゲートに戻る。"""
-    config = Config.from_dict({**declared_config("_test_traub_kam"), "data": None})
-    group = config.groups[0]
-    part = fit_group(config, group, None)
-    files, fits = describe_group(config, group, part, None)
-    assert fits == {} and files["rhs/own.json"] == {"kind": "kam"}
-    assert files["compressor/own.json"]["criterion"] >= 0
-    [axis] = files["compressor/decode.json"]["axes"]
-    traub = CELLS["traub"]
-    assert traub.param_cls is not None
-    rest = traub.inits(traub.param_cls())
-    psi = part[0].gate_inits[0]
-    assert psi == pytest.approx(rest[0], abs=1e-6)
-    at = [np.interp(psi, axis["z"], curve) for curve in axis["gates"]]
-    states = CELLS["traub"].states
-    expected = [rest[1 + states.index(g)] for g in group.gates]
-    assert at == pytest.approx(expected, abs=1e-3)
+def test_an_ae_grid_covers_every_gate_on_one_common_range() -> None:
+    """AE の等高線の格子は、群のゲート 2 本ずつの平面ごとに、縦横が同じ範囲で、群の
+    全ゲートの学習データの値を両端の外まで覆う (図を縦横同じ縮尺で描くため)。"""
+    s = fit_declared("_test_hh_ae")
+    [group] = s.config.groups
+    files, _ = describe_group(s.config, group, s.parts[0], s.training_data)
+    planes = files["compressor/plane.json"]["planes"]
+    assert len(planes) == 3  # M・H・N の 2 本ずつ
+    positions = s.config.positions(group)
+    values = np.concatenate(
+        [gate_matrix(s.training_data, i)[:, positions] for i in s.config.train_ids()]
+    )
+    for plane in planes:
+        assert plane["xs"] == plane["ys"]
+        assert plane["xs"][0] < values.min() and plane["xs"][-1] > values.max()
+        assert len(plane["latents"]) == group.d
+
+
+def test_kam_model_describes_itself_like_kepler() -> None:
+    """KAM のモデルは、群ごとに式(6)の重み (和が 1) と式(10)の条件を持ち、
+    学習データの元のモデルの軌道を等価電位にしたもの (V、群のゲートの等価電位、
+    群の ψ) と、同じ電流を縮約で回した軌道を返す。静止状態では等価電位がどれも
+    V にそろい、ψ も V になる。"""
+    s = fit_declared("_test_traub_kam")
+    data = s.training_data
+    files, equivalent, reduced = describe_kam(s, data)
+    assert files["comp"] == "soma" and files["absorbed"] == []
+    assert [g["gates"] for g in files["groups"]] == [g.gates for g in s.config.groups]
+    for group in files["groups"]:
+        assert sum(group["weights"]) == pytest.approx(1.0)
+        assert group["criterion"] >= 0
+    names = [str(v) for _, v, _ in equivalent.indexes["features"]]
+    latents = [g["latent"] for g in files["groups"]]
+    assert names == ["V", "N", "H", "A", "C", *latents]
+    first = equivalent["vars"].isel(time=0).to_numpy()
+    assert first[1:] == pytest.approx([first[0]] * (len(names) - 1), abs=0.5)
+    reduced_names = {str(v) for _, v, _ in reduced.indexes["features"]}
+    assert set(latents) <= reduced_names
+    assert reduced.sizes["time"] == data.sizes["time"]
 
 
 def test_a_learner_does_not_depend_on_the_other_groups() -> None:

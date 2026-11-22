@@ -23,11 +23,26 @@ test('a learner is shared by every model that has its group, whatever the other 
   const absorbed = modelFrom('kam-absorb-m.h+n', methodOf('kam-absorb-m'), 'h+n');
   const kam = modelFrom('kam.h+n', methodOf('kam'), 'h+n');
   expect(hashOf(partSpec(paired, paired.config.groups[0]))).toBe(hashOf(partSpec(alone, alone.config.groups[0])));
-  expect(hashOf(partSpec(absorbed, absorbed.config.groups[0]))).toBe(hashOf(partSpec(kam, kam.config.groups[0])));
   expect(hashOf(modelSpec(absorbed))).not.toBe(hashOf(modelSpec(kam)));
   const model = modelSpec(paired);
   if (model.kind !== 'model') throw new Error('model でない');
   expect(model.parts).toHaveLength(2);
+});
+
+test('a KAM model has no learners and holds its groups and training data itself, and KAM is not mixed with learners', () => {
+  const kam = modelFrom('kam.h+n_a+c', methodOf('kam'), 'h+n_a+c');
+  const model = modelSpec(kam);
+  if (model.kind !== 'model') throw new Error('model でない');
+  expect(model.parts).toEqual([]);
+  expect(model.kam?.groups.map(g => g.gates)).toEqual([
+    ['H', 'N'],
+    ['A', 'C'],
+  ]);
+  expect(() => partSpec(kam, kam.config.groups[0])).toThrow();
+  const plan = EXPERIMENTS.find(e => e.models.some(m => m.method === 'kam'))!;
+  const paths = Object.keys(resolved(plan));
+  expect(paths.some(path => path.startsWith(`${plan.id}/parts/kam`))).toBe(false);
+  expect(paths.some(path => path.startsWith(`${plan.id}/data/`))).toBe(true);
 });
 
 test('an experiment holds one file per distinct training data and learner', () => {

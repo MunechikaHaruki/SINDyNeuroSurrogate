@@ -78,7 +78,7 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 
 ### run の置き場
 
-保存の単位は学習データ (`runs/data/<ハッシュ>/`)、学習器 (`runs/parts/<ハッシュ>/`。群 1 つの圧縮器と右辺)、学習器の並びを組んだモデル (`runs/models/<ハッシュ>/`)、入力 (`runs/inputs/<入力のハッシュ>/`)、GPU の実測 (`runs/bench/<ハッシュ>/`) の五つで、入力の下に元のモデル (`<入力のハッシュ>/original/`) と置き換えたモデル (`<入力のハッシュ>/<モデルのハッシュ>@<置換する区画を + でつないだもの>/`。例 `3ea34b09c3f4@soma`。どのモデルでどこを置き換えたかが名前で読める) を置く。学習器は学習データを (学習しない KAM は指さない)、モデルは学習器を、評価と GPU の実測はモデルをハッシュで指す。学習器の run は役割の名前の置き場 (圧縮器 `runs/parts/<ハッシュ>/compressor/`、右辺 `runs/parts/<ハッシュ>/rhs/`、学習データの上 `runs/parts/<ハッシュ>/fit/`) に分け、種類 (PCA・AE・KAM・SINDy) の違いは中身の `kind` と置き場の有無だけが持つ。図は置き場 1 つを 1 枚のカードにする。群の学習器はほかの群に依らないので、同じ群を持つモデルどうし (`pca-sindy.h+n` と `pca-sindy.h+n_a+c` の h+n) は同じ学習器を共有する。1 run = spec.json 1 つで、置き場は spec から決まる (`remote/run/places.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。図は Python で描かず、Python が置くのは図に要るデータだけ:
+保存の単位は学習データ (`runs/data/<ハッシュ>/`)、学習器 (`runs/parts/<ハッシュ>/`。群 1 つの圧縮器と右辺)、学習器の並びを組んだモデル (`runs/models/<ハッシュ>/`)、入力 (`runs/inputs/<入力のハッシュ>/`)、GPU の実測 (`runs/bench/<ハッシュ>/`) の五つで、入力の下に元のモデル (`<入力のハッシュ>/original/`) と置き換えたモデル (`<入力のハッシュ>/<モデルのハッシュ>@<置換する区画を + でつないだもの>/`。例 `3ea34b09c3f4@soma`。どのモデルでどこを置き換えたかが名前で読める) を置く。学習器は学習データを、モデルは学習器を (KAM のモデルは学習器を持たず、群を spec に直に持って学習データを指す)、評価と GPU の実測はモデルをハッシュで指す。学習器の run は役割の名前の置き場 (圧縮器 `runs/parts/<ハッシュ>/compressor/`、右辺 `runs/parts/<ハッシュ>/rhs/`、学習データの上 `runs/parts/<ハッシュ>/fit/`) に分け、種類 (PCA・AE・SINDy・UDE) の違いは中身の `kind` と置き場の有無だけが持つ。KAM は細胞全体の膜電流から組む縮約 (Kepler 1992) なので、学習器でなくモデルの単位に置く。図は置き場 1 つを 1 枚のカードにする。群の学習器はほかの群に依らないので、同じ群を持つモデルどうし (`pca-sindy.h+n` と `pca-sindy.h+n_a+c` の h+n) は同じ学習器を共有する。1 run = spec.json 1 つで、置き場は spec から決まる (`remote/run/places.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。図は Python で描かず、Python が置くのは図に要るデータだけ:
 
 ```
 <run>/  spec.json              回した条件 (format = 形式の版, kind, ...)
@@ -86,13 +86,17 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
                                env (回した backend・device・jax と python の版・host・コードとイメージの版。同一性に入らない)
 data/<ハッシュ>/    waves/                    学習データ (下の waves と同じ形式、点は 1 つ)
 parts/<ハッシュ>/   learner.joblib            学習器 (圧縮器と右辺)
-                    compressor/decode.json    潜在 → 群のゲートの曲線を潜在の軸ごとに (ほかの軸は学習データの平均、KAM は ψ の範囲)。区画の型の状態の並びも
-                    compressor/own.json       圧縮器に固有の中身 (kind で形が変わる。PCA の寄与率と向きと平均、AE の隠れ層、KAM の条件)
-                    rhs/own.json              右辺に固有の中身 (kind で形が変わる。SINDy の項と係数、UDE の層と損失。KAM は元の式から組むので kind だけ)
+                    compressor/decode.json    潜在 → 群のゲートの曲線を潜在の軸ごとに (ほかの軸は学習データの平均)。区画の型の状態の並びも
+                    compressor/plane.json     AE だけ。群のゲート 2 本ずつの平面の上で encoder が返す潜在の格子 (等高線に使う。範囲は学習データの幅、ほかのゲートは学習データの平均)
+                    compressor/own.json       圧縮器に固有の中身 (kind で形が変わる。PCA の寄与率と向きと平均、AE の隠れ層)
+                    rhs/own.json              右辺に固有の中身 (kind で形が変わる。SINDy の項と係数、UDE の層と損失)
                     fit/<comp_id>/{latent,recon_rmse,slope,rhs}.f64
-                                              学習データから学習した学習器だけ。学習 comp ごとの潜在 (列ごとに連続)、再構成 RMSE、潜在の傾きの正解 (潜在の前進差分) と学習器の右辺の dz/dt
+                                              学習 comp ごとの潜在 (列ごとに連続)、再構成 RMSE、潜在の傾きの正解 (潜在の前進差分) と学習器の右辺の dz/dt
                     fit/<comp_id>/summary.json 学習 comp の全区間の再構成の MSE と、それをゲートの分散で割ったもの
 models/<ハッシュ>/  summary.json              surrogate.summary (組んだ 1 刻みの演算コスト。学習器の中身は学習器の run だけが持つ)
+                    kam.json                  KAM のモデルだけ。描いた区画、吸収したゲート、群ごとのゲートと潜在の名前と Kepler 1992 の式(6)の重みと式(10)の条件
+                    equivalent/               KAM のモデルだけ。学習データの区画の元のモデルの軌道を等価電位にしたもの (V、吸収したゲートと群のゲートの等価電位、群ごとの ψ。waves と同じ形式)
+                    reduced/                  KAM のモデルだけ。同じ電流を縮約で回した waves
 inputs/<ハッシュ>/  input.json                電流と掃引 (段取りが書く)
                     original/ waves/          下の形式。meta.json に comp 名 → id も入る
                     <モデルのハッシュ>@<区画>/ waves/
@@ -111,7 +115,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 ```
 
 - spec はどれも `device` (`cpu` か `gpu`) を持つ。同じ条件でも計算の順序が変わって結果がずれるので、同一性に入れる。学習器は `gpu` (GPU を使うのは AE の学習だけ。テスト専用のモデルの学習器は `cpu`)、学習データ・モデル・評価は `cpu`、GPU の実測は `gpu`。決めるのは `local/resolve.ts` の `dataSpec`・`partSpec`・`modelSpec`・`simSpec`・`benchSpec`
-- spec の種類: `data` は学習データの SimSpec、`part` は区画の型・形・群 1 つと、学習する群なら学習データのハッシュと学習区画 (学習しない KAM は学習データを指さず、区画の型の既定の params で組む)、`model` は区画の型・形・吸収と学習器のハッシュの並び (群の順)、
+- spec の種類: `data` は学習データの SimSpec、`part` は区画の型・形・群 1 つと、学習データのハッシュと学習区画、`model` は区画の型・形・吸収と学習器のハッシュの並び (群の順。KAM のモデルは空で、代わりに `kam` に群と、図を描く学習データのハッシュと区画を持つ。KAM は区画の型の既定の params で組む。KAM と学習器を混ぜたモデルは組まない)、
   `sim` は入力 (`input`) とモデル (`model` = `{surrogate, replace_targets}`、`surrogate` はモデルのハッシュ、元のモデルは null)、`bench` は sim と同じに細胞の数と ncu。
   宣言のモデル 1 つ (`surrogate.Config`) を、`local/resolve.ts` が学習データ・群ごとの学習器・それを組んだモデルの spec に分ける。置換範囲はモデルの側に入るので、置換範囲だけが違う系列は同じ入力のディレクトリに別のモデルとして並ぶ
 - **ハッシュを組むのは TS の `shared/hash.ts` だけ。** Python は渡された spec とディレクトリを埋めるだけで、指す run は spec のハッシュ (`data`・`parts`・`model.surrogate`) で run の置き場から引き (`remote/neurosurrogate/store.py`)、

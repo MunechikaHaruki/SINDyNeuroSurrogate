@@ -51,7 +51,7 @@ function modelState(runs: string, run: RunStatus, pointed: RunStatus[]): State {
   return [run, ...pointed].some(r => withJob(runs, r) === 'running') ? 'running' : run.state;
 }
 
-/** resolved/<実験>/ の spec の、置き場と状態。モデルは models/（指す学習器は parts/、学習データは data/）、系列は sim/<系列>/ の original とモデルの名前、GPU の実測は bench/。並びは名前の順で、宣言の順は使う側が持つ。 */
+/** resolved/<実験>/ の spec の、置き場と状態。モデルは models/（指す学習器は parts/、学習データは data/。KAM のモデルは学習データを直に指す）、系列は sim/<系列>/ の original とモデルの名前、GPU の実測は bench/。並びは名前の順で、宣言の順は使う側が持つ。 */
 export function experimentStatus(runs: string, name: string): ExperimentStatus {
   const root = join(resolvedDir(), name);
   const result: ExperimentStatus = { name, models: [], series: [], pairs: [], benches: [] };
@@ -63,8 +63,9 @@ export function experimentStatus(runs: string, name: string): ExperimentStatus {
     if (spec.kind !== 'model') throw new Error(`resolved/${path} はモデルの spec でない`);
     const run = runStatus(runs, path, model);
     const own = spec.parts.map(hash => parts.get(hash)!);
-    const pointed = own.map(p => specAt(p.spec)).find(s => s.kind === 'part' && s.data !== undefined);
-    const trained = pointed?.kind === 'part' && pointed.data !== undefined ? data.get(pointed.data)! : null;
+    const pointed = own.map(p => specAt(p.spec)).find(s => s.kind === 'part');
+    const dataHash = spec.kam?.data ?? (pointed?.kind === 'part' ? pointed.data : undefined);
+    const trained = dataHash === undefined ? null : data.get(dataHash)!;
     result.models.push({
       model,
       state: modelState(runs, run, trained ? [...own, trained] : own),

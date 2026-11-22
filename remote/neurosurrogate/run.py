@@ -39,13 +39,20 @@ JSON の nan は null):
                name, created, elapsed = 計算にかかった秒, 掃引の単位, env = 回した環境:
                backend、device、jax と python の版、host、コードとイメージの版)
     data       waves/ (点は 1 つ)
-    part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 → ゲートの曲線を
-               潜在の軸ごとに。区画の型の状態の並びも)、compressor/own.json と
-               rhs/own.json (圧縮器と右辺に固有の中身。kind で形が変わる。PCA は向きと
-               平均も、KAM の右辺は kind だけ)、学習データから学習した学習器は fit/<comp_id>/ に
-               {latent,recon_rmse,slope,rhs}.f64 (slope は潜在の前進差分、rhs は学習器の
-               右辺がその時刻に返す dz/dt) と summary.json (再構成の MSE と分散比)
-    model      summary.json (組んだ 1 刻みの演算コスト。学習器の中身は学習器の run)
+    part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 →
+               ゲートの曲線を潜在の軸ごとに。区画の型の状態の並びも)、
+               compressor/plane.json (AE だけ。群のゲート 2 本ずつの平面の上で
+               encoder が返す潜在の格子)、compressor/own.json と
+               rhs/own.json (圧縮器と右辺に固有の中身。kind で形が変わる。PCA は
+               向きと平均も)、fit/<comp_id>/ に {latent,recon_rmse,slope,rhs}.f64
+               (slope は潜在の前進差分、rhs は学習器の右辺がその時刻に返す dz/dt) と
+               summary.json (再構成の MSE と分散比)
+    model      summary.json (組んだ 1 刻みの演算コスト。学習器の中身は学習器の
+               run)。KAM のモデルは加えて kam.json (区画、吸収したゲート、群ごとの
+               ゲートと潜在の名前と Kepler 1992 の式(6)の重みと式(10)の条件)、
+               equivalent/ (学習データの区画の元のモデルの軌道を等価電位にしたもの:
+               V、吸収したゲートと群のゲートの等価電位、群ごとの ψ。waves と同じ形)、
+               reduced/ (同じ電流を縮約で回した waves)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
                original/ のゲートを潜在へ射影したもの。waves と同じ形) と、その上の
                その上の潜在の傾きの正解 (射影の前進差分) slope/<comp>/ と、学習器の
@@ -102,6 +109,7 @@ from .surrogate.model import (
     Surrogate,
     applicable,
     describe_group,
+    describe_kam,
     fit_group,
     group_latents,
     latent_slopes,
@@ -111,7 +119,7 @@ from .surrogate.model import (
 
 # spec の種類ごとの形式の版。段取りが spec に入れる = 形式を変えたらその種類の鍵が変わる
 # (shared/spec.ts の FORMATS と揃える)
-_FORMATS = {"data": 11, "part": 14, "model": 11, "sim": 13, "bench": 11}
+_FORMATS = {"data": 11, "part": 20, "model": 13, "sim": 13, "bench": 11}
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _CLAIM_GRACE = 60.0  # [s] 書きかけを作ってから pid を置くまでの猶予 (これより古く pid の無いものは残骸)
@@ -233,12 +241,10 @@ def _data(root: Path, spec: dict) -> dict:
 
 
 def _part(root: Path, spec: dict) -> dict:
-    """学習データを読んで学習器 1 つを学習し、その中身を書く (KAM は学習データを読まない)。"""
+    """学習データを読んで学習器 1 つを学習し、その中身を書く。"""
     runs = root.parents[1]
     config = part_config(runs, spec)
-    data = None
-    if "data" in spec:
-        [data] = _read_waves(runs / "data" / spec["data"] / "waves")
+    [data] = _read_waves(runs / "data" / spec["data"] / "waves")
     group = config.groups[0]
     part = fit_group(config, group, data)
     save_part(root, part)
@@ -258,8 +264,20 @@ def _part(root: Path, spec: dict) -> dict:
 
 
 def _model(root: Path, spec: dict) -> dict:
-    """学習器を組み、組んだモデルの演算コストを書く。"""
-    _write_json(root / "summary.json", summary(assemble(root.parents[1], spec)))
+    """学習器を組み、組んだモデルの演算コストを書く。KAM のモデルは加えて、学習データの
+    元のモデルの軌道を等価電位にしたものと、同じ電流で回した縮約の軌道と、条件を書く。"""
+    runs = root.parents[1]
+    surrogate = assemble(runs, spec)
+    _write_json(root / "summary.json", summary(surrogate))
+    if "kam" in spec:
+        [data] = _read_waves(runs / "data" / spec["kam"]["data"] / "waves")
+        files, equivalent, reduced = describe_kam(surrogate, data)
+        names = {c.name: i for i, c in enumerate(surrogate.config._net().nodes)}
+        _write_json(root / "kam.json", files)
+        _write_waves(
+            root / "equivalent", [equivalent], {files["comp"]: names[files["comp"]]}
+        )
+        _write_waves(root / "reduced", [reduced], names)
     return {}
 
 
