@@ -2,7 +2,8 @@
 // 波形 1 本の特徴量（eFEL・0 mV の上向きの横切り・山の平均の形・発散）、原系と置き換えた列の点ごとの指標（rmse・mae、ISI の統計、周期の差、形の相関、横切りで数えた差、
 // coincidence factor Γ）と、列ごとのまとめ（決まる点での Γ の平均、発火の始まり）。eFEL は Python（neurosurrogate/spikes.py）を子プロセスで起こし、波形を標準入力で渡す。
 // 物差しの値（Γ の許容幅 Δ）は手元が頼み方で渡す。run は書き換わらないので、特徴量は run・区画ごとに、答えは頼み方ごとに覚えておく。
-import type { ColumnSummary, SpikeTrain } from '../../shared/api.ts';
+import type { ColumnSummary, Line, SpikeTrain } from '../../shared/api.ts';
+import type { CompressorJson, DecodeJson } from '../../shared/runs.ts';
 
 /** 1 ペア（原系, 置換系）の 1 区画の指標。rows は両方にある指標の [原系, 置換系]、scalars は比べて決まる指標。null は値が無い（nan）。答えには出さず、発散と Γ のまとめに使う。 */
 export type PairMetrics = {
@@ -22,8 +23,9 @@ export type CrossingRow = {
 export type CrossingDiff = Omit<CrossingRow, 'gamma'>;
 /** 系列 1 つの、原系と置き換えた列（run の id）の 1 区画の指標の頼み方。delta は Γ の許容幅 Δ [ms]。 */
 export type SeriesRequest = { original: string; columns: string[]; comp: string; delta: number };
-/** 系列の指標。キーは列の run の id、並びは掃引の点。trains は原系と列の点ごとの発火。 */
+/** 系列の指標。キーは列の run の id、並びは掃引の点。trains は原系と列の点ごとの発火、lost は点ごとの原系が発散したか。 */
 export type SeriesMetrics = {
+  lost: boolean[];
   pairs: Record<string, PairMetrics[]>;
   crossings: Record<string, CrossingRow[]>;
   summaries: Record<string, ColumnSummary>;
@@ -265,6 +267,7 @@ export function seriesMetrics(
   delta: number,
 ): SeriesMetrics {
   const result: SeriesMetrics = {
+    lost: original.map(o => o.diverged),
     pairs: {},
     crossings: {},
     summaries: {},
@@ -272,9 +275,13 @@ export function seriesMetrics(
   };
   for (const [run, features] of Object.entries(columns)) {
     result.pairs[run] = features.map((f, k) => compare(original[k], f, distances[run][k]));
+    // 原系か列が発散した点の Γ は、発散するまでの発火で数えても比べにならないので決まらない（null）とし、列の平均からも外す
     const rows: CrossingRow[] = features.map((f, k) => ({
       ...crossingDiff(original[k].crossings, f.crossings),
-      gamma: coincidence(original[k].crossings.times, f.crossings.times, duration[k], delta),
+      gamma:
+        f.diverged || original[k].diverged
+          ? null
+          : coincidence(original[k].crossings.times, f.crossings.times, duration[k], delta),
     }));
     result.crossings[run] = rows;
     const summary: ColumnSummary = {
@@ -365,4 +372,73 @@ export function seriesComparison(files: RunFiles): (request: SeriesRequest) => S
     answers.set(key, result);
     return result;
   };
+}
+
+/** 潜在 1 本の decode の曲線（z は増える順）の上で、z = at のゲートの値を線形補間で読む。曲線の端の外は端の値。 */
+export function decodeAt(z: number[], values: number[], at: number): number {
+  if (at <= z[0]) return values[0];
+  const last = z.length - 1;
+  if (at >= z[last]) return values[last];
+  let lo = 0;
+  let hi = last;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (z[mid] <= at) lo = mid;
+    else hi = mid;
+  }
+  return values[lo] + ((at - z[lo]) / (z[hi] - z[lo])) * (values[hi] - values[lo]);
+}
+
+/** 潜在の値からゲートを作り直す関数。潜在が 1 本なら decoder の曲線（compressor/decode.json）を補間し、2 本以上なら PCA だけ平均と主成分の向きから作る。作れなければ null。 */
+export function reconstructor(decode: DecodeJson, own: CompressorJson): ((latent: number[]) => number[]) | null {
+  if (decode.axes.length === 1) {
+    const axis = decode.axes[0];
+    return latent => axis.gates.map(values => decodeAt(axis.z, values, latent[0]));
+  }
+  if (own.kind === 'pca')
+    return latent => own.mean.map((m, g) => m + latent.reduce((sum, z, k) => sum + z * own.components[k][g], 0));
+  return null;
+}
+
+/** 元のゲート gate と作り直したゲート rebuilt の差の RMSE と、元のゲートの振れ幅（有限な時刻だけ）。 */
+export function errorOf(gate: Float64Array, rebuilt: Float64Array | null): { rmse: number | null; range: number } {
+  let sum = 0;
+  let count = 0;
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < gate.length; i++) {
+    const g = gate[i];
+    if (!Number.isFinite(g)) continue;
+    min = Math.min(min, g);
+    max = Math.max(max, g);
+    if (rebuilt === null || !Number.isFinite(rebuilt[i])) continue;
+    sum += (g - rebuilt[i]) ** 2;
+    count += 1;
+  }
+  return { rmse: rebuilt === null || count === 0 ? null : Math.sqrt(sum / count), range: max - min };
+}
+
+/** decoder の曲線（compressor/decode.json）の軸 1 本を、ゲートごとの線（x = z、y = ゲート）にする。 */
+export function decodedCurves(decode: DecodeJson, k: number): Line[] {
+  const axis = decode.axes[k];
+  return decode.gates.map((gate, g) => ({
+    label: gate,
+    points: axis.z.map((z, j) => ({ x: z, y: axis.gates[g][j] })),
+  }));
+}
+
+/** 潜在の列 latents（潜在ごとに時刻の並び）から、各時刻のゲートを rebuild で作り直した列（ゲートごと）。作れなければ（rebuild が null）null。 */
+export function rebuiltOf(
+  rebuild: ((latent: number[]) => number[]) | null,
+  latents: Float64Array[],
+  gates: number,
+): Float64Array[] | null {
+  if (rebuild === null) return null;
+  const n = latents[0]?.length ?? 0;
+  const rebuilt = Array.from({ length: gates }, () => new Float64Array(n));
+  for (let i = 0; i < n; i++) {
+    const values = rebuild(latents.map(c => c[i]));
+    for (let g = 0; g < gates; g++) rebuilt[g][i] = values[g];
+  }
+  return rebuilt;
 }

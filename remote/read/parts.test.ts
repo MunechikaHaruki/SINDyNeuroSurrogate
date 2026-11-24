@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
-import { equationsOf, factorOf, levelsOf, stableRoot, steadyOf, strided } from './parts.ts';
-import { sameScale } from './inputs.ts';
+import { decodeAt, errorOf, reconstructor } from './comparison.ts';
+import { equationsOf, factorOf, levelsOf, stableRoot, steadyOf } from './parts.ts';
+import { strided } from './waves.ts';
 
 // sympy の sp.latex の出力そのまま（研究コードの項のカタログの形）。
 const ALPHA = String.raw`\alpha_{n traub}{\left(V \right)}`;
@@ -92,12 +93,6 @@ test('the encoder grid names its gates by position in the group, and a learner w
   expect(levelsOf(null, ['H', 'N'])).toEqual([]);
 });
 
-test('a phase plane has the same scale when both axes share a unit: two latents, or V with a KAM equivalent potential', () => {
-  expect(sameScale({ x: 'h+n.z1', y: 'a+c.z1' }, false)).toBe(true);
-  expect(sameScale({ x: 'V', y: 'h+n.z1' }, false)).toBe(false);
-  expect(sameScale({ x: 'V', y: 'h+n.z1' }, true)).toBe(true);
-});
-
 test('the steady latent is where the right-hand side falls through zero as z grows, and tau is minus one over its slope there', () => {
   // f = 2 − z（z∞ = 2、∂f/∂z = −1 なので τ = 1）
   const z = [0, 1, 2, 3, 4];
@@ -122,4 +117,43 @@ test('the steady latent is where the right-hand side falls through zero as z gro
     { x: -60, y: 1 },
     { x: -40, y: 0.5 },
   ]);
+});
+
+test('decodeAt reads the decoder curve by linear interpolation and holds the end values outside it', () => {
+  expect(decodeAt([0, 1, 2], [0, 10, 30], 1.5)).toBe(20);
+  expect(decodeAt([0, 1, 2], [0, 10, 30], -1)).toBe(0);
+  expect(decodeAt([0, 1, 2], [0, 10, 30], 5)).toBe(30);
+});
+
+test('reconstructor rebuilds the gates from one latent by the decoder curve, from several only for PCA', () => {
+  const curve = {
+    latent: 'h+n.z1',
+    z: [-1, 1],
+    gates: [
+      [0, 1],
+      [1, 0],
+    ],
+  };
+  const one = reconstructor({ gates: ['H', 'N'], order: [], axes: [curve] }, { kind: 'ae', hidden: 16 });
+  expect(one?.([0])).toEqual([0.5, 0.5]);
+  const two = { gates: ['H', 'N'], order: [], axes: [curve, { ...curve, latent: 'h+n.z2' }] };
+  expect(reconstructor(two, { kind: 'ae', hidden: 16 })).toBeNull();
+  const pca = {
+    kind: 'pca' as const,
+    explained_variance_ratio: [0.6, 0.4],
+    n_components: 2,
+    components: [
+      [1, 0],
+      [0, 1],
+    ],
+    mean: [0.5, 0.25],
+  };
+  expect(reconstructor(two, pca)?.([0.1, 0.2])).toEqual([0.6, 0.45]);
+});
+
+test('errorOf gives the RMSE against the rebuilt gate and the range of the gate, skipping values that are not finite', () => {
+  const gate = new Float64Array([0, 1, NaN, 0.5]);
+  expect(errorOf(gate, new Float64Array([0, 1, 0, 0.5]))).toEqual({ rmse: 0, range: 1 });
+  expect(errorOf(gate, null)).toEqual({ rmse: null, range: 1 });
+  expect(errorOf(new Float64Array([0, 1]), new Float64Array([1, 0])).rmse).toBe(1);
 });

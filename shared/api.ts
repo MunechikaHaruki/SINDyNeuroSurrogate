@@ -79,7 +79,7 @@ export type ColumnView = { model: string; method: string; grouping: string; redu
 /** 電位の線 1 本。model は列のモデルの名前で、原系は null。 */
 export type VoltageLine = Line & { model: string | null };
 /** 入力の頼み方。comp は比べる区画（省けば置き換えた区画のうち刺激する区画、無ければ最初に置き換える区画）、models は重ねるモデル（省けば回し終えた全部）、window は線の時間の範囲、waves が false なら線を返さない（指標だけを使う実験のページ）。
- * pair は 1 組（元のモデルと、回し終えたモデル model の列）の掃引の点 point での潜在空間（axes は相平面の軸、V か潜在の名前。sameScale は縦横の単位が同じか）、whole は元のモデルの掃引の点 point の区画 comps の全区画の図。 */
+ * pair は 1 組（元のモデルと、回し終えたモデル model の列）の掃引の点 point での潜在空間、whole は元のモデルの掃引の点 point の区画 comps の全区画の図。 */
 export type InputsRequest = {
   experiment: string;
   input: string;
@@ -87,31 +87,39 @@ export type InputsRequest = {
   models?: string[];
   window?: Window;
   waves?: boolean;
-  pair?: { model: string; point: number; axes?: { x: string; y: string } };
+  pair?: { model: string; point: number };
   whole?: { point: number; comps: string[] };
 };
-/** 1 組の潜在空間。latents と phase の原系は列の圧縮器で潜在へ写したもの（射影）。比べる区画を置き換えていなければ latents は空。置換系が発散した点では原系だけ。 */
+/** 1 組の潜在空間。latents と phases の原系は列の圧縮器で潜在へ写したもの（射影）。比べる区画を置き換えていなければ latents は空。置換系が発散した点では原系だけ。
+ * phases は潜在ごとの (V, z) の相平面（キーは latents と同じ）、sameScale は V と z の単位が同じか（KAM の ψ は mV）。 */
 export type PairCompare = {
   model: string;
   latents: Record<string, Line[]>;
-  phase: Line[];
-  axes: { x: string; y: string; sameScale: boolean };
+  phases: Record<string, Line[]>;
+  sameScale: boolean;
   /** 原系の軌道の上の潜在の傾きの比べ（列の学習器の右辺と正解）。置き換えていない区画か、右辺を評価しない形（form=sindy）なら null。error は掃引の点の全区間。 */
   slopes: SlopeCompare | null;
+  /** 学習に無いこの入力の上での圧縮：列の学習器ごとの decoder の曲線に、原系の各時刻の (z(t), ゲート(t)) を重ねたもの（形は学習器の Fit の decoded と同じ。z は原系を列の圧縮器で写した射影）。
+   * KAM のモデル（学習器を持たない）と、置き換えていない区画では空。 */
+  decoded: Fit['decoded'];
+  /** 同じ入力の上の、群のゲートごとの再構成誤差（掃引の点 point の全区間。原系のゲートと、射影した z から作り直したゲートの差の RMSE と、ゲートの振れ幅）。学習データの上の値は学習器の Fit の errors。 */
+  errors: { gate: string; rmse: number | null; range: number }[];
 };
 /** 元のモデルの、区画ごとの膜電位・内部電流・ゲート（0〜1 の状態）・ゲートでない状態（Traub の Ca 濃度 XI など）。 */
 export type WholeWaves = { voltage: Line[]; internal: Line[]; gates: Line[]; states: Line[] };
-/** 入力の答え。points は掃引の点ごとの注入電流と、原系と発散していない列の電位（縦軸を揃えられるよう全点）と、発散した列。
+/** 入力の答え。points は掃引の点ごとの注入電流と、原系と発散していない列の電位（縦軸を揃えられるよう全点）と、発散した列と、原系が発散したか（lost。その点は比べない）。
  * キーはどれもモデルの名前。summaries は列ごとのまとめ、spikes は掃引の点ごとの発火（原系と列）、pair と whole は頼んだときだけの 1 組と全区画の図。 */
 export type InputsReply = {
   input: InputView;
   comp: string;
   columns: ColumnView[];
-  points: { current: Point[]; voltages: VoltageLine[]; diverged: string[] }[];
+  points: { current: Point[]; voltages: VoltageLine[]; diverged: string[]; lost: boolean }[];
   summaries: Record<string, ColumnSummary>;
   spikes: { original: SpikeTrain[]; columns: Record<string, SpikeTrain[]> };
   pair: PairCompare | null;
   whole: WholeWaves | null;
+  /** 列ごと（キーはモデルの名前）・掃引の点ごとの、選んだ区画の発火の比べ。count は 0 mV を上向きに横切った数（原系・列）、gamma は Γ（どちらも発火しないか、原系か列が発散した点では null）、diverged は列が発散したか。 */
+  crossings: Record<string, { count: [number, number]; gamma: number | null; diverged: boolean }[]>;
 };
 
 /** モデルのページの頼み方。model は宣言の名前（実験の models の一覧）。 */
@@ -181,9 +189,9 @@ export type SlopeCompare = {
   match: Line[];
   error: { latent: string; rmse: number; scale: number }[];
 };
-/** 圧縮器に固有の中身（compressor/own.json）。PCA は寄与率（捨てた成分も）と保持した数と、主成分の向き components（保持した成分 × 群のゲート）と平均 mean（群のゲートごと）、AE は隠れ層の幅。 */
+/** 圧縮器に固有の中身（compressor/own.json）。PCA は寄与率（捨てた成分も）と保持した数と、保持した成分の寄与率の和 explained と、主成分の向き components（保持した成分 × 群のゲート）と平均 mean（群のゲートごと）、AE は隠れ層の幅。 */
 export type CompressorOwn =
-  | { kind: 'pca'; ratios: number[]; kept: number; components: number[][]; mean: number[] }
+  | { kind: 'pca'; ratios: number[]; kept: number; explained: number; components: number[][]; mean: number[] }
   | { kind: 'ae'; hidden: number };
 /** 右辺に固有の中身（rhs/own.json）。SINDy は項ライブラリ、ほかの設定、0 でない係数の数と全係数の数、対象ごとの式。UDE は層の形と学習の損失。 */
 export type RhsOwn =
@@ -205,8 +213,10 @@ export type RhsField = {
   }[];
 };
 /** 学習データの上の中身（fit/<区画>/）。線はどれも描いた区画の時間の範囲 window のもの：voltage は膜電位、gates は群のゲート、
- * latent は潜在、recon は再構成誤差、path は潜在の軌跡（軸は axes。sameScale は縦横の単位が同じか）。
- * reconstruction は学習した区画ごとの全区間のまとめ：再構成の MSE と、それをゲートの分散で割ったもの（summary.json）、時刻ごとの RMSE の平均と最大。 */
+ * latent は潜在、path は潜在の軌跡（軸は axes。sameScale は縦横の単位が同じか）。
+ * decoded は潜在の軸ごとの、z を動かしたときのゲート：curves は decoder の曲線（ゲートごとに x = z、y = ゲート）、points は学習データの各時刻の (z(t), ゲート(t))
+ * （ゲートと区画ごと、時間の範囲で間引いた点）。潜在が 1 本なら曲線から点までの縦の隙間がその時刻の再構成誤差。section は潜在が 2 本以上で、曲線がほかの潜在を学習データの平均に置いた断面であること。order は区画の型の状態の並び（ゲートの色をほかのページと揃えるのに使う）。
+ * errors は学習した区画とゲートごとの全区間の再構成誤差：rmse は元のゲートと潜在から作り直したゲートの差の RMSE（作り直せなければ null）、range はそのゲートの振れ幅（最大 − 最小）。 */
 export type Fit = {
   /** 学習した学習データの名前（実験の data の一覧）。 */
   data: string;
@@ -218,10 +228,10 @@ export type Fit = {
   voltage: Line[];
   gates: Line[];
   latent: Line[];
-  recon: Line[];
   path: Line[];
   axes: { x: string; y: string; xIsVoltage: boolean; sameScale: boolean };
-  reconstruction: { comp: string; mse: number | null; ratio: number | null; mean: number; max: number }[];
+  decoded: { latent: string; curves: Line[]; points: Line[]; section: boolean; order: string[] }[];
+  errors: { comp: string; gate: string; rmse: number | null; range: number }[];
 };
 /** 群のゲートの空間（座標は gates の順）。圧縮器がゲートの動きをどの軸へ潰すかを見る。
  * axes は潜在の軸ごとの圧縮の軸：decode の曲線（ほかの軸は学習データの平均）をゲートの空間の点の並びにしたもの（z はその点の潜在の値、z の増える順）。

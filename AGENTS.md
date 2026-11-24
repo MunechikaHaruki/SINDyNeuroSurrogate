@@ -25,7 +25,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 数値計算の Python（元のモデル `remote/neurosurrogate/physics/`、学習と置換 `remote/neurosurrogate/surrogate/`、計算の入口 `remote/neurosurrogate/run.py`、GPU の実測 `remote/neurosurrogate/bench.py`、API が呼ぶ eFEL の特徴量 `remote/neurosurrogate/spikes.py`）とそのテスト | `remote/neurosurrogate/`、`remote/tests/` |
 | 入口。送られてきた resolved/ の spec を回す段取り（先に要る run を用意し、Python の計算の入口を起こす。画面から起こした仕事と、run・list の CLI もここ） | `remote/run-spec.ts` |
 | 段取りの部品。実験の状態 `status.ts`、置き場（resolved/ からパスで spec を引く、runs/ の置き場と run 1 本の状態）`places.ts` | `remote/run/` |
-| API の答えを作る部品。口ごとの答えを組む `experiments.ts`（目次・実験 1 つ・run の一覧）と、run の置き場ごとの `inputs.ts`・`models.ts`・`data.ts`・`parts.ts`・`bench.ts`、run のファイルを読んで覚え、回線に出す形（間引き・軌跡・分布）にする `waves.ts`、波形から先の統計量を全部、頼まれるたびに純粋関数で計算する `comparison.ts`（波形 1 本の eFEL の特徴量・0 mV の横切り・山の平均の形・発散、原系と列の点ごとの rmse・mae・ISI の統計・周期の差・形の相関・横切りの差・Γ、列ごとの Γ の平均と発火の始まり）、GPU の実測のツールごとの出力を細胞の数ごとの行に集める `bench.ts`（ncu の区画ごとのカーネルの合わせ方もここ） | `remote/read/` |
+| API の答えを作る部品。口ごとの答えを組む `experiments.ts`（目次・実験 1 つ・run の一覧）と、run の置き場ごとの `inputs.ts`・`models.ts`・`data.ts`・`parts.ts`・`bench.ts`、run のファイルを読んで覚え、回線に出す形（間引き・軌跡・分布）にする `waves.ts`、波形から先の統計量を全部、頼まれるたびに純粋関数で計算する `comparison.ts`（波形 1 本の eFEL の特徴量・0 mV の横切り・山の平均の形・発散、原系と列の点ごとの rmse・mae・ISI の統計・周期の差・形の相関・横切りの差・Γ、列ごとの Γ の平均と発火の始まり、潜在から decoder でゲートを作り直した再構成誤差）、GPU の実測のツールごとの出力を細胞の数ごとの行に集める `bench.ts`（ncu の区画ごとのカーネルの合わせ方もここ） | `remote/read/` |
 | 計算する機械の側の通信。答えを小さい JSON で返す API（口は実験の目次と実験 1 つ、run の置き場ごとの inputs・models・data・parts・bench、run の一覧、仕事を起こす口。口を `remote/run-spec.ts`・`remote/run/`・`remote/read/` の関数に渡すだけ） | `remote/serve.ts` |
 | 計算する機械のイメージと Python の依存 | `remote/Dockerfile`、`remote/pyproject.toml`、`remote/uv.lock` |
 | run | 計算する機械の `~/sindy/runs/`（手元の runs は `local/remote.sh fetch` の写しだけ。どちらも Git の外） |
@@ -124,7 +124,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - **比べた束 (どの列を並べたか) は残さない。** 図が選び直すたびに描く
 - 形式の版は spec の種類 (data・part・model・sim・bench) ごとに持つ。形式を変えたら、変えた種類の版を `remote/neurosurrogate/run.py` の `_FORMATS` と `shared/spec.ts` の `FORMATS` で上げる (揃っているかは `remote/run/places.test.ts`)。spec に入るので、
   その種類の古い run と、ハッシュでそれを指す後ろの run (学習器を変えればモデル・置換系・GPU の実測) だけが置き場が合わず回し直される。元のモデルの評価や学習データは、変えなければ残る
-- **置き場の口は自分の run と、自分の spec がハッシュで指す run だけを読む**: data・parts・models・inputs・bench の口が開ける run は、その run と spec の欄が指す run (学習器なら学習データ、モデルなら学習器、評価と GPU の実測ならモデルと隣の元のモデル) だけ。原系と置換系の比べは、両方を持つ入力の口が返す。ほかの run は名前で指すだけ (`remote/serve.test.ts` が口ごとの読み先を確かめる)
+- **置き場の口は自分の run と、自分の spec がハッシュで指す run だけを読む**: data・parts・models・inputs・bench の口が開ける run は、その run と spec の欄が指す run (学習器なら学習データ、モデルなら学習器、評価と GPU の実測ならモデルと隣の元のモデル) だけ。原系と置換系の比べは、両方を持つ入力の口が返す。入力の口の 1 組だけは、学習に無い入力の上で圧縮を確かめるため、モデルの spec が指す学習器の decoder (`runs/parts/<ハッシュ>/compressor/` の decode.json と own.json) まで読む。ほかの run は名前で指すだけ (`remote/serve.test.ts` が口ごとの読み先を確かめる)
 - **記録した run を描画が書き換えない**: 図は読むだけ
 - JSON に nan は書かない (null)。JS の JSON が読めないため
 - **書きかけと印**: `<置き場>.partial/` は書きかけで、中の `pid` が書いているプロセス (生きていれば計算中、死んでいれば残骸として次に片付ける。同じ run を二つのプロセスが書かないよう、生きた書き手がいれば run.py は終了コード 4 で退き、段取りは終わるのを待つ)。`<置き場>.unreplaceable` は置換できないと分かったモデルの印 (置換できるかは Python だけが知るので答えを覚える)。`.jobs/<組のハッシュ>.{json,pid,log,exit}` は外の画面が `--job` で起こした段取りの中身・pid・ログ・終了コード (同じ組の二重起動を pid で弾き、終了コードが 0 でないか書かずに消えたものを失敗として返す)

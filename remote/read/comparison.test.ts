@@ -1,5 +1,18 @@
 import { expect, test } from 'bun:test';
-import { coincidence, compare, crossingDiff, crossings, distance, diverged, efel, meanGamma, rheobase, seriesMetrics, shape, type TraceFeatures } from './comparison.ts';
+import {
+  coincidence,
+  compare,
+  crossingDiff,
+  crossings,
+  distance,
+  diverged,
+  efel,
+  meanGamma,
+  rheobase,
+  seriesMetrics,
+  shape,
+  type TraceFeatures,
+} from './comparison.ts';
 
 /** 山を 2 つ持つ波形（dt = 0.5 ms で 2 ms の窓は ±4 点）。 */
 const v = new Float64Array([
@@ -109,6 +122,27 @@ test('the series metrics pair each column with the original point by point', () 
   expect(m.trains.columns.r[0].features.peak_voltage).toEqual([30, 30]);
   expect(m.trains.original[0].features.AHP_depth).toEqual([]);
   expect(m.summaries.r).toEqual({ gamma: m.crossings.r[0].gamma, rheobase: [5, 5] });
+});
+
+test('a point where the column or the original diverged has no Γ and stays out of the column mean', () => {
+  const blown = { ...spiking, diverged: true };
+  const m = seriesMetrics(
+    [spiking, spiking],
+    { r: [spiking, blown] },
+    {
+      r: [
+        { rmse: 0, mae: 0 },
+        { rmse: null, mae: null },
+      ],
+    },
+    [11.5, 11.5],
+    [5, 10],
+    2,
+  );
+  expect(m.crossings.r[1].gamma).toBeNull();
+  expect(m.summaries.r.gamma).toBe(m.crossings.r[0].gamma);
+  const lost = seriesMetrics([blown], { r: [spiking] }, { r: [{ rmse: null, mae: null }] }, [11.5], [5], 2);
+  expect(lost.crossings.r[0].gamma).toBeNull();
 });
 
 test('coincidence is 1 for the same spikes, near 0 for unrelated ones, and null with no spikes', () => {

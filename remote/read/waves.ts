@@ -212,11 +212,22 @@ export function slopeCompare(
   for (const l of latents)
     lines[l.label] = [
       { label: '正解', points: line(files, l.slope, span) },
-      { label: '学習器', points: line(files, l.rhs, span) },
+      { label: '右辺', points: line(files, l.rhs, span) },
     ];
   return {
     lines,
     match: latents.map(l => ({ label: l.label, points: trajectory(files, l.slope, l.rhs, span) })),
     error: latents.map(l => ({ latent: l.label, ...gapOf(files.column(l.slope), files.column(l.rhs)) })),
   };
+}
+
+/** 列 columns（ゲートごと）の、添字 [from, to] を上限 limit 点まで等間隔に間引いたゲートの空間の点。有限でない点は捨てる。 */
+export function strided(columns: Float64Array[], from: number, to: number, limit: number): number[][] {
+  const step = Math.max(1, Math.ceil((to - from + 1) / limit));
+  const points: number[][] = [];
+  for (let i = from; i <= to; i += step) {
+    const point = columns.map(c => Number(c[i].toPrecision(6)));
+    if (point.every(Number.isFinite)) points.push(point);
+  }
+  return points;
 }

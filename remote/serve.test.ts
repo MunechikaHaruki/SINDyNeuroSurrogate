@@ -304,7 +304,14 @@ test('an input gives one pair in latent space, with the original projected, and 
   });
   expect(Object.keys(reply.pair?.latents ?? {})).toEqual(['h.z1']);
   expect(reply.pair?.latents['h.z1'].map(l => l.label)).toEqual(['原系', '置換系']);
-  expect(reply.pair?.axes).toEqual({ x: 'V', y: 'h.z1', sameScale: false });
+  expect(Object.keys(reply.pair?.phases ?? {})).toEqual(['h.z1']);
+  expect(reply.pair?.phases['h.z1'].map(l => l.label)).toEqual(['原系（射影）', '置換系']);
+  expect(reply.pair?.sameScale).toBe(false);
+  expect(Object.keys(reply.crossings)).toEqual(['m']);
+  expect(reply.crossings.m[0]).toMatchObject({ diverged: false });
+  expect(reply.pair?.decoded.map(d => d.latent)).toEqual(['h.z1']);
+  expect(reply.pair?.decoded[0].curves.map(l => l.label)).toEqual(['H']);
+  expect(reply.pair?.errors.map(e => e.gate)).toEqual(['H']);
   expect(reply.whole?.voltage.map(l => l.label)).toEqual(['soma']);
   expect(reply.whole?.gates.map(l => l.label)).toEqual(['H']);
   expect((await post('inputs', { experiment: 'e', input: 's', pair: { model: 'x', point: 0 } })).status).toBe(400);
@@ -338,7 +345,20 @@ test('the training data and learner pages read their runs by declared name', asy
   const fit = reply.fit!;
   expect(fit.window).toEqual([10, 50]);
   expect(fit.latent.map(l => l.label)).toEqual(['h.z1']);
-  expect(fit.reconstruction).toEqual([{ comp: 'soma', mse: 0.01, ratio: 0.1, mean: 0.5, max: 0.5 }]);
+  expect(fit.errors.map(e => [e.comp, e.gate])).toEqual([['soma', 'H']]);
+  expect(typeof fit.errors[0].rmse).toBe('number');
+  expect(fit.decoded.map(d => [d.latent, d.section])).toEqual([['h.z1', false]]);
+  expect(fit.decoded[0].curves).toEqual([
+    {
+      label: 'H',
+      points: [
+        { x: -1, y: 0 },
+        { x: 1, y: 1 },
+      ],
+    },
+  ]);
+  expect(fit.decoded[0].points.map(l => l.label)).toEqual(['H']);
+  expect(fit.decoded[0].points[0].points.every(p => p.x === 0.5)).toBe(true);
   expect(fit.gates).toHaveLength(1);
   expect(fit.data).toBe(names.data);
   expect(fit.path).toHaveLength(1);
@@ -354,7 +374,14 @@ test('the training data and learner pages read their runs by declared name', asy
   expect(reply.space?.levels).toEqual([]);
   expect(reply.space?.data[0].points.length).toBeGreaterThan(0);
   expect(reply.space?.data[0].points.every(p => p.length === 1)).toBe(true);
-  expect(reply.compressor).toEqual({ kind: 'pca', ratios: [0.9, 0.1], kept: 1, components: [[1]], mean: [0.5] });
+  expect(reply.compressor).toEqual({
+    kind: 'pca',
+    ratios: [0.9, 0.1],
+    kept: 1,
+    explained: 0.9,
+    components: [[1]],
+    mean: [0.5],
+  });
   if (reply.rhs?.kind !== 'sindy') throw new Error('SINDy の右辺のはず');
   expect(reply.rhs.nnz).toBe(1);
   expect(reply.rhs.equations).toEqual([{ target: 'z', groups: [{ rate: '', terms: [{ monomial: '1', xi: 0.5 }] }] }]);
@@ -416,5 +443,8 @@ test('each place opens only its own run and the runs its spec points to by hash'
   expect(read(ctx => models(ctx, { experiment: 'k', model: 'n' }))).toEqual([dirOf(KAM_MODEL)]);
   expect(read(ctx => models(ctx, { experiment: 'e', model: 'm' }))).toEqual([dirOf(MODEL)]);
   const pair = { input: 's', pair: { model: 'm', point: 0 }, whole: { point: 0, comps: ['soma'] } };
-  expect(read(ctx => inputs(ctx, { experiment: 'e', ...pair }))).toEqual([dirOf(ORIGINAL), dirOf(REPLACED)].sort());
+  // 1 組の潜在空間は、置換系の spec が指すモデルと、その spec が指す学習器の decoder も読む（学習に無い入力の上の圧縮）
+  expect(read(ctx => inputs(ctx, { experiment: 'e', ...pair }))).toEqual(
+    [dirOf(ORIGINAL), dirOf(REPLACED), dirOf(MODEL), dirOf(PART)].sort(),
+  );
 });
