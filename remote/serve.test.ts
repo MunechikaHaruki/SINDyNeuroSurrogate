@@ -309,8 +309,9 @@ test('an input gives one pair in latent space, with the original projected, and 
   expect(reply.pair?.sameScale).toBe(false);
   expect(Object.keys(reply.crossings)).toEqual(['m']);
   expect(reply.crossings.m[0]).toMatchObject({ diverged: false });
-  expect(reply.pair?.decoded.map(d => d.latent)).toEqual(['h.z1']);
-  expect(reply.pair?.decoded[0].curves.map(l => l.label)).toEqual(['H']);
+  expect(reply.pair?.rebuilt.map(r => [r.gate, r.comp])).toEqual([['H', 'soma']]);
+  expect(reply.pair?.rebuilt[0].rebuilt.length).toBeGreaterThan(0);
+  expect(reply.pair?.order).toEqual(['M', 'H', 'N']);
   expect(reply.pair?.errors.map(e => e.gate)).toEqual(['H']);
   expect(reply.whole?.voltage.map(l => l.label)).toEqual(['soma']);
   expect(reply.whole?.gates.map(l => l.label)).toEqual(['H']);
@@ -347,18 +348,11 @@ test('the training data and learner pages read their runs by declared name', asy
   expect(fit.latent.map(l => l.label)).toEqual(['h.z1']);
   expect(fit.errors.map(e => [e.comp, e.gate])).toEqual([['soma', 'H']]);
   expect(typeof fit.errors[0].rmse).toBe('number');
-  expect(fit.decoded.map(d => [d.latent, d.section])).toEqual([['h.z1', false]]);
-  expect(fit.decoded[0].curves).toEqual([
-    {
-      label: 'H',
-      points: [
-        { x: -1, y: 0 },
-        { x: 1, y: 1 },
-      ],
-    },
-  ]);
-  expect(fit.decoded[0].points.map(l => l.label)).toEqual(['H']);
-  expect(fit.decoded[0].points[0].points.every(p => p.x === 0.5)).toBe(true);
+  expect(fit.rebuilt.map(r => [r.gate, r.comp])).toEqual([['H', 'soma']]);
+  // 潜在はどの時刻も 0.5 で、decoder の曲線 (-1, 0)–(1, 1) の上では 0.75
+  expect(fit.rebuilt[0].rebuilt.every(p => p.y === 0.75)).toBe(true);
+  expect(fit.zoom[0]).toBeGreaterThanOrEqual(10);
+  expect(fit.zoom[1]).toBeLessThanOrEqual(50);
   expect(fit.gates).toHaveLength(1);
   expect(fit.data).toBe(names.data);
   expect(fit.path).toHaveLength(1);

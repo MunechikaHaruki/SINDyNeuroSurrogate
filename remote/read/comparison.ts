@@ -2,7 +2,7 @@
 // 波形 1 本の特徴量（eFEL・0 mV の上向きの横切り・山の平均の形・発散）、原系と置き換えた列の点ごとの指標（rmse・mae、ISI の統計、周期の差、形の相関、横切りで数えた差、
 // coincidence factor Γ）と、列ごとのまとめ（決まる点での Γ の平均、発火の始まり）。eFEL は Python（neurosurrogate/spikes.py）を子プロセスで起こし、波形を標準入力で渡す。
 // 物差しの値（Γ の許容幅 Δ）は手元が頼み方で渡す。run は書き換わらないので、特徴量は run・区画ごとに、答えは頼み方ごとに覚えておく。
-import type { ColumnSummary, Line, SpikeTrain } from '../../shared/api.ts';
+import type { ColumnSummary, SpikeTrain } from '../../shared/api.ts';
 import type { CompressorJson, DecodeJson } from '../../shared/runs.ts';
 
 /** 1 ペア（原系, 置換系）の 1 区画の指標。rows は両方にある指標の [原系, 置換系]、scalars は比べて決まる指標。null は値が無い（nan）。答えには出さず、発散と Γ のまとめに使う。 */
@@ -416,15 +416,6 @@ export function errorOf(gate: Float64Array, rebuilt: Float64Array | null): { rms
     count += 1;
   }
   return { rmse: rebuilt === null || count === 0 ? null : Math.sqrt(sum / count), range: max - min };
-}
-
-/** decoder の曲線（compressor/decode.json）の軸 1 本を、ゲートごとの線（x = z、y = ゲート）にする。 */
-export function decodedCurves(decode: DecodeJson, k: number): Line[] {
-  const axis = decode.axes[k];
-  return decode.gates.map((gate, g) => ({
-    label: gate,
-    points: axis.z.map((z, j) => ({ x: z, y: axis.gates[g][j] })),
-  }));
 }
 
 /** 潜在の列 latents（潜在ごとに時刻の並び）から、各時刻のゲートを rebuild で作り直した列（ゲートごと）。作れなければ（rebuild が null）null。 */

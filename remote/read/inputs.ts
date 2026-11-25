@@ -25,8 +25,8 @@ import {
 import type { ExperimentStatus, PlanEntry, RunStatus, Spec } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { type Context, modelOf, planOf, plans, reducedOf, stimulusOf } from './experiments.ts';
-import { decodedCurves, errorOf, rebuiltOf, reconstructor } from './comparison.ts';
-import { isFraction, line, slopeCompare, strided, trajectory, type Span } from './waves.ts';
+import { errorOf, rebuiltOf, reconstructor } from './comparison.ts';
+import { arrayLine, isFraction, line, slopeCompare, trajectory, zoomOf, type Span } from './waves.ts';
 
 /** 元のモデルの run の目録（waves/meta.json）。 */
 export function wavesOf(ctx: Context, run: string): WaveMeta {
@@ -104,9 +104,6 @@ function columnsOf(plan: PlanEntry, found: ExperimentStatus, input: string, mode
   return list;
 }
 
-/** decoder の図に重ねる原系の点の数の上限。 */
-const DECODED_POINTS = 3000;
-
 /** 列 run（置換系）のモデルが持つ学習器の decoder（compressor/decode.json）と圧縮器の中身（compressor/own.json）。置換系の spec が指すモデルの run の spec から、
  * それが指す学習器の run を引く。KAM のモデルは学習器を持たないので空。 */
 function learnersOf(ctx: Context, run: string): { decode: DecodeJson; own: CompressorJson }[] {
@@ -120,35 +117,45 @@ function learnersOf(ctx: Context, run: string): { decode: DecodeJson; own: Compr
   }));
 }
 
-/** 学習に無いこの入力の上での圧縮：列の学習器ごとに、decoder の曲線と原系の (z(t), ゲート(t)) の点（時間の範囲で間引く）と、掃引の点の全区間のゲートごとの再構成誤差。
- * z は原系を列の圧縮器で写した射影（projected/）、ゲートは元のモデルの run の値。 */
+/** 学習に無いこの入力の上での圧縮：列の学習器ごとに、群のゲートの元の時系列と、射影した z（projected/）から作り直した時系列（範囲 zoom）と、掃引の点の全区間のゲートごとの再構成誤差。
+ * ゲートは元のモデルの run の値。 */
 function heldOutOf(
   ctx: Context,
-  at: { run: string; original: string; meta: WaveMeta; projected: WaveMeta; root: string; k: number; id: number },
+  at: {
+    run: string;
+    original: string;
+    meta: WaveMeta;
+    projected: WaveMeta;
+    root: string;
+    k: number;
+    id: number;
+    comp: string;
+  },
   span: Span,
-): Pick<PairCompare, 'decoded' | 'errors'> {
-  const { run, original, meta, projected, root, k, id } = at;
-  const from = Math.max(0, Math.ceil((span.start - span.t0) / span.dt));
-  const to = Math.min(meta.n[k] - 1, Math.floor((span.end - span.t0) / span.dt));
-  const decoded: PairCompare['decoded'] = [];
+  requested: Window | undefined,
+): Pick<PairCompare, 'rebuilt' | 'zoom' | 'order' | 'errors'> {
+  const { run, original, meta, projected, root, k, id, comp } = at;
+  const zoom = zoomOf(ctx.files.column(compArray(original, RUN.waves, meta, k, id, 'V')), span, requested);
+  const close = { ...span, start: zoom[0], end: zoom[1] };
+  const rebuilt: PairCompare['rebuilt'] = [];
   const errors: PairCompare['errors'] = [];
-  for (const { decode, own } of learnersOf(ctx, run)) {
+  const learners = learnersOf(ctx, run);
+  for (const { decode, own } of learners) {
     const latents = decode.axes.map(axis => ctx.files.column(compArray(run, root, projected, k, id, axis.latent)));
-    const gates = decode.gates.map(gate => ctx.files.column(compArray(original, RUN.waves, meta, k, id, gate)));
-    decode.axes.forEach((axis, a) => {
-      const sampled = strided([latents[a], ...gates], from, to, DECODED_POINTS);
-      decoded.push({
-        latent: axis.latent,
-        curves: decodedCurves(decode, a),
-        points: decode.gates.map((gate, g) => ({ label: gate, points: sampled.map(p => ({ x: p[0], y: p[g + 1] })) })),
-        section: decode.axes.length > 1,
-        order: decode.order,
+    const refs = decode.gates.map(gate => compArray(original, RUN.waves, meta, k, id, gate));
+    const gates = refs.map(ref => ctx.files.column(ref));
+    const built = rebuiltOf(reconstructor(decode, own), latents, decode.gates.length);
+    decode.gates.forEach((gate, g) => {
+      rebuilt.push({
+        gate,
+        comp,
+        original: line(ctx.files, refs[g], close),
+        rebuilt: built ? arrayLine(built[g], close) : [],
       });
+      errors.push({ gate, ...errorOf(gates[g], built?.[g] ?? null) });
     });
-    const rebuilt = rebuiltOf(reconstructor(decode, own), latents, decode.gates.length);
-    decode.gates.forEach((gate, g) => errors.push({ gate, ...errorOf(gates[g], rebuilt?.[g] ?? null) }));
   }
-  return { decoded, errors };
+  return { rebuilt, zoom, order: learners[0]?.decode.order ?? [], errors };
 }
 
 /** 1 組（元のモデル original と列 run）の、掃引の点 k・区画 comp の潜在空間。潜在ごとに z の時系列と (V, z) の相平面。kam はモデルが KAM か（潜在が mV）。
@@ -168,6 +175,7 @@ function pairOf(
     meta: WaveMeta;
   },
   span: Span,
+  zoom: Window | undefined,
 ): PairCompare {
   const { run, k, id, replaced } = at;
   const root = RUN.projected(at.comp);
@@ -216,8 +224,8 @@ function pairOf(
         )
       : null;
   const heldOut = projected
-    ? heldOutOf(ctx, { run, original: at.original, meta: at.meta, projected, root, k, id }, span)
-    : { decoded: [], errors: [] };
+    ? heldOutOf(ctx, { run, original: at.original, meta: at.meta, projected, root, k, id, comp: at.comp }, span, zoom)
+    : { rebuilt: [], zoom: [span.start, span.end] as Window, order: [], errors: [] };
   return {
     model: at.model,
     latents,
@@ -312,6 +320,7 @@ export function inputs(ctx: Context, request: InputsRequest): InputsReply {
             meta,
           },
           span,
+          request.pair.zoom,
         )
       : null;
   const whole = request.whole

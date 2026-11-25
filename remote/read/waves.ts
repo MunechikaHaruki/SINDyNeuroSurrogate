@@ -104,7 +104,31 @@ export type Span = { t0: number; dt: number; start: number; end: number };
 
 /** .f64 の 1 列を、範囲 span で BUCKETS 区間に間引いた線。 */
 export function line(files: RunFiles, ref: ArrayRef, span: Span): Point[] {
-  return compact(decimate(files.column(ref), span.t0, span.dt, span.start, span.end, BUCKETS));
+  return arrayLine(files.column(ref), span);
+}
+
+/** 計算した 1 列を、範囲 span で BUCKETS 区間に間引いた線。 */
+export function arrayLine(values: Float64Array, span: Span): Point[] {
+  return compact(decimate(values, span.t0, span.dt, span.start, span.end, BUCKETS));
+}
+
+/** 再構成の図の既定の幅 [ms] と、最初の発火の前に空ける時間 [ms]。 */
+const ZOOM = { width: 50, before: 5 };
+
+/** 再構成の図の範囲。頼まれた zoom があればそれを span に収め、無ければ span の中で膜電位 v が最初に 0 mV を上向きに横切る時刻の ZOOM.before 前から ZOOM.width（発火が無ければ span の頭から）。 */
+export function zoomOf(v: Float64Array | null, span: Span, zoom: [number, number] | undefined): [number, number] {
+  const clip = (start: number, width: number): [number, number] => {
+    const from = Math.max(span.start, Math.min(start, span.end - width));
+    return [from, Math.min(span.end, from + width)];
+  };
+  if (zoom) return clip(zoom[0], zoom[1] - zoom[0]);
+  if (v) {
+    const first = Math.max(1, Math.ceil((span.start - span.t0) / span.dt));
+    const last = Math.min(v.length - 1, Math.floor((span.end - span.t0) / span.dt));
+    for (let i = first; i <= last; i++)
+      if (v[i - 1] < 0 && v[i] >= 0) return clip(span.t0 + i * span.dt - ZOOM.before, ZOOM.width);
+  }
+  return clip(span.start, ZOOM.width);
 }
 
 /** .f64 の 2 列を、範囲 span で PATH_POINTS 点までの軌跡にしたもの。 */

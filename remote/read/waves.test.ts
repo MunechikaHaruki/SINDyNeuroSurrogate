@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { decimate, isFraction, path } from './waves.ts';
+import { decimate, isFraction, path, zoomOf } from './waves.ts';
 
 test('decimation keeps each bucket’s extremes in time order, so a spike survives', () => {
   const values = new Float64Array(1000).fill(-65);
@@ -37,4 +37,13 @@ test('a path keeps time order and fewer than twice max points of the window', ()
 test('a column is a fraction only when every finite value stays in 0 to 1', () => {
   expect(isFraction(new Float64Array([0, 0.5, 1, NaN]))).toBe(true);
   expect(isFraction(new Float64Array([0, 130]))).toBe(false);
+});
+
+test('zoomOf starts 5 ms before the first upward crossing of 0 mV and keeps a requested range inside the span', () => {
+  const v = new Float64Array([-60, -60, -60, 10, 10, -60, -60, -60, -60, -60, -60]);
+  const span = { t0: 0, dt: 10, start: 0, end: 100 };
+  expect(zoomOf(v, span, undefined)).toEqual([25, 75]);
+  expect(zoomOf(new Float64Array(11).fill(-60), span, undefined)).toEqual([0, 50]);
+  expect(zoomOf(v, span, [80, 130])).toEqual([50, 100]);
+  expect(zoomOf(null, span, undefined)).toEqual([0, 50]);
 });

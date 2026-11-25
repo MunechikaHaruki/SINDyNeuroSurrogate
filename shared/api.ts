@@ -87,7 +87,7 @@ export type InputsRequest = {
   models?: string[];
   window?: Window;
   waves?: boolean;
-  pair?: { model: string; point: number };
+  pair?: { model: string; point: number; zoom?: Window };
   whole?: { point: number; comps: string[] };
 };
 /** 1 組の潜在空間。latents と phases の原系は列の圧縮器で潜在へ写したもの（射影）。比べる区画を置き換えていなければ latents は空。置換系が発散した点では原系だけ。
@@ -99,9 +99,11 @@ export type PairCompare = {
   sameScale: boolean;
   /** 原系の軌道の上の潜在の傾きの比べ（列の学習器の右辺と正解）。置き換えていない区画か、右辺を評価しない形（form=sindy）なら null。error は掃引の点の全区間。 */
   slopes: SlopeCompare | null;
-  /** 学習に無いこの入力の上での圧縮：列の学習器ごとの decoder の曲線に、原系の各時刻の (z(t), ゲート(t)) を重ねたもの（形は学習器の Fit の decoded と同じ。z は原系を列の圧縮器で写した射影）。
-   * KAM のモデル（学習器を持たない）と、置き換えていない区画では空。 */
-  decoded: Fit['decoded'];
+  /** 学習に無いこの入力の上での圧縮：列の学習器ごとの群のゲートの、元のモデルの時系列と、それを列の圧縮器で写した z から decoder で作り直した時系列（範囲 zoom。既定は最初の発火の 5 ms 前から 50 ms）。
+   * order は区画の型の状態の並び（ゲートの色をほかのページと揃える）。KAM のモデル（学習器を持たない）と、置き換えていない区画では空。 */
+  rebuilt: GateRebuild[];
+  zoom: Window;
+  order: string[];
   /** 同じ入力の上の、群のゲートごとの再構成誤差（掃引の点 point の全区間。原系のゲートと、射影した z から作り直したゲートの差の RMSE と、ゲートの振れ幅）。学習データの上の値は学習器の Fit の errors。 */
   errors: { gate: string; rmse: number | null; range: number }[];
 };
@@ -174,7 +176,9 @@ export type DataReply = {
 };
 
 /** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）、window は線の時間の範囲（省けば全体）。 */
-export type PartsRequest = { experiment: string; part: string; comps?: string[]; window?: Window };
+export type PartsRequest = { experiment: string; part: string; comps?: string[]; window?: Window; zoom?: Window };
+/** 区画 comp のゲート gate の、元の時系列と、潜在から decoder で作り直した時系列（作り直せなければ空）。 */
+export type GateRebuild = { gate: string; comp: string; original: Point[]; rebuilt: Point[] };
 /** SINDy の右辺の 1 本（対象 target の時間微分）。項をレートの因子 rate（α_n(V) や (α_n + β_n)(V)。無ければ空）ごとにまとめ、
  * 因子ごとに残りの単項 monomial（1、z_{1}、V など）と係数 xi を項ライブラリの順に並べる。どれも sympy の LaTeX のまま。 */
 export type SindyEquation = {
@@ -214,8 +218,7 @@ export type RhsField = {
 };
 /** 学習データの上の中身（fit/<区画>/）。線はどれも描いた区画の時間の範囲 window のもの：voltage は膜電位、gates は群のゲート、
  * latent は潜在、path は潜在の軌跡（軸は axes。sameScale は縦横の単位が同じか）。
- * decoded は潜在の軸ごとの、z を動かしたときのゲート：curves は decoder の曲線（ゲートごとに x = z、y = ゲート）、points は学習データの各時刻の (z(t), ゲート(t))
- * （ゲートと区画ごと、時間の範囲で間引いた点）。潜在が 1 本なら曲線から点までの縦の隙間がその時刻の再構成誤差。section は潜在が 2 本以上で、曲線がほかの潜在を学習データの平均に置いた断面であること。order は区画の型の状態の並び（ゲートの色をほかのページと揃えるのに使う）。
+ * rebuilt は描いた区画とゲートごとの、元のゲート original と潜在から作り直したゲート rebuilt の時系列（範囲 zoom。既定は範囲の中の最初の発火の 5 ms 前から 50 ms）。2 本の隙間がその時刻の再構成誤差。
  * errors は学習した区画とゲートごとの全区間の再構成誤差：rmse は元のゲートと潜在から作り直したゲートの差の RMSE（作り直せなければ null）、range はそのゲートの振れ幅（最大 − 最小）。 */
 export type Fit = {
   /** 学習した学習データの名前（実験の data の一覧）。 */
@@ -230,7 +233,8 @@ export type Fit = {
   latent: Line[];
   path: Line[];
   axes: { x: string; y: string; xIsVoltage: boolean; sameScale: boolean };
-  decoded: { latent: string; curves: Line[]; points: Line[]; section: boolean; order: string[] }[];
+  rebuilt: GateRebuild[];
+  zoom: Window;
   errors: { comp: string; gate: string; rmse: number | null; range: number }[];
 };
 /** 群のゲートの空間（座標は gates の順）。圧縮器がゲートの動きをどの軸へ潰すかを見る。
