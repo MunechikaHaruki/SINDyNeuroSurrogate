@@ -22,6 +22,5 @@ async function readExperiments(): Promise<Experiments> {
 if (import.meta.main) {
   const all = (await readExperiments()).groups.flatMap(g => g.experiments);
   for (const progress of PROGRESS_ORDER)
-    for (const e of all)
-      if (e.progress === progress) console.log(`${progress}\t${e.id}\t${e.description.split('\n\n')[0]}`);
+    for (const e of all) if (e.progress === progress) console.log(`${progress}\t${e.id}`);
 }

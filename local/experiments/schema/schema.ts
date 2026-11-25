@@ -49,11 +49,10 @@ export type Bench = { name: string; model: string | null; series: string; cells:
 /** モデル 1 つ。name は実験の中の名前（`<仕方の名前>.<群分け>`）、method と grouping は図が列を引く名前。 */
 export type Model = ModelDecl & { method: string; grouping: string };
 
-/** 解決済みの実験。description は何を回して何を見るかの一文（Markdown）。モデルと系列を値で持ち、pairs が回す組（モデルの名前 × 系列の名前）。
+/** 解決済みの実験。モデルと系列を値で持ち、pairs が回す組（モデルの名前 × 系列の名前）。
  * groupings と methods は画面が絞り込みに使う名前の並び。名前は実験の中で一意。 */
 export type Plan = {
   id: string;
-  description: string;
   groupings: string[];
   methods: string[];
   models: Model[];
@@ -73,11 +72,11 @@ const GroupDocument = z.tuple([
   }),
 ]);
 
-/** 実験群のスキーマ。実験は説明と、vary に挙げた欄だけを書ける。 */
+/** 実験群のスキーマ。実験は vary に挙げた欄だけを書ける（何を見る実験かの説明は冊の側 outputs/experiments/groups/<群>.yaml が持つ）。 */
 function runSchema(vary: Param[]) {
   const fields: Partial<Record<Param, z.ZodType>> = {};
   for (const key of vary) fields[key] = PARAMS[key].optional();
-  return z.strictObject({ description: z.string().min(1), ...fields });
+  return z.strictObject(fields);
 }
 
 /** 系列の指し方を、置き換える範囲ごとの系列にする。`<入力>@<範囲>` はその範囲だけ。範囲が一つなら名前は書いたまま、二つ以上なら `<名前>@<範囲>`。 */
@@ -93,7 +92,7 @@ function seriesOf(ref: z.infer<typeof Ref>, replace: string[]): [string, Series]
 }
 
 /** 解決済みの実験を組む。回す組は 仕方 × 群分け × 系列 の直積で、学習の入力は全部のモデルで同じ。 */
-export function build(where: string, id: string, description: string, setting: Setting): Plan {
+export function build(where: string, id: string, setting: Setting): Plan {
   const { methods, groupings: grouping, series: refs } = setting;
   if (!methods) throw new Error(`${where}：仕方 methods が無い（base か run に書く）`);
   if (!grouping) throw new Error(`${where}：群分け groupings が無い（base か run に書く）`);
@@ -131,7 +130,6 @@ export function build(where: string, id: string, description: string, setting: S
   }
   return {
     id,
-    description,
     groupings: groupingList,
     methods: methods.map(m => named(m).name),
     models,
@@ -148,15 +146,9 @@ export function groupPlans(name: string, doc: unknown): { description: string; p
   const schema = runSchema(body.vary);
   const plans = Object.entries(body.runs).map(([id, value]) => {
     const at = `${where} の ${id}`;
-    const { description, ...run } = parsed(
-      schema,
-      `${at}（書けるのは description と vary の ${body.vary.join('・') || 'なし'}）`,
-      value,
-    ) as {
-      description: string;
-    } & Setting;
+    const run = parsed(schema, `${at}（書けるのは vary の ${body.vary.join('・') || 'なし'}）`, value ?? {}) as Setting;
     const train = body.base.train || run.train ? { ...body.base.train, ...run.train } : undefined;
-    return build(at, id, description, { ...body.base, ...run, ...(train ? { train } : {}) });
+    return build(at, id, { ...body.base, ...run, ...(train ? { train } : {}) });
   });
   return { description: front.description, plans };
 }

@@ -20,7 +20,6 @@
   "experiments": [
     {
       "id": "all-groupings-1comp",
-      "description": "ゲート h, n, a, c の全部の群分けを KAM・PCA・AE で縮約し、定常電流の掃引で元のモデルの発火をどこまで再現するかを比べる。物差しは coincidence factor Γ（±Δ 以内で一致した発火の数を、偶然の一致を引いて正規化したもの。[Kistler et al. 1997](https://doi.org/10.1152/jn.1997.77.5.2390)）。",
       "groupings": [
         "a+c",
         "h+a",
@@ -3086,7 +3085,6 @@
     },
     {
       "id": "fluctuating-input-1comp",
-      "description": "h+n をまとめた KAM・PCA・AE が、定常電流の外の入力（Kistler 1997 の揺らぐ電流）でも元のモデルの発火を再現するかを、定常電流と同じ物差しで比べる。",
       "groupings": [
         "h+n"
       ],
@@ -3333,7 +3331,6 @@
     },
     {
       "id": "test-1comp",
-      "description": "テスト用。形式やコードを変えたらまず回す。KAM・PCA・AE を短い学習データで 2 つの学習器を持つ h+n_a+c に縮約し、短い定常電流の 2 点で回す。",
       "groupings": [
         "h+n_a+c"
       ],
@@ -3610,7 +3607,6 @@
     },
     {
       "id": "transfer-to-19comp",
-      "description": "h+n と a+c をまとめた縮約（単一区画で学習）を Traub の 19 区画に当て、soma だけを置き換えるときと、Na と DR を持つ 5 区画を置き換えるときで、元のモデルの発火をどこまで再現するかを見る。",
       "groupings": [
         "h+n",
         "a+c"
@@ -4026,7 +4022,6 @@
     },
     {
       "id": "test-19comp",
-      "description": "テスト用。形式やコードを変えたらまず回す。h+n の KAM・PCA・AE を短い学習データで学習し、19 区画の soma を置き換えて短い定常電流の 2 点で回す。",
       "groupings": [
         "h+n"
       ],
@@ -4234,7 +4229,6 @@
     },
     {
       "id": "gpu-memory",
-      "description": "単一区画と 19 区画の Traub を、元のモデル・h+n の KAM・h+n の PCA と SINDy のサロゲート（19 区画では soma だけ、または Na と DR を持つ 5 区画を置き換える）で、細胞を並べ、刻みごとに全細胞をそろえて GPU で回す。1 スレッドが 1 区画を持つ。刻みをまたいで持ち越す状態（V、潜在 z、縮約しなかったゲート）は VRAM に置いて毎刻み読み書きし、刻みの中だけで使う値（z から作り直すゲートなど）はキャッシュ（レジスタ）に置く。ncu で 1 刻みの VRAM の読み書きの量とレジスタの数、レジスタから溢れた分を測り、持ち越す状態の少なさが VRAM の量に現れるかをモデルごとに確かめる。",
       "groupings": [
         "h+n"
       ],
@@ -4544,7 +4538,6 @@
     },
     {
       "id": "test-gpu",
-      "description": "テスト用。形式やコードを変えたらまず回す。h+n の KAM を短い学習データで学習し、単一区画の短い定常電流で元のモデルと並べて 1024 細胞を GPU で測る（ncu も）。",
       "groupings": [
         "h+n"
       ],
@@ -4655,7 +4648,6 @@
     },
     {
       "id": "neuro2026-rerun",
-      "description": "NEURO2026 で発表した形（6 ゲートを 1 つの AutoEncoder で潜在 5 本へ縮め、右辺を SINDy で同定する。19 区画の軌道で学習する）を今の研究コードで回し直し、19 区画の soma を置き換えて発表時の結果と比べる。",
       "groupings": [
         "m+h+n+a+b+c"
       ],

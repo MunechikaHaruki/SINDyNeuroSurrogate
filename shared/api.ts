@@ -22,7 +22,6 @@ export type RunKind = 'parts' | 'models' | 'inputs' | 'bench';
 /** 目次の実験 1 つ。runs は置き場ごとの、実験の run の名前（宣言の順。parts は使うモデルの宣言の順。inputs は学習の系列が先）。 */
 export type ExperimentEntry = {
   id: string;
-  description: string;
   progress: Progress;
   runs: Record<RunKind, string[]>;
 };
@@ -42,7 +41,6 @@ export type SetupRow = { label: string; items: { name: string; value: string }[]
 export type ExperimentView = {
   id: string;
   group: string;
-  description: string;
   setup: SetupRow[];
   rerun: { seconds: number; done: number; total: number };
   inputs: string[];

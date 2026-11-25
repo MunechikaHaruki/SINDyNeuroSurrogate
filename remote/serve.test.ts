@@ -81,7 +81,6 @@ const PLANS: Plans = {
     {
       id: 'e',
       group: 'g',
-      description: '実験',
       groupings: ['h'],
       methods: ['pca'],
       models: [
@@ -99,7 +98,6 @@ const PLANS: Plans = {
     {
       id: 'k',
       group: 'g',
-      description: 'KAM だけの実験',
       groupings: ['m+h'],
       methods: ['kam'],
       models: [

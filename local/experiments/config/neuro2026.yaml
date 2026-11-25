@@ -9,5 +9,4 @@ base:
   series: [traub-19comp-steady]
 vary: []
 runs:
-  neuro2026-rerun:
-    description: NEURO2026 で発表した形（6 ゲートを 1 つの AutoEncoder で潜在 5 本へ縮め、右辺を SINDy で同定する。19 区画の軌道で学習する）を今の研究コードで回し直し、19 区画の soma を置き換えて発表時の結果と比べる。
+  neuro2026-rerun: {}

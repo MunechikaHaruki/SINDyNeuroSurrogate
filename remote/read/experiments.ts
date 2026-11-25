@@ -85,7 +85,6 @@ export function experiments(runs: string): Experiments {
         running += runningOf(found);
         return {
           id: plan.id,
-          description: plan.description,
           progress: progressOf(plan, found),
           runs: {
             parts: learnedOf(plan, found).map(r => r.name),
@@ -214,7 +213,6 @@ export function experiment(runs: string, id: string): ExperimentView {
   return {
     id,
     group: plan.group,
-    description: plan.description,
     setup: setupOf(plan, all.measures.coincidence_window),
     rerun: rerunCost(found, scan(runs)),
     inputs: Object.keys(plan.series),

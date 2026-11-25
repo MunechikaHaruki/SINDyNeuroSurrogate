@@ -9,10 +9,8 @@ base:
   replace: [soma, na-dr]
 vary: [groupings, train, series, replace]
 runs:
-  transfer-to-19comp:
-    description: h+n と a+c をまとめた縮約（単一区画で学習）を Traub の 19 区画に当て、soma だけを置き換えるときと、Na と DR を持つ 5 区画を置き換えるときで、元のモデルの発火をどこまで再現するかを見る。
+  transfer-to-19comp: {}
   test-19comp:
-    description: テスト用。形式やコードを変えたらまず回す。h+n の KAM・PCA・AE を短い学習データで学習し、19 区画の soma を置き換えて短い定常電流の 2 点で回す。
     groupings: [h+n]
     train: { duration: 1000 }
     series:

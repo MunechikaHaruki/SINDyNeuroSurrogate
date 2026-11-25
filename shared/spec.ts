@@ -117,7 +117,6 @@ export type PlanBench = { name: string; model: string | null; series: string; ce
 export type PlanEntry = {
   id: string;
   group: string;
-  description: string;
   groupings: string[];
   methods: string[];
   models: PlanModel[];

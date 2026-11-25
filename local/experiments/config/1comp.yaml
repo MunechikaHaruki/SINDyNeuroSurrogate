@@ -8,15 +8,12 @@ base:
 vary: [methods, groupings, train, series]
 runs:
   all-groupings-1comp:
-    description: ゲート h, n, a, c の全部の群分けを KAM・PCA・AE で縮約し、定常電流の掃引で元のモデルの発火をどこまで再現するかを比べる。物差しは coincidence factor Γ（±Δ 以内で一致した発火の数を、偶然の一致を引いて正規化したもの。[Kistler et al. 1997](https://doi.org/10.1152/jn.1997.77.5.2390)）。
     groupings: { all: [h, n, a, c] }
   fluctuating-input-1comp:
-    description: h+n をまとめた KAM・PCA・AE が、定常電流の外の入力（Kistler 1997 の揺らぐ電流）でも元のモデルの発火を再現するかを、定常電流と同じ物差しで比べる。
     methods: [kam, pca-sindy, ae-sindy]
     groupings: [h+n]
     series: [traub-1comp-steady, traub-1comp-kistler]
   test-1comp:
-    description: テスト用。形式やコードを変えたらまず回す。KAM・PCA・AE を短い学習データで 2 つの学習器を持つ h+n_a+c に縮約し、短い定常電流の 2 点で回す。
     methods: [kam, pca-sindy, ae-sindy]
     groupings: [h+n_a+c]
     train: { duration: 1000 }
