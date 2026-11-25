@@ -14,7 +14,7 @@
     },
     {
       "name": "neuro2026",
-      "description": "NEURO2026 で発表した形を今の研究コードで回し直す決め打ちの実験"
+      "description": "NEURO2026 で発表した形を今の研究コードで回し直す実験群"
     }
   ],
   "experiments": [
@@ -2618,9 +2618,6 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "value",
           "values": [
             0,
@@ -2628,6 +2625,9 @@
             5,
             7.5,
             10
+          ],
+          "replace_targets": [
+            "soma"
           ]
         }
       },
@@ -3082,12 +3082,6 @@
         }
       ],
       "benches": [],
-      "gates": [
-        "h",
-        "n",
-        "a",
-        "c"
-      ],
       "group": "1comp"
     },
     {
@@ -3259,9 +3253,6 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "value",
           "values": [
             0,
@@ -3269,6 +3260,9 @@
             5,
             7.5,
             10
+          ],
+          "replace_targets": [
+            "soma"
           ]
         },
         "traub-1comp-kistler": {
@@ -3284,15 +3278,15 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "sigma",
           "values": [
             10,
             15,
             20,
             30
+          ],
+          "replace_targets": [
+            "soma"
           ]
         }
       },
@@ -3344,13 +3338,13 @@
         "h+n_a+c"
       ],
       "methods": [
-        "kam-test",
-        "pca-sindy-test",
-        "ae-sindy-test"
+        "kam",
+        "pca-sindy",
+        "ae-sindy"
       ],
       "models": [
         {
-          "name": "kam-test.h+n_a+c",
+          "name": "kam.h+n_a+c",
           "config": {
             "cell": "traub",
             "form": "hybrid",
@@ -3388,11 +3382,11 @@
             ],
             "train_comp": null
           },
-          "method": "kam-test",
+          "method": "kam",
           "grouping": "h+n_a+c"
         },
         {
-          "name": "pca-sindy-test.h+n_a+c",
+          "name": "pca-sindy.h+n_a+c",
           "config": {
             "cell": "traub",
             "form": "hybrid",
@@ -3466,11 +3460,11 @@
             ],
             "train_comp": null
           },
-          "method": "pca-sindy-test",
+          "method": "pca-sindy",
           "grouping": "h+n_a+c"
         },
         {
-          "name": "ae-sindy-test.h+n_a+c",
+          "name": "ae-sindy.h+n_a+c",
           "config": {
             "cell": "traub",
             "form": "hybrid",
@@ -3544,7 +3538,7 @@
             ],
             "train_comp": null
           },
-          "method": "ae-sindy-test",
+          "method": "ae-sindy",
           "grouping": "h+n_a+c"
         }
       ],
@@ -3575,39 +3569,39 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "value",
           "values": [
             0,
             10
+          ],
+          "replace_targets": [
+            "soma"
           ]
         }
       },
       "pairs": [
         {
-          "model": "kam-test.h+n_a+c",
+          "model": "kam.h+n_a+c",
           "series": "traub-train-duration-1000"
         },
         {
-          "model": "pca-sindy-test.h+n_a+c",
+          "model": "pca-sindy.h+n_a+c",
           "series": "traub-train-duration-1000"
         },
         {
-          "model": "ae-sindy-test.h+n_a+c",
+          "model": "ae-sindy.h+n_a+c",
           "series": "traub-train-duration-1000"
         },
         {
-          "model": "kam-test.h+n_a+c",
+          "model": "kam.h+n_a+c",
           "series": "traub-1comp-steady-test"
         },
         {
-          "model": "pca-sindy-test.h+n_a+c",
+          "model": "pca-sindy.h+n_a+c",
           "series": "traub-1comp-steady-test"
         },
         {
-          "model": "ae-sindy-test.h+n_a+c",
+          "model": "ae-sindy.h+n_a+c",
           "series": "traub-1comp-steady-test"
         }
       ],
@@ -3902,7 +3896,7 @@
             "soma"
           ]
         },
-        "traub-19comp-steady-replace-soma": {
+        "traub-19comp-steady@soma": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -3913,9 +3907,6 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "value",
           "values": [
             0,
@@ -3923,9 +3914,12 @@
             5,
             7.5,
             10
+          ],
+          "replace_targets": [
+            "soma"
           ]
         },
-        "traub-19comp-steady-replace-na-dr": {
+        "traub-19comp-steady@na-dr": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -3936,20 +3930,20 @@
             },
             "stim": "soma"
           },
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ],
           "replace_targets": [
             "c05",
             "c07",
             "soma",
             "c09",
             "c11"
-          ],
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
           ]
         }
       },
@@ -3980,51 +3974,51 @@
         },
         {
           "model": "kam.h+n",
-          "series": "traub-19comp-steady-replace-soma"
+          "series": "traub-19comp-steady@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-19comp-steady-replace-na-dr"
+          "series": "traub-19comp-steady@na-dr"
         },
         {
           "model": "kam.a+c",
-          "series": "traub-19comp-steady-replace-soma"
+          "series": "traub-19comp-steady@soma"
         },
         {
           "model": "kam.a+c",
-          "series": "traub-19comp-steady-replace-na-dr"
+          "series": "traub-19comp-steady@na-dr"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady-replace-soma"
+          "series": "traub-19comp-steady@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady-replace-na-dr"
+          "series": "traub-19comp-steady@na-dr"
         },
         {
           "model": "pca-sindy.a+c",
-          "series": "traub-19comp-steady-replace-soma"
+          "series": "traub-19comp-steady@soma"
         },
         {
           "model": "pca-sindy.a+c",
-          "series": "traub-19comp-steady-replace-na-dr"
+          "series": "traub-19comp-steady@na-dr"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-19comp-steady-replace-soma"
+          "series": "traub-19comp-steady@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-19comp-steady-replace-na-dr"
+          "series": "traub-19comp-steady@na-dr"
         },
         {
           "model": "ae-sindy.a+c",
-          "series": "traub-19comp-steady-replace-soma"
+          "series": "traub-19comp-steady@soma"
         },
         {
           "model": "ae-sindy.a+c",
-          "series": "traub-19comp-steady-replace-na-dr"
+          "series": "traub-19comp-steady@na-dr"
         }
       ],
       "benches": [],
@@ -4037,13 +4031,13 @@
         "h+n"
       ],
       "methods": [
-        "kam-test",
-        "pca-sindy-test",
-        "ae-sindy-test"
+        "kam",
+        "pca-sindy",
+        "ae-sindy"
       ],
       "models": [
         {
-          "name": "kam-test.h+n",
+          "name": "kam.h+n",
           "config": {
             "cell": "traub",
             "form": "hybrid",
@@ -4070,11 +4064,11 @@
             ],
             "train_comp": null
           },
-          "method": "kam-test",
+          "method": "kam",
           "grouping": "h+n"
         },
         {
-          "name": "pca-sindy-test.h+n",
+          "name": "pca-sindy.h+n",
           "config": {
             "cell": "traub",
             "form": "hybrid",
@@ -4119,11 +4113,11 @@
             ],
             "train_comp": null
           },
-          "method": "pca-sindy-test",
+          "method": "pca-sindy",
           "grouping": "h+n"
         },
         {
-          "name": "ae-sindy-test.h+n",
+          "name": "ae-sindy.h+n",
           "config": {
             "cell": "traub",
             "form": "hybrid",
@@ -4168,7 +4162,7 @@
             ],
             "train_comp": null
           },
-          "method": "ae-sindy-test",
+          "method": "ae-sindy",
           "grouping": "h+n"
         }
       ],
@@ -4188,7 +4182,7 @@
             "soma"
           ]
         },
-        "traub-19comp-steady-replace-soma-test": {
+        "traub-19comp-steady-test": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -4199,40 +4193,40 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "value",
           "values": [
             0,
             10
+          ],
+          "replace_targets": [
+            "soma"
           ]
         }
       },
       "pairs": [
         {
-          "model": "kam-test.h+n",
+          "model": "kam.h+n",
           "series": "traub-train-duration-1000"
         },
         {
-          "model": "pca-sindy-test.h+n",
+          "model": "pca-sindy.h+n",
           "series": "traub-train-duration-1000"
         },
         {
-          "model": "ae-sindy-test.h+n",
+          "model": "ae-sindy.h+n",
           "series": "traub-train-duration-1000"
         },
         {
-          "model": "kam-test.h+n",
-          "series": "traub-19comp-steady-replace-soma-test"
+          "model": "kam.h+n",
+          "series": "traub-19comp-steady-test"
         },
         {
-          "model": "pca-sindy-test.h+n",
-          "series": "traub-19comp-steady-replace-soma-test"
+          "model": "pca-sindy.h+n",
+          "series": "traub-19comp-steady-test"
         },
         {
-          "model": "ae-sindy-test.h+n",
-          "series": "traub-19comp-steady-replace-soma-test"
+          "model": "ae-sindy.h+n",
+          "series": "traub-19comp-steady-test"
         }
       ],
       "benches": [],
@@ -4357,9 +4351,6 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "value",
           "values": [
             0,
@@ -4367,9 +4358,12 @@
             5,
             7.5,
             10
+          ],
+          "replace_targets": [
+            "soma"
           ]
         },
-        "traub-19comp-steady-replace-soma": {
+        "traub-19comp-steady@soma": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -4380,9 +4374,6 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "value",
           "values": [
             0,
@@ -4390,9 +4381,12 @@
             5,
             7.5,
             10
+          ],
+          "replace_targets": [
+            "soma"
           ]
         },
-        "traub-19comp-steady-replace-na-dr": {
+        "traub-19comp-steady@na-dr": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -4403,20 +4397,20 @@
             },
             "stim": "soma"
           },
+          "param": "value",
+          "values": [
+            0,
+            2.5,
+            5,
+            7.5,
+            10
+          ],
           "replace_targets": [
             "c05",
             "c07",
             "soma",
             "c09",
             "c11"
-          ],
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
           ]
         }
       },
@@ -4435,11 +4429,11 @@
         },
         {
           "model": "kam.h+n",
-          "series": "traub-19comp-steady-replace-soma"
+          "series": "traub-19comp-steady@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-19comp-steady-replace-na-dr"
+          "series": "traub-19comp-steady@na-dr"
         },
         {
           "model": "pca-sindy.h+n",
@@ -4447,11 +4441,11 @@
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady-replace-soma"
+          "series": "traub-19comp-steady@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady-replace-na-dr"
+          "series": "traub-19comp-steady@na-dr"
         }
       ],
       "benches": [
@@ -4486,9 +4480,9 @@
           "ncu": true
         },
         {
-          "name": "original@traub-19comp-steady-replace-soma",
+          "name": "original@traub-19comp-steady@soma",
           "model": null,
-          "series": "traub-19comp-steady-replace-soma",
+          "series": "traub-19comp-steady@soma",
           "cells": [
             1024,
             1048576
@@ -4496,9 +4490,9 @@
           "ncu": true
         },
         {
-          "name": "kam.h+n@traub-19comp-steady-replace-soma",
+          "name": "kam.h+n@traub-19comp-steady@soma",
           "model": "kam.h+n",
-          "series": "traub-19comp-steady-replace-soma",
+          "series": "traub-19comp-steady@soma",
           "cells": [
             1024,
             1048576
@@ -4506,9 +4500,9 @@
           "ncu": true
         },
         {
-          "name": "pca-sindy.h+n@traub-19comp-steady-replace-soma",
+          "name": "pca-sindy.h+n@traub-19comp-steady@soma",
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady-replace-soma",
+          "series": "traub-19comp-steady@soma",
           "cells": [
             1024,
             1048576
@@ -4516,9 +4510,9 @@
           "ncu": true
         },
         {
-          "name": "original@traub-19comp-steady-replace-na-dr",
+          "name": "original@traub-19comp-steady@na-dr",
           "model": null,
-          "series": "traub-19comp-steady-replace-na-dr",
+          "series": "traub-19comp-steady@na-dr",
           "cells": [
             1024,
             1048576
@@ -4526,9 +4520,9 @@
           "ncu": true
         },
         {
-          "name": "kam.h+n@traub-19comp-steady-replace-na-dr",
+          "name": "kam.h+n@traub-19comp-steady@na-dr",
           "model": "kam.h+n",
-          "series": "traub-19comp-steady-replace-na-dr",
+          "series": "traub-19comp-steady@na-dr",
           "cells": [
             1024,
             1048576
@@ -4536,9 +4530,9 @@
           "ncu": true
         },
         {
-          "name": "pca-sindy.h+n@traub-19comp-steady-replace-na-dr",
+          "name": "pca-sindy.h+n@traub-19comp-steady@na-dr",
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady-replace-na-dr",
+          "series": "traub-19comp-steady@na-dr",
           "cells": [
             1024,
             1048576
@@ -4555,11 +4549,11 @@
         "h+n"
       ],
       "methods": [
-        "kam-test"
+        "kam"
       ],
       "models": [
         {
-          "name": "kam-test.h+n",
+          "name": "kam.h+n",
           "config": {
             "cell": "traub",
             "form": "hybrid",
@@ -4586,7 +4580,7 @@
             ],
             "train_comp": null
           },
-          "method": "kam-test",
+          "method": "kam",
           "grouping": "h+n"
         }
       ],
@@ -4617,23 +4611,23 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "value",
           "values": [
             0,
             10
+          ],
+          "replace_targets": [
+            "soma"
           ]
         }
       },
       "pairs": [
         {
-          "model": "kam-test.h+n",
+          "model": "kam.h+n",
           "series": "traub-train-duration-1000"
         },
         {
-          "model": "kam-test.h+n",
+          "model": "kam.h+n",
           "series": "traub-1comp-steady-test"
         }
       ],
@@ -4648,8 +4642,8 @@
           "ncu": true
         },
         {
-          "name": "kam-test.h+n@traub-1comp-steady-test",
-          "model": "kam-test.h+n",
+          "name": "kam.h+n@traub-1comp-steady-test",
+          "model": "kam.h+n",
           "series": "traub-1comp-steady-test",
           "cells": [
             1024
@@ -4671,8 +4665,6 @@
       "models": [
         {
           "name": "ae-latent5-sindy.m+h+n+a+b+c",
-          "method": "ae-latent5-sindy",
-          "grouping": "m+h+n+a+b+c",
           "config": {
             "cell": "traub",
             "form": "hybrid",
@@ -4720,7 +4712,9 @@
               }
             ],
             "train_comp": null
-          }
+          },
+          "method": "ae-latent5-sindy",
+          "grouping": "m+h+n+a+b+c"
         }
       ],
       "series": {
@@ -4739,7 +4733,7 @@
             "soma"
           ]
         },
-        "traub-19comp-steady-replace-soma": {
+        "traub-19comp-steady": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -4750,9 +4744,6 @@
             },
             "stim": "soma"
           },
-          "replace_targets": [
-            "soma"
-          ],
           "param": "value",
           "values": [
             0,
@@ -4760,6 +4751,9 @@
             5,
             7.5,
             10
+          ],
+          "replace_targets": [
+            "soma"
           ]
         }
       },
@@ -4770,7 +4764,7 @@
         },
         {
           "model": "ae-latent5-sindy.m+h+n+a+b+c",
-          "series": "traub-19comp-steady-replace-soma"
+          "series": "traub-19comp-steady"
         }
       ],
       "benches": [],

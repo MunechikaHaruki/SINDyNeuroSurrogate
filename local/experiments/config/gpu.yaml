@@ -1,23 +1,24 @@
 ---
 description: 元のモデルと縮約を GPU に並べ、VRAM とレジスタを測る実験群
 ---
-# どの run にも共通の設定。run に書いた欄だけが置き換わる。形は ../experiments/schema.ts。
-# benches は GPU で測る系列。その系列で元のモデルと run のモデルを全部測る。
-setup:
-  methods: [ kam, pca-sindy ]
-  groupings: [ h+n ]
-  cells: [ 1024, 1048576 ]
+# 一段目（presets.json の base と部品）の上に、この群の基準 base を重ねる。実験は vary に挙げた欄だけを書き換える。欄の形は ../schema/schema.ts の PARAMS。
+# benches は GPU で測る系列。その系列で元のモデルと実験のモデルを全部測る。
+base:
+  methods: [kam, pca-sindy]
+  groupings: [h+n]
+  cells: [1024, 1048576]
   ncu: true
+vary: [methods, train, series, benches, cells]
 runs:
   gpu-memory:
     description: 単一区画と 19 区画の Traub を、元のモデル・h+n の KAM・h+n の PCA と SINDy のサロゲート（19 区画では soma だけ、または Na と DR を持つ 5 区画を置き換える）で、細胞を並べ、刻みごとに全細胞をそろえて GPU で回す。1 スレッドが 1 区画を持つ。刻みをまたいで持ち越す状態（V、潜在 z、縮約しなかったゲート）は VRAM に置いて毎刻み読み書きし、刻みの中だけで使う値（z から作り直すゲートなど）はキャッシュ（レジスタ）に置く。ncu で 1 刻みの VRAM の読み書きの量とレジスタの数、レジスタから溢れた分を測り、持ち越す状態の少なさが VRAM の量に現れるかをモデルごとに確かめる。
-    series: [ traub-1comp-steady, traub-19comp-steady-replace-soma, traub-19comp-steady-replace-na-dr ]
-    benches: [ traub-1comp-steady, traub-19comp-steady-replace-soma, traub-19comp-steady-replace-na-dr ]
+    series: [traub-1comp-steady, traub-19comp-steady@soma, traub-19comp-steady@na-dr]
+    benches: [traub-1comp-steady, traub-19comp-steady@soma, traub-19comp-steady@na-dr]
   test-gpu:
     description: テスト用。形式やコードを変えたらまず回す。h+n の KAM を短い学習データで学習し、単一区画の短い定常電流で元のモデルと並べて 1024 細胞を GPU で測る（ncu も）。
-    methods:
-      - { name: kam-test, from: kam, duration: 1000 }
-    cells: [ 1024 ]
+    methods: [kam]
+    train: { duration: 1000 }
+    cells: [1024]
     series:
-      - { name: traub-1comp-steady-test, from: traub-1comp-steady, duration: 100.0, sweep: { value: [ 0, 10 ] } }
-    benches: [ traub-1comp-steady-test ]
+      - { name: traub-1comp-steady-test, from: traub-1comp-steady, duration: 100.0, sweep: { value: [0, 10] } }
+    benches: [traub-1comp-steady-test]

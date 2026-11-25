@@ -1,29 +1,56 @@
-// 宣言の二つの書き方と、どちらからも組む解決済みの実験（Plan）。
-// 実験群の実験層（config/<群>.yaml）は frontmatter（description）の文書と、共通の設定 setup と回す run の並び runs の文書の二つ。run に書いた欄だけが setup を置き換え、プリセット（presets.ts）を名前か差分で指す。
-// 決め打ちの構成（組み合わせを展開しない実験）は、プリセットを通さず、学習の設定と系列を値のまま config/<実験>.json に書く（PlanJson）。
-// 返すのはモデルと系列を値で持つ解決済みの実験だけで、resolve.ts と画面は宣言の形を知らない。
+// 二段目の設定。実験群（config/<群>.yaml）は、frontmatter（description）の文書と、群の基準 base・群が動かす欄 vary・実験の並び runs の文書の二つ。
+// 書ける欄（設定のパラメタ）はここの PARAMS が持ち、一段目の部品（presets.ts）を名前か差分で指す。base は presets.json の base の上に重なる群の基準で、どの欄も書ける。
+// 実験は base から vary に挙げた欄だけを書き換える（群ごとのスキーマ。挙げていない欄を書くと投げる）。
+// 返すのはモデルと系列を値で持つ解決済みの実験（Plan）だけで、resolve.ts と画面は宣言の形を知らない。
 import { z } from 'zod';
-import type { SurrogateConfig } from '../../../shared/spec.ts';
-import { Ref, groupings, methodOf, modelFrom, parsed, seriesFrom, type ModelDecl, type Series } from './presets.ts';
+import {
+  BASE_REPLACE,
+  Ref,
+  Train,
+  groupings,
+  inputFrom,
+  methodOf,
+  modelFrom,
+  named,
+  parsed,
+  rangeOf,
+  type ModelDecl,
+  type Series,
+} from './presets.ts';
 
 /** 細胞の数。1 刻みのカーネルのブロック（128 細胞）の倍数。 */
 const Cells = z.array(z.number().int().positive().multipleOf(128)).nonempty();
 
-/** GPU の実測 1 つ。model はモデルの名前（null なら元のモデル）、cells は並べる細胞の数、ncu は Nsight Compute で 1 刻みのカーネルを測るか。 */
-const BenchValue = z.strictObject({
-  name: z.string(),
-  model: z.string().nullable(),
-  series: z.string(),
+/** 設定のパラメタ。実験の run は、ここの欄の値の組。
+ * methods は縮約の仕方、groupings は群分けの名前の並びか `{ all: ゲート }`（その全部の群分け）、train は学習の入力、
+ * series は評価の入力（`<入力>@<範囲>` と書けば置き換える範囲をその系列だけ決める）、replace は置き換える区画の範囲の名前の並び（入力ごとに範囲の数だけ系列ができる）、
+ * benches は GPU で測る系列の名前で、その系列で元のモデルと全部のモデルを細胞の数 cells で測る（ncu なら Nsight Compute で 1 刻みのカーネルも）。 */
+export const PARAMS = {
+  methods: z.array(Ref).nonempty(),
+  groupings: z.union([
+    z.array(z.string()).nonempty(),
+    z.strictObject({ all: z.array(z.string().length(1)).nonempty() }),
+  ]),
+  train: Train,
+  series: z.array(Ref).nonempty(),
+  replace: z.array(z.string()).nonempty(),
+  benches: z.array(z.string()).nonempty(),
   cells: Cells,
   ncu: z.boolean(),
-});
-export type Bench = z.infer<typeof BenchValue>;
+};
+export type Param = keyof typeof PARAMS;
+const PARAM_NAMES = Object.keys(PARAMS) as [Param, ...Param[]];
+/** 設定。どの欄も省ける（省いた欄は base か presets.json の base から）。 */
+export type Setting = { [K in Param]?: z.infer<(typeof PARAMS)[K]> };
+
+/** GPU の実測 1 つ。model はモデルの名前（null なら元のモデル）、cells は並べる細胞の数、ncu は Nsight Compute で 1 刻みのカーネルを測るか。 */
+export type Bench = { name: string; model: string | null; series: string; cells: number[]; ncu: boolean };
 
 /** モデル 1 つ。name は実験の中の名前（`<仕方の名前>.<群分け>`）、method と grouping は図が列を引く名前。 */
 export type Model = ModelDecl & { method: string; grouping: string };
 
 /** 解決済みの実験。description は何を回して何を見るかの一文（Markdown）。モデルと系列を値で持ち、pairs が回す組（モデルの名前 × 系列の名前）。
- * groupings と methods は画面が絞り込みに使う名前の並び。 */
+ * groupings と methods は画面が絞り込みに使う名前の並び。名前は実験の中で一意。 */
 export type Plan = {
   id: string;
   description: string;
@@ -34,173 +61,102 @@ export type Plan = {
   pairs: { model: string; series: string }[];
   /** GPU の実測。無ければ空。 */
   benches: Bench[];
-  /** 群分けを全部回すときの、群分けを組むゲート（画面が群分けの掃引の節を出す）。 */
-  gates?: string[];
 };
 
-/** 仕方の指し方。プリセットの名前か、名前を付けた差分 `{ name, from, ...差分 }`（name は表示と判定の列の名前）。 */
-export const MethodRef = z.union([z.string(), z.looseObject({ name: z.string(), from: z.string() })]);
-/** 系列の指し方。仕方と同じ。 */
-export const SeriesRef = MethodRef;
-
-/** setup と run が持てる欄。群分けは、ゲートの並び gates（全部の群分けを組む）か、群分けの名前 groupings のどちらか。
- * benches は GPU で測る系列で、その系列で元のモデルと run のモデルを全部、細胞の数 cells で測る（ncu なら Nsight Compute で 1 刻みのカーネルも）。 */
-const Fields = {
-  methods: z.array(MethodRef).nonempty().optional(),
-  gates: z.array(z.string().length(1)).nonempty().optional(),
-  groupings: z.array(z.string()).nonempty().optional(),
-  series: z.array(SeriesRef).nonempty().optional(),
-  benches: z.array(z.string()).nonempty().optional(),
-  cells: Cells.optional(),
-  ncu: z.boolean().optional(),
-};
-
-/** 実験層の二つの文書。frontmatter は実験群の道案内の一文だけ。 */
+/** 実験群の二つの文書の外形。runs の中身は vary が決める群のスキーマで後から当てる。 */
 const GroupDocument = z.tuple([
   z.strictObject({ description: z.string().min(1) }),
   z.strictObject({
-    setup: z.strictObject(Fields),
-    runs: z
-      .record(z.string(), z.strictObject({ description: z.string().min(1), ...Fields }))
-      .refine(runs => Object.keys(runs).length > 0, 'runs が空'),
+    base: z.strictObject(PARAMS).partial(),
+    vary: z.array(z.enum(PARAM_NAMES)).refine(v => new Set(v).size === v.length, 'vary に同じ欄が二度ある'),
+    runs: z.record(z.string(), z.unknown()).refine(runs => Object.keys(runs).length > 0, 'runs が空'),
   }),
 ]);
 
-/** 指し方の名前と、presets.ts に渡す指し方。 */
-function named(ref: z.infer<typeof MethodRef>): { name: string; ref: Ref } {
-  if (typeof ref === 'string') return { name: ref, ref };
-  const { name, ...rest } = ref;
-  return { name, ref: rest as Ref };
+/** 実験群のスキーマ。実験は説明と、vary に挙げた欄だけを書ける。 */
+function runSchema(vary: Param[]) {
+  const fields: Partial<Record<Param, z.ZodType>> = {};
+  for (const key of vary) fields[key] = PARAMS[key].optional();
+  return z.strictObject({ description: z.string().min(1), ...fields });
 }
 
-type Run = { description: string } & { [K in keyof typeof Fields]?: z.infer<(typeof Fields)[K]> };
-
-/** run に setup を重ねる。run が群分け（gates か groupings）を書いたら、setup の群分けは使わない。 */
-function merged(setup: Omit<Run, 'description'>, run: Run): Run {
-  const base = run.gates || run.groupings ? { ...setup, gates: undefined, groupings: undefined } : setup;
-  return { ...base, ...Object.fromEntries(Object.entries(run).filter(([, v]) => v !== undefined)) } as Run;
+/** 系列の指し方を、置き換える範囲ごとの系列にする。`<入力>@<範囲>` はその範囲だけ。範囲が一つなら名前は書いたまま、二つ以上なら `<名前>@<範囲>`。 */
+function seriesOf(ref: z.infer<typeof Ref>, replace: string[]): [string, Series][] {
+  const { name, from, diff } = named(ref);
+  const parts = from.split('@');
+  if (parts.length > 2 || name.split('@').length > 2) throw new Error(`系列 ${name} の @ は入力と範囲の間の一つだけ`);
+  const [input, pinned] = parts;
+  const value = inputFrom(input, diff);
+  if (pinned !== undefined) return [[name, { ...value, replace_targets: rangeOf(pinned) }]];
+  if (replace.length === 1) return [[name, { ...value, replace_targets: rangeOf(replace[0]) }]];
+  return replace.map(range => [`${name}@${range}`, { ...value, replace_targets: rangeOf(range) }]);
 }
 
-/** 解決済みの実験を組む。回す組は 仕方 × 群分け × 系列 の直積。 */
-export function build(where: string, id: string, run: Run): Plan {
-  if (!run.methods) throw new Error(`${where}：仕方 methods が無い（setup か run に書く）`);
-  if (!run.series) throw new Error(`${where}：系列 series が無い（setup か run に書く）`);
-  if (!!run.gates === !!run.groupings) throw new Error(`${where}：群分けは gates か groupings のどちらか一つを書く`);
-  const groupingList = run.gates ? groupings(run.gates) : run.groupings!;
+/** 解決済みの実験を組む。回す組は 仕方 × 群分け × 系列 の直積で、学習の入力は全部のモデルで同じ。 */
+export function build(where: string, id: string, description: string, setting: Setting): Plan {
+  const { methods, groupings: grouping, series: refs } = setting;
+  if (!methods) throw new Error(`${where}：仕方 methods が無い（base か run に書く）`);
+  if (!grouping) throw new Error(`${where}：群分け groupings が無い（base か run に書く）`);
+  if (!refs) throw new Error(`${where}：系列 series が無い（base か run に書く）`);
+  const groupingList = Array.isArray(grouping) ? grouping : groupings(grouping.all);
+  const replace = setting.replace ?? BASE_REPLACE;
+  replace.forEach(rangeOf);
   const series: Record<string, Series> = {};
-  for (const s of run.series) {
-    const { name, ref } = named(s);
-    series[name] = seriesFrom(ref);
-  }
-  const models: Model[] = [];
-  for (const m of run.methods) {
-    const { name, ref } = named(m);
-    const declared = methodOf(ref);
-    for (const grouping of groupingList) {
-      const model = `${name}.${grouping}`;
-      models.push({ ...modelFrom(model, declared, grouping), method: name, grouping });
+  for (const ref of refs)
+    for (const [name, value] of seriesOf(ref, replace)) {
+      if (series[name]) throw new Error(`${where}：系列の名前 ${name} が二つある`);
+      series[name] = value;
     }
+  const models: Model[] = [];
+  for (const ref of methods) {
+    const { name, from, diff } = named(ref);
+    const method = methodOf(from, diff);
+    for (const g of groupingList)
+      models.push({ ...modelFrom(`${name}.${g}`, method, g, setting.train), method: name, grouping: g });
   }
+  if (new Set(models.map(m => m.name)).size !== models.length) throw new Error(`${where}：モデルの名前が重なる`);
   const pairs = models.flatMap(m => Object.keys(series).map(s => ({ model: m.name, series: s })));
   const benches: Bench[] = [];
-  for (const s of run.benches ?? []) {
-    if (!series[s]) throw new Error(`${where}：GPU の実測の系列 ${s} を run が回さない`);
-    if (!run.cells) throw new Error(`${where}：GPU の実測の細胞の数 cells が無い`);
+  for (const s of setting.benches ?? []) {
+    if (!series[s]) throw new Error(`${where}：GPU の実測の系列 ${s} を回さない（${Object.keys(series).join(', ')}）`);
+    if (!setting.cells) throw new Error(`${where}：GPU の実測の細胞の数 cells が無い`);
     for (const model of [null, ...models.map(m => m.name)])
-      benches.push({ name: `${model ?? 'original'}@${s}`, model, series: s, cells: run.cells, ncu: run.ncu ?? false });
+      benches.push({
+        name: `${model ?? 'original'}@${s}`,
+        model,
+        series: s,
+        cells: setting.cells,
+        ncu: setting.ncu ?? false,
+      });
   }
   return {
     id,
-    description: run.description,
+    description,
     groupings: groupingList,
-    methods: run.methods.map(m => named(m).name),
+    methods: methods.map(m => named(m).name),
     models,
     series,
     pairs,
     benches,
-    ...(run.gates ? { gates: run.gates } : {}),
   };
 }
 
-/** 実験群 1 つを解決済みの実験にする。doc は実験層の YAML を読んだ二つの文書。 */
+/** 実験群 1 つを解決済みの実験にする。doc は実験群の YAML を読んだ二つの文書。実験は群の基準に、書いた欄だけを丸ごと重ねる（学習の入力 train だけは欄ごとに混ぜる）。 */
 export function groupPlans(name: string, doc: unknown): { description: string; plans: Plan[] } {
   const where = `config/${name}.yaml`;
   const [front, body] = parsed(GroupDocument, where, doc);
-  const plans = Object.entries(body.runs).map(([id, run]) => build(`${where} の ${id}`, id, merged(body.setup, run)));
+  const schema = runSchema(body.vary);
+  const plans = Object.entries(body.runs).map(([id, value]) => {
+    const at = `${where} の ${id}`;
+    const { description, ...run } = parsed(
+      schema,
+      `${at}（書けるのは description と vary の ${body.vary.join('・') || 'なし'}）`,
+      value,
+    ) as {
+      description: string;
+    } & Setting;
+    const train = body.base.train || run.train ? { ...body.base.train, ...run.train } : undefined;
+    return build(at, id, description, { ...body.base, ...run, ...(train ? { train } : {}) });
+  });
   return { description: front.description, plans };
-}
-
-// ---- 決め打ちの実験（config/<実験>.json）
-
-const SimSpec = z.strictObject({
-  target: z.string(),
-  current_type: z.string(),
-  dt: z.number(),
-  current_params: z.record(z.string(), z.number()),
-  stim: z.string().optional(),
-});
-
-const Group = z.strictObject({
-  gates: z.array(z.string()).nonempty(),
-  compressor: z.enum(['pca', 'ae', 'kam']),
-  d: z.number().int().positive(),
-  rhs: z.enum(['sindy', 'ude', 'kam']),
-  compressor_params: z.record(z.string(), z.unknown()),
-  rhs_params: z.looseObject({
-    library_specs: z.array(z.strictObject({ type: z.string(), gates: z.string().optional() })).optional(),
-  }),
-});
-
-/** 学習の設定（../../shared/spec.ts の SurrogateConfig）。 */
-export const Config = z.strictObject({
-  cell: z.string(),
-  form: z.enum(['hybrid', 'sindy']),
-  data: SimSpec,
-  groups: z.array(Group).nonempty(),
-  train_comp: z.string().nullable(),
-  absorbed: z.array(z.string()).optional(),
-});
-
-/** 評価の系列（presets.ts の Series）。 */
-export const SeriesValue = z.strictObject({
-  spec: SimSpec.required({ stim: true }),
-  replace_targets: z.array(z.string()).nonempty(),
-  param: z.string().nullable(),
-  values: z.array(z.number()),
-});
-
-/** 解決済みの実験。モデルは名前・仕方と群分けの名前（図と判定が列を引く）・設定、系列は名前 → 値。回す組 pairs はモデル × 系列の名前。 */
-export const PlanJson = z.strictObject({
-  description: z.string().min(1),
-  models: z
-    .array(z.strictObject({ name: z.string(), method: z.string(), grouping: z.string(), config: Config }))
-    .nonempty(),
-  series: z.record(z.string(), SeriesValue),
-  pairs: z.array(z.strictObject({ model: z.string(), series: z.string() })),
-  benches: z.array(BenchValue),
-});
-export type PlanJson = z.infer<typeof PlanJson>;
-
-/** 決め打ちの実験の JSON を形に当て、名前の参照を確かめて実験にする。誤りはどこの何かが分かる一文にする。 */
-export function fromJson(id: string, where: string, value: unknown): Plan {
-  const p = parsed(PlanJson, where, value);
-  const models = new Set(p.models.map(m => m.name));
-  for (const pair of p.pairs) {
-    if (!models.has(pair.model)) throw new Error(`${where}：組のモデル ${pair.model} が models に無い`);
-    if (!p.series[pair.series]) throw new Error(`${where}：組の系列 ${pair.series} が series に無い`);
-  }
-  for (const b of p.benches) {
-    if (b.model !== null && !models.has(b.model)) throw new Error(`${where}：GPU の実測 ${b.name} のモデルが無い`);
-    if (!p.series[b.series]) throw new Error(`${where}：GPU の実測 ${b.name} の系列が無い`);
-  }
-  return {
-    id,
-    description: p.description,
-    groupings: [...new Set(p.models.map(m => m.grouping))],
-    methods: [...new Set(p.models.map(m => m.method))],
-    models: p.models.map(m => ({ ...m, config: m.config as SurrogateConfig })),
-    series: p.series as Record<string, Series>,
-    pairs: p.pairs,
-    benches: p.benches,
-  };
 }

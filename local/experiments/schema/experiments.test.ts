@@ -11,9 +11,8 @@ test('descriptions carry no measured numbers', () => {
     expect(e.description, `実験 ${e.id} の説明に測った数値がある（結果は図と表が出す）`).not.toMatch(MEASURED);
 });
 
-test('an experiment runs the product of its methods, groupings and series, and a method can override its preset', () => {
-  const plan = build('test', 't', {
-    description: 'test',
+test('an experiment runs the product of its methods, groupings and series, and a method can be a named diff of a part', () => {
+  const plan = build('test', 't', 'test', {
     groupings: ['h+n', 'a+c'],
     methods: ['kam', { name: 'pca2', from: 'pca-sindy', d: 2 }],
     series: ['traub-1comp-steady'],
@@ -40,19 +39,81 @@ test('a sweep spans every grouping of its gates', () => {
   expect(names[names.length - 1]).toBe('h+n+a+c');
 });
 
-test('a run takes the setup and replaces only the fields it writes, groupings as a whole', () => {
-  const doc = [
+test('a run takes the group base and may replace only the fields the group varies', () => {
+  const doc = (vary: string[], run: Record<string, unknown>) => [
     { description: 'test' },
     {
-      setup: { methods: ['kam'], gates: ['h', 'n'], series: ['traub-1comp-steady'] },
-      runs: {
-        all: { description: 'all' },
-        one: { description: 'one', groupings: ['h+n'], series: ['traub-1comp-kistler'] },
-      },
+      base: { methods: ['kam'], groupings: { all: ['h', 'n'] }, series: ['traub-1comp-steady'] },
+      vary,
+      runs: { base: { description: 'base' }, run: { description: 'run', ...run } },
     },
   ];
-  const [all, one] = groupPlans('t', doc).plans;
-  expect([all.groupings, all.gates, Object.keys(all.series)]).toEqual([['h+n'], ['h', 'n'], ['traub-1comp-steady']]);
-  expect([one.groupings, one.gates, Object.keys(one.series)]).toEqual([['h+n'], undefined, ['traub-1comp-kistler']]);
-  expect(() => groupPlans('t', [{ description: 'x', extra: 1 }, doc[1]])).toThrow();
+  const [base, one] = groupPlans(
+    't',
+    doc(['groupings', 'series'], { groupings: ['h+n'], series: ['traub-1comp-kistler'] }),
+  ).plans;
+  expect([base.groupings, Object.keys(base.series)]).toEqual([['h+n'], ['traub-1comp-steady']]);
+  expect([one.groupings, Object.keys(one.series)]).toEqual([['h+n'], ['traub-1comp-kistler']]);
+  expect(() => groupPlans('t', doc(['series'], { groupings: ['h+n'] }))).toThrow(/groupings/);
+  expect(() => groupPlans('t', doc(['nothing'], {}))).toThrow();
+  expect(() => groupPlans('t', [{ description: 'x', extra: 1 }, doc([], {})[1]])).toThrow();
+  const old = doc([], {});
+  expect(() => groupPlans('t', [old[0], { ...old[1], setup: {} }])).toThrow();
+});
+
+test('a run merges its training input field by field over the group base', () => {
+  const [plan] = groupPlans('t', [
+    { description: 'test' },
+    {
+      base: {
+        methods: ['kam'],
+        groupings: ['h+n'],
+        series: ['traub-1comp-steady'],
+        train: { target: 'traub19', duration: 1000 },
+      },
+      vary: ['train'],
+      runs: { seeded: { description: 'seeded', train: { seed: 1 } } },
+    },
+  ]).plans;
+  expect(plan.models[0].config.data).toMatchObject({ target: 'traub19', current_params: { duration: 1000, seed: 1 } });
+});
+
+test('the training input is a setting of its own, shared by every model of a run', () => {
+  const plan = build('test', 't', 'test', {
+    methods: ['kam', 'pca-sindy'],
+    groupings: ['h+n'],
+    series: ['traub-1comp-steady'],
+    train: { duration: 1000, seed: 3 },
+  });
+  expect(plan.models.map(m => m.config.data)).toEqual(
+    Array(2).fill({ target: 'traub', current_type: 'train', dt: 0.01, current_params: { duration: 1000, seed: 3 } }),
+  );
+  const nineteen = build('test', 't', 'test', {
+    methods: ['kam'],
+    groupings: ['h+n'],
+    series: ['traub-1comp-steady'],
+    train: { target: 'traub19' },
+  });
+  expect(nineteen.models[0].config.data.target).toBe('traub19');
+  expect(nineteen.models[0].config.data.current_params).toEqual({ duration: 9000 });
+});
+
+test('an input is laid over each replacement range, unless a series pins its range with @', () => {
+  const plan = build('test', 't', 'test', {
+    methods: ['kam'],
+    groupings: ['h+n'],
+    series: ['traub-19comp-steady', 'traub-1comp-steady@soma'],
+    replace: ['soma', 'na-dr'],
+  });
+  expect(Object.entries(plan.series).map(([name, s]) => [name, s.replace_targets.length])).toEqual([
+    ['traub-19comp-steady@soma', 1],
+    ['traub-19comp-steady@na-dr', 5],
+    ['traub-1comp-steady@soma', 1],
+  ]);
+  expect(plan.series['traub-19comp-steady@soma'].spec).toEqual(plan.series['traub-19comp-steady@na-dr'].spec);
+  const single = build('test', 't', 'test', { methods: ['kam'], groupings: ['h+n'], series: ['traub-1comp-steady'] });
+  expect(Object.keys(single.series)).toEqual(['traub-1comp-steady']);
+  expect(() =>
+    build('test', 't', 'test', { methods: ['kam'], groupings: ['h+n'], series: ['traub-1comp-steady@nowhere'] }),
+  ).toThrow();
 });

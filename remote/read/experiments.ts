@@ -112,7 +112,14 @@ function setupOf(plan: PlanEntry, window: number): SetupRow[] {
     const g = config?.groups[0];
     const parts = g ? [`圧縮 ${g.compressor}`, `右辺 ${g.rhs}`, `潜在 ${g.d}`] : [];
     if (config?.absorbed?.length) parts.push(`膜電位へ吸収 ${config.absorbed.join('・')}`);
-    if (config) parts.push(`学習 ${config.data.target}`);
+    if (config) {
+      const { duration, ...rest } = config.data.current_params;
+      parts.push(
+        `学習 ${config.data.target}・${duration} ms${Object.entries(rest)
+          .map(([k, v]) => `・${k} ${v}`)
+          .join('')}`,
+      );
+    }
     return { name: method, value: parts.join('・') };
   });
   const inputs = series.map(([name, s]) => {

@@ -10,16 +10,8 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MEASURES, METHOD_NAMES, TESTS, trainSeries, type ModelDecl, type Series } from './experiments/schema/presets.ts';
-import {
-  EXPERIMENTS,
-  GROUPS,
-  MODELS,
-  SERIES,
-  modelOf,
-  seriesOf,
-  type GroupedPlan,
-} from './experiments/schema/experiments.ts';
+import { MEASURES, PART_NAMES, TESTS, trainSeries, type ModelDecl, type Series } from './experiments/schema/presets.ts';
+import { EXPERIMENTS, GROUPS, type GroupedPlan } from './experiments/schema/experiments.ts';
 import { hashOf, inputKey } from '../shared/hash.ts';
 import { FORMATS, type Device, type Group, type Input, type Plans, type Spec } from '../shared/spec.ts';
 import type { Bench } from './experiments/schema/schema.ts';
@@ -123,7 +115,11 @@ export function resolved(plan: GroupedPlan): Record<string, Spec> {
       throw new Error(`resolved/${path} に違う中身の spec が二つ来た`);
     files[path] = spec;
   };
-  const modelHash = (model: string) => hashOf(modelSpec(modelOf(model)));
+  const modelHash = (name: string) => {
+    const model = plan.models.find(m => m.name === name);
+    if (!model) throw new Error(`${plan.id} にモデル ${name} が無い`);
+    return hashOf(modelSpec(model));
+  };
   for (const m of plan.models) {
     if (!kamModel(m))
       for (const group of m.config.groups) put(`${plan.id}/parts/${partName(group)}.json`, partSpec(m, group));
@@ -134,7 +130,7 @@ export function resolved(plan: GroupedPlan): Record<string, Spec> {
     files[`${plan.id}/sim/${p.series}/${p.model}.json`] = simSpec(plan.series[p.series], modelHash(p.model));
   for (const b of plan.benches)
     files[`${plan.id}/bench/${b.name}.json`] = benchSpec(
-      seriesOf(b.series),
+      plan.series[b.series],
       b.model === null ? null : modelHash(b.model),
       b,
     );
@@ -203,7 +199,16 @@ function main([name]: string[]): void {
     process.exitCode = 1;
   } else
     console.log(
-      `仕方のプリセット: ${METHOD_NAMES.join(' ')}\nモデル: ${Object.keys(MODELS).join(' ')}\nテスト: ${Object.keys(TESTS).join(' ')}\n系列: ${Object.keys(SERIES).join(' ')}`,
+      [
+        `仕方: ${PART_NAMES.methods.join(' ')}`,
+        `入力: ${PART_NAMES.inputs.join(' ')}`,
+        `置き換える範囲: ${PART_NAMES.ranges.join(' ')}`,
+        `テスト: ${Object.keys(TESTS).join(' ')}`,
+        ...EXPERIMENTS.map(
+          e =>
+            `${e.group} の ${e.id}: モデル ${e.models.map(m => m.name).join(' ')}／系列 ${Object.keys(e.series).join(' ')}`,
+        ),
+      ].join('\n'),
     );
 }
 

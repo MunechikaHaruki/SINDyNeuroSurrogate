@@ -18,7 +18,7 @@ description: "研究コードの repo の入口。要約と、全体の地図・
 flowchart LR
   subgraph local["手元 local/"]
     subgraph experiments["前処理 experiments/"]
-      config["人が書く宣言<br/>config/（プリセット、実験層）"]
+      config["人が書く宣言<br/>config/（共通の部品と基準、実験群）"]
       exp["宣言を解く・spec を組む<br/>schema/・resolve.ts"]
       resolved[("送る spec<br/>resolved/")]
     end

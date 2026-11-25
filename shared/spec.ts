@@ -113,14 +113,13 @@ export type PlanSeries = Input & { replace_targets: string[] };
 export type PlanModel = { name: string; method: string; grouping: string; config: SurrogateConfig };
 /** 宣言の GPU の実測 1 つ。model が null なら元のモデル。 */
 export type PlanBench = { name: string; model: string | null; series: string; cells: number[]; ncu: boolean };
-/** 宣言の実験 1 つ。groupings と methods は画面が絞り込みに使う名前、gates は群分けを全部回すときの、群分けを組むゲート。 */
+/** 宣言の実験 1 つ。groupings と methods は画面が絞り込みに使う名前。モデルと系列の名前は実験の中で一意。 */
 export type PlanEntry = {
   id: string;
   group: string;
   description: string;
   groupings: string[];
   methods: string[];
-  gates?: string[];
   models: PlanModel[];
   series: Record<string, PlanSeries>;
   pairs: { model: string; series: string }[];

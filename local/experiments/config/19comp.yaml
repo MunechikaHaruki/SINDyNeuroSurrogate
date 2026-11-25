@@ -1,20 +1,20 @@
 ---
 description: 単一区画で学習した縮約を Traub の 19 区画に当てる実験群
 ---
-# どの run にも共通の設定。run に書いた欄だけが置き換わる。形は ../experiments/schema.ts。
-setup:
-  methods: [ kam, pca-sindy, ae-sindy ]
-  groupings: [ h+n, a+c ]
-  series: [ traub-19comp-steady-replace-soma, traub-19comp-steady-replace-na-dr ]
+# 一段目（presets.json の base と部品）の上に、この群の基準 base を重ねる。実験は vary に挙げた欄だけを書き換える。欄の形は ../schema/schema.ts の PARAMS。
+base:
+  methods: [kam, pca-sindy, ae-sindy]
+  groupings: [h+n, a+c]
+  series: [traub-19comp-steady]
+  replace: [soma, na-dr]
+vary: [groupings, train, series, replace]
 runs:
   transfer-to-19comp:
     description: h+n と a+c をまとめた縮約（単一区画で学習）を Traub の 19 区画に当て、soma だけを置き換えるときと、Na と DR を持つ 5 区画を置き換えるときで、元のモデルの発火をどこまで再現するかを見る。
   test-19comp:
     description: テスト用。形式やコードを変えたらまず回す。h+n の KAM・PCA・AE を短い学習データで学習し、19 区画の soma を置き換えて短い定常電流の 2 点で回す。
-    methods:
-      - { name: kam-test, from: kam, duration: 1000 }
-      - { name: pca-sindy-test, from: pca-sindy, duration: 1000 }
-      - { name: ae-sindy-test, from: ae-sindy, duration: 1000 }
-    groupings: [ h+n ]
+    groupings: [h+n]
+    train: { duration: 1000 }
     series:
-      - { name: traub-19comp-steady-replace-soma-test, from: traub-19comp-steady-replace-soma, duration: 100.0, sweep: { value: [ 0, 10 ] } }
+      - { name: traub-19comp-steady-test, from: traub-19comp-steady, duration: 100.0, sweep: { value: [0, 10] } }
+    replace: [soma]

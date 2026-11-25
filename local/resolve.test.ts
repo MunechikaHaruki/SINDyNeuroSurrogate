@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { PRESET_SERIES as SERIES, TESTS, groupsOf, methodOf, modelFrom } from './experiments/schema/presets.ts';
+import { TESTS, groupsOf, inputFrom, methodOf, modelFrom, rangeOf } from './experiments/schema/presets.ts';
 import { hashOf, inputKey } from '../shared/hash.ts';
 import { modelSpec, partSpec, resolved, stale, simSpec, trainKey } from './resolve.ts';
 import { EXPERIMENTS } from './experiments/schema/experiments.ts';
@@ -68,8 +68,9 @@ test('an experiment holds one file per distinct learner', () => {
 });
 
 test('series that differ only in what they replace send the same input', () => {
-  const soma = simSpec(SERIES['traub-19comp-steady-replace-soma'], 't');
-  const all = simSpec(SERIES['traub-19comp-steady-replace-all'], 't');
+  const input = inputFrom('traub-19comp-steady');
+  const soma = simSpec({ ...input, replace_targets: rangeOf('soma') }, 't');
+  const all = simSpec({ ...input, replace_targets: rangeOf('all') }, 't');
   if (soma.kind !== 'sim' || all.kind !== 'sim') throw new Error('sim でない');
   expect(soma.input).toEqual(all.input);
   expect(soma.model).not.toEqual(all.model);
@@ -96,8 +97,8 @@ test('a model is a method laid over a grouping', () => {
     partSpec(TESTS._test_hh_ae, TESTS._test_hh_ae.config.groups[0]).device,
   ]).toEqual(['gpu', 'cpu']);
   expect(() => methodOf('xyz')).toThrow();
-  expect(modelFrom('d2', methodOf({ from: 'pca-sindy', d: 2 }), 'h+n').config.groups[0].d).toBe(2);
-  expect(() => methodOf({ from: 'pca-sindy', d: 'two' })).toThrow();
+  expect(modelFrom('d2', methodOf('pca-sindy', { d: 2 }), 'h+n').config.groups[0].d).toBe(2);
+  expect(() => methodOf('pca-sindy', { d: 'two' })).toThrow();
   expect(() => groupsOf('h+n_a')).toThrow();
   expect(modelFrom('kam-absorb-m.h+n', methodOf('kam-absorb-m'), 'h+n').config.absorbed).toEqual(['M']);
   expect('absorbed' in modelFrom('kam.h+n', methodOf('kam'), 'h+n').config).toBe(false);
