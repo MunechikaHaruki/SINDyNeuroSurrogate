@@ -14,8 +14,8 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 | 中身 | 場所 |
 | --- | --- |
-| 人が書いて確かめる宣言（一段目 `presets.json` の比べる物差し `measures`・共通の基準 `base`・部品（仕方 `methods`・入力 `inputs`・置き換える範囲 `ranges`）、二段目の実験群 `<群>.yaml`） | `local/experiments/config/` |
-| API に送る前処理の TS。宣言を解く部品（一段目の部品を混ぜ、系列とモデルの形を持つ `presets.ts`、二段目の実験群から解決済みの実験を組む `schema.ts`、並べる `experiments.ts`） | `local/experiments/schema/` |
+| 人が書いて確かめる宣言（送る形そのままの基準のファイル：学習器 `parts/<名前>.json`・評価の系列 `inputs/<名前>.json`、比べる物差し `measures.json`、そこからの差分で書く実験群 `<群>.yaml`） | `local/experiments/config/` |
+| API に送る前処理の TS。宣言を解く部品（基準のファイルを読んで差分を当て、系列とモデルの形を持つ `base.ts`、実験群から解決済みの実験を組む `schema.ts`、並べる `experiments.ts`） | `local/experiments/schema/` |
 | 入口。送る spec を組んで `local/experiments/resolved/` に書く（write）、古くないか確かめる（check） | `local/resolve.ts` |
 | 手元の側の通信。計算する機械へ ssh でコードを送り、イメージを用意して API を立て、段取りとテストを回す script | `local/remote.sh` |
 | 入口で、使う側の一つ。エージェント用の CLI（API の実験の目次を読み、実験を状態ごとに並べて書く） | `local/cli.ts` |
@@ -51,7 +51,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 - `local/` と `remote/` は互いのコードを import せず、両方が使うのは `shared/` だけ（`local/experiments/schema/boundary.test.ts`）。
 - 人やエージェントが直に走らせる入口は `local/` と `remote/` の直下だけに置く。マシン間の通信もここが受け持つ（手元は `local/remote.sh`、計算する機械は `remote/serve.ts`）。
 - 計算する機械へ送るのは `remote/`・`shared/` と、手元が組んだ `local/experiments/resolved/` の写しだけで、宣言と手元のコードは送らない（`local/remote.sh`）。計算する機械は宣言を知らず、送られてきた resolved/（場所は `SINDY_RESOLVED`）の spec を回し、run の量を返すだけ。
-- runs は生データ（波形と学習の書き出し、GPU の実測で使ったツールの出力をツールごとのファイルのまま）だけを持つ。波形から先の統計量（eFEL の特徴量から Γ と列ごとのまとめまで）も、どの列を比べるかの組み立ても、設定の表も、計算する機械の API が頼まれるたびに計算して組み、すぐ描ける形で返す（`remote/read/`）。使う側は口の型（`shared/api.ts`）だけを知り、run のパスや列の位置（`shared/runs.ts`）も宣言（`local/experiments/`）も読まず、描き方（色、凡例、数式の書き方）と選んでいる状態だけを持つ。比べる物差し（Γ の許容幅 Δ）は宣言（`local/experiments/config/presets.json` の `measures`）が持ち、宣言の写し `plans.json` で API に渡る。見せ方の線（時刻まで合うとみなす Γ の線）は API（`remote/read/experiments.ts`）が持つ。`shared/` に置くのは両方が使う形だけで、宣言の形（`Series`・`ModelDecl`）は `local/experiments/schema/presets.ts`、`Bench`・`Plan` は `local/experiments/schema/schema.ts` が持ち、その写しの形（`Plans`）だけを `shared/spec.ts` が持つ。
+- runs は生データ（波形と学習の書き出し、GPU の実測で使ったツールの出力をツールごとのファイルのまま）だけを持つ。波形から先の統計量（eFEL の特徴量から Γ と列ごとのまとめまで）も、どの列を比べるかの組み立ても、設定の表も、計算する機械の API が頼まれるたびに計算して組み、すぐ描ける形で返す（`remote/read/`）。使う側は口の型（`shared/api.ts`）だけを知り、run のパスや列の位置（`shared/runs.ts`）も宣言（`local/experiments/`）も読まず、描き方（色、凡例、数式の書き方）と選んでいる状態だけを持つ。比べる物差し（Γ の許容幅 Δ）は宣言（`local/experiments/config/measures.json`）が持ち、宣言の写し `plans.json` で API に渡る。見せ方の線（時刻まで合うとみなす Γ の線）は API（`remote/read/experiments.ts`）が持つ。`shared/` に置くのは両方が使う形だけで、宣言の形（`Series`・`ModelDecl`）は `local/experiments/schema/base.ts`、`Bench`・`Plan` は `local/experiments/schema/schema.ts` が持ち、その写しの形（`Plans`）だけを `shared/spec.ts` が持つ。
 
 | 渡るもの | 書く側 | 読む側 |
 | --- | --- | --- |
@@ -134,18 +134,19 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 
 ### 設定ファイル
 
-- 設定は二段で書く。一段目 `local/experiments/config/presets.json` はどの実験にも共通のもの：比べる物差し `measures`、共通の基準 `base`（刻み `dt`、学習器の既定 `learner`、学習の入力の既定 `train`、評価の入力の既定 `input`、置き換える範囲の既定 `replace`）、名前で指す部品（縮約の仕方 `methods`、入力 `inputs`、置き換える区画の範囲 `ranges`）。二段目 `local/experiments/config/<群>.yaml` は実験群に特有のもの。値は既定も含めてすべて宣言に出し、コードは混ぜて形を確かめるだけにする（宣言だけで何を回すかが分かるように）。YAML は実験群だけに使い、一段目は JSON のままにする。
-- 名前は記号に詰めず、軸ごとに綴る (単語は `-`、群の中のゲートは小文字を `+`、群どうしは `_`、モデルの仕方と群分けは `.`、入力と置き換える範囲は `@` でつなぐ。例 仕方 `kam-absorb-m`・`pca-sindy`、群分け `h+n_a+c`、系列 `traub-19comp-steady@na-dr`、実験 `all-groupings-1comp`)。
+- 宣言は、送る形そのままの JSON を基準のファイルとして置き、実験群の YAML にそこからの差分を書く。学習器の基準 `local/experiments/config/parts/<名前>.json` は学習の設定 (`surrogate.Config`) から群の並びを除き、ゲートを持たない群 `group` を 1 つ持つ形 (群分けが群の数だけ並べ、ゲートを入れる)。評価の系列の基準 `local/experiments/config/inputs/<名前>.json` は入力 (`spec`・`param`・`values`) と置き換える区画 (`replace_targets`)。比べる物差しは `local/experiments/config/measures.json`。値の既定 (学習の電流と長さ、項ライブラリ、刻み、刺激する区画など) はすべて基準のファイルに書き、コードは差分を当てて形を確かめるだけにする (ファイルを読めば何を送るかが分かるように)。
+- 差分は JSON Merge Patch (RFC 7386: オブジェクトは欄ごとに重ね、`null` はその欄を消し、配列と値は置き換える)。当てた結果を送る形の型 (`local/experiments/schema/base.ts` の `Part`・`SeriesShape`) で確かめるので、差分に書けるのは送る形にある欄だけ。`null` は欄を消す印なので、`null` という値 (`param`・`train_comp`) は差分で書けず、要るなら基準のファイルを足す。どの学習器・系列にも重ねる差分は、個別の差分の後に、群の差分、実験の差分の順に当てる。開いた辞書 (`current_params`・`compressor_params`・`rhs_params`) の中の綴りと、圧縮・右辺・項ライブラリの組み合わせは TS では確かめず、Python の署名と pytest が落とす。
+- 名前は記号に詰めず、軸ごとに綴る (単語は `-`、群の中のゲートは小文字を `+`、群どうしは `_`、学習器と群分けは `.`、系列と置き換える範囲は `@` でつなぐ。例 学習器 `kam-absorb-m`・`pca-sindy`、群分け `h+n_a+c`、系列 `traub-19comp-steady@na-dr`、実験 `all-groupings-1comp`)。
 - 学習の設定 (`surrogate.Config`) は、区画の型 (`cell`)、`form`、学習データ (`data` = `SimSpec`)、群のリスト (`groups`)、学習を絞る区画 (`train_comp`)。
   群は `gates`・`compressor`・`d`・`rhs` と、それぞれの fit 関数へ `**` で展開する `compressor_params`・`rhs_params`。
   `gates` は状態の名前 (Traub は M N C A H B S R Q XI、HH は M H N)。`compressor: kam` は学習しない KAM 縮約で、右辺も `kam`、`d` は 1。UDE は AE を一緒に学習するので、圧縮器は AE に限る。SINDy のレート項は、`library_specs` に `gates` を書かなければ群の状態のものに絞る (`_own_rates`)。
   既定値は fit 関数の署名だけが持ち、綴り違いは TypeError になる。
-- 値から導く既定 (学習の入力の教師は細胞と同じ、圧縮は書かなければ仕方の名前、右辺は KAM なら KAM でほかは SINDy、項ライブラリは細胞のゲートの項と `basis`) と、どの学習でも同じ形 (学習用の電流の種類 `current_type: train`・全区画で学習) だけは `local/experiments/schema/presets.ts` が導く。散文の説明は持たない。テスト専用のモデル `_test_*` は presets.json に入れず `local/experiments/schema/test-models.ts` に TS の辞書で書き、仕方に差分を重ね、どの実験にも入れない。設定は `resolve.ts write` が `local/experiments/resolved/tests.json` に値で書き、pytest はそれを読む。
-- 実験群の YAML は二つの文書で、一つ目は frontmatter（実験群の道案内の一文 `description` だけ）、二つ目は群の基準 `base`、群が動かす欄 `vary`、実験の並び `runs`（実験の id → vary に挙げた欄。書き換えなければ `{}`）。宣言はパラメタだけを持ち、何を回して何を見る実験かの説明は冊の側（親 repo の `outputs/experiments/groups/<群>.yaml` の `experiments`）が持つ。base は一段目の base の上に重なり、どの欄も書ける。実験は vary に挙げた欄だけを書き換え（群ごとのスキーマ。ほかの欄を書けば落ちる）、書いた欄は丸ごと置き換わる（学習の入力 `train` だけは欄ごとに混ぜる）。今の実験群は単一区画 `1comp`、19 区画 `19comp`、GPU の実測 `gpu`、発表の回し直し `neuro2026`。
-- 欄（設定のパラメタ。形は `local/experiments/schema/schema.ts` の `PARAMS`）は、縮約の仕方 `methods`、群分け `groupings`（名前の並びか、`{ all: ゲート }` でその全部の群分け）、学習の入力 `train`（教師 `target`・長さ `duration`・乱数 `seed`）、評価の入力 `series`、置き換える範囲 `replace`（範囲の名前の並び。入力ごとに範囲の数だけ系列ができ、二つ以上なら名前は `<入力>@<範囲>`。`<入力>@<範囲>` と書いた系列はその範囲だけ）、GPU の実測 `benches`（測る系列。元のモデルと実験のモデルを全部、細胞の数 `cells` で、`ncu` なら Nsight Compute でも測る）。回す組は 仕方 × 群分け × 系列 の直積で、学習の入力の欄は実験の全部のモデルで共有する（教師を省けば各モデルの細胞）。仕方と入力は部品の名前か、名前を付けた差分 `{ name, from, ...差分 }` で指し、値を少し変えた実験は部品を足さずに差分で書く。
-- 各実験群には、短い学習データと系列で数分で回り切るテスト用の実験 `test-<群>` を置き、形式やコードを変えたらまずこれを回す。返すのは解決済みの実験 (モデルと系列を値で持ち、回す組を並べたもの) だけで、`resolve.ts` と画面はこれだけを読み、宣言の形を知らない。モデルの名前は `<仕方の名前>.<群分け>`、モデルと系列の名前は実験の中で一意で、実験をまたいでは同じ名前が違う中身を指してよい。
+- テスト専用のモデル `_test_*` は `local/experiments/schema/test-models.ts` に TS の辞書で書き、学習器の基準に差分を重ね、どの実験にも入れない。設定は `resolve.ts write` が `local/experiments/resolved/tests.json` に値で書き、pytest はそれを読む。
+- 実験群の YAML は二つの文書で、一つ目は frontmatter（実験群の道案内の一文 `description` だけ）、二つ目は群の基準 `base` と実験の並び `runs`（実験の id → 書き換える欄。書き換えなければ `{}`）。実験は base に書いた欄を丸ごと置き換え、差分の欄 (`part`・`input`) だけは群の差分の上に重ねる。宣言はパラメタだけを持ち、何を回して何を見る実験かの説明は冊の側（親 repo の `outputs/experiments/groups/<群>.yaml` の `experiments`）が持つ。
+- 欄 (形は `local/experiments/schema/schema.ts` の `FIELDS`) は、学習器 `parts` (基準のファイルの名前か、名前を付けた差分 `{ name, from, ...差分 }`)、どの学習器にも重ねる差分 `part`、群分け `groupings` (名前の並びか、`{ all: ゲート }` でその全部の群分け)、評価の系列 `inputs` (学習器と同じ指し方)、どの系列にも重ねる差分 `input`、置き換える範囲 `replace` (名前 → 区画。系列ごとに範囲の数だけ系列ができ、名前は `<系列>@<範囲>`)、GPU の実測 `benches` (測る系列。元のモデルと実験のモデルを全部、細胞の数 `cells` で、`ncu` なら Nsight Compute でも測る)。回す組は 学習器 × 群分け × 系列 の直積。値を少し変えた実験は基準のファイルを足さずに差分で書く。
+- 各実験群には、短い学習データと系列で数分で回り切るテスト用の実験 `test-<群>` を置き、形式やコードを変えたらまずこれを回す。返すのは解決済みの実験 (モデルと系列を値で持ち、回す組を並べたもの) だけで、`resolve.ts` と画面はこれだけを読み、宣言の形を知らない。モデルの名前は `<学習器の名前>.<群分け>`、モデルと系列の名前は実験の中で一意で、実験をまたいでは同じ名前が違う中身を指してよい。
 - 実際に送る spec.json は、そのままの中身で `local/experiments/resolved/` に生成物として置く (`bun local/resolve.ts write`)。パスは識別のための名前で送らない: 学習器 `<実験>/parts/<圧縮器と右辺>.<群>.json` (名前は中身から付け、同じ中身は実験の中で 1 ファイル。同じ名前に違う中身が来たら resolve が止まる)、モデル `<実験>/models/<モデル>.json`、`<実験>/sim/<系列>/original.json` と `<モデル>.json` (学習の系列は中身から `<対象>-<電流>-<パラメータ>`、例 `traub-train-duration-9000`)、`<実験>/bench/<GPU の実測>.json`。段取り (`remote/run/`) は宣言を読まず、resolved/ の spec だけを回す。実験ごとの状態も resolved/ の下のディレクトリから組み、並びは名前の順 (宣言の順は手元が持つ) (指す run を先に回す: 学習器は学習の入力の元のモデルを、モデルは学習器を、評価と GPU の実測はモデルと (評価なら) 元のモデルを)。画面も仕事を resolved/ のパスで起こす。宣言を直したら write で書き直し、差分で、送る spec が何から何に変わったか (中身が変われば置き場が変わり、回し直しになる) を確かめる。古いと `local/resolve.test.ts` が落ち、`local/remote.sh` は送らない (`resolve.ts check`)。
-- 使わなくなった部品（仕方・入力・範囲）は消す。今の宣言（resolved/）が指さなくなった run（形式の版が古いものも）は、計算する機械の runs/ から消してよい。
+- 使わなくなった基準のファイルは消す。今の宣言（resolved/）が指さなくなった run（形式の版が古いものも）は、計算する機械の runs/ から消してよい。
 - 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、読む側 (repo の外の図) が持つ。
 
 ## 判断基準

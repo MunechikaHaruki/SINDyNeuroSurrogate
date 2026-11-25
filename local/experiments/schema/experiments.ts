@@ -1,7 +1,7 @@
-// 実験を並べる。実験群ごとに config/<群>.yaml（形と組み立ては schema.ts、共通の部品と基準は presets.ts）を読む。
-// ここは並べて、モデルごとの学習の系列（presets.ts の trainSeries）を足し、実験の id が重ならないことを確かめるだけ。モデルと系列の名前は実験の中で一意で、実験をまたいでは同じ名前が違う中身を指してよい。
+// 実験を並べる。実験群ごとに config/<群>.yaml（形と組み立ては schema.ts、基準のファイルは base.ts）を読む。
+// ここは並べて、モデルごとの学習の系列（base.ts の trainSeries）を足し、実験の id が重ならないことを確かめるだけ。モデルと系列の名前は実験の中で一意で、実験をまたいでは同じ名前が違う中身を指してよい。
 // 手元の側の中心。resolve.ts（送る spec を組む）と画面は、ここが返す解決済みの実験だけを使う。計算する機械（../../../remote/）は読まない。
-import { trainSeries, type Series } from './presets.ts';
+import { trainSeries, type Series } from './base.ts';
 import { groupPlans, type Plan } from './schema.ts';
 import group1comp from '../config/1comp.yaml';
 import group19comp from '../config/19comp.yaml';

@@ -1,0 +1,17 @@
+{
+  "spec": {
+    "target": "traub",
+    "current_type": "random&poisson_synapse",
+    "dt": 0.01,
+    "current_params": {
+      "silence_duration": 10,
+      "duration": 1000,
+      "amplitude": 20,
+      "seed": 0
+    },
+    "stim": "soma"
+  },
+  "param": "rate",
+  "values": [20, 40, 80, 160],
+  "replace_targets": ["soma"]
+}

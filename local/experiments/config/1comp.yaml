@@ -1,21 +1,25 @@
 ---
 description: 単一区画の Traub で、群分けと縮約の仕方を比べる実験群
 ---
-# 一段目（presets.json の base と部品）の上に、この群の基準 base を重ねる。実験は vary に挙げた欄だけを書き換える。欄の形は ../schema/schema.ts の PARAMS。
+# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指す。part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。
 base:
-  methods: [kam, kam-absorb-m, pca-sindy, ae-sindy]
-  series: [traub-1comp-steady]
-vary: [methods, groupings, train, series]
+  parts: [kam, kam-absorb-m, pca-sindy, ae-sindy]
+  inputs: [traub-1comp-steady]
 runs:
   all-groupings-1comp:
     groupings: { all: [h, n, a, c] }
   fluctuating-input-1comp:
-    methods: [kam, pca-sindy, ae-sindy]
+    parts: [kam, pca-sindy, ae-sindy]
     groupings: [h+n]
-    series: [traub-1comp-steady, traub-1comp-kistler]
+    inputs: [traub-1comp-steady, traub-1comp-kistler]
   test-1comp:
-    methods: [kam, pca-sindy, ae-sindy]
+    parts: [kam, pca-sindy, ae-sindy]
+    part: { data: { current_params: { duration: 1000 } } }
     groupings: [h+n_a+c]
-    train: { duration: 1000 }
-    series:
-      - { name: traub-1comp-steady-test, from: traub-1comp-steady, duration: 100.0, sweep: { value: [0, 10] } }
+    inputs:
+      - {
+          name: traub-1comp-steady-test,
+          from: traub-1comp-steady,
+          spec: { current_params: { duration: 100.0 } },
+          values: [0, 10],
+        }

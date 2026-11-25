@@ -1,12 +1,11 @@
 ---
 description: NEURO2026 で発表した形を今の研究コードで回し直す実験群
 ---
-# 一段目（presets.json の base と部品）の上に、この群の基準 base を重ねる。実験は vary に挙げた欄だけを書き換える。欄の形は ../schema/schema.ts の PARAMS。
+# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指す。part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。
 base:
-  methods: [{ name: ae-latent5-sindy, from: ae-sindy, d: 5 }]
+  parts: [{ name: ae-latent5-sindy, from: ae-sindy, group: { d: 5 } }]
+  part: { data: { target: traub19, current_params: { duration: 1000 } } }
   groupings: [m+h+n+a+b+c]
-  train: { target: traub19, duration: 1000 }
-  series: [traub-19comp-steady]
-vary: []
+  inputs: [traub-19comp-steady]
 runs:
   neuro2026-rerun: {}

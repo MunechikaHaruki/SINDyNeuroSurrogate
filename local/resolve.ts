@@ -10,7 +10,15 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MEASURES, PART_NAMES, TESTS, trainSeries, type ModelDecl, type Series } from './experiments/schema/presets.ts';
+import {
+  INPUT_NAMES,
+  MEASURES,
+  PART_NAMES,
+  TESTS,
+  trainSeries,
+  type ModelDecl,
+  type Series,
+} from './experiments/schema/base.ts';
 import { EXPERIMENTS, GROUPS, type GroupedPlan } from './experiments/schema/experiments.ts';
 import { hashOf, inputKey } from '../shared/hash.ts';
 import { FORMATS, type Device, type Group, type Input, type Plans, type Spec } from '../shared/spec.ts';
@@ -200,9 +208,8 @@ function main([name]: string[]): void {
   } else
     console.log(
       [
-        `仕方: ${PART_NAMES.methods.join(' ')}`,
-        `入力: ${PART_NAMES.inputs.join(' ')}`,
-        `置き換える範囲: ${PART_NAMES.ranges.join(' ')}`,
+        `学習器の基準: ${PART_NAMES.join(' ')}`,
+        `系列の基準: ${INPUT_NAMES.join(' ')}`,
         `テスト: ${Object.keys(TESTS).join(' ')}`,
         ...EXPERIMENTS.map(
           e =>

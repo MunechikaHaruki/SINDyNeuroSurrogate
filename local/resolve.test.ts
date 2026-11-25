@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { TESTS, groupsOf, inputFrom, methodOf, modelFrom, rangeOf } from './experiments/schema/presets.ts';
+import { TESTS, groupsOf, inputOf, modelFrom, partOf } from './experiments/schema/base.ts';
 import { hashOf, inputKey } from '../shared/hash.ts';
 import { modelSpec, partSpec, resolved, stale, simSpec, trainKey } from './resolve.ts';
 import { EXPERIMENTS } from './experiments/schema/experiments.ts';
@@ -18,10 +18,10 @@ test('the model hash does not depend on the order the config was written in', ()
 });
 
 test('a learner is shared by every model that has its group, whatever the other groups are', () => {
-  const alone = modelFrom('pca-sindy.h+n', methodOf('pca-sindy'), 'h+n');
-  const paired = modelFrom('pca-sindy.h+n_a+c', methodOf('pca-sindy'), 'h+n_a+c');
-  const absorbed = modelFrom('kam-absorb-m.h+n', methodOf('kam-absorb-m'), 'h+n');
-  const kam = modelFrom('kam.h+n', methodOf('kam'), 'h+n');
+  const alone = modelFrom('pca-sindy.h+n', partOf('pca-sindy'), 'h+n');
+  const paired = modelFrom('pca-sindy.h+n_a+c', partOf('pca-sindy'), 'h+n_a+c');
+  const absorbed = modelFrom('kam-absorb-m.h+n', partOf('kam-absorb-m'), 'h+n');
+  const kam = modelFrom('kam.h+n', partOf('kam'), 'h+n');
   expect(hashOf(partSpec(paired, paired.config.groups[0]))).toBe(hashOf(partSpec(alone, alone.config.groups[0])));
   expect(hashOf(modelSpec(absorbed))).not.toBe(hashOf(modelSpec(kam)));
   const model = modelSpec(paired);
@@ -30,7 +30,7 @@ test('a learner is shared by every model that has its group, whatever the other 
 });
 
 test('a KAM model has no learners and holds its groups and training input itself, and KAM is not mixed with learners', () => {
-  const kam = modelFrom('kam.h+n_a+c', methodOf('kam'), 'h+n_a+c');
+  const kam = modelFrom('kam.h+n_a+c', partOf('kam'), 'h+n_a+c');
   const model = modelSpec(kam);
   if (model.kind !== 'model') throw new Error('model でない');
   expect(model.parts).toEqual([]);
@@ -68,41 +68,40 @@ test('an experiment holds one file per distinct learner', () => {
 });
 
 test('series that differ only in what they replace send the same input', () => {
-  const input = inputFrom('traub-19comp-steady');
-  const soma = simSpec({ ...input, replace_targets: rangeOf('soma') }, 't');
-  const all = simSpec({ ...input, replace_targets: rangeOf('all') }, 't');
+  const soma = simSpec(inputOf('traub-19comp-steady'), 't');
+  const all = simSpec(inputOf({ name: 'all', from: 'traub-19comp-steady', replace_targets: ['soma', 'c00'] }), 't');
   if (soma.kind !== 'sim' || all.kind !== 'sim') throw new Error('sim でない');
   expect(soma.input).toEqual(all.input);
   expect(soma.model).not.toEqual(all.model);
 });
 
-test('a model is a method laid over a grouping', () => {
+test('a model lays one learner over each group of a grouping', () => {
   expect(groupsOf('h+n_a+c')).toEqual([
     ['H', 'N'],
     ['A', 'C'],
   ]);
-  const kam = modelFrom('kam.h+n_a+c', methodOf('kam'), 'h+n_a+c').config;
+  const kam = modelFrom('kam.h+n_a+c', partOf('kam'), 'h+n_a+c').config;
   expect(kam.groups.map(g => [g.gates, g.compressor, g.rhs, g.d])).toEqual([
     [['H', 'N'], 'kam', 'kam', 1],
     [['A', 'C'], 'kam', 'kam', 1],
   ]);
   expect(
-    modelFrom('pca-sindy.h+n', methodOf('pca-sindy'), 'h+n').config.groups[0].rhs_params.library_specs?.length,
+    modelFrom('pca-sindy.h+n', partOf('pca-sindy'), 'h+n').config.groups[0].rhs_params.library_specs?.length,
   ).toBeGreaterThan(0);
-  const pca = modelFrom('pca-sindy.h+n', methodOf('pca-sindy'), 'h+n');
-  const ae = modelFrom('ae-sindy.h+n', methodOf('ae-sindy'), 'h+n');
+  const pca = modelFrom('pca-sindy.h+n', partOf('pca-sindy'), 'h+n');
+  const ae = modelFrom('ae-sindy.h+n', partOf('ae-sindy'), 'h+n');
   expect(hashOf(modelSpec(pca))).not.toBe(hashOf(modelSpec(ae)));
   expect([
     partSpec(ae, ae.config.groups[0]).device,
     partSpec(TESTS._test_hh_ae, TESTS._test_hh_ae.config.groups[0]).device,
   ]).toEqual(['gpu', 'cpu']);
-  expect(() => methodOf('xyz')).toThrow();
-  expect(modelFrom('d2', methodOf('pca-sindy', { d: 2 }), 'h+n').config.groups[0].d).toBe(2);
-  expect(() => methodOf('pca-sindy', { d: 'two' })).toThrow();
+  expect(() => partOf('xyz')).toThrow();
+  expect(modelFrom('d2', partOf({ name: 'd2', from: 'pca-sindy', group: { d: 2 } }), 'h+n').config.groups[0].d).toBe(2);
+  expect(() => partOf({ name: 'd2', from: 'pca-sindy', group: { d: 'two' } })).toThrow();
   expect(() => groupsOf('h+n_a')).toThrow();
-  expect(modelFrom('kam-absorb-m.h+n', methodOf('kam-absorb-m'), 'h+n').config.absorbed).toEqual(['M']);
-  expect('absorbed' in modelFrom('kam.h+n', methodOf('kam'), 'h+n').config).toBe(false);
-  expect(() => modelFrom('kam-absorb-m.m+h', methodOf('kam-absorb-m'), 'm+h')).toThrow();
+  expect(modelFrom('kam-absorb-m.h+n', partOf('kam-absorb-m'), 'h+n').config.absorbed).toEqual(['M']);
+  expect('absorbed' in modelFrom('kam.h+n', partOf('kam'), 'h+n').config).toBe(false);
+  expect(() => modelFrom('kam-absorb-m.m+h', partOf('kam-absorb-m'), 'm+h')).toThrow();
 });
 
 test('resolved/ holds exactly the spec.json files the declarations send, so a change to them shows in the diff', () => {

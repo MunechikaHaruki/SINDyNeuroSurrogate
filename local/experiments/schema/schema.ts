@@ -1,52 +1,48 @@
-// 二段目の設定。実験群（config/<群>.yaml）は、frontmatter（description）の文書と、群の基準 base・群が動かす欄 vary・実験の並び runs の文書の二つ。
-// 書ける欄（設定のパラメタ）はここの PARAMS が持ち、一段目の部品（presets.ts）を名前か差分で指す。base は presets.json の base の上に重なる群の基準で、どの欄も書ける。
-// 実験は base から vary に挙げた欄だけを書き換える（群ごとのスキーマ。挙げていない欄を書くと投げる）。
+// 実験群（config/<群>.yaml）。frontmatter（description）の文書と、群の基準 base と実験の並び runs の文書の二つ。
+// 実験は基準のファイル（base.ts）を名前か差分で指し、群の base に書いた欄だけを重ねる。書ける欄はここの FIELDS、差分に書ける欄は送る形（base.ts の型）が決める。
+// 何を回して何を見る実験かの説明は冊の側（outputs/experiments/groups/<群>.yaml）が持つ。
 // 返すのはモデルと系列を値で持つ解決済みの実験（Plan）だけで、resolve.ts と画面は宣言の形を知らない。
 import { z } from 'zod';
 import {
-  BASE_REPLACE,
+  Patch,
   Ref,
-  Train,
   groupings,
-  inputFrom,
-  methodOf,
+  inputOf,
   modelFrom,
   named,
   parsed,
-  rangeOf,
+  partOf,
   type ModelDecl,
   type Series,
-} from './presets.ts';
+} from './base.ts';
 
 /** 細胞の数。1 刻みのカーネルのブロック（128 細胞）の倍数。 */
 const Cells = z.array(z.number().int().positive().multipleOf(128)).nonempty();
 
-/** 設定のパラメタ。実験の run は、ここの欄の値の組。
- * methods は縮約の仕方、groupings は群分けの名前の並びか `{ all: ゲート }`（その全部の群分け）、train は学習の入力、
- * series は評価の入力（`<入力>@<範囲>` と書けば置き換える範囲をその系列だけ決める）、replace は置き換える区画の範囲の名前の並び（入力ごとに範囲の数だけ系列ができる）、
+/** 実験の欄。parts は学習器の基準（config/parts/）、part はどの学習器にも重ねる差分、groupings は群分けの名前の並びか `{ all: ゲート }`（その全部の群分け）、
+ * inputs は評価の系列の基準（config/inputs/）、input はどの系列にも重ねる差分、replace は置き換える範囲（名前 → 区画。系列ごとに範囲の数だけ系列ができ、名前は `<系列>@<範囲>`）、
  * benches は GPU で測る系列の名前で、その系列で元のモデルと全部のモデルを細胞の数 cells で測る（ncu なら Nsight Compute で 1 刻みのカーネルも）。 */
-export const PARAMS = {
-  methods: z.array(Ref).nonempty(),
+const FIELDS = {
+  parts: z.array(Ref).nonempty(),
+  part: Patch,
   groupings: z.union([
     z.array(z.string()).nonempty(),
     z.strictObject({ all: z.array(z.string().length(1)).nonempty() }),
   ]),
-  train: Train,
-  series: z.array(Ref).nonempty(),
-  replace: z.array(z.string()).nonempty(),
+  inputs: z.array(Ref).nonempty(),
+  input: Patch,
+  replace: z.record(z.string(), z.array(z.string()).nonempty()),
   benches: z.array(z.string()).nonempty(),
   cells: Cells,
   ncu: z.boolean(),
 };
-export type Param = keyof typeof PARAMS;
-const PARAM_NAMES = Object.keys(PARAMS) as [Param, ...Param[]];
-/** 設定。どの欄も省ける（省いた欄は base か presets.json の base から）。 */
-export type Setting = { [K in Param]?: z.infer<(typeof PARAMS)[K]> };
+const Setting = z.strictObject(FIELDS).partial();
+export type Setting = z.infer<typeof Setting>;
 
 /** GPU の実測 1 つ。model はモデルの名前（null なら元のモデル）、cells は並べる細胞の数、ncu は Nsight Compute で 1 刻みのカーネルを測るか。 */
 export type Bench = { name: string; model: string | null; series: string; cells: number[]; ncu: boolean };
 
-/** モデル 1 つ。name は実験の中の名前（`<仕方の名前>.<群分け>`）、method と grouping は図が列を引く名前。 */
+/** モデル 1 つ。name は実験の中の名前（`<学習器の名前>.<群分け>`）、method と grouping は図が列を引く名前。 */
 export type Model = ModelDecl & { method: string; grouping: string };
 
 /** 解決済みの実験。モデルと系列を値で持ち、pairs が回す組（モデルの名前 × 系列の名前）。
@@ -62,56 +58,42 @@ export type Plan = {
   benches: Bench[];
 };
 
-/** 実験群の二つの文書の外形。runs の中身は vary が決める群のスキーマで後から当てる。 */
+/** 実験群の二つの文書。実験は欄を書かなければ空（群の base のまま）。 */
 const GroupDocument = z.tuple([
   z.strictObject({ description: z.string().min(1) }),
   z.strictObject({
-    base: z.strictObject(PARAMS).partial(),
-    vary: z.array(z.enum(PARAM_NAMES)).refine(v => new Set(v).size === v.length, 'vary に同じ欄が二度ある'),
-    runs: z.record(z.string(), z.unknown()).refine(runs => Object.keys(runs).length > 0, 'runs が空'),
+    base: Setting,
+    runs: z.record(z.string(), Setting.nullable()).refine(runs => Object.keys(runs).length > 0, 'runs が空'),
   }),
 ]);
 
-/** 実験群のスキーマ。実験は vary に挙げた欄だけを書ける（何を見る実験かの説明は冊の側 outputs/experiments/groups/<群>.yaml が持つ）。 */
-function runSchema(vary: Param[]) {
-  const fields: Partial<Record<Param, z.ZodType>> = {};
-  for (const key of vary) fields[key] = PARAMS[key].optional();
-  return z.strictObject(fields);
-}
-
-/** 系列の指し方を、置き換える範囲ごとの系列にする。`<入力>@<範囲>` はその範囲だけ。範囲が一つなら名前は書いたまま、二つ以上なら `<名前>@<範囲>`。 */
-function seriesOf(ref: z.infer<typeof Ref>, replace: string[]): [string, Series][] {
-  const { name, from, diff } = named(ref);
-  const parts = from.split('@');
-  if (parts.length > 2 || name.split('@').length > 2) throw new Error(`系列 ${name} の @ は入力と範囲の間の一つだけ`);
-  const [input, pinned] = parts;
-  const value = inputFrom(input, diff);
-  if (pinned !== undefined) return [[name, { ...value, replace_targets: rangeOf(pinned) }]];
-  if (replace.length === 1) return [[name, { ...value, replace_targets: rangeOf(replace[0]) }]];
-  return replace.map(range => [`${name}@${range}`, { ...value, replace_targets: rangeOf(range) }]);
-}
-
-/** 解決済みの実験を組む。回す組は 仕方 × 群分け × 系列 の直積で、学習の入力は全部のモデルで同じ。 */
-export function build(where: string, id: string, setting: Setting): Plan {
-  const { methods, groupings: grouping, series: refs } = setting;
-  if (!methods) throw new Error(`${where}：仕方 methods が無い（base か run に書く）`);
+/** 解決済みの実験を組む。回す組は 学習器 × 群分け × 系列 の直積。 */
+export function build(where: string, id: string, setting: Setting, patches?: { part: Patch[]; input: Patch[] }): Plan {
+  const commons = patches ?? { part: setting.part ? [setting.part] : [], input: setting.input ? [setting.input] : [] };
+  const { parts, groupings: grouping, inputs } = setting;
+  if (!parts) throw new Error(`${where}：学習器 parts が無い（base か run に書く）`);
   if (!grouping) throw new Error(`${where}：群分け groupings が無い（base か run に書く）`);
-  if (!refs) throw new Error(`${where}：系列 series が無い（base か run に書く）`);
+  if (!inputs) throw new Error(`${where}：系列 inputs が無い（base か run に書く）`);
   const groupingList = Array.isArray(grouping) ? grouping : groupings(grouping.all);
-  const replace = setting.replace ?? BASE_REPLACE;
-  replace.forEach(rangeOf);
   const series: Record<string, Series> = {};
-  for (const ref of refs)
-    for (const [name, value] of seriesOf(ref, replace)) {
-      if (series[name]) throw new Error(`${where}：系列の名前 ${name} が二つある`);
-      series[name] = value;
-    }
+  const add = (name: string, value: Series) => {
+    if (series[name]) throw new Error(`${where}：系列の名前 ${name} が二つある`);
+    if (name.split('@').length > 2) throw new Error(`${where}：系列の名前 ${name} の @ は系列と範囲の間の一つだけ`);
+    series[name] = value;
+  };
+  for (const ref of inputs) {
+    const { name } = named(ref);
+    const value = inputOf(ref, commons.input, `${where}：`);
+    if (!setting.replace) add(name, value);
+    else
+      for (const [range, targets] of Object.entries(setting.replace))
+        add(`${name}@${range}`, { ...value, replace_targets: targets });
+  }
   const models: Model[] = [];
-  for (const ref of methods) {
-    const { name, from, diff } = named(ref);
-    const method = methodOf(from, diff);
-    for (const g of groupingList)
-      models.push({ ...modelFrom(`${name}.${g}`, method, g, setting.train), method: name, grouping: g });
+  for (const ref of parts) {
+    const { name } = named(ref);
+    const part = partOf(ref, commons.part, `${where}：`);
+    for (const g of groupingList) models.push({ ...modelFrom(`${name}.${g}`, part, g), method: name, grouping: g });
   }
   if (new Set(models.map(m => m.name)).size !== models.length) throw new Error(`${where}：モデルの名前が重なる`);
   const pairs = models.flatMap(m => Object.keys(series).map(s => ({ model: m.name, series: s })));
@@ -128,27 +110,18 @@ export function build(where: string, id: string, setting: Setting): Plan {
         ncu: setting.ncu ?? false,
       });
   }
-  return {
-    id,
-    groupings: groupingList,
-    methods: methods.map(m => named(m).name),
-    models,
-    series,
-    pairs,
-    benches,
-  };
+  return { id, groupings: groupingList, methods: parts.map(p => named(p).name), models, series, pairs, benches };
 }
 
-/** 実験群 1 つを解決済みの実験にする。doc は実験群の YAML を読んだ二つの文書。実験は群の基準に、書いた欄だけを丸ごと重ねる（学習の入力 train だけは欄ごとに混ぜる）。 */
+/** 実験群 1 つを解決済みの実験にする。doc は実験群の YAML を読んだ二つの文書。
+ * 実験は群の base に書いた欄を丸ごと重ねる。差分の欄（part・input）だけは、群の差分、実験の差分の順に当てる（合成すると null が消えるので、順に当てる）。 */
 export function groupPlans(name: string, doc: unknown): { description: string; plans: Plan[] } {
   const where = `config/${name}.yaml`;
   const [front, body] = parsed(GroupDocument, where, doc);
-  const schema = runSchema(body.vary);
   const plans = Object.entries(body.runs).map(([id, value]) => {
-    const at = `${where} の ${id}`;
-    const run = parsed(schema, `${at}（書けるのは vary の ${body.vary.join('・') || 'なし'}）`, value ?? {}) as Setting;
-    const train = body.base.train || run.train ? { ...body.base.train, ...run.train } : undefined;
-    return build(at, id, { ...body.base, ...run, ...(train ? { train } : {}) });
+    const run = value ?? {};
+    const both = (key: 'part' | 'input') => [body.base[key], run[key]].filter((p): p is Patch => p !== undefined);
+    return build(`${where} の ${id}`, id, { ...body.base, ...run }, { part: both('part'), input: both('input') });
   });
   return { description: front.description, plans };
 }

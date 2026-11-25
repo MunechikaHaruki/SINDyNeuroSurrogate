@@ -1,22 +1,29 @@
 ---
 description: 元のモデルと縮約を GPU に並べ、VRAM とレジスタを測る実験群
 ---
-# 一段目（presets.json の base と部品）の上に、この群の基準 base を重ねる。実験は vary に挙げた欄だけを書き換える。欄の形は ../schema/schema.ts の PARAMS。
+# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指す。part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。
 # benches は GPU で測る系列。その系列で元のモデルと実験のモデルを全部測る。
 base:
-  methods: [kam, pca-sindy]
+  parts: [kam, pca-sindy]
   groupings: [h+n]
   cells: [1024, 1048576]
   ncu: true
-vary: [methods, train, series, benches, cells]
 runs:
   gpu-memory:
-    series: [traub-1comp-steady, traub-19comp-steady@soma, traub-19comp-steady@na-dr]
+    inputs:
+      - traub-1comp-steady
+      - { name: traub-19comp-steady@soma, from: traub-19comp-steady }
+      - { name: traub-19comp-steady@na-dr, from: traub-19comp-steady, replace_targets: [c05, c07, soma, c09, c11] }
     benches: [traub-1comp-steady, traub-19comp-steady@soma, traub-19comp-steady@na-dr]
   test-gpu:
-    methods: [kam]
-    train: { duration: 1000 }
+    parts: [kam]
+    part: { data: { current_params: { duration: 1000 } } }
     cells: [1024]
-    series:
-      - { name: traub-1comp-steady-test, from: traub-1comp-steady, duration: 100.0, sweep: { value: [0, 10] } }
+    inputs:
+      - {
+          name: traub-1comp-steady-test,
+          from: traub-1comp-steady,
+          spec: { current_params: { duration: 100.0 } },
+          values: [0, 10],
+        }
     benches: [traub-1comp-steady-test]
