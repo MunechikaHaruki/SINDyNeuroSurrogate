@@ -1,0 +1,23 @@
+{
+  "format": 13,
+  "device": "cpu",
+  "kind": "sim",
+  "input": {
+    "spec": {
+      "target": "traub",
+      "current_type": "train",
+      "dt": 0.01,
+      "current_params": {
+        "duration": 9000
+      }
+    },
+    "param": null,
+    "values": []
+  },
+  "model": {
+    "surrogate": "1044e1554b27",
+    "replace_targets": [
+      "soma"
+    ]
+  }
+}

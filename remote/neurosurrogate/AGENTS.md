@@ -157,10 +157,11 @@ API (../read/comparison.ts) が持つ。
 run の置き場の学習器とモデル: 学習器を書いて読み、モデルの学習器を組む。
 
 ```text
-置き場は `runs/data/<ハッシュ>/` (学習データ)、`runs/parts/<ハッシュ>/` (学習器 1 つ)、
-`runs/models/<ハッシュ>/` (学習器の並びを組んだモデル)。どれも spec.json を持ち、
-学習器の spec は学習データを、モデルの spec は学習器をハッシュで指す。KAM のモデルは
-学習器を持たず、群を spec に直に持ち、学習データ (図を描く軌道) をハッシュで指す。
+置き場は `runs/parts/<ハッシュ>/` (学習器 1 つ) と `runs/models/<ハッシュ>/` (学習器の
+並びを組んだモデル)。どれも spec.json を持ち、学習器の spec は学習の入力を鍵で、モデルの
+spec は学習器をハッシュで指す。学習データは学習の入力の元のモデル
+`runs/inputs/<鍵>/original/` (単発の入力なので点は 1 つ)。KAM のモデルは学習器を持たず、
+群を spec に直に持ち、学習の入力 (図を描く軌道) を鍵で指す。
 ```
 
 ## bench.py
@@ -196,17 +197,17 @@ spec.json 1 つを受け取り、run のディレクトリを埋めるだけの�
 掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
 (`../run/`) が持ち、spec の形は
 `../../shared/spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
-spec の種類は 5 つ (`kind`)。学習データ → 学習器 → モデル → シミュレーションの順に、
-後ろの spec が前の run をハッシュで指す:
+spec の種類は 4 つ (`kind`)。学習の入力の元のモデル → 学習器 → モデル →
+シミュレーションの順に、後ろの spec が前の run を鍵で指す。学習データは置き場を
+持たず、学習の入力 (学習用の電流の単発の入力) の元のモデル
+`runs/inputs/<入力の鍵>/original/` がそれにあたる:
 
-- `data`  学習データ。`data` (SimSpec) を元のモデルで回す。
-          置き場は `runs/data/<ハッシュ>/`
-- `part`  学習器 1 つ (群 1 つの圧縮器と右辺)。`data` は学習データのハッシュで、
+- `part`  学習器 1 つ (群 1 つの圧縮器と右辺)。`input` は学習の入力の鍵で、
           `cell`・`form`・`train_comp`・`group` で学習する。
           置き場は `runs/parts/<ハッシュ>/`
 - `model` 学習器の並びを組んだモデル。`parts` は学習器のハッシュの並び (群の順)、
           `cell`・`form`・`absorbed`。学習はせず、組んだ演算コストを書く。KAM の
-          モデルは `parts` が空で、`kam` に群と学習データのハッシュと区画を持つ。
+          モデルは `parts` が空で、`kam` に群と学習の入力の鍵と区画を持つ。
           置き場は `runs/models/<ハッシュ>/`
 - `sim`   入力 × モデルのシミュレーション。`input` は `EvalSeries.to_dict`
           から置換範囲を除いたもの (電流と掃引)。`model` は
@@ -227,10 +228,9 @@ gpu でも GPU を使うのは AE の学習だけで、シミュレーション�
 書くもの (図が読む形。`.f64` は little-endian の float64 を並べただけ、
 JSON の nan は null):
 
-    spec.json  meta.json (kind = data / part / model / original / replaced / bench,
+    spec.json  meta.json (kind = part / model / original / replaced / bench,
                name, created, elapsed = 計算にかかった秒, 掃引の単位, env = 回した環境:
                backend、device、jax と python の版、host、コードとイメージの版)
-    data       waves/ (点は 1 つ)
     part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 →
                ゲートの曲線を潜在の軸ごとに。区画の型の状態の並びも)、
                compressor/plane.json (AE だけ。群のゲート 2 本ずつの平面の上で
@@ -242,7 +242,7 @@ JSON の nan は null):
     model      summary.json (組んだ 1 刻みの演算コスト。学習器の中身は学習器の
                run)。KAM のモデルは加えて kam.json (区画、吸収したゲート、群ごとの
                ゲートと潜在の名前と Kepler 1992 の式(6)の重みと式(10)の条件)、
-               equivalent/ (学習データの区画の元のモデルの軌道を等価電位にしたもの:
+               equivalent/ (学習の入力の区画の元のモデルの軌道を等価電位にしたもの:
                V、吸収したゲートと群のゲートの等価電位、群ごとの ψ。waves と同じ形)、
                reduced/ (同じ電流を縮約で回した waves)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の

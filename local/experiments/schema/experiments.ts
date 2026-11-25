@@ -1,7 +1,7 @@
 // 実験を並べる。実験群ごとに、実験層 config/<群>.yaml（形と組み立ては schema.ts）を読む。
-// 決め打ちの実験は config/<実験>.json（形は schema.ts の PlanJson）。ここは並べて、id・モデルと系列の名前が重ならないことを確かめ、名前から引けるようにするだけ。
+// 決め打ちの実験は config/<実験>.json（形は schema.ts の PlanJson）。ここは並べて、モデルごとの学習の系列（presets.ts の trainSeries）を足し、id・モデルと系列の名前が重ならないことを確かめ、名前から引けるようにするだけ。
 // 手元の側の中心。resolve.ts（送る spec を組む）と画面は、ここが返す解決済みの実験と、名前から引く modelOf・seriesOf だけを使う。計算する機械（../../remote/）は読まない。
-import { PRESET_SERIES, type Series } from './presets.ts';
+import { PRESET_SERIES, trainSeries, type Series } from './presets.ts';
 import { fromJson, groupPlans, type Model, type Plan } from './schema.ts';
 import group1comp from '../config/1comp.yaml';
 import group19comp from '../config/19comp.yaml';
@@ -43,6 +43,22 @@ function register<T>(table: Record<string, T>, name: string, value: T, where: st
   table[name] = value;
 }
 
+/** 実験に、モデルが学習した入力を系列として先頭に足し、モデルごとにその系列を回す組を足す。学習データはこの系列の元のモデルの run。 */
+export function withTraining(plan: Plan): Plan {
+  const train: Record<string, Series> = {};
+  const pairs: Plan['pairs'] = [];
+  for (const m of plan.models) {
+    const { name, series } = trainSeries(m.config);
+    if (plan.series[name]) throw new Error(`${plan.id}：系列 ${name} は学習の系列の名前と重なる`);
+    const input = sorted({ spec: series.spec, param: series.param, values: series.values });
+    const same = Object.entries(plan.series).find(([, s]) => sorted({ spec: s.spec, param: s.param, values: s.values }) === input);
+    if (same) throw new Error(`${plan.id}：系列 ${same[0]} は ${m.name} の学習の入力と同じ入力（学習の系列 ${name} と見分けられない）`);
+    train[name] = series;
+    pairs.push({ model: m.name, series: name });
+  }
+  return { ...plan, series: { ...train, ...plan.series }, pairs: [...pairs, ...plan.pairs] };
+}
+
 const resolvedGroups = GROUP_SOURCES.map(g => ({ name: g.name, ...groupPlans(g.name, g.doc) }));
 resolvedGroups.push({
   name: 'neuro2026',
@@ -51,7 +67,8 @@ resolvedGroups.push({
 });
 for (const group of resolvedGroups) {
   GROUPS[group.name] = group.description;
-  for (const plan of group.plans) {
+  for (const declared of group.plans) {
+    const plan = withTraining(declared);
     const where = `${group.name} の ${plan.id}`;
     if (EXPERIMENTS.some(e => e.id === plan.id)) throw new Error(`${where}：実験の id がほかの実験群と重なる`);
     for (const m of plan.models) register(MODELS, m.name, m, where);

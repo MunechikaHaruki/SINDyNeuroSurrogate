@@ -1,5 +1,5 @@
 {
-  "format": 22,
+  "format": 23,
   "device": "gpu",
   "kind": "part",
   "cell": "traub",
@@ -37,6 +37,6 @@
       ]
     }
   },
-  "data": "5b988859260a",
+  "input": "019e7873b406",
   "train_comp": null
 }

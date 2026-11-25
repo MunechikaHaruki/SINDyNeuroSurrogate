@@ -4,17 +4,17 @@ spec.json 1 つを受け取り、run のディレクトリを埋めるだけの�
 掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
 (`../run/`) が持ち、spec の形は
 `../../shared/spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
-spec の種類は 5 つ (`kind`)。学習データ → 学習器 → モデル → シミュレーションの順に、
-後ろの spec が前の run をハッシュで指す:
+spec の種類は 4 つ (`kind`)。学習の入力の元のモデル → 学習器 → モデル →
+シミュレーションの順に、後ろの spec が前の run を鍵で指す。学習データは置き場を
+持たず、学習の入力 (学習用の電流の単発の入力) の元のモデル
+`runs/inputs/<入力の鍵>/original/` がそれにあたる:
 
-- `data`  学習データ。`data` (SimSpec) を元のモデルで回す。
-          置き場は `runs/data/<ハッシュ>/`
-- `part`  学習器 1 つ (群 1 つの圧縮器と右辺)。`data` は学習データのハッシュで、
+- `part`  学習器 1 つ (群 1 つの圧縮器と右辺)。`input` は学習の入力の鍵で、
           `cell`・`form`・`train_comp`・`group` で学習する。
           置き場は `runs/parts/<ハッシュ>/`
 - `model` 学習器の並びを組んだモデル。`parts` は学習器のハッシュの並び (群の順)、
           `cell`・`form`・`absorbed`。学習はせず、組んだ演算コストを書く。KAM の
-          モデルは `parts` が空で、`kam` に群と学習データのハッシュと区画を持つ。
+          モデルは `parts` が空で、`kam` に群と学習の入力の鍵と区画を持つ。
           置き場は `runs/models/<ハッシュ>/`
 - `sim`   入力 × モデルのシミュレーション。`input` は `EvalSeries.to_dict`
           から置換範囲を除いたもの (電流と掃引)。`model` は
@@ -35,10 +35,9 @@ gpu でも GPU を使うのは AE の学習だけで、シミュレーション�
 書くもの (図が読む形。`.f64` は little-endian の float64 を並べただけ、
 JSON の nan は null):
 
-    spec.json  meta.json (kind = data / part / model / original / replaced / bench,
+    spec.json  meta.json (kind = part / model / original / replaced / bench,
                name, created, elapsed = 計算にかかった秒, 掃引の単位, env = 回した環境:
                backend、device、jax と python の版、host、コードとイメージの版)
-    data       waves/ (点は 1 つ)
     part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 →
                ゲートの曲線を潜在の軸ごとに。区画の型の状態の並びも)、
                compressor/plane.json (AE だけ。群のゲート 2 本ずつの平面の上で
@@ -50,7 +49,7 @@ JSON の nan は null):
     model      summary.json (組んだ 1 刻みの演算コスト。学習器の中身は学習器の
                run)。KAM のモデルは加えて kam.json (区画、吸収したゲート、群ごとの
                ゲートと潜在の名前と Kepler 1992 の式(6)の重みと式(10)の条件)、
-               equivalent/ (学習データの区画の元のモデルの軌道を等価電位にしたもの:
+               equivalent/ (学習の入力の区画の元のモデルの軌道を等価電位にしたもの:
                V、吸収したゲートと群のゲートの等価電位、群ごとの ψ。waves と同じ形)、
                reduced/ (同じ電流を縮約で回した waves)
     sim        waves/。置き換えたモデルは加えて、projected/<comp>/ (置換した comp の
@@ -97,14 +96,13 @@ import xarray as xr
 from .bench import OWN_FILE, cache, run_checked
 from .physics.simulate import (
     EvalSeries,
-    SimSpec,
     gate_matrix,
     i_internal,
     latent_dataset,
     potential,
     simulate,
 )
-from .store import assemble, load_model, part_config, save_part
+from .store import assemble, load_model, part_config, save_part, train_root
 from .surrogate.model import (
     Surrogate,
     applicable,
@@ -119,7 +117,7 @@ from .surrogate.model import (
 
 # spec の種類ごとの形式の版。段取りが spec に入れる = 形式を変えたらその種類の鍵が変わる
 # (shared/spec.ts の FORMATS と揃える)
-_FORMATS = {"data": 11, "part": 22, "model": 13, "sim": 13, "bench": 11}
+_FORMATS = {"part": 23, "model": 14, "sim": 13, "bench": 11}
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _CLAIM_GRACE = 60.0  # [s] 書きかけを作ってから pid を置くまでの猶予 (これより古く pid の無いものは残骸)
@@ -223,7 +221,7 @@ def _write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(_jsonable(value), ensure_ascii=False))
 
 
-# --- 5 種類の run ---------------------------------------------------------------
+# --- 4 種類の run ---------------------------------------------------------------
 
 
 def _names(series: EvalSeries) -> dict[str, int]:
@@ -231,20 +229,11 @@ def _names(series: EvalSeries) -> dict[str, int]:
     return {comp: net.index(comp) for comp in net.names}
 
 
-def _data(root: Path, spec: dict) -> dict:
-    """学習データを元のモデルで回して書く。"""
-    data = SimSpec.from_dict(spec["data"])
-    net = data.net
-    names = {comp: net.index(comp) for comp in net.names}
-    _write_waves(root / "waves", [simulate(data.run_input())], names)
-    return {}
-
-
 def _part(root: Path, spec: dict) -> dict:
-    """学習データを読んで学習器 1 つを学習し、その中身を書く。"""
+    """学習の入力の元のモデルの波形を読んで学習器 1 つを学習し、その中身を書く。"""
     runs = root.parents[1]
     config = part_config(runs, spec)
-    [data] = _read_waves(runs / "data" / spec["data"] / "waves")
+    [data] = _read_waves(train_root(runs, spec["input"]) / "waves")
     group = config.groups[0]
     part = fit_group(config, group, data)
     save_part(root, part)
@@ -261,13 +250,13 @@ def _part(root: Path, spec: dict) -> dict:
 
 
 def _model(root: Path, spec: dict) -> dict:
-    """学習器を組み、組んだモデルの演算コストを書く。KAM のモデルは加えて、学習データの
+    """学習器を組み、組んだモデルの演算コストを書く。KAM のモデルは加えて、学習の入力の
     元のモデルの軌道を等価電位にしたものと、同じ電流で回した縮約の軌道と、条件を書く。"""
     runs = root.parents[1]
     surrogate = assemble(runs, spec)
     _write_json(root / "summary.json", summary(surrogate))
     if "kam" in spec:
-        [data] = _read_waves(runs / "data" / spec["kam"]["data"] / "waves")
+        [data] = _read_waves(train_root(runs, spec["kam"]["input"]) / "waves")
         files, equivalent, reduced = describe_kam(surrogate, data)
         names = {c.name: i for i, c in enumerate(surrogate.config._net().nodes)}
         _write_json(root / "kam.json", files)
@@ -384,7 +373,7 @@ def _kind(spec: dict) -> str:
     return "original" if spec["model"] is None else "replaced"
 
 
-_KINDS = {"data": _data, "part": _part, "model": _model, "sim": _sim, "bench": _bench}
+_KINDS = {"part": _part, "model": _model, "sim": _sim, "bench": _bench}
 
 
 def _writer_alive(partial: Path) -> bool:

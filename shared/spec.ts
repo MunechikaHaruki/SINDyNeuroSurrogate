@@ -48,7 +48,7 @@ export type SurrogateConfig = {
  * spec の形式の版。spec の種類ごとに持ち、neurosurrogate/run.py の _FORMATS と揃える（remote/run/places.test.ts が確かめる）。
  * spec に入るので、変えるとその種類の鍵が変わり、その run と、ハッシュでそれを指す後ろの run（学習器なら、モデル・置換系・GPU の実測）だけが回し直される。
  */
-export const FORMATS = { data: 11, part: 22, model: 13, sim: 13, bench: 11 } as const;
+export const FORMATS = { part: 23, model: 14, sim: 13, bench: 11 } as const;
 
 /** 回す backend。同じ spec でも計算の順序が変わって結果がずれるので、spec に入れて run を分ける。 */
 export type Device = 'cpu' | 'gpu';
@@ -64,12 +64,12 @@ export type Input = {
 export type Model = { surrogate: string; replace_targets: string[] };
 
 /**
- * run.py に渡す spec.json。学習データ → 学習器 → モデル → シミュレーションの順に、後ろの spec が前の run をハッシュで指す。
- * 学習データは runs/data/ に、学習器（群 1 つの圧縮器と右辺）は runs/parts/ に、学習器の並びを組んだモデル（KAM は学習器を持たず、群と学習データを指す）は runs/models/ に、
- * 入力 × モデルは runs/inputs/<入力>/ に、GPU の実測は runs/bench/ に置く。sim と bench の model が null なら元のモデル。
+ * run.py に渡す spec.json。学習の入力の元のモデル → 学習器 → モデル → シミュレーションの順に、後ろの spec が前の run を鍵で指す。
+ * 学習器（群 1 つの圧縮器と右辺）は runs/parts/ に、学習器の並びを組んだモデル（KAM は学習器を持たず、群と学習の入力を指す）は runs/models/ に、
+ * 入力 × モデルは runs/inputs/<入力の鍵>/ に、GPU の実測は runs/bench/ に置く。sim と bench の model が null なら元のモデル。
+ * 学習データは置き場を持たず、学習の入力（学習用の電流の単発の入力）の元のモデル runs/inputs/<入力の鍵>/original/ がそれにあたる。
  */
 export type Spec =
-  | { format: number; device: Device; kind: 'data'; data: SimSpec }
   | {
       format: number;
       device: Device;
@@ -77,8 +77,8 @@ export type Spec =
       cell: string;
       form: SurrogateConfig['form'];
       group: Group;
-      /** 学習データ（runs/data/）のハッシュと、学習を絞る区画。 */
-      data: string;
+      /** 学習の入力の鍵（runs/inputs/<鍵>/original/ が学習データ）と、学習を絞る区画。 */
+      input: string;
       train_comp: string | null;
     }
   | {
@@ -92,8 +92,8 @@ export type Spec =
       /** 学習器（runs/parts/）のハッシュの並び（群の順）。KAM のモデルは空。 */
       parts: string[];
       /** KAM のモデル（Kepler 1992 の縮約。学習せず、区画の型の式から群を等価電位 1 本ずつにまとめる）だけが持つ。groups は群（圧縮器と右辺はどちらも kam）、
-       * data と train_comp は、元のモデルと縮約したモデルの等価電位と膜電位を描く学習データ（runs/data/）のハッシュと区画。 */
-      kam?: { groups: Group[]; data: string; train_comp: string | null };
+       * input と train_comp は、元のモデルと縮約したモデルの等価電位と膜電位を描く学習の入力の鍵（runs/inputs/<鍵>/original/）と区画。 */
+      kam?: { groups: Group[]; input: string; train_comp: string | null };
     }
   | { format: number; device: Device; kind: 'sim'; input: Input; model: Model | null }
   | {
@@ -150,7 +150,7 @@ export type RunEnv = {
 /** run の一覧の 1 行（API の index）。id は runs/ の下のパス、kind は run.py が meta.json に書く種類。 */
 export type IndexEntry = {
   id: string;
-  kind: 'data' | 'part' | 'model' | 'original' | 'replaced' | 'bench';
+  kind: 'part' | 'model' | 'original' | 'replaced' | 'bench';
   name: string;
   created: string;
   /** 計算にかかった秒（run.py が測る。同一性に入らない）。 */
@@ -172,8 +172,8 @@ export type RunStatus = { name: string; id: string; spec: string; state: State }
 /** 実験（resolved/ の下のディレクトリ）1 つの状態。モデル（とその学習器と学習データ）、系列の元のモデル、組（系列 × モデルの置換系）を名前の順に並べる（宣言の順は API の答えが宣言の写しで並べる）。state は起こした仕事も見た状態。 */
 export type ExperimentStatus = {
   name: string;
-  /** モデルごとの組み立ての run と、組んだ学習器（群の順）と、学習器が学習した学習データ（学習器が KAM だけなら null）。state は学習器と学習データも見た状態。 */
-  models: { model: string; state: State; run: RunStatus; parts: RunStatus[]; data: RunStatus | null }[];
+  /** モデルごとの組み立ての run と、組んだ学習器（群の順）と、学習した入力の元のモデル（学習の系列の original）。state は学習器と学習の入力も見た状態。 */
+  models: { model: string; state: State; run: RunStatus; parts: RunStatus[]; train: RunStatus }[];
   series: { series: string; original: RunStatus }[];
   pairs: { series: string; model: string; state: State; run: RunStatus }[];
   benches: { bench: string; state: State; run: RunStatus }[];

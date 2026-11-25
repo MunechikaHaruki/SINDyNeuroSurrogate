@@ -1,5 +1,5 @@
 // 帰りの JSON の形。計算する機械の API（remote/serve.ts）の口ごとの受け取りと返事で、手元（冊とエージェント用の CLI）はこの型だけを import して POST /<口> に JSON を送る。
-// 口は実験の目次と実験 1 つ、run の置き場（runs/ の inputs・models・data・parts・bench）ごとの 1 つ、run の一覧、仕事を起こす口。
+// 口は実験の目次と実験 1 つ、run の置き場（runs/ の inputs・models・parts・bench）ごとの 1 つ、run の一覧、仕事を起こす口。
 // 計算する機械が run の保存の形を知り、指標の計算も線の間引きも答えの組み立ても済ませて、すぐ描ける形で返す。手元は run のパスも列の位置も知らず、描くことと選ぶことだけを持つ。
 // 波形は回線に出さない。返すのは間引いた線・軌跡・分布・指標・表の値だけ。
 import type { BenchRow } from './runs.ts';
@@ -18,8 +18,8 @@ export type Window = [number, number];
 /** 実験の進み具合。置換できない組は済んだものとして数え、回す run が無ければ未着手。 */
 export type Progress = '結果あり' | '計算中' | '途中' | '未着手';
 /** run の置き場（runs/ の直下）の名前。目次も画面の URL もこの名前で run を分ける。 */
-export type RunKind = 'data' | 'parts' | 'models' | 'inputs' | 'bench';
-/** 目次の実験 1 つ。runs は置き場ごとの、実験の run の名前（宣言の順。data・parts は使うモデルの宣言の順）。 */
+export type RunKind = 'parts' | 'models' | 'inputs' | 'bench';
+/** 目次の実験 1 つ。runs は置き場ごとの、実験の run の名前（宣言の順。parts は使うモデルの宣言の順。inputs は学習の系列が先）。 */
 export type ExperimentEntry = {
   id: string;
   description: string;
@@ -38,7 +38,7 @@ export type Experiments = {
 
 /** 設定の表の 1 行。label は軸、items は宣言の名前と、その名前が指す値。 */
 export type SetupRow = { label: string; items: { name: string; value: string }[] };
-/** 実験 1 つ。並びは宣言の順。rerun は実験が使う run の計算にかかった秒の和と、回した数・全部の数。models はモデルごとに組んだ学習データと学習器の名前、pairs は入力 × モデルの評価、benches は GPU の実測。 */
+/** 実験 1 つ。並びは宣言の順。rerun は実験が使う run の計算にかかった秒の和と、回した数・全部の数。models はモデルごとに学習した入力（学習の系列。inputs の一つ）と組んだ学習器の名前、pairs は入力 × モデルの評価、benches は GPU の実測。 */
 export type ExperimentView = {
   id: string;
   group: string;
@@ -46,8 +46,7 @@ export type ExperimentView = {
   setup: SetupRow[];
   rerun: { seconds: number; done: number; total: number };
   inputs: string[];
-  models: { name: string; data: string | null; parts: string[] }[];
-  data: NamedRun[];
+  models: { name: string; train: string; parts: string[] }[];
   parts: NamedRun[];
   pairs: { input: string; model: string; state: State }[];
   benches: NamedRun[];
@@ -59,7 +58,7 @@ export type SpikeTrain = { times: number[]; features: Record<string, (number | n
 export type ColumnSummary = { gamma: number | null; rheobase: [number | null, number | null] };
 
 /** 入力（系列）1 つ。points は掃引の点の見出し（単発なら「単発」）、comps は区画の名前、stimulus は刺激が入る区間 [ms]、duration は系列の長さ [ms]。
- * spec は電流の宣言（表に出す）、original は元のモデルの run の id。 */
+ * spec は電流の宣言（表に出す）、original は元のモデルの run の id、trained はこの入力を学習データにしたモデル（学習の系列なら空でない）。 */
 export type InputView = {
   name: string;
   param: string | null;
@@ -73,6 +72,7 @@ export type InputView = {
   dt: number;
   spec: { target: string; current_type: string; stim: string; current_params: Record<string, number> };
   original: { state: State; run: string };
+  trained: string[];
 };
 /** 入力を 1 つのモデルで置き換えて回し終えた列。reduced は ExperimentView と同じ。 */
 export type ColumnView = { model: string; method: string; grouping: string; reduced: number; run: string };
@@ -99,12 +99,12 @@ export type PairCompare = {
   sameScale: boolean;
   /** 原系の軌道の上の潜在の傾きの比べ（列の学習器の右辺と正解）。置き換えていない区画か、右辺を評価しない形（form=sindy）なら null。error は掃引の点の全区間。 */
   slopes: SlopeCompare | null;
-  /** 学習に無いこの入力の上での圧縮：列の学習器ごとの群のゲートの、元のモデルの時系列と、それを列の圧縮器で写した z から decoder で作り直した時系列（範囲 zoom。既定は最初の発火の 5 ms 前から 50 ms）。
+  /** この入力の上での圧縮：列の学習器ごとの群のゲートの、元のモデルの時系列と、それを列の圧縮器で写した z から decoder で作り直した時系列（範囲 zoom。既定は最初の発火の 5 ms 前から 50 ms）。
    * order は区画の型の状態の並び（ゲートの色をほかのページと揃える）。KAM のモデル（学習器を持たない）と、置き換えていない区画では空。 */
   rebuilt: GateRebuild[];
   zoom: Window;
   order: string[];
-  /** 同じ入力の上の、群のゲートごとの再構成誤差（掃引の点 point の全区間。原系のゲートと、射影した z から作り直したゲートの差の RMSE と、ゲートの振れ幅）。学習データの上の値は学習器の Fit の errors。 */
+  /** 同じ入力の上の、群のゲートごとの再構成誤差（掃引の点 point の全区間。原系のゲートと、射影した z から作り直したゲートの差の RMSE と、ゲートの振れ幅）。学習の系列の入力では学習データの上の値。 */
   errors: { gate: string; rmse: number | null; range: number }[];
 };
 /** 元のモデルの、区画ごとの膜電位・内部電流・ゲート（0〜1 の状態）・ゲートでない状態（Traub の Ca 濃度 XI など）。 */
@@ -131,11 +131,11 @@ export type CostRow = { op: string; surrogate: number; original: number; diff: n
 /** KAM のモデルの群 1 つ。gates は群のゲート、latent は等価電位をまとめた ψ の名前（h+n.z1）。
  * 回し終えていれば、weights は Kepler 1992 の式(6)の重み α_i（gates の順。どれも正であること）、criterion は式(10)の左辺の最大（小さいこと）。どれも区画の型の静止状態で読む。 */
 export type KamGroup = { gates: string[]; latent: string; weights: number[] | null; criterion: number | null };
-/** KAM のモデルの図（Kepler 1992 の図 2〜4 にあたる）。学習データ data の区画 comp で、時間の範囲 window（系列の長さ duration [ms]）の線。
+/** KAM のモデルの図（Kepler 1992 の図 2〜4 にあたる）。学習の入力 train（学習の系列の名前）の元のモデルの区画 comp で、時間の範囲 window（系列の長さ duration [ms]）の線。
  * current は区画に入る電流（単一区画では注入電流）、membrane は膜電位と吸収したゲートの等価電位（元のモデル）、potentials は群ごとの、群のゲートの等価電位とそれをまとめた ψ（元のモデル）、
  * voltage は同じ電流での膜電位（元のモデルと縮約）、phase は群ごとの (V, ψ) の軌跡（元のモデルと縮約）。等価電位は v_i = x̄_i⁻¹(x_i) [mV]。 */
 export type KamFigures = {
-  data: string;
+  train: string;
   comp: string;
   duration: number;
   window: Window;
@@ -145,7 +145,7 @@ export type KamFigures = {
   voltage: Line[];
   phase: { latent: string; lines: Line[] }[];
 };
-/** モデル 1 本（モデルの run と、KAM はその spec が指す学習データ）。cell・form・absorbed は組み立て、parts は組んだ学習器の名前（群の順。KAM は空）、cost は組んだ 1 刻みの演算の回数（まだ回していなければ null）。
+/** モデル 1 本（モデルの run と、KAM はその spec が指す学習の入力の元のモデル）。cell・form・absorbed は組み立て、parts は組んだ学習器の名前（群の順。KAM は空）、cost は組んだ 1 刻みの演算の回数（まだ回していなければ null）。
  * kam は KAM のモデルだけ：groups は群、figures は図（まだ回していなければ null）。 */
 export type ModelsReply = {
   model: string;
@@ -158,25 +158,8 @@ export type ModelsReply = {
   kam: { groups: KamGroup[]; figures: KamFigures | null } | null;
 };
 
-/** 学習データの頼み方。data は宣言の名前（実験の data の一覧）、comps は描く区画（省けば刺激した区画）。 */
-export type DataRequest = { experiment: string; data: string; comps?: string[]; window?: Window };
-/** 学習データ 1 本（run が持つ波形そのもの）。current は注入電流、voltage は区画ごとの膜電位、gates は区画ごとのゲート（0〜1 の状態）、states はゲートでない状態（Traub の Ca 濃度 XI など）、internal は区画ごとの内部電流（区画が 2 つ以上の型だけ。単一区画では注入電流と同じ）。 */
-export type DataReply = {
-  run: string;
-  stim: string;
-  /** run が持つ区画と、描いた区画。 */
-  comps: string[];
-  shown: string[];
-  duration: number;
-  current: Line[];
-  voltage: Line[];
-  gates: Line[];
-  states: Line[];
-  internal: Line[];
-};
-
-/** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps は線を描く区画（学習データの上で。省けば学習した最初の区画）、window は線の時間の範囲（省けば全体）。 */
-export type PartsRequest = { experiment: string; part: string; comps?: string[]; window?: Window; zoom?: Window };
+/** 学習器の頼み方。part は宣言の名前（実験の parts の一覧）、comps はゲートの空間に学習データの軌道を描く区画（省けば学習した最初の区画）、window はその時間の範囲（省けば全体）。 */
+export type PartsRequest = { experiment: string; part: string; comps?: string[]; window?: Window };
 /** 区画 comp のゲート gate の、元の時系列と、潜在から decoder で作り直した時系列（作り直せなければ空）。 */
 export type GateRebuild = { gate: string; comp: string; original: Point[]; rebuilt: Point[] };
 /** SINDy の右辺の 1 本（対象 target の時間微分）。項をレートの因子 rate（α_n(V) や (α_n + β_n)(V)。無ければ空）ごとにまとめ、
@@ -216,27 +199,6 @@ export type RhsField = {
     tau: Line[];
   }[];
 };
-/** 学習データの上の中身（fit/<区画>/）。線はどれも描いた区画の時間の範囲 window のもの：voltage は膜電位、gates は群のゲート、
- * latent は潜在、path は潜在の軌跡（軸は axes。sameScale は縦横の単位が同じか）。
- * rebuilt は描いた区画とゲートごとの、元のゲート original と潜在から作り直したゲート rebuilt の時系列（範囲 zoom。既定は範囲の中の最初の発火の 5 ms 前から 50 ms）。2 本の隙間がその時刻の再構成誤差。
- * errors は学習した区画とゲートごとの全区間の再構成誤差：rmse は元のゲートと潜在から作り直したゲートの差の RMSE（作り直せなければ null）、range はそのゲートの振れ幅（最大 − 最小）。 */
-export type Fit = {
-  /** 学習した学習データの名前（実験の data の一覧）。 */
-  data: string;
-  /** 学習した区画と、描いた区画。 */
-  comps: string[];
-  shown: string[];
-  duration: number;
-  window: Window;
-  voltage: Line[];
-  gates: Line[];
-  latent: Line[];
-  path: Line[];
-  axes: { x: string; y: string; xIsVoltage: boolean; sameScale: boolean };
-  rebuilt: GateRebuild[];
-  zoom: Window;
-  errors: { comp: string; gate: string; rmse: number | null; range: number }[];
-};
 /** 群のゲートの空間（座標は gates の順）。圧縮器がゲートの動きをどの軸へ潰すかを見る。
  * axes は潜在の軸ごとの圧縮の軸：decode の曲線（ほかの軸は学習データの平均）をゲートの空間の点の並びにしたもの（z はその点の潜在の値、z の増える順）。
  * data は学習データの軌道を描いた区画ごとに、時間の範囲で間引いた点。
@@ -254,20 +216,22 @@ export type GateSpace = {
   }[];
 };
 /** 学習器 1 本。欄は学習器の run の置き場に 1 つずつ対応する：組み立て（spec.json）の label・setup・latents・gates、ゲートの空間（compressor/decode.json と学習データ）、
- * 圧縮器に固有の中身（compressor/own.json）、右辺に固有の中身（rhs/own.json）、学習データの上の中身（fit/）。
- * label は群の名前（h+n）、setup は組み立ての表、gates は群のゲート、gateOrder は区画の型の状態の並び（ゲートの色をほかのページと揃えるのに使う）、space は群のゲートの空間の軌道と圧縮の軸、field は右辺を関数として見るもの（膜電位も同定する形は null）。 */
+ * 圧縮器に固有の中身（compressor/own.json）、右辺に固有の中身（rhs/own.json）、右辺の格子（rhs/field.json）。学習データの上の作り直しと z は、学習の系列 train の入力のページが見せる。
+ * label は群の名前（h+n）、setup は組み立ての表、gates は群のゲート、train は学習した入力（学習の系列の名前）、gateOrder は区画の型の状態の並び（ゲートの色をほかのページと揃えるのに使う）、space は群のゲートの空間の軌道と圧縮の軸、field は右辺を関数として見るもの（膜電位も同定する形は null）。
+ * trail はゲートの空間に描いた学習データの軌道の、学習した区画 comps と描いた区画 shown、学習データの長さ duration [ms] と描いた時間の範囲 window。 */
 export type PartsReply = {
   run: string;
   label: string;
   setup: { label: string; value: string }[];
   latents: string[];
   gates: string[];
+  train: string;
   gateOrder: string[];
   space: GateSpace;
   compressor: CompressorOwn;
   rhs: RhsOwn;
   field: RhsField | null;
-  fit: Fit;
+  trail: { comps: string[]; shown: string[]; duration: number; window: Window };
 };
 
 /** GPU の実測の頼み方。files ならツールの出力のファイルそのものも返す。 */
@@ -303,8 +267,6 @@ export type Api = {
   inputs: { body: InputsRequest; reply: InputsReply };
   /** モデル 1 本の組み立てと演算の回数。 */
   models: { body: ModelsRequest; reply: ModelsReply };
-  /** 学習データ 1 本。 */
-  data: { body: DataRequest; reply: DataReply };
   /** 学習器 1 本。 */
   parts: { body: PartsRequest; reply: PartsReply };
   /** GPU の実測 1 本。 */

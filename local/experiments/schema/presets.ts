@@ -158,6 +158,15 @@ export function modelFrom(name: string, d: Declared, grouping: string): ModelDec
   return { name, config };
 }
 
+/** モデルの学習の系列。学習用の電流（config.data）を単発で回す入力で、その元のモデルの run が学習器の学習データになる。置き換える区画は系列の既定。
+ * 名前は中身から付ける（traub-train-duration-9000）。 */
+export function trainSeries(config: SurrogateConfig): { name: string; series: Series } {
+  const { target, current_type, current_params } = config.data;
+  const name = [target, current_type, ...Object.entries(current_params).map(([k, v]) => `${k}-${v}`)].join('-');
+  const replace_targets = raw.defaults.series.replace_targets as string[];
+  return { name, series: { spec: config.data, param: null, values: [], replace_targets } };
+}
+
 /** 系列の鍵（ほかの鍵は電流のパラメータ）。 */
 const SERIES_KEYS = ['target', 'current', 'stim', 'replace_targets', 'sweep', 'dt'];
 const SeriesShape = z.looseObject({

@@ -1,5 +1,5 @@
 // 計算する機械の側の通信。runs の隣に立つ API（Bun.serve、POST /<口>、既定のポート 8787）。口の形は shared/api.ts で、ここは口を回す側（run/）と答えを作る側（read/）の関数に渡すだけ。
-// 口は実験の目次と実験 1 つ、run の置き場ごとの答え（inputs・models・data・parts・bench）、run の一覧、仕事を起こす口。run の保存の形を知るのはこちらだけで、
+// 口は実験の目次と実験 1 つ、run の置き場ごとの答え（inputs・models・parts・bench）、run の一覧、仕事を起こす口。run の保存の形を知るのはこちらだけで、
 // 波形は回線に出さず、間引いた線・軌跡・分布・指標にしてから返す。宣言は読まない。知っているのは resolved/（spec と宣言の写し plans.json）と runs だけ。回すのは段取りの関数だけで、任意のコマンドは通さない。
 // runs の置き場は SINDY_RUNS（イメージでは /runs）。
 //   bun remote/serve.ts
@@ -7,7 +7,6 @@ import type { Job } from '../shared/spec.ts';
 import type { Api } from '../shared/api.ts';
 import { bench } from './read/bench.ts';
 import { seriesComparison } from './read/comparison.ts';
-import { data } from './read/data.ts';
 import { type Context, experiment, experiments, registry } from './read/experiments.ts';
 import { inputs } from './read/inputs.ts';
 import { models } from './read/models.ts';
@@ -35,7 +34,6 @@ export function handlers(runs: string): Handlers {
     experiment: body => experiment(runs, body.experiment),
     inputs: body => inputs(ctx, body),
     models: body => models(ctx, body),
-    data: body => data(ctx, body),
     parts: body => parts(ctx, body),
     bench: body => bench(ctx, body),
     registry: () => registry(runs),

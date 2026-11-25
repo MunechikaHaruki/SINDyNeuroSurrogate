@@ -1,7 +1,7 @@
-// spec の同一性の鍵。手元の resolve.ts（学習データ・学習器・モデルを後ろの spec の中でハッシュで指す）と計算する機械の段取り（run の置き場）が同じ関数で組む。
+// spec の同一性の鍵と入力の鍵。手元の resolve.ts（学習の入力・学習器・モデルを後ろの spec の中で鍵で指す）と計算する機械の段取り（run の置き場）が同じ関数で組む。
 // ハッシュを組むのはここだけ（Python は組まない。JS と Python で数値の JSON 表記が違うので、鍵を 2 か所で組まない）。
 import { createHash } from 'node:crypto';
-import type { Spec } from './spec.ts';
+import type { Input, Spec } from './spec.ts';
 
 /** 鍵を整列した JSON。同じ中身なら同じ文字列になる。 */
 export function canonical(value: unknown): string {
@@ -21,4 +21,9 @@ export function digest(value: unknown): string {
 /** spec の同一性の鍵。 */
 export function hashOf(spec: Spec): string {
   return digest(spec);
+}
+
+/** 入力の鍵（runs/inputs/<鍵>/）。同じ入力の元のモデルと置き換えたモデルが一つのディレクトリに並ぶよう、モデルを除いた形式・device・入力で組む。 */
+export function inputKey(spec: { format: number; device: string; input: Input }): string {
+  return digest({ format: spec.format, device: spec.device, input: spec.input });
 }

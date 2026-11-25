@@ -39,8 +39,14 @@ export function spanOf(meta: { t0: number; dt: number }, window: Window | undefi
   return { t0: meta.t0, dt: meta.dt, start, end };
 }
 
-/** 実験の系列 1 つの見出し。元のモデルをまだ回していなければ null。 */
-export function inputView(ctx: Context, plan: PlanEntry, name: string, original: RunStatus): InputView | null {
+/** 実験の系列 1 つの見出し。trained はこの入力を学習データにしたモデル。元のモデルをまだ回していなければ null。 */
+export function inputView(
+  ctx: Context,
+  plan: PlanEntry,
+  name: string,
+  original: RunStatus,
+  trained: string[],
+): InputView | null {
   const declared = plan.series[name];
   if (!declared) throw new Error(`${plan.id} に入力 ${name} が無い`);
   if (original.state !== 'done') return null;
@@ -65,6 +71,7 @@ export function inputView(ctx: Context, plan: PlanEntry, name: string, original:
       current_params: spec.current_params,
     },
     original: { state: original.state, run: original.id },
+    trained,
   };
 }
 
@@ -117,9 +124,9 @@ function learnersOf(ctx: Context, run: string): { decode: DecodeJson; own: Compr
   }));
 }
 
-/** 学習に無いこの入力の上での圧縮：列の学習器ごとに、群のゲートの元の時系列と、射影した z（projected/）から作り直した時系列（範囲 zoom）と、掃引の点の全区間のゲートごとの再構成誤差。
+/** この入力の上での圧縮：列の学習器ごとに、群のゲートの元の時系列と、射影した z（projected/）から作り直した時系列（範囲 zoom）と、掃引の点の全区間のゲートごとの再構成誤差。
  * ゲートは元のモデルの run の値。 */
-function heldOutOf(
+function rebuiltAt(
   ctx: Context,
   at: {
     run: string;
@@ -224,7 +231,7 @@ function pairOf(
         )
       : null;
   const heldOut = projected
-    ? heldOutOf(ctx, { run, original: at.original, meta: at.meta, projected, root, k, id, comp: at.comp }, span, zoom)
+    ? rebuiltAt(ctx, { run, original: at.original, meta: at.meta, projected, root, k, id, comp: at.comp }, span, zoom)
     : { rebuilt: [], zoom: [span.start, span.end] as Window, order: [], errors: [] };
   return {
     model: at.model,
@@ -264,7 +271,8 @@ export function inputs(ctx: Context, request: InputsRequest): InputsReply {
   const plan = planOf(all, request.experiment);
   const found = experimentStatus(ctx.runs, plan.id);
   const original = originalOf(found, request.input);
-  const input = inputView(ctx, plan, request.input, original);
+  const trained = found.models.filter(m => m.train.id === original.id).map(m => m.model);
+  const input = inputView(ctx, plan, request.input, original, trained);
   if (!input) throw new Error(`${plan.id} の ${request.input} の元のモデルをまだ回していない`);
   const comp = compOf(input, request.comp);
   const columns = columnsOf(plan, found, request.input, request.models);

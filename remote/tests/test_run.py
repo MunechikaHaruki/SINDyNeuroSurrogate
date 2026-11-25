@@ -2,8 +2,8 @@
 
 `tests/test_surrogate.py` がドメイン層だけを通すのに対し、ここは run の置き場と
 波形の保存形式を通す。ハッシュは段取り (TS) が組むので、ここでは置き場の形
-(`data/<学習データ>`、`parts/<学習器>`、`models/<モデル>`、
-`inputs/<入力>/<original かモデル>`) だけを守って名前を適当に付ける。
+(`parts/<学習器>`、`models/<モデル>`、`inputs/<入力>/<original かモデル>`。
+学習データは学習の入力の `inputs/<入力>/original`) だけを守って名前を適当に付ける。
 """
 
 import json
@@ -41,6 +41,12 @@ def _put(tmp: Path, place: str, spec: dict) -> Path:
     return tmp / "runs" / place
 
 
+def _train(config: dict) -> dict:
+    """学習用の電流を単発で回す学習の入力の、元のモデルの sim の spec。"""
+    input_ = {"spec": config["data"], "param": None, "values": []}
+    return {"kind": "sim", "input": input_, "model": None}
+
+
 def _sim(series: dict, model: dict | None) -> dict:
     """系列を入力とモデルに分けた sim の spec。"""
     input_ = {k: v for k, v in series.items() if k != "replace_targets"}
@@ -52,14 +58,14 @@ _MODEL = {"surrogate": "M", "replace_targets": ["soma"]}
 
 @pytest.fixture(scope="module")
 def runs(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """学習データ・学習器・それを組んだモデルと、1 つの入力を元のモデルと置き換えた
-    モデルで回した runs/。"""
+    """学習の入力の元のモデル・学習器・それを組んだモデルと、1 つの入力を元のモデルと
+    置き換えたモデルで回した runs/。"""
     tmp = tmp_path_factory.mktemp("runs")
     config = declared_config("_test_hh_sindy")
-    _put(tmp, "data/D", {"kind": "data", "data": config["data"]})
+    _put(tmp, "inputs/T/original", _train(config))
     shared = {k: config[k] for k in ("cell", "form", "train_comp")}
     [group] = config["groups"]
-    _put(tmp, "parts/P", {"kind": "part", "data": "D", **shared, "group": group})
+    _put(tmp, "parts/P", {"kind": "part", "input": "T", **shared, "group": group})
     model = {"kind": "model", "cell": config["cell"], "form": config["form"]}
     _put(tmp, "models/M", {**model, "parts": ["P"]})
     _put(tmp, "inputs/I/original", _sim(_series(), None))
@@ -95,7 +101,7 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     (JS が読めない)。"""
     decode = json.loads((runs / "parts/P/compressor/decode.json").read_text())
     latents = [axis["latent"] for axis in decode["axes"]]
-    n_time = json.loads((runs / "data/D/waves/meta.json").read_text())
+    n_time = json.loads((runs / "inputs/T/original/waves/meta.json").read_text())
     latent = np.fromfile(runs / "parts/P/fit/0/latent.f64", dtype="<f8")
     assert latent.size == len(latents) * n_time["n"][0]
     recon = np.fromfile(runs / "parts/P/fit/0/recon_rmse.f64", dtype="<f8")
@@ -104,9 +110,9 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     assert (runs / "parts/P/learner.joblib").exists()
     kinds = [
         json.loads((runs / p / "meta.json").read_text())["kind"]
-        for p in ("data/D", "parts/P", "models/M")
+        for p in ("inputs/T/original", "parts/P", "models/M")
     ]
-    assert kinds == ["data", "part", "model"]
+    assert kinds == ["original", "part", "model"]
 
     meta = json.loads((runs / "inputs/I/original/waves/meta.json").read_text())
     assert meta["names"] == {"soma": 0}
@@ -134,17 +140,17 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
         m["elapsed"] >= 0
         for m in map(
             lambda p: json.loads((runs / p / "meta.json").read_text()),
-            ("data/D", "parts/P", "models/M"),
+            ("inputs/T/original", "parts/P", "models/M"),
         )
     )
 
 
 def test_a_kam_model_holds_what_kepler_draws(tmp_path: Path) -> None:
-    """KAM のモデルは学習器を持たず、学習データを指して、条件 (kam.json) と、
+    """KAM のモデルは学習器を持たず、学習の入力を指して、条件 (kam.json) と、
     元のモデルの等価電位 (equivalent/) と、同じ電流で回した縮約 (reduced/) を書く。"""
     config = declared_config("_test_traub_kam")
-    _put(tmp_path, "data/D", {"kind": "data", "data": config["data"]})
-    kam = {"groups": config["groups"], "data": "D", "train_comp": None}
+    _put(tmp_path, "inputs/T/original", _train(config))
+    kam = {"groups": config["groups"], "input": "T", "train_comp": None}
     model = {"kind": "model", "cell": config["cell"], "form": config["form"]}
     root = _put(tmp_path, "models/K", {**model, "parts": [], "kam": kam})
     files = json.loads((root / "kam.json").read_text())
@@ -153,7 +159,7 @@ def test_a_kam_model_holds_what_kepler_draws(tmp_path: Path) -> None:
     assert equivalent["names"] == {"soma": 0}
     assert [v for _, v, _ in equivalent["features"]][:3] == ["V", "N", "H"]
     reduced = json.loads((root / "reduced/meta.json").read_text())
-    data = json.loads((tmp_path / "runs/data/D/waves/meta.json").read_text())
+    data = json.loads((tmp_path / "runs/inputs/T/original/waves/meta.json").read_text())
     assert reduced["n"] == data["n"]
     assert "cost/surr-orig/mul" in json.loads((root / "summary.json").read_text())
 

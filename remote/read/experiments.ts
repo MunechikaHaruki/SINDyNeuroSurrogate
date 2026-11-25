@@ -11,7 +11,7 @@ import type {
   RunKind,
   SetupRow,
 } from '../../shared/api.ts';
-import type { ExperimentStatus, IndexEntry, PlanEntry, PlanModel, Plans, RunStatus, State } from '../../shared/spec.ts';
+import type { ExperimentStatus, IndexEntry, PlanEntry, PlanModel, Plans, State } from '../../shared/spec.ts';
 import { jobs } from '../run-spec.ts';
 import { resolvedDir, scan } from '../run/places.ts';
 import { experimentStatus } from '../run/status.ts';
@@ -88,8 +88,7 @@ export function experiments(runs: string): Experiments {
           description: plan.description,
           progress: progressOf(plan, found),
           runs: {
-            data: learnedOf(plan, found).data.map(r => r.name),
-            parts: learnedOf(plan, found).parts.map(r => r.name),
+            parts: learnedOf(plan, found).map(r => r.name),
             models: plan.models.map(m => m.name),
             inputs: Object.keys(plan.series),
             bench: plan.benches.map(b => b.name),
@@ -150,11 +149,10 @@ function setupOf(plan: PlanEntry, window: number): SetupRow[] {
   ];
 }
 
-/** 実験が使う run（モデル・学習器・学習データ・元のモデル・組・GPU の実測）の、計算にかかった秒（meta.json の elapsed）の和と、回した数・全部の数。 */
+/** 実験が使う run（モデル・学習器・元のモデル（学習の入力も）・組・GPU の実測）の、計算にかかった秒（meta.json の elapsed）の和と、回した数・全部の数。 */
 export function rerunCost(found: ExperimentStatus, index: IndexEntry[]): ExperimentView['rerun'] {
   const ids = new Set<string>();
-  for (const m of found.models)
-    [m.run.id, ...(m.data ? [m.data.id] : []), ...m.parts.map(p => p.id)].forEach(id => ids.add(id));
+  for (const m of found.models) [m.run.id, ...m.parts.map(p => p.id)].forEach(id => ids.add(id));
   for (const s of found.series) ids.add(s.original.id);
   for (const p of found.pairs) ids.add(p.run.id);
   for (const b of found.benches) ids.add(b.run.id);
@@ -169,32 +167,34 @@ export function rerunCost(found: ExperimentStatus, index: IndexEntry[]): Experim
   return { seconds, done, total: ids.size };
 }
 
-/** 実験 1 つの設定と、回す組の状態。並びは宣言の順。 */
-/** 実験のモデルが使う学習データと学習器（モデルの宣言の順に、重ねずに）。 */
-function learnedOf(plan: PlanEntry, found: ExperimentStatus): { data: NamedRun[]; parts: NamedRun[] } {
-  const data: NamedRun[] = [];
+/** 実験のモデルが使う学習器（モデルの宣言の順に、重ねずに）。 */
+function learnedOf(plan: PlanEntry, found: ExperimentStatus): NamedRun[] {
   const parts: NamedRun[] = [];
-  const named = (r: RunStatus): NamedRun => ({ name: r.name, state: r.state });
   for (const m of plan.models) {
     const built = found.models.find(f => f.model === m.name);
     if (!built) continue;
-    if (built.data && !data.some(d => d.name === built.data!.name)) data.push(named(built.data));
-    for (const p of built.parts) if (!parts.some(q => q.name === p.name)) parts.push(named(p));
+    for (const p of built.parts) if (!parts.some(q => q.name === p.name)) parts.push({ name: p.name, state: p.state });
   }
-  return { data, parts };
+  return parts;
 }
 
-/** 実験の学習データか学習器を宣言の名前で引き、その run の置き場（data/<id>・parts/<id>）を返す。無いかまだ回していなければ投げる。 */
-export function learnedRun(runs: string, id: string, place: 'data' | 'parts', name: string): string {
+/** 実験の学習器を宣言の名前で引き、その run の置き場（parts/<id>）を返す。無いかまだ回していなければ投げる。 */
+export function learnedRun(runs: string, id: string, name: string): string {
   const found = experimentStatus(runs, planOf(plans(), id).id);
-  const run = found.models
-    .flatMap(m => (place === 'data' ? (m.data ? [m.data] : []) : m.parts))
-    .find(r => r.name === name);
-  if (!run) throw new Error(`${id} に ${place} ${name} が無い`);
-  if (run.state !== 'done') throw new Error(`${id} の ${place} ${name} はまだ回していない`);
+  const run = found.models.flatMap(m => m.parts).find(r => r.name === name);
+  if (!run) throw new Error(`${id} に学習器 ${name} が無い`);
+  if (run.state !== 'done') throw new Error(`${id} の学習器 ${name} はまだ回していない`);
   return run.id;
 }
 
+/** 実験のモデルが学習した入力（学習の系列）の名前。 */
+export function trainOf(runs: string, id: string, model: string): string {
+  const built = experimentStatus(runs, planOf(plans(), id).id).models.find(m => m.model === model);
+  if (!built) throw new Error(`${id} にモデル ${model} が無い`);
+  return built.train.name;
+}
+
+/** 実験 1 つの設定と、回す組の状態。並びは宣言の順。 */
 export function experiment(runs: string, id: string): ExperimentView {
   const all = plans();
   const plan = planOf(all, id);
@@ -213,9 +213,9 @@ export function experiment(runs: string, id: string): ExperimentView {
     inputs: Object.keys(plan.series),
     models: plan.models.map(m => {
       const built = found.models.find(f => f.model === m.name)!;
-      return { name: m.name, data: built.data?.name ?? null, parts: built.parts.map(p => p.name) };
+      return { name: m.name, train: built.train.name, parts: built.parts.map(p => p.name) };
     }),
-    ...learnedOf(plan, found),
+    parts: learnedOf(plan, found),
     pairs,
     benches: plan.benches.map(b => {
       const run = found.benches.find(f => f.bench === b.name)!;
@@ -232,7 +232,6 @@ export function registry(runs: string): RegistryReply {
     for (const series of found.series) names[series.original.id] = series.series;
     for (const model of found.models) {
       names[model.run.id] = model.model;
-      if (model.data) names[model.data.id] = `${model.data.name} の学習データ`;
       for (const part of model.parts) names[part.id] = part.name;
     }
     for (const pair of found.pairs) names[pair.run.id] = `${pair.series} × ${pair.model}`;

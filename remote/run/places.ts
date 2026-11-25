@@ -1,10 +1,10 @@
 // 置き場。手元から送られてきた resolved/（手元の local/resolve.ts が書く）からパスで spec を引き、run を置く runs/ では、spec から置き場を決め
-// （学習データは data/<ハッシュ>/、学習器は parts/<ハッシュ>/、モデルは models/<ハッシュ>/、入力 × モデルは inputs/<入力のハッシュ>/<original か <モデルのハッシュ>@<置換する区画を + でつないだもの>>/、GPU の実測は bench/<ハッシュ>/）、完成した run を並べ、run 1 本の状態（済み・計算中・置換できない・まだ）を読む。
+// （学習器は parts/<ハッシュ>/、モデルは models/<ハッシュ>/、入力 × モデルは inputs/<入力のハッシュ>/<original か <モデルのハッシュ>@<置換する区画を + でつないだもの>>/、GPU の実測は bench/<ハッシュ>/）、完成した run を並べ、run 1 本の状態（済み・計算中・置換できない・まだ）を読む。
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { IndexEntry, Spec, State } from '../../shared/spec.ts';
-import { digest, hashOf } from '../../shared/hash.ts';
+import { hashOf, inputKey } from '../../shared/hash.ts';
 
 /** 送られてきた resolved/ の置き場。手元が組んで送る（local/remote.sh）ので、どこにあるかは SINDY_RESOLVED で受け取る
  * （計算する機械のイメージは /code/resolved、手元で回すときは local/experiments/resolved）。 */
@@ -32,14 +32,13 @@ export const PYTHON = process.env.SINDY_PYTHON?.split(' ') ?? ['uv', 'run', 'pyt
 /** 既定の run の置き場。計算する機械のイメージは SINDY_RUNS で載せた場所を指す。 */
 export const RUNS = process.env.SINDY_RUNS ?? join(fileURLToPath(new URL('../..', import.meta.url)), 'runs');
 
-/** spec の置き場（runs/ の下のパス）。置き換えたモデルの評価は、どのモデルでどこを置き換えたかがディレクトリ名で読める（3ea34b09c3f4@soma）。置換範囲だけが違う系列は同じ入力のディレクトリに並ぶ。 */
+/** spec の置き場（runs/ の下のパス）。置き換えたモデルの評価は、どのモデルでどこを置き換えたかがディレクトリ名で読める（3ea34b09c3f4@soma）。置換範囲だけが違う系列は同じ入力のディレクトリに並ぶ。
+ * 学習データは学習の入力の元のモデル（inputs/<鍵>/original）。 */
 export function dirOf(spec: Spec): string {
-  if (spec.kind === 'data') return `data/${hashOf(spec)}`;
   if (spec.kind === 'part') return `parts/${hashOf(spec)}`;
   if (spec.kind === 'model') return `models/${hashOf(spec)}`;
   if (spec.kind === 'bench') return `bench/${hashOf(spec)}`;
-  const input = digest({ format: spec.format, device: spec.device, input: spec.input });
-  return `inputs/${input}/${spec.model === null ? 'original' : `${spec.model.surrogate}@${spec.model.replace_targets.join('+')}`}`;
+  return `inputs/${inputKey(spec)}/${spec.model === null ? 'original' : `${spec.model.surrogate}@${spec.model.replace_targets.join('+')}`}`;
 }
 
 /** 置き場の下の、名前に . を含まないディレクトリ。 */
@@ -54,7 +53,7 @@ function children(dir: string): string[] {
 /** runs/ の下の完成した run を新しい順に。書きかけ（.partial）と印のファイルは数えない。 */
 export function scan(runs: string): IndexEntry[] {
   const dirs: string[] = [];
-  for (const top of ['data', 'parts', 'models', 'bench'])
+  for (const top of ['parts', 'models', 'bench'])
     for (const name of children(join(runs, top))) dirs.push(join(runs, top, name));
   for (const input of children(join(runs, 'inputs')))
     for (const name of children(join(runs, 'inputs', input))) dirs.push(join(runs, 'inputs', input, name));

@@ -1,15 +1,16 @@
 // 手元の側の出口。宣言（../config/ と隣の TS）から、実験ごとに送る spec.json を組んで resolved/ に置く。テスト専用の学習の設定も resolved/tests.json（計算する機械の pytest が読む）に、宣言の写しを resolved/plans.json（計算する機械の API が画面の答えを組むのに読む）に置く。計算する機械（../../remote/）は宣言を読まず、ここが書いた resolved/ だけを受け取って回す。
-// パスは識別のための名前で、送るのは中身だけ：学習データ `<実験>/data/<対象>.<電流>.<パラメータ>.json`、学習器 `<実験>/parts/<圧縮器と右辺>.<群>.json`、それを組んだモデル `<実験>/models/<モデル>.json`、
-// `<実験>/sim/<系列>/original.json`（元のモデル）と `<モデル>.json`、`<実験>/bench/<GPU の実測>.json`。宣言のモデル 1 つは、学習データ 1 つ・群ごとの学習器・それを組んだモデルの spec に分かれる。
-// KAM のモデル（全部の群が kam）は学習器を持たず、群と学習データ（元のモデルと縮約を描くのに使う）をモデルの spec が直に持つ。KAM と学習器を混ぜたモデルは組まない。
-// どちらも名前は中身から付け、同じ中身は実験の中で 1 ファイルにまとめ、同じ名前に違う中身が来たら投げる（名前に出ない違いがある）。
+// パスは識別のための名前で、送るのは中身だけ：学習器 `<実験>/parts/<圧縮器と右辺>.<群>.json`、それを組んだモデル `<実験>/models/<モデル>.json`、
+// `<実験>/sim/<系列>/original.json`（元のモデル）と `<モデル>.json`、`<実験>/bench/<GPU の実測>.json`。宣言のモデル 1 つは、群ごとの学習器・それを組んだモデルの spec に分かれる。
+// 学習データは、実験の系列に足した学習の系列（experiments.ts の withTraining）の元のモデルの run で、学習器はその入力を鍵で指す。
+// KAM のモデル（全部の群が kam）は学習器を持たず、群と学習の入力（元のモデルと縮約を描くのに使う）をモデルの spec が直に持つ。KAM と学習器を混ぜたモデルは組まない。
+// 学習器の名前は中身から付け、同じ中身は実験の中で 1 ファイルにまとめ、同じ名前に違う中身が来たら投げる（名前に出ない違いがある）。
 //   bun local/resolve.ts write        resolved/ を今の宣言から書き直す
 //   … check                                          resolved/ が今の宣言と同じか（違えば挙げて終了コード 1。local/remote.sh up が送る前に見る）
 //   引数なしで名前の一覧
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MEASURES, METHOD_NAMES, TESTS, type ModelDecl, type Series } from './experiments/schema/presets.ts';
+import { MEASURES, METHOD_NAMES, TESTS, trainSeries, type ModelDecl, type Series } from './experiments/schema/presets.ts';
 import {
   EXPERIMENTS,
   GROUPS,
@@ -19,7 +20,7 @@ import {
   seriesOf,
   type GroupedPlan,
 } from './experiments/schema/experiments.ts';
-import { hashOf } from '../shared/hash.ts';
+import { hashOf, inputKey } from '../shared/hash.ts';
 import { FORMATS, type Device, type Group, type Input, type Plans, type Spec } from '../shared/spec.ts';
 import type { Bench } from './experiments/schema/schema.ts';
 
@@ -31,9 +32,11 @@ function trainDevice(model: ModelDecl): Device {
   return model.name.startsWith('_test_') ? 'cpu' : 'gpu';
 }
 
-/** 学習データの spec。元のモデルを学習用の電流で回すだけなので CPU。 */
-export function dataSpec(model: ModelDecl): Spec {
-  return { format: FORMATS.data, device: 'cpu', kind: 'data', data: model.config.data };
+/** モデルが学習する入力の鍵。学習の系列の元のモデルの run（runs/inputs/<鍵>/original/）が学習データ。 */
+export function trainKey(model: ModelDecl): string {
+  const spec = simSpec(trainSeries(model.config).series, null);
+  if (spec.kind !== 'sim') throw new Error('sim の spec でない');
+  return inputKey(spec);
 }
 
 /** KAM の群か。KAM は学習せず、区画の型の式だけから組む。 */
@@ -48,7 +51,7 @@ export function kamModel(model: ModelDecl): boolean {
   return kam > 0;
 }
 
-/** 群 1 つの学習器の spec。学習データをハッシュで指す。KAM の群は学習器を持たない。 */
+/** 群 1 つの学習器の spec。学習の入力を鍵で指す。KAM の群は学習器を持たない。 */
 export function partSpec(model: ModelDecl, group: Group): Spec {
   if (isKam(group)) throw new Error(`${model.name} の KAM の群は学習器を持たない`);
   const { cell, form, train_comp } = model.config;
@@ -59,12 +62,12 @@ export function partSpec(model: ModelDecl, group: Group): Spec {
     cell,
     form,
     group,
-    data: hashOf(dataSpec(model)),
+    input: trainKey(model),
     train_comp,
   };
 }
 
-/** モデルの spec。組むだけなので CPU。学習器を組むモデルは学習器の並び（群の順）を、KAM のモデルは群と学習データを持つ。 */
+/** モデルの spec。組むだけなので CPU。学習器を組むモデルは学習器の並び（群の順）を、KAM のモデルは群と学習の入力を持つ。 */
 export function modelSpec(model: ModelDecl): Spec {
   const { cell, form, absorbed, groups, train_comp } = model.config;
   const base = {
@@ -75,17 +78,11 @@ export function modelSpec(model: ModelDecl): Spec {
     form,
     ...(absorbed ? { absorbed } : {}),
   };
-  if (kamModel(model)) return { ...base, parts: [], kam: { groups, data: hashOf(dataSpec(model)), train_comp } };
+  if (kamModel(model)) return { ...base, parts: [], kam: { groups, input: trainKey(model), train_comp } };
   return { ...base, parts: groups.map(group => hashOf(partSpec(model, group))) };
 }
 
-/** 学習データのファイルの名前。中身から決める（traub.train.duration-9000）。 */
-export function dataName(model: ModelDecl): string {
-  const { target, current_type, current_params } = model.config.data;
-  return [target, current_type, ...Object.entries(current_params).map(([k, v]) => `${k}-${v}`)].join('.');
-}
-
-/** 学習器のファイルの名前。学習データと同じく中身から決める：圧縮器と右辺（同じなら 1 つ）、潜在の次元（1 でなければ）、群の状態を小文字で + につないだもの（pca-sindy.h+n、kam.h+n、ae-sindy-d5.m+h+n+a+b+c）。 */
+/** 学習器のファイルの名前。中身から決める：圧縮器と右辺（同じなら 1 つ）、潜在の次元（1 でなければ）、群の状態を小文字で + につないだもの（pca-sindy.h+n、kam.h+n、ae-sindy-d5.m+h+n+a+b+c）。 */
 export function partName(group: Group): string {
   const kind = group.compressor === group.rhs ? group.compressor : `${group.compressor}-${group.rhs}`;
   return `${kind}${group.d === 1 ? '' : `-d${group.d}`}.${group.gates.map(gate => gate.toLowerCase()).join('+')}`;
@@ -128,7 +125,6 @@ export function resolved(plan: GroupedPlan): Record<string, Spec> {
   };
   const modelHash = (model: string) => hashOf(modelSpec(modelOf(model)));
   for (const m of plan.models) {
-    put(`${plan.id}/data/${dataName(m)}.json`, dataSpec(m));
     if (!kamModel(m))
       for (const group of m.config.groups) put(`${plan.id}/parts/${partName(group)}.json`, partSpec(m, group));
     put(`${plan.id}/models/${m.name}.json`, modelSpec(m));

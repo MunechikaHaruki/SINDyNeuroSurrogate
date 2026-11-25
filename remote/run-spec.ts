@@ -1,7 +1,7 @@
 // spec を回す。計算する機械の上の段取りの入口で、local/remote.sh run と、画面から起こした仕事（runs/.jobs/ に仕事の中身・pid・ログ・終了コードを置き、切り離した子プロセスでこのファイルを起こす。--job で終わりを .jobs/<鍵>.exit に書く）がこれを使う。
 //   bun remote/run-spec.ts run <resolved/ の下のパス>...   その spec を回す
 //   … list                                                      完成した run の一覧（--runs <dir> で置き場を変えられる）
-// resolved/ の spec を読み、指す run（学習データ・学習器・モデル）と（評価なら）同じ入力の元のモデルを先に用意してから、
+// resolved/ の spec を読み、指す run（学習の入力の元のモデル・学習器・モデル）と（評価なら）同じ入力の元のモデルを先に用意してから、
 // Python の計算の入口（neurosurrogate/run.py）を起こして置き場を埋める。置き場があれば回さず、終了コードで置換できない組と、別のプロセスが回している run を見分ける。
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Job, JobState, Spec } from '../shared/spec.ts';
-import { digest, hashOf } from '../shared/hash.ts';
+import { digest } from '../shared/hash.ts';
 import {
   alive,
   dirOf,
@@ -34,43 +34,45 @@ import {
   unreplaceableMark,
 } from './run/places.ts';
 
-/** resolved/ の spec を 1 つ回す。指す run（学習器なら学習データ、モデルなら学習器、評価と GPU の実測ならモデル）を先に用意し、評価は同じ入力の元のモデルも先に回す。名前はパスから .json を除いたもの。 */
+/** resolved/ の spec を 1 つ回す。指す run（学習器なら学習の入力の元のモデル、モデルなら学習器、評価と GPU の実測ならモデル）を先に用意し、評価は同じ入力の元のモデルも先に回す。名前はパスから .json を除いたもの。 */
 export function runSpec(runs: string, path: string): void {
   const spec = specAt(path);
   const name = path.replace(/\.json$/, '');
-  for (const hash of pointsTo(spec)) need(runs, hash);
+  for (const id of pointsTo(spec)) need(runs, id);
   if (spec.kind === 'sim' && spec.model !== null) ensure(runs, { ...spec, model: null }, `${name} の元のモデル`);
   if (ensure(runs, spec, name) === undefined) console.log(`${name}: 置換できないので回さない`);
 }
 
-/** spec が指す run のハッシュ。学習器は学習データを、モデルは学習器を（KAM のモデルは学習データを）、評価と GPU の実測はモデルを指す。 */
+/** spec が指す run の置き場（runs/ の下のパス）。学習器は学習の入力の元のモデルを、モデルは学習器を（KAM のモデルは学習の入力の元のモデルを）、評価と GPU の実測はモデルを指す。 */
 function pointsTo(spec: Spec): string[] {
-  if (spec.kind === 'part') return [spec.data];
-  if (spec.kind === 'model') return spec.kam ? [spec.kam.data] : spec.parts;
-  if ((spec.kind === 'sim' || spec.kind === 'bench') && spec.model !== null) return [spec.model.surrogate];
+  if (spec.kind === 'part') return [`inputs/${spec.input}/original`];
+  if (spec.kind === 'model') return spec.kam ? [`inputs/${spec.kam.input}/original`] : spec.parts.map(h => `parts/${h}`);
+  if ((spec.kind === 'sim' || spec.kind === 'bench') && spec.model !== null) return [`models/${spec.model.surrogate}`];
   return [];
 }
 
-/** ハッシュの run を、それが指す run から順に用意する。 */
-function need(runs: string, hash: string): void {
-  const found = specOf(hash);
+/** 置き場の run を、それが指す run から順に用意する。 */
+function need(runs: string, id: string): void {
+  const found = specOf(id);
   for (const pointed of pointsTo(found.spec)) need(runs, pointed);
   ensure(runs, found.spec, found.path.replace(/\.json$/, ''));
 }
 
-/** ハッシュで指される spec の置き場（resolved/<実験>/ の下のディレクトリ）。 */
-const POINTED = ['data', 'parts', 'models'];
+/** 指される spec の置き場（resolved/<実験>/ の下）：学習器 parts/、モデル models/、元のモデル sim/<系列>/original.json。 */
+function pointable(parent: string, file: string): boolean {
+  return ['parts', 'models'].includes(basename(parent)) || file === 'original.json';
+}
 
-/** ハッシュ → resolved/ の spec.json（学習データ・学習器・モデルのどれか）。 */
-function specOf(hash: string): { path: string; spec: Spec } {
+/** 置き場（runs/ の下のパス）→ resolved/ の spec.json（学習の入力の元のモデル・学習器・モデルのどれか）。 */
+function specOf(id: string): { path: string; spec: Spec } {
   const dir = resolvedDir();
   for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
-    if (!entry.isFile() || !POINTED.includes(basename(entry.parentPath))) continue;
+    if (!entry.isFile() || !pointable(entry.parentPath, entry.name)) continue;
     const path = relative(dir, join(entry.parentPath, entry.name));
     const spec = specAt(path);
-    if (hashOf(spec) === hash) return { path, spec };
+    if (dirOf(spec) === id) return { path, spec };
   }
-  throw new Error(`${hash} の spec が resolved/ に無い`);
+  throw new Error(`${id} の spec が resolved/ に無い`);
 }
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));

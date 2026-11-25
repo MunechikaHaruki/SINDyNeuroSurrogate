@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { PRESET_SERIES as SERIES, TESTS, groupsOf, methodOf, modelFrom } from './experiments/schema/presets.ts';
-import { hashOf } from '../shared/hash.ts';
-import { modelSpec, partSpec, resolved, stale, simSpec } from './resolve.ts';
+import { hashOf, inputKey } from '../shared/hash.ts';
+import { modelSpec, partSpec, resolved, stale, simSpec, trainKey } from './resolve.ts';
 import { EXPERIMENTS } from './experiments/schema/experiments.ts';
 
 test('the model hash does not depend on the order the config was written in', () => {
@@ -29,7 +29,7 @@ test('a learner is shared by every model that has its group, whatever the other 
   expect(model.parts).toHaveLength(2);
 });
 
-test('a KAM model has no learners and holds its groups and training data itself, and KAM is not mixed with learners', () => {
+test('a KAM model has no learners and holds its groups and training input itself, and KAM is not mixed with learners', () => {
   const kam = modelFrom('kam.h+n_a+c', methodOf('kam'), 'h+n_a+c');
   const model = modelSpec(kam);
   if (model.kind !== 'model') throw new Error('model でない');
@@ -42,16 +42,28 @@ test('a KAM model has no learners and holds its groups and training data itself,
   const plan = EXPERIMENTS.find(e => e.models.some(m => m.method === 'kam'))!;
   const paths = Object.keys(resolved(plan));
   expect(paths.some(path => path.startsWith(`${plan.id}/parts/kam`))).toBe(false);
-  expect(paths.some(path => path.startsWith(`${plan.id}/data/`))).toBe(true);
+  expect(model.kam?.input).toBe(trainKey(kam));
 });
 
-test('an experiment holds one file per distinct training data and learner', () => {
+test('the training data is the original run of a training series the experiment runs, and every model is also run on it', () => {
+  for (const plan of EXPERIMENTS) {
+    const files = resolved(plan);
+    const originals = new Map<string, string>();
+    for (const [path, spec] of Object.entries(files))
+      if (spec.kind === 'sim' && spec.model === null) originals.set(inputKey(spec), path);
+    for (const m of plan.models) {
+      const original = originals.get(trainKey(m));
+      expect(original, `${plan.id} の ${m.name} の学習の入力を回さない`).toBeDefined();
+      expect(files[original!.replace(/original\.json$/, `${m.name}.json`)]).toBeDefined();
+    }
+  }
+});
+
+test('an experiment holds one file per distinct learner', () => {
   for (const plan of EXPERIMENTS) {
     const files = Object.entries(resolved(plan));
-    for (const dir of ['data', 'parts']) {
-      const hashes = files.filter(([path]) => path.startsWith(`${plan.id}/${dir}/`)).map(([, spec]) => hashOf(spec));
-      expect(new Set(hashes).size, `${plan.id} の ${dir}/ に同じ中身のファイルがある`).toBe(hashes.length);
-    }
+    const hashes = files.filter(([path]) => path.startsWith(`${plan.id}/parts/`)).map(([, spec]) => hashOf(spec));
+    expect(new Set(hashes).size, `${plan.id} の parts/ に同じ中身のファイルがある`).toBe(hashes.length);
   }
 });
 

@@ -1,4 +1,4 @@
-// 実験の状態。resolved/ の実験ごとに、モデル（とその学習器・学習データ）・系列と組・GPU の実測の置き場と状態を組み、画面から起こした仕事と合わせて返す。並びは名前の順で、宣言の順は答えを組む側（../read/）が宣言の写しで並べる。
+// 実験の状態。resolved/ の実験ごとに、モデル（とその学習器・学習の入力）・系列と組・GPU の実測の置き場と状態を組み、画面から起こした仕事と合わせて返す。並びは名前の順で、宣言の順は答えを組む側（../read/）が宣言の写しで並べる。
 import { join } from 'node:path';
 import type { ExperimentStatus, RunStatus, State, Status } from '../../shared/spec.ts';
 import { jobRunning, jobs } from '../run-spec.ts';
@@ -35,7 +35,7 @@ function withJob(runs: string, run: RunStatus): State {
   return jobRunning(runs, { spec: run.spec }) ? 'running' : run.state;
 }
 
-/** resolved/<実験>/<dir>/ の spec の、ハッシュ → 状態。モデルが指す学習器と、学習器が指す学習データを引く。 */
+/** resolved/<実験>/<dir>/ の spec の、ハッシュ → 状態。モデルが指す学習器を引く。 */
 function byHash(runs: string, name: string, dir: string): Map<string, RunStatus> {
   const found = new Map<string, RunStatus>();
   for (const spec of specNames(join(resolvedDir(), name, dir))) {
@@ -51,12 +51,15 @@ function modelState(runs: string, run: RunStatus, pointed: RunStatus[]): State {
   return [run, ...pointed].some(r => withJob(runs, r) === 'running') ? 'running' : run.state;
 }
 
-/** resolved/<実験>/ の spec の、置き場と状態。モデルは models/（指す学習器は parts/、学習データは data/。KAM のモデルは学習データを直に指す）、系列は sim/<系列>/ の original とモデルの名前、GPU の実測は bench/。並びは名前の順で、宣言の順は使う側が持つ。 */
+/** resolved/<実験>/ の spec の、置き場と状態。モデルは models/（指す学習器は parts/、学習データは学習の系列の sim/<系列>/original。KAM のモデルは学習の入力を直に指す）、系列は sim/<系列>/ の original とモデルの名前、GPU の実測は bench/。並びは名前の順で、宣言の順は使う側が持つ。 */
 export function experimentStatus(runs: string, name: string): ExperimentStatus {
   const root = join(resolvedDir(), name);
   const result: ExperimentStatus = { name, models: [], series: [], pairs: [], benches: [] };
   const parts = byHash(runs, name, 'parts');
-  const data = byHash(runs, name, 'data');
+  const originals = subdirs(join(root, 'sim')).map(s => ({
+    series: s,
+    original: runStatus(runs, `${name}/sim/${s}/original.json`, s),
+  }));
   for (const model of specNames(join(root, 'models'))) {
     const path = `${name}/models/${model}.json`;
     const spec = specAt(path);
@@ -64,18 +67,12 @@ export function experimentStatus(runs: string, name: string): ExperimentStatus {
     const run = runStatus(runs, path, model);
     const own = spec.parts.map(hash => parts.get(hash)!);
     const pointed = own.map(p => specAt(p.spec)).find(s => s.kind === 'part');
-    const dataHash = spec.kam?.data ?? (pointed?.kind === 'part' ? pointed.data : undefined);
-    const trained = dataHash === undefined ? null : data.get(dataHash)!;
-    result.models.push({
-      model,
-      state: modelState(runs, run, trained ? [...own, trained] : own),
-      run,
-      parts: own,
-      data: trained,
-    });
+    const key = spec.kam?.input ?? (pointed?.kind === 'part' ? pointed.input : undefined);
+    const train = originals.find(s => s.original.id === `inputs/${key}/original`)?.original;
+    if (!train) throw new Error(`resolved/${path} の学習の入力を回す系列が無い`);
+    result.models.push({ model, state: modelState(runs, run, [...own, train]), run, parts: own, train });
   }
-  for (const series of subdirs(join(root, 'sim'))) {
-    const original = runStatus(runs, `${name}/sim/${series}/original.json`, series);
+  for (const { series, original } of originals) {
     result.series.push({ series, original });
     for (const model of specNames(join(root, 'sim', series))) {
       if (model === 'original') continue;

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { hashOf } from '../shared/hash.ts';
+import { hashOf, inputKey } from '../shared/hash.ts';
 import { FORMATS, type Plans, type Spec } from '../shared/spec.ts';
 import type { WaveMeta } from '../shared/runs.ts';
 import type {
@@ -14,7 +14,6 @@ import type {
   RegistryReply,
 } from '../shared/api.ts';
 import { seriesComparison } from './read/comparison.ts';
-import { data } from './read/data.ts';
 import type { Context } from './read/experiments.ts';
 import { inputs } from './read/inputs.ts';
 import { models } from './read/models.ts';
@@ -39,12 +38,15 @@ const GROUP = {
   compressor_params: {},
   rhs_params: {},
 };
-const DATA: Spec = { format: FORMATS.data, device: 'cpu', kind: 'data', data: SIM };
+const INPUT = { spec: { ...SIM, stim: 'soma' }, param: null, values: [] };
+/** 系列 s の元のモデル。単発の入力で、学習器と KAM のモデルの学習データも兼ねる（学習の系列）。 */
+const ORIGINAL: Spec = { format: FORMATS.sim, device: 'cpu', kind: 'sim', input: INPUT, model: null };
+const TRAIN = inputKey({ format: FORMATS.sim, device: 'cpu', input: INPUT });
 const PART: Spec = {
   format: FORMATS.part,
   device: 'cpu',
   kind: 'part',
-  data: hashOf(DATA),
+  input: TRAIN,
   cell: 'hh',
   form: 'hybrid',
   train_comp: null,
@@ -58,7 +60,7 @@ const MODEL: Spec = {
   form: 'hybrid',
   parts: [hashOf(PART)],
 };
-/** KAM のモデル。学習器を持たず、群と学習データ（図を描く軌道）を spec に直に持つ。 */
+/** KAM のモデル。学習器を持たず、群と学習の入力（図を描く軌道）を spec に直に持つ。 */
 const KAM_GROUP = {
   gates: ['M', 'H'],
   compressor: 'kam' as const,
@@ -70,10 +72,8 @@ const KAM_GROUP = {
 const KAM_MODEL: Spec = {
   ...MODEL,
   parts: [],
-  kam: { groups: [KAM_GROUP], data: hashOf(DATA), train_comp: null },
+  kam: { groups: [KAM_GROUP], input: TRAIN, train_comp: null },
 } as Spec;
-const INPUT = { spec: { ...SIM, stim: 'soma' }, param: null, values: [] };
-const ORIGINAL: Spec = { format: FORMATS.sim, device: 'cpu', kind: 'sim', input: INPUT, model: null };
 const REPLACED: Spec = { ...ORIGINAL, model: { surrogate: hashOf(MODEL), replace_targets: ['soma'] } };
 const PLANS: Plans = {
   groups: [{ name: 'g', description: '群' }],
@@ -110,7 +110,7 @@ const PLANS: Plans = {
           config: { cell: 'hh', form: 'hybrid', data: SIM, groups: [KAM_GROUP], train_comp: null },
         },
       ],
-      series: {},
+      series: { s: { ...INPUT, replace_targets: ['soma'] } },
       pairs: [],
       benches: [],
     },
@@ -174,17 +174,15 @@ const meta = (second: string): WaveMeta => ({
 });
 
 for (const [path, spec] of Object.entries({
-  'e/data/d': DATA,
   'e/parts/p': PART,
   'e/models/m': MODEL,
   'e/sim/s/original': ORIGINAL,
   'e/sim/s/m': REPLACED,
-  'k/data/d': DATA,
+  'k/sim/s/original': ORIGINAL,
   'k/models/n': KAM_MODEL,
 }))
   write(join(resolved, `${path}.json`), JSON.stringify(spec));
 write(join(resolved, 'plans.json'), JSON.stringify(PLANS));
-waves(join(put(DATA, 'data'), 'waves'), meta('H'), 10);
 const curve = { latent: 'h.z1', z: [-1, 1], gates: [[0, 1]] };
 put(PART, 'part', {
   'compressor/decode.json': { gates: ['H'], order: ['M', 'H', 'N'], axes: [curve] },
@@ -261,16 +259,15 @@ test('the experiments come in the declared order with their progress and run nam
     progress: '結果あり',
     runs: { models: ['m'], inputs: ['s'], bench: [] },
   });
-  expect(reply.groups[0].experiments[0].runs.data).toHaveLength(1);
   expect(reply.groups[0].experiments[0].runs.parts).toHaveLength(1);
   expect(reply.measures.coincidenceWindow).toBe(2);
 });
 
-test('an experiment gives its setup, the training data and learners of each model and the state of each pair', async () => {
+test('an experiment gives its setup, the training input and learners of each model and the state of each pair', async () => {
   const { reply } = await post<ExperimentView>('experiment', { experiment: 'e' });
   expect(reply.setup.map(r => r.label)).toContain('系列');
   expect(reply.models[0].name).toBe('m');
-  expect(reply.data.map(d => d.name)).toEqual([reply.models[0].data!]);
+  expect(reply.models[0].train).toBe('s');
   expect(reply.parts.map(p => p.name)).toEqual(reply.models[0].parts);
   expect(reply.pairs[0]).toEqual({ input: 's', model: 'm', state: 'done' });
   expect(reply.rerun.done).toBe(reply.rerun.total);
@@ -279,6 +276,7 @@ test('an experiment gives its setup, the training data and learners of each mode
 test('an input compares the original with each model, keyed by model name', async () => {
   const { reply } = await post<InputsReply>('inputs', { experiment: 'e', input: 's' });
   expect(reply.input.points).toEqual(['単発']);
+  expect(reply.input.trained).toEqual(['m']);
   expect(reply.columns.map(c => c.model)).toEqual(['m']);
   expect(reply.points[0].voltages.map(v => v.model)).toEqual([null, 'm']);
   expect(reply.points[0].voltages[0].points.length).toBeLessThanOrEqual(800);
@@ -320,42 +318,19 @@ test('an input gives one pair in latent space, with the original projected, and 
 
 test('the registry names each run by its place under runs/', async () => {
   const { reply } = await post<RegistryReply>('registry', {});
-  expect(new Set(reply.runs.map(r => r.place))).toEqual(new Set(['data', 'parts', 'models', 'inputs']));
+  expect(new Set(reply.runs.map(r => r.place))).toEqual(new Set(['parts', 'models', 'inputs']));
   expect(reply.runs.every(r => r.id.startsWith(`${r.place}/`))).toBe(true);
 });
 
-test('the training data and learner pages read their runs by declared name', async () => {
+test('the learner page reads its run by declared name, with the training trail in gate space', async () => {
   const view = (await post<ExperimentView>('experiment', { experiment: 'e' })).reply;
-  const names = { data: view.models[0].data!, part: view.models[0].parts[0] };
-  const data = await post<{ gates: { label: string }[]; stim: string }>('data', {
-    experiment: 'e',
-    data: names.data,
-    comps: ['soma'],
-  });
-  expect(data.reply.stim).toBe('soma');
-  expect(data.reply.gates.map(l => l.label)).toEqual(['H']);
-  const part = await post<PartsReply>('parts', {
-    experiment: 'e',
-    part: names.part,
-    comps: ['soma'],
-    window: [10, 50],
-  });
+  const name = view.models[0].parts[0];
+  const part = await post<PartsReply>('parts', { experiment: 'e', part: name, comps: ['soma'], window: [10, 50] });
   expect(part.reply.setup.find(r => r.label === '群のゲート')?.value).toBe('H');
   expect(part.reply.setup.find(r => r.label === '圧縮器')?.value).toBe('pca');
   const reply = part.reply;
-  const fit = reply.fit!;
-  expect(fit.window).toEqual([10, 50]);
-  expect(fit.latent.map(l => l.label)).toEqual(['h.z1']);
-  expect(fit.errors.map(e => [e.comp, e.gate])).toEqual([['soma', 'H']]);
-  expect(typeof fit.errors[0].rmse).toBe('number');
-  expect(fit.rebuilt.map(r => [r.gate, r.comp])).toEqual([['H', 'soma']]);
-  // 潜在はどの時刻も 0.5 で、decoder の曲線 (-1, 0)–(1, 1) の上では 0.75
-  expect(fit.rebuilt[0].rebuilt.every(p => p.y === 0.75)).toBe(true);
-  expect(fit.zoom[0]).toBeGreaterThanOrEqual(10);
-  expect(fit.zoom[1]).toBeLessThanOrEqual(50);
-  expect(fit.gates).toHaveLength(1);
-  expect(fit.data).toBe(names.data);
-  expect(fit.path).toHaveLength(1);
+  expect(reply.train).toBe('s');
+  expect(reply.trail).toEqual({ comps: ['soma'], shown: ['soma'], duration: N * DT, window: [10, 50] });
   expect(reply.gateOrder).toEqual(['M', 'H', 'N']);
   expect(reply.gates).toEqual(['H']);
   expect(reply.field?.latents[0].steady.map(l => l.label)).toEqual(['元のモデル', '学習器']);
@@ -379,20 +354,19 @@ test('the training data and learner pages read their runs by declared name', asy
   if (reply.rhs?.kind !== 'sindy') throw new Error('SINDy の右辺のはず');
   expect(reply.rhs.nnz).toBe(1);
   expect(reply.rhs.equations).toEqual([{ target: 'z', groups: [{ rate: '', terms: [{ monomial: '1', xi: 0.5 }] }] }]);
-  const shown = await post<{ comps: string[]; shown: string[] }>('data', { experiment: 'e', data: names.data });
-  expect(shown.reply.shown).toEqual(['soma']);
-  expect((await post<PartsReply>('parts', { experiment: 'e', part: names.part })).reply.fit?.shown).toEqual(['soma']);
+  expect((await post<PartsReply>('parts', { experiment: 'e', part: name })).reply.trail.shown).toEqual(['soma']);
 });
 
-test('a KAM model has no learners, points to its training data and answers its conditions and Kepler-style figures', async () => {
+test('a KAM model has no learners, points to its training input and answers its conditions and Kepler-style figures', async () => {
   const view = (await post<ExperimentView>('experiment', { experiment: 'k' })).reply;
   expect(view.models[0].parts).toEqual([]);
-  expect(view.models[0].data).not.toBeNull();
+  expect(view.models[0].train).toBe('s');
   const { reply } = await post<ModelsReply>('models', { experiment: 'k', model: 'n', window: [0, 50] });
   expect(reply.parts).toEqual([]);
   expect(reply.kam?.groups).toEqual([{ gates: ['M', 'H'], latent: 'm+h.z1', weights: [0.4, 0.6], criterion: 0.2 }]);
   const figures = reply.kam?.figures;
   expect(figures?.window).toEqual([0, 50]);
+  expect(figures?.train).toBe('s');
   expect(figures?.current.map(l => l.label)).toEqual(['I']);
   expect(figures?.membrane.map(l => l.label)).toEqual(['V']);
   expect(figures?.potentials.map(p => p.lines.map(l => l.label))).toEqual([['v_m', 'v_h', 'ψ']]);
@@ -430,14 +404,13 @@ test('each place opens only its own run and the runs its spec points to by hash'
     answer(ctx);
     return [...opened].sort();
   };
-  expect(read(ctx => data(ctx, { experiment: 'e', data: view.models[0].data! }))).toEqual([dirOf(DATA)]);
   expect(read(ctx => parts(ctx, { experiment: 'e', part: view.models[0].parts[0] }))).toEqual(
-    [dirOf(DATA), dirOf(PART)].sort(),
+    [dirOf(ORIGINAL), dirOf(PART)].sort(),
   );
   expect(read(ctx => models(ctx, { experiment: 'k', model: 'n' }))).toEqual([dirOf(KAM_MODEL)]);
   expect(read(ctx => models(ctx, { experiment: 'e', model: 'm' }))).toEqual([dirOf(MODEL)]);
   const pair = { input: 's', pair: { model: 'm', point: 0 }, whole: { point: 0, comps: ['soma'] } };
-  // 1 組の潜在空間は、置換系の spec が指すモデルと、その spec が指す学習器の decoder も読む（学習に無い入力の上の圧縮）
+  // 1 組の潜在空間は、置換系の spec が指すモデルと、その spec が指す学習器の decoder も読む（入力の上の圧縮）
   expect(read(ctx => inputs(ctx, { experiment: 'e', ...pair }))).toEqual(
     [dirOf(ORIGINAL), dirOf(REPLACED), dirOf(MODEL), dirOf(PART)].sort(),
   );

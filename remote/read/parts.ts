@@ -1,9 +1,8 @@
-// 学習器（runs/parts/<学習器>/）の答え。学習器の run と、その spec が指す学習データの run（data/<spec.data>/）だけを読む。KAM は学習器を持たず、モデルの答え（models.ts）が持つ。
+// 学習器（runs/parts/<学習器>/）の答え。学習器の run と、その spec が指す学習の入力の元のモデルの run（inputs/<spec.input>/original/）だけを読む。KAM は学習器を持たず、モデルの答え（models.ts）が持つ。
 // 答えの欄は学習器の run の置き場に 1 つずつ対応する：組み立て（spec.json）、ゲートの空間（compressor/decode.json の曲線、学習データの軌道、AE は compressor/plane.json の encoder の格子）、圧縮器と右辺に固有の中身
-// （compressor/own.json・rhs/own.json）、学習データの上の中身（fit/<区画>/：潜在の時系列、元のゲートと潜在から作り直したゲートの時系列、ゲートごとの全区間の再構成誤差）。
+// （compressor/own.json・rhs/own.json）、右辺の格子（rhs/field.json）。学習データの上の作り直しと z の時系列は、学習の系列の入力の答え（inputs.ts）が返す。
 import type {
   CompressorOwn,
-  Fit,
   GateSpace,
   Line,
   PartsReply,
@@ -14,9 +13,7 @@ import type {
 } from '../../shared/api.ts';
 import {
   compArray,
-  fitArray,
   RUN,
-  type ArrayRef,
   type CompressorJson,
   type DecodeJson,
   type PlaneJson,
@@ -28,8 +25,7 @@ import type { Spec } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { learnedRun, type Context } from './experiments.ts';
 import { spanOf, wavesOf } from './inputs.ts';
-import { errorOf, rebuiltOf, reconstructor } from './comparison.ts';
-import { arrayLine, line, strided, trajectory, zoomOf } from './waves.ts';
+import { strided } from './waves.ts';
 
 type PartSpec = Extract<Spec, { kind: 'part' }>;
 
@@ -39,18 +35,16 @@ export function latentNames(spec: PartSpec): string[] {
   return Array.from({ length: spec.group.d }, (_, i) => `${label}.z${i + 1}`);
 }
 
-/** 潜在の軌跡の軸。群の潜在が 2 次元以上なら先頭の 2 つ（単位が同じ）、1 次元なら V とその潜在（学習器の潜在は電位でないので単位が違う）。 */
-export function pathAxes(latents: string[]): Fit['axes'] {
-  if (latents.length >= 2) return { x: latents[0], y: latents[1], xIsVoltage: false, sameScale: true };
-  return { x: 'V', y: latents[0] ?? '', xIsVoltage: true, sameScale: false };
+/** ゲートの空間の学習データの軌道と、その区画と時間の範囲。 */
+type Trail = PartsReply['trail'] & { points: GateSpace['data'] };
+
+/** 学習器が学習した入力（学習の系列）の、実験の中の名前。 */
+function trainName(runs: string, experiment: string, run: string): string {
+  const model = experimentStatus(runs, experiment).models.find(m => m.parts.some(p => p.id === run));
+  if (!model) throw new Error(`${experiment} に ${run} を使うモデルが無い`);
+  return model.train.name;
 }
 
-/** 学習器が学習した学習データの、実験の中の名前。 */
-function dataName(runs: string, experiment: string, run: string): string {
-  const model = experimentStatus(runs, experiment).models.find(m => m.parts.some(p => p.id === run));
-  if (!model?.data) throw new Error(`${experiment} に ${run} を学習データの上で使うモデルが無い`);
-  return model.data.name;
-}
 
 /** 設定の値の並び（{ threshold: 0.1 } → threshold 0.1）。 */
 function params(values: Record<string, unknown>): string[] {
@@ -212,25 +206,14 @@ export function rhsOf(spec: PartSpec, own: RhsJson): RhsOwn {
   };
 }
 
-/** 学習データの上の中身（fit/）。学習データの run の目録 meta の上で、区画 comps の線と、元のゲートと作り直したゲートの時系列と、学習した全区画のゲートごとの再構成誤差。
- * 同じ区画と時間の範囲で、ゲートの空間の学習データの軌道 trail も返す。 */
-function fitOf(
-  ctx: Context,
-  request: PartsRequest,
-  run: string,
-  data: string,
-  meta: WaveMeta,
-  decode: DecodeJson,
-  own: CompressorJson,
-  latents: string[],
-): { fit: Fit; trail: GateSpace['data'] } {
-  const gates = decode.gates;
+/** ゲートの空間の学習データの軌道。学習の入力の元のモデルの run の目録 meta の上で、区画 comps（省けば学習した最初の区画。学習した区画は学習器の run の fit/ の区画）の時間の範囲の点を間引いて返す。 */
+function trailOf(ctx: Context, request: PartsRequest, run: string, data: string, meta: WaveMeta, gates: string[]): Trail {
   const nameOf = (id: number) => Object.entries(meta.names ?? {}).find(([, v]) => v === id)?.[0] ?? String(id);
-  const learned = ctx.files
+  const comps = ctx.files
     .dirs(run, RUN.fit)
     .map(Number)
-    .sort((a, b) => a - b);
-  const comps = learned.map(nameOf);
+    .sort((a, b) => a - b)
+    .map(nameOf);
   const shown = request.comps ?? comps.slice(0, 1);
   const duration = meta.n[0] * meta.dt;
   const span = spanOf(meta, request.window, duration);
@@ -239,94 +222,50 @@ function fitOf(
     if (id === undefined) throw new Error(`${data} に区画 ${name} が無い`);
     return id;
   };
-  const dataOf = (name: string, variable: string) => compArray(data, RUN.waves, meta, 0, idOf(name), variable);
-  const latentColumns = (id: number) => latents.map((_, k) => ctx.files.column(fitArray(run, meta, id, 'latent', k)));
-  const rebuild = reconstructor(decode, own);
-  const zoom = zoomOf(shown.length > 0 ? ctx.files.column(dataOf(shown[0], 'V')) : null, span, request.zoom);
-  const close = { ...span, start: zoom[0], end: zoom[1] };
-  const arrayOf = (name: string, file: 'latent', latent: string) =>
-    fitArray(run, meta, idOf(name), file, latents.indexOf(latent));
-  const named = (name: string, comp: string) => (shown.length > 1 ? `${name}（${comp}）` : name);
-  const draw = (label: string, ref: ArrayRef): Line => ({ label, points: line(ctx.files, ref, span) });
-  const axes = pathAxes(latents);
   const from = Math.max(0, Math.ceil((span.start - span.t0) / span.dt));
   const to = Math.min(meta.n[0] - 1, Math.floor((span.end - span.t0) / span.dt));
-  const trail = shown.map(name => ({
-    label: name,
-    points: strided(
-      gates.map(gate => ctx.files.column(dataOf(name, gate))),
-      from,
-      to,
-      SPACE_POINTS,
-    ),
-  }));
-  const fit: Fit = {
-    data: dataName(ctx.runs, request.experiment, run),
+  return {
     comps,
     shown,
     duration,
     window: [span.start, span.end],
-    voltage: shown.map(name => draw(name, dataOf(name, 'V'))),
-    gates: shown.flatMap(name => gates.map(gate => draw(named(gate, name), dataOf(name, gate)))),
-    latent: shown.flatMap(name => latents.map(latent => draw(named(latent, name), arrayOf(name, 'latent', latent)))),
-    path: shown.map(name => ({
+    points: shown.map(name => ({
       label: name,
-      points: trajectory(
-        ctx.files,
-        axes.xIsVoltage ? dataOf(name, 'V') : arrayOf(name, 'latent', axes.x),
-        arrayOf(name, 'latent', axes.y),
-        span,
+      points: strided(
+        gates.map(gate => ctx.files.column(compArray(data, RUN.waves, meta, 0, idOf(name), gate))),
+        from,
+        to,
+        SPACE_POINTS,
       ),
     })),
-    axes,
-    rebuilt: shown.flatMap(name => {
-      const rebuilt = rebuiltOf(rebuild, latentColumns(idOf(name)), gates.length);
-      return gates.map((gate, g) => ({
-        gate,
-        comp: name,
-        original: line(ctx.files, dataOf(name, gate), close),
-        rebuilt: rebuilt ? arrayLine(rebuilt[g], close) : [],
-      }));
-    }),
-    zoom,
-    errors: learned.flatMap(id => {
-      const rebuilt = rebuiltOf(rebuild, latentColumns(id), gates.length);
-      const comp = nameOf(id);
-      return gates.map((gate, g) => ({
-        comp,
-        gate,
-        ...errorOf(ctx.files.column(compArray(data, RUN.waves, meta, 0, id, gate)), rebuilt?.[g] ?? null),
-      }));
-    }),
   };
-  return { fit, trail };
 }
 
 /** 学習器 1 本の答え。置き場ごとに 1 欄。 */
 export function parts(ctx: Context, request: PartsRequest): PartsReply {
-  const run = learnedRun(ctx.runs, request.experiment, 'parts', request.part);
+  const run = learnedRun(ctx.runs, request.experiment, request.part);
   const spec = ctx.files.json<Spec>(run, RUN.spec);
   if (spec.kind !== 'part') throw new Error(`${run} は学習器の run でない`);
-  const latents = latentNames(spec);
   const decode = ctx.files.json<DecodeJson>(run, RUN.decode);
   const own = ctx.files.json<CompressorJson>(run, RUN.compressor);
-  const data = `data/${spec.data}`;
-  const { fit, trail } = fitOf(ctx, request, run, data, wavesOf(ctx, data), decode, own, latents);
+  const data = `inputs/${spec.input}/original`;
+  const trail = trailOf(ctx, request, run, data, wavesOf(ctx, data), decode.gates);
   return {
     run,
     label: spec.group.gates.map(gate => gate.toLowerCase()).join('+'),
     setup: setupOf(spec),
-    latents,
+    latents: latentNames(spec),
     gates: decode.gates,
+    train: trainName(ctx.runs, request.experiment, run),
     gateOrder: decode.order,
     space: {
       axes: axesOf(decode),
-      data: trail,
+      data: trail.points,
       levels: levelsOf(jsonOrNull<PlaneJson>(ctx.files.text(run, RUN.plane)), decode.gates),
     },
     field: fieldOf(jsonOrNull<FieldJson>(ctx.files.text(run, RUN.field))),
     compressor: compressorOf(own),
     rhs: rhsOf(spec, ctx.files.json<RhsJson>(run, RUN.rhs_own)),
-    fit,
+    trail: { comps: trail.comps, shown: trail.shown, duration: trail.duration, window: trail.window },
   };
 }

@@ -1,5 +1,5 @@
-// モデル（runs/models/<モデル>/）の答え。モデルの run と、KAM のモデルはその spec が指す学習データの run だけを読む：組み立て（spec の細胞・形・吸収と、組んだ学習器か KAM の群）と、
-// 組んだ 1 刻みの演算の回数（summary.json）と、KAM のモデルの図（kam.json の条件、equivalent/ の区画に入る電流と元のモデルの等価電位、reduced/ の縮約、学習データの膜電位。Kepler 1992 の図 2〜4 にあたる）。
+// モデル（runs/models/<モデル>/）の答え。モデルの run と、KAM のモデルはその spec が指す学習の入力の元のモデルの run だけを読む：組み立て（spec の細胞・形・吸収と、組んだ学習器か KAM の群）と、
+// 組んだ 1 刻みの演算の回数（summary.json）と、KAM のモデルの図（kam.json の条件、equivalent/ の区画に入る電流と元のモデルの等価電位、reduced/ の縮約、学習の入力の膜電位。Kepler 1992 の図 2〜4 にあたる）。
 import type { CostRow, KamFigures, KamGroup, Line, ModelsReply, ModelsRequest } from '../../shared/api.ts';
 import { compArray, currentArray, RUN, type KamJson, type WaveMeta } from '../../shared/runs.ts';
 import type { Group, Spec } from '../../shared/spec.ts';
@@ -33,7 +33,7 @@ export function potentialLabel(gate: string): string {
 }
 
 /** KAM のモデルの図。run の equivalent/（元のモデルの等価電位）と reduced/（縮約）から、区画 comp の時間の範囲の線を組む。 */
-function kamFigures(ctx: Context, run: string, kam: KamJson, data: string, request: ModelsRequest): KamFigures {
+function kamFigures(ctx: Context, run: string, kam: KamJson, train: string, request: ModelsRequest): KamFigures {
   const full = ctx.files.json<WaveMeta>(run, RUN.meta(RUN.equivalent));
   const reduced = ctx.files.json<WaveMeta>(run, RUN.meta(RUN.reduced));
   const duration = full.n[0] * full.dt;
@@ -44,7 +44,7 @@ function kamFigures(ctx: Context, run: string, kam: KamJson, data: string, reque
   const ofReduced = (variable: string) => compArray(run, RUN.reduced, reduced, 0, reducedId, variable);
   const draw = (label: string, ref: ReturnType<typeof ofFull>): Line => ({ label, points: line(ctx.files, ref, span) });
   return {
-    data,
+    train,
     comp: kam.comp,
     duration,
     window: [span.start, span.end],
@@ -84,7 +84,7 @@ export function models(ctx: Context, request: ModelsRequest): ModelsReply {
       weights: own?.groups[i].weights ?? null,
       criterion: own?.groups[i].criterion ?? null,
     }));
-    const figures = own && built.data ? kamFigures(ctx, run.id, own, built.data.name, request) : null;
+    const figures = own ? kamFigures(ctx, run.id, own, built.train.name, request) : null;
     kam = { groups, figures };
   }
   return {

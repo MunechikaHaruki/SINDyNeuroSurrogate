@@ -2592,6 +2592,21 @@
         }
       ],
       "series": {
+        "traub-train-duration-9000": {
+          "spec": {
+            "target": "traub",
+            "current_type": "train",
+            "dt": 0.01,
+            "current_params": {
+              "duration": 9000
+            }
+          },
+          "param": null,
+          "values": [],
+          "replace_targets": [
+            "soma"
+          ]
+        },
         "traub-1comp-steady": {
           "spec": {
             "target": "traub",
@@ -2617,6 +2632,230 @@
         }
       },
       "pairs": [
+        {
+          "model": "kam.a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+a_n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+c_n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+n_a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.n+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.h+n+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+a_n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+c_n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+n_a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.n+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam-absorb-m.h+n+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+a_n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+c_n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+n_a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.n+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+n+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+a_n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+c_n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+n_a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+n+a",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+n+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.n+a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+n+a+c",
+          "series": "traub-train-duration-9000"
+        },
         {
           "model": "kam.a+c",
           "series": "traub-1comp-steady"
@@ -2994,6 +3233,21 @@
         }
       ],
       "series": {
+        "traub-train-duration-9000": {
+          "spec": {
+            "target": "traub",
+            "current_type": "train",
+            "dt": 0.01,
+            "current_params": {
+              "duration": 9000
+            }
+          },
+          "param": null,
+          "values": [],
+          "replace_targets": [
+            "soma"
+          ]
+        },
         "traub-1comp-steady": {
           "spec": {
             "target": "traub",
@@ -3043,6 +3297,18 @@
         }
       },
       "pairs": [
+        {
+          "model": "kam.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+n",
+          "series": "traub-train-duration-9000"
+        },
         {
           "model": "kam.h+n",
           "series": "traub-1comp-steady"
@@ -3283,6 +3549,21 @@
         }
       ],
       "series": {
+        "traub-train-duration-1000": {
+          "spec": {
+            "target": "traub",
+            "current_type": "train",
+            "dt": 0.01,
+            "current_params": {
+              "duration": 1000
+            }
+          },
+          "param": null,
+          "values": [],
+          "replace_targets": [
+            "soma"
+          ]
+        },
         "traub-1comp-steady-test": {
           "spec": {
             "target": "traub",
@@ -3305,6 +3586,18 @@
         }
       },
       "pairs": [
+        {
+          "model": "kam-test.h+n_a+c",
+          "series": "traub-train-duration-1000"
+        },
+        {
+          "model": "pca-sindy-test.h+n_a+c",
+          "series": "traub-train-duration-1000"
+        },
+        {
+          "model": "ae-sindy-test.h+n_a+c",
+          "series": "traub-train-duration-1000"
+        },
         {
           "model": "kam-test.h+n_a+c",
           "series": "traub-1comp-steady-test"
@@ -3594,6 +3887,21 @@
         }
       ],
       "series": {
+        "traub-train-duration-9000": {
+          "spec": {
+            "target": "traub",
+            "current_type": "train",
+            "dt": 0.01,
+            "current_params": {
+              "duration": 9000
+            }
+          },
+          "param": null,
+          "values": [],
+          "replace_targets": [
+            "soma"
+          ]
+        },
         "traub-19comp-steady-replace-soma": {
           "spec": {
             "target": "traub19",
@@ -3646,6 +3954,30 @@
         }
       },
       "pairs": [
+        {
+          "model": "kam.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "kam.a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.a+c",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "ae-sindy.a+c",
+          "series": "traub-train-duration-9000"
+        },
         {
           "model": "kam.h+n",
           "series": "traub-19comp-steady-replace-soma"
@@ -3841,6 +4173,21 @@
         }
       ],
       "series": {
+        "traub-train-duration-1000": {
+          "spec": {
+            "target": "traub",
+            "current_type": "train",
+            "dt": 0.01,
+            "current_params": {
+              "duration": 1000
+            }
+          },
+          "param": null,
+          "values": [],
+          "replace_targets": [
+            "soma"
+          ]
+        },
         "traub-19comp-steady-replace-soma-test": {
           "spec": {
             "target": "traub19",
@@ -3863,6 +4210,18 @@
         }
       },
       "pairs": [
+        {
+          "model": "kam-test.h+n",
+          "series": "traub-train-duration-1000"
+        },
+        {
+          "model": "pca-sindy-test.h+n",
+          "series": "traub-train-duration-1000"
+        },
+        {
+          "model": "ae-sindy-test.h+n",
+          "series": "traub-train-duration-1000"
+        },
         {
           "model": "kam-test.h+n",
           "series": "traub-19comp-steady-replace-soma-test"
@@ -3972,6 +4331,21 @@
         }
       ],
       "series": {
+        "traub-train-duration-9000": {
+          "spec": {
+            "target": "traub",
+            "current_type": "train",
+            "dt": 0.01,
+            "current_params": {
+              "duration": 9000
+            }
+          },
+          "param": null,
+          "values": [],
+          "replace_targets": [
+            "soma"
+          ]
+        },
         "traub-1comp-steady": {
           "spec": {
             "target": "traub",
@@ -4047,6 +4421,14 @@
         }
       },
       "pairs": [
+        {
+          "model": "kam.h+n",
+          "series": "traub-train-duration-9000"
+        },
+        {
+          "model": "pca-sindy.h+n",
+          "series": "traub-train-duration-9000"
+        },
         {
           "model": "kam.h+n",
           "series": "traub-1comp-steady"
@@ -4209,6 +4591,21 @@
         }
       ],
       "series": {
+        "traub-train-duration-1000": {
+          "spec": {
+            "target": "traub",
+            "current_type": "train",
+            "dt": 0.01,
+            "current_params": {
+              "duration": 1000
+            }
+          },
+          "param": null,
+          "values": [],
+          "replace_targets": [
+            "soma"
+          ]
+        },
         "traub-1comp-steady-test": {
           "spec": {
             "target": "traub",
@@ -4231,6 +4628,10 @@
         }
       },
       "pairs": [
+        {
+          "model": "kam-test.h+n",
+          "series": "traub-train-duration-1000"
+        },
         {
           "model": "kam-test.h+n",
           "series": "traub-1comp-steady-test"
@@ -4323,6 +4724,21 @@
         }
       ],
       "series": {
+        "traub19-train-duration-1000": {
+          "spec": {
+            "target": "traub19",
+            "current_type": "train",
+            "dt": 0.01,
+            "current_params": {
+              "duration": 1000
+            }
+          },
+          "param": null,
+          "values": [],
+          "replace_targets": [
+            "soma"
+          ]
+        },
         "traub-19comp-steady-replace-soma": {
           "spec": {
             "target": "traub19",
@@ -4348,6 +4764,10 @@
         }
       },
       "pairs": [
+        {
+          "model": "ae-latent5-sindy.m+h+n+a+b+c",
+          "series": "traub19-train-duration-1000"
+        },
         {
           "model": "ae-latent5-sindy.m+h+n+a+b+c",
           "series": "traub-19comp-steady-replace-soma"

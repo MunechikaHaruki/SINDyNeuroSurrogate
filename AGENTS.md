@@ -25,8 +25,8 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 | 数値計算の Python（元のモデル `remote/neurosurrogate/physics/`、学習と置換 `remote/neurosurrogate/surrogate/`、計算の入口 `remote/neurosurrogate/run.py`、GPU の実測 `remote/neurosurrogate/bench.py`、API が呼ぶ eFEL の特徴量 `remote/neurosurrogate/spikes.py`）とそのテスト | `remote/neurosurrogate/`、`remote/tests/` |
 | 入口。送られてきた resolved/ の spec を回す段取り（先に要る run を用意し、Python の計算の入口を起こす。画面から起こした仕事と、run・list の CLI もここ） | `remote/run-spec.ts` |
 | 段取りの部品。実験の状態 `status.ts`、置き場（resolved/ からパスで spec を引く、runs/ の置き場と run 1 本の状態）`places.ts` | `remote/run/` |
-| API の答えを作る部品。口ごとの答えを組む `experiments.ts`（目次・実験 1 つ・run の一覧）と、run の置き場ごとの `inputs.ts`・`models.ts`・`data.ts`・`parts.ts`・`bench.ts`、run のファイルを読んで覚え、回線に出す形（間引き・軌跡・分布）にする `waves.ts`、波形から先の統計量を全部、頼まれるたびに純粋関数で計算する `comparison.ts`（波形 1 本の eFEL の特徴量・0 mV の横切り・山の平均の形・発散、原系と列の点ごとの rmse・mae・ISI の統計・周期の差・形の相関・横切りの差・Γ、列ごとの Γ の平均と発火の始まり、潜在から decoder でゲートを作り直した再構成誤差）、GPU の実測のツールごとの出力を細胞の数ごとの行に集める `bench.ts`（ncu の区画ごとのカーネルの合わせ方もここ） | `remote/read/` |
-| 計算する機械の側の通信。答えを小さい JSON で返す API（口は実験の目次と実験 1 つ、run の置き場ごとの inputs・models・data・parts・bench、run の一覧、仕事を起こす口。口を `remote/run-spec.ts`・`remote/run/`・`remote/read/` の関数に渡すだけ） | `remote/serve.ts` |
+| API の答えを作る部品。口ごとの答えを組む `experiments.ts`（目次・実験 1 つ・run の一覧）と、run の置き場ごとの `inputs.ts`・`models.ts`・`parts.ts`・`bench.ts`、run のファイルを読んで覚え、回線に出す形（間引き・軌跡・分布）にする `waves.ts`、波形から先の統計量を全部、頼まれるたびに純粋関数で計算する `comparison.ts`（波形 1 本の eFEL の特徴量・0 mV の横切り・山の平均の形・発散、原系と列の点ごとの rmse・mae・ISI の統計・周期の差・形の相関・横切りの差・Γ、列ごとの Γ の平均と発火の始まり、潜在から decoder でゲートを作り直した再構成誤差）、GPU の実測のツールごとの出力を細胞の数ごとの行に集める `bench.ts`（ncu の区画ごとのカーネルの合わせ方もここ） | `remote/read/` |
+| 計算する機械の側の通信。答えを小さい JSON で返す API（口は実験の目次と実験 1 つ、run の置き場ごとの inputs・models・parts・bench、run の一覧、仕事を起こす口。口を `remote/run-spec.ts`・`remote/run/`・`remote/read/` の関数に渡すだけ） | `remote/serve.ts` |
 | 計算する機械のイメージと Python の依存 | `remote/Dockerfile`、`remote/pyproject.toml`、`remote/uv.lock` |
 | run | 計算する機械の `~/sindy/runs/`（手元の runs は `local/remote.sh fetch` の写しだけ。どちらも Git の外） |
 
@@ -78,13 +78,12 @@ hybrid で群に入らなかった状態。元のモデルの微分の式 (`Cell
 
 ### run の置き場
 
-保存の単位は学習データ (`runs/data/<ハッシュ>/`)、学習器 (`runs/parts/<ハッシュ>/`。群 1 つの圧縮器と右辺)、学習器の並びを組んだモデル (`runs/models/<ハッシュ>/`)、入力 (`runs/inputs/<入力のハッシュ>/`)、GPU の実測 (`runs/bench/<ハッシュ>/`) の五つで、入力の下に元のモデル (`<入力のハッシュ>/original/`) と置き換えたモデル (`<入力のハッシュ>/<モデルのハッシュ>@<置換する区画を + でつないだもの>/`。例 `3ea34b09c3f4@soma`。どのモデルでどこを置き換えたかが名前で読める) を置く。学習器は学習データを、モデルは学習器を (KAM のモデルは学習器を持たず、群を spec に直に持って学習データを指す)、評価と GPU の実測はモデルをハッシュで指す。学習器の run は役割の名前の置き場 (圧縮器 `runs/parts/<ハッシュ>/compressor/`、右辺 `runs/parts/<ハッシュ>/rhs/`、学習データの上 `runs/parts/<ハッシュ>/fit/`) に分け、種類 (PCA・AE・SINDy・UDE) の違いは中身の `kind` と置き場の有無だけが持つ。KAM は細胞全体の膜電流から組む縮約 (Kepler 1992) なので、学習器でなくモデルの単位に置く。図は置き場 1 つを 1 枚のカードにする。群の学習器はほかの群に依らないので、同じ群を持つモデルどうし (`pca-sindy.h+n` と `pca-sindy.h+n_a+c` の h+n) は同じ学習器を共有する。1 run = spec.json 1 つで、置き場は spec から決まる (`remote/run/places.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。図は Python で描かず、Python が置くのは図に要るデータだけ:
+保存の単位は学習器 (`runs/parts/<ハッシュ>/`。群 1 つの圧縮器と右辺)、学習器の並びを組んだモデル (`runs/models/<ハッシュ>/`)、入力 (`runs/inputs/<入力のハッシュ>/`)、GPU の実測 (`runs/bench/<ハッシュ>/`) の四つで、入力の下に元のモデル (`<入力のハッシュ>/original/`) と置き換えたモデル (`<入力のハッシュ>/<モデルのハッシュ>@<置換する区画を + でつないだもの>/`。例 `3ea34b09c3f4@soma`。どのモデルでどこを置き換えたかが名前で読める) を置く。学習データは置き場を持たず、モデルの学習用の電流を単発で回す学習の系列 (`local/experiments/schema/experiments.ts` の `withTraining` が実験の系列の先頭に足し、どのモデルもその上でも評価する) の元のモデル `<入力のハッシュ>/original/` がそれにあたる。学習器は学習の入力を鍵 (`shared/hash.ts` の `inputKey`) で、モデルは学習器を (KAM のモデルは学習器を持たず、群を spec に直に持って学習の入力を鍵で指す)、評価と GPU の実測はモデルをハッシュで指す。学習器の run は役割の名前の置き場 (圧縮器 `runs/parts/<ハッシュ>/compressor/`、右辺 `runs/parts/<ハッシュ>/rhs/`、学習データの上 `runs/parts/<ハッシュ>/fit/`) に分け、種類 (PCA・AE・SINDy・UDE) の違いは中身の `kind` と置き場の有無だけが持つ。KAM は細胞全体の膜電流から組む縮約 (Kepler 1992) なので、学習器でなくモデルの単位に置く。図は置き場 1 つを 1 枚のカードにする。群の学習器はほかの群に依らないので、同じ群を持つモデルどうし (`pca-sindy.h+n` と `pca-sindy.h+n_a+c` の h+n) は同じ学習器を共有する。1 run = spec.json 1 つで、置き場は spec から決まる (`remote/run/places.ts` の `dirOf`)。同じ spec は同じ置き場なので、ディレクトリがあれば回さない。図は Python で描かず、Python が置くのは図に要るデータだけ:
 
 ```
 <run>/  spec.json              回した条件 (format = 形式の版, kind, ...)
-        meta.json              kind (data / part / model / original / replaced / bench), name (図に出す名前。同一性に入らない), created, elapsed (計算にかかった秒), unit (掃引の単位),
+        meta.json              kind (part / model / original / replaced / bench), name (図に出す名前。同一性に入らない), created, elapsed (計算にかかった秒), unit (掃引の単位),
                                env (回した backend・device・jax と python の版・host・コードとイメージの版。同一性に入らない)
-data/<ハッシュ>/    waves/                    学習データ (下の waves と同じ形式、点は 1 つ)
 parts/<ハッシュ>/   learner.joblib            学習器 (圧縮器と右辺)
                     compressor/decode.json    潜在 → 群のゲートの曲線を潜在の軸ごとに (ほかの軸は学習データの平均)。区画の型の状態の並びも
                     compressor/plane.json     AE だけ。群のゲート 2 本ずつの平面の上で encoder が返す潜在の格子 (等高線に使う。範囲は群の全ゲートを合わせた学習データの幅を少し広げたもので、どの軸も同じ。ほかのゲートは学習データの平均)
@@ -96,7 +95,7 @@ parts/<ハッシュ>/   learner.joblib            学習器 (圧縮器と右辺)
                     fit/<comp_id>/summary.json 学習 comp の全区間の再構成の MSE と、それをゲートの分散で割ったもの
 models/<ハッシュ>/  summary.json              surrogate.summary (組んだ 1 刻みの演算コスト。学習器の中身は学習器の run だけが持つ)
                     kam.json                  KAM のモデルだけ。描いた区画、吸収したゲート、群ごとのゲートと潜在の名前と Kepler 1992 の式(6)の重みと式(10)の条件
-                    equivalent/               KAM のモデルだけ。学習データの区画の元のモデルの軌道を等価電位にしたもの (V、吸収したゲートと群のゲートの等価電位、群ごとの ψ。waves と同じ形式)
+                    equivalent/               KAM のモデルだけ。学習の入力の区画の元のモデルの軌道を等価電位にしたもの (V、吸収したゲートと群のゲートの等価電位、群ごとの ψ。waves と同じ形式)
                     reduced/                  KAM のモデルだけ。同じ電流を縮約で回した waves
 inputs/<ハッシュ>/  input.json                電流と掃引 (段取りが書く)
                     original/ waves/          下の形式。meta.json に comp 名 → id も入る
@@ -115,16 +114,16 @@ waves/<点>/comp<id>.f64    その comp の変数 (features の並び順)。変�
 waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 ```
 
-- spec はどれも `device` (`cpu` か `gpu`) を持つ。同じ条件でも計算の順序が変わって結果がずれるので、同一性に入れる。学習器は `gpu` (GPU を使うのは AE の学習だけ。テスト専用のモデルの学習器は `cpu`)、学習データ・モデル・評価は `cpu`、GPU の実測は `gpu`。決めるのは `local/resolve.ts` の `dataSpec`・`partSpec`・`modelSpec`・`simSpec`・`benchSpec`
-- spec の種類: `data` は学習データの SimSpec、`part` は区画の型・形・群 1 つと、学習データのハッシュと学習区画、`model` は区画の型・形・吸収と学習器のハッシュの並び (群の順。KAM のモデルは空で、代わりに `kam` に群と、図を描く学習データのハッシュと区画を持つ。KAM は区画の型の既定の params で組む。KAM と学習器を混ぜたモデルは組まない)、
+- spec はどれも `device` (`cpu` か `gpu`) を持つ。同じ条件でも計算の順序が変わって結果がずれるので、同一性に入れる。学習器は `gpu` (GPU を使うのは AE の学習だけ。テスト専用のモデルの学習器は `cpu`)、モデル・評価 (学習の入力の元のモデルも) は `cpu`、GPU の実測は `gpu`。決めるのは `local/resolve.ts` の `partSpec`・`modelSpec`・`simSpec`・`benchSpec`
+- spec の種類: `part` は区画の型・形・群 1 つと、学習の入力の鍵 (`shared/hash.ts` の `inputKey`) と学習区画、`model` は区画の型・形・吸収と学習器のハッシュの並び (群の順。KAM のモデルは空で、代わりに `kam` に群と、図を描く学習の入力の鍵と区画を持つ。KAM は区画の型の既定の params で組む。KAM と学習器を混ぜたモデルは組まない)、
   `sim` は入力 (`input`) とモデル (`model` = `{surrogate, replace_targets}`、`surrogate` はモデルのハッシュ、元のモデルは null)、`bench` は sim と同じに細胞の数と ncu。
-  宣言のモデル 1 つ (`surrogate.Config`) を、`local/resolve.ts` が学習データ・群ごとの学習器・それを組んだモデルの spec に分ける。置換範囲はモデルの側に入るので、置換範囲だけが違う系列は同じ入力のディレクトリに別のモデルとして並ぶ
-- **ハッシュを組むのは TS の `shared/hash.ts` だけ。** Python は渡された spec とディレクトリを埋めるだけで、指す run は spec のハッシュ (`data`・`parts`・`model.surrogate`) で run の置き場から引き (`remote/neurosurrogate/store.py`)、
+  宣言のモデル 1 つ (`surrogate.Config`) を、`local/resolve.ts` が群ごとの学習器・それを組んだモデルの spec と、学習の系列に分ける。置換範囲はモデルの側に入るので、置換範囲だけが違う系列は同じ入力のディレクトリに別のモデルとして並ぶ
+- **ハッシュを組むのは TS の `shared/hash.ts` だけ。** Python は渡された spec とディレクトリを埋めるだけで、指す run は spec の鍵 (`input`・`parts`・`model.surrogate`) で run の置き場から引き (`remote/neurosurrogate/store.py`)、
   比べる相手は隣の `<入力のハッシュ>/original/` で引く (JS と Python で数値の JSON 表記が違うので、鍵を 2 か所で組まない)
 - **比べた束 (どの列を並べたか) は残さない。** 図が選び直すたびに描く
-- 形式の版は spec の種類 (data・part・model・sim・bench) ごとに持つ。形式を変えたら、変えた種類の版を `remote/neurosurrogate/run.py` の `_FORMATS` と `shared/spec.ts` の `FORMATS` で上げる (揃っているかは `remote/run/places.test.ts`)。spec に入るので、
-  その種類の古い run と、ハッシュでそれを指す後ろの run (学習器を変えればモデル・置換系・GPU の実測) だけが置き場が合わず回し直される。元のモデルの評価や学習データは、変えなければ残る
-- **置き場の口は自分の run と、自分の spec がハッシュで指す run だけを読む**: data・parts・models・inputs・bench の口が開ける run は、その run と spec の欄が指す run (学習器なら学習データ、モデルなら学習器、評価と GPU の実測ならモデルと隣の元のモデル) だけ。原系と置換系の比べは、両方を持つ入力の口が返す。入力の口の 1 組だけは、学習に無い入力の上で圧縮を確かめるため、モデルの spec が指す学習器の decoder (`runs/parts/<ハッシュ>/compressor/` の decode.json と own.json) まで読む。ほかの run は名前で指すだけ (`remote/serve.test.ts` が口ごとの読み先を確かめる)
+- 形式の版は spec の種類 (part・model・sim・bench) ごとに持つ。形式を変えたら、変えた種類の版を `remote/neurosurrogate/run.py` の `_FORMATS` と `shared/spec.ts` の `FORMATS` で上げる (揃っているかは `remote/run/places.test.ts`)。spec に入るので、
+  その種類の古い run と、ハッシュでそれを指す後ろの run (学習器を変えればモデル・置換系・GPU の実測) だけが置き場が合わず回し直される。元のモデルの評価 (学習の入力も) は、変えなければ残る
+- **置き場の口は自分の run と、自分の spec がハッシュで指す run だけを読む**: parts・models・inputs・bench の口が開ける run は、その run と spec の欄が指す run (学習器なら学習の入力の元のモデル、モデルなら学習器、評価と GPU の実測ならモデルと隣の元のモデル) だけ。原系と置換系の比べは、両方を持つ入力の口が返す。入力の口の 1 組だけは、その入力の上で圧縮を確かめるため、モデルの spec が指す学習器の decoder (`runs/parts/<ハッシュ>/compressor/` の decode.json と own.json) まで読む。ほかの run は名前で指すだけ (`remote/serve.test.ts` が口ごとの読み先を確かめる)
 - **記録した run を描画が書き換えない**: 図は読むだけ
 - JSON に nan は書かない (null)。JS の JSON が読めないため
 - **書きかけと印**: `<置き場>.partial/` は書きかけで、中の `pid` が書いているプロセス (生きていれば計算中、死んでいれば残骸として次に片付ける。同じ run を二つのプロセスが書かないよう、生きた書き手がいれば run.py は終了コード 4 で退き、段取りは終わるのを待つ)。`<置き場>.unreplaceable` は置換できないと分かったモデルの印 (置換できるかは Python だけが知るので答えを覚える)。`.jobs/<組のハッシュ>.{json,pid,log,exit}` は外の画面が `--job` で起こした段取りの中身・pid・ログ・終了コード (同じ組の二重起動を pid で弾き、終了コードが 0 でないか書かずに消えたものを失敗として返す)
@@ -143,7 +142,7 @@ waves/<点>/I_ext.f64       waves/<点>/I_internal.f64 (node ごとに連続)
 - 値の既定は `local/experiments/config/presets.json` の `defaults` が持つ。値から導く既定 (教師は細胞と同じ、圧縮は書かなければ仕方の名前、右辺は KAM なら KAM でほかは SINDy、項ライブラリは細胞のゲートの項と `basis`) と、どの学習でも同じ形 (学習用の電流・全区画で学習) だけは `local/experiments/schema/presets.ts` が導く。散文の説明は持たない。テスト専用のモデル `_test_*` は presets.json に入れず `local/experiments/schema/test-models.ts` に TS の辞書で書き、仕方に差分を重ね、どの実験にも入れない。設定は `resolve.ts write` が `local/experiments/resolved/tests.json` に値で書き、pytest はそれを読む。
 - 実験は presets.json でなく、実験群ごとに `local/experiments/config/<群>.yaml`（実験層）に書く。今の実験群は単一区画 `1comp`、19 区画 `19comp`、GPU の実測 `gpu`。実験層は二つの文書で、一つ目は frontmatter（実験群の道案内の一文 `description` だけ）、二つ目はどの run にも共通の設定 `setup` と回す run の並び `runs`（run の名前 → 何を回して何を見るかの一文 `description` と、setup を置き換える欄）。欄は仕方 `methods`、群分け（全部の群分けを組むゲートの並び `gates` か、群分けの名前 `groupings`）、系列 `series`、GPU の実測 `benches`（測る系列。元のモデルと run のモデルを全部、細胞の数 `cells` で、`ncu` なら Nsight Compute でも測る）。run に書いた欄だけが setup を置き換え、群分けは gates と groupings をまとめて置き換える。各実験群には、短い学習データと系列で数分で回り切るテスト用の run `test-<群>` を置き、形式やコードを変えたらまずこれを回す（仕方と系列は名前に `-test` を付けた差分で書く）。形は `local/experiments/schema/schema.ts` が zod で決め、返すのは解決済みの実験 (モデルと系列を値で持ち、回す組を並べたもの) だけで、`resolve.ts` と画面はこれだけを読み、実験層の形を知らない。仕方と系列はプリセットの名前か、名前を付けた差分 `{ "name", "from", ...差分 }` で指し、値を少し変えた実験はプリセットを足さずに差分で書く。モデルの名前は `<仕方の名前>.<群分け>` で、同じ名前がほかの実験で違う中身を指せば落とす。
 - プリセットは組み合わせを展開する実験（群分けの掃引など）のためだけに使う。組み合わせを展開しない決め打ちの構成（発表の再現など）は、プリセットを通さず、解決済みの実験の形 (`local/experiments/schema/schema.ts` の `PlanJson`: 学習の設定と系列を値のまま) で `local/experiments/config/<実験>.json` に手で書き、`local/experiments/schema/experiments.ts` が読む。一回限りの値をプリセットに足さない。
-- 実際に送る spec.json は、そのままの中身で `local/experiments/resolved/` に生成物として置く (`bun local/resolve.ts write`)。パスは識別のための名前で送らない: 学習データ `<実験>/data/<対象>.<電流>.<パラメータ>.json`、学習器 `<実験>/parts/<圧縮器と右辺>.<群>.json` (どちらも名前は中身から付け、同じ中身は実験の中で 1 ファイル。同じ名前に違う中身が来たら resolve が止まる)、モデル `<実験>/models/<モデル>.json`、`<実験>/sim/<系列>/original.json` と `<モデル>.json`、`<実験>/bench/<GPU の実測>.json`。段取り (`remote/run/`) は宣言を読まず、resolved/ の spec だけを回す。実験ごとの状態も resolved/ の下のディレクトリから組み、並びは名前の順 (宣言の順は手元が持つ) (指す run を先に回す: 学習器は学習データを、モデルは学習器を、評価と GPU の実測はモデルと (評価なら) 元のモデルを)。画面も仕事を resolved/ のパスで起こす。宣言やプリセットを直したら write で書き直し、差分で、送る spec が何から何に変わったか (中身が変われば置き場が変わり、回し直しになる) を確かめる。古いと `local/resolve.test.ts` が落ち、`local/remote.sh` は送らない (`resolve.ts check`)。
+- 実際に送る spec.json は、そのままの中身で `local/experiments/resolved/` に生成物として置く (`bun local/resolve.ts write`)。パスは識別のための名前で送らない: 学習器 `<実験>/parts/<圧縮器と右辺>.<群>.json` (名前は中身から付け、同じ中身は実験の中で 1 ファイル。同じ名前に違う中身が来たら resolve が止まる)、モデル `<実験>/models/<モデル>.json`、`<実験>/sim/<系列>/original.json` と `<モデル>.json` (学習の系列は中身から `<対象>-<電流>-<パラメータ>`、例 `traub-train-duration-9000`)、`<実験>/bench/<GPU の実測>.json`。段取り (`remote/run/`) は宣言を読まず、resolved/ の spec だけを回す。実験ごとの状態も resolved/ の下のディレクトリから組み、並びは名前の順 (宣言の順は手元が持つ) (指す run を先に回す: 学習器は学習の入力の元のモデルを、モデルは学習器を、評価と GPU の実測はモデルと (評価なら) 元のモデルを)。画面も仕事を resolved/ のパスで起こす。宣言やプリセットを直したら write で書き直し、差分で、送る spec が何から何に変わったか (中身が変われば置き場が変わり、回し直しになる) を確かめる。古いと `local/resolve.test.ts` が落ち、`local/remote.sh` は送らない (`resolve.ts check`)。
 - 使わなくなった仕方と系列は消す。run は消さず、`list` の一覧に残る。
 - 描き方 (どの区画を見るか、表示の範囲) は宣言に持たず、読む側 (repo の外の図) が持つ。
 
@@ -189,7 +188,7 @@ SINDY_API=http://<host>:8787 bun local/cli.ts   # 実験を状態ごとに並べ
 # 計算する機械の側（remote/。手元でもテストとテストの学習の評価は回る。gpu の学習 spec は GPU の機械でしか回らない）
 # 手元で回すときは、読む spec の場所を export SINDY_RESOLVED=local/experiments/resolved で渡す（イメージは /code/resolved）
 uv sync --project remote                 # Python の依存
-bun remote/run-spec.ts run <resolved/ の下のパス>...   # その spec を回す。指す学習データ・学習器・モデルと元のモデルを先に回す
+bun remote/run-spec.ts run <resolved/ の下のパス>...   # その spec を回す。指す学習の入力・学習器・モデルと元のモデルを先に回す
 bun remote/run-spec.ts list           # 完成した run の一覧
 uv run --project remote pytest -q remote/tests   # 規約、区画の式、サロゲート、neurosurrogate/run.py
 bun test remote                          # 段取り・API・指標の TS のテスト

@@ -77,17 +77,6 @@ export function internalArray(run: string, root: string, meta: WaveMeta, point: 
   return { run, file: `${root}/${point}/I_internal.f64`, column, n: meta.n[point] };
 }
 
-/** 学習器の run の、学習区画 compId の潜在 latent（column 列目）か再構成誤差 recon_rmse（1 列）。meta は学習データの目録。 */
-export function fitArray(
-  run: string,
-  meta: WaveMeta,
-  compId: number,
-  file: 'latent' | 'recon_rmse',
-  column = 0,
-): ArrayRef {
-  return { run, file: `fit/${compId}/${file}.f64`, column, n: meta.n[0] };
-}
-
 /** 学習器の run の decode の曲線（compressor/decode.json）。gates は群のゲート、order は区画の型の状態の並び、axes は潜在の軸ごとの格子 z と、ゲートごとの値（gates の順 × z の点）。 */
 export type DecodeJson = {
   gates: string[];
