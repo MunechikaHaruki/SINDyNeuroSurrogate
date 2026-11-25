@@ -190,13 +190,16 @@ function pairOf(
   const names = projected ? variablesOf(projected, id).filter(name => name !== 'V') : [];
   const own = wavesOf(ctx, run);
   const ownNames = variablesOf(own, id);
+  // 時系列（z・ゲート・dz/dt）は同じ範囲で返す。(V, z) 平面は全区間
+  const window = zoomOf(ctx.files.column(compArray(at.original, RUN.waves, at.meta, k, id, 'V')), span, zoom);
+  const close = { ...span, start: window[0], end: window[1] };
   const latents: Record<string, Line[]> = {};
   for (const name of names) {
-    latents[name] = [{ label: '原系', points: line(ctx.files, compArray(run, root, projected!, k, id, name), span) }];
+    latents[name] = [{ label: '原系', points: line(ctx.files, compArray(run, root, projected!, k, id, name), close) }];
     if (replaced && ownNames.includes(name))
       latents[name].push({
         label: '置換系',
-        points: line(ctx.files, compArray(run, RUN.waves, own, k, id, name), span),
+        points: line(ctx.files, compArray(run, RUN.waves, own, k, id, name), close),
       });
   }
   const phases: Record<string, Line[]> = {};
@@ -227,12 +230,12 @@ function pairOf(
             slope: compArray(run, RUN.slope(at.comp), projected, k, id, name),
             rhs: compArray(run, RUN.rhs(at.comp), projected, k, id, name),
           })),
-          span,
+          close,
         )
       : null;
   const heldOut = projected
-    ? rebuiltAt(ctx, { run, original: at.original, meta: at.meta, projected, root, k, id, comp: at.comp }, span, zoom)
-    : { rebuilt: [], zoom: [span.start, span.end] as Window, order: [], errors: [] };
+    ? rebuiltAt(ctx, { run, original: at.original, meta: at.meta, projected, root, k, id, comp: at.comp }, span, window)
+    : { rebuilt: [], zoom: window, order: [], errors: [] };
   return {
     model: at.model,
     latents,

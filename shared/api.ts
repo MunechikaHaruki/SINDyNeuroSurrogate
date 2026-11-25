@@ -91,7 +91,7 @@ export type InputsRequest = {
   whole?: { point: number; comps: string[] };
 };
 /** 1 組の潜在空間。latents と phases の原系は列の圧縮器で潜在へ写したもの（射影）。比べる区画を置き換えていなければ latents は空。置換系が発散した点では原系だけ。
- * phases は潜在ごとの (V, z) の相平面（キーは latents と同じ）、sameScale は V と z の単位が同じか（KAM の ψ は mV）。 */
+ * 時系列（latents、slopes の lines と match、rebuilt）は範囲 zoom（既定は最初の発火の 5 ms 前から 50 ms）で返し、phases は全区間。phases は潜在ごとの (V, z) の相平面（キーは latents と同じ）、sameScale は V と z の単位が同じか（KAM の ψ は mV）。 */
 export type PairCompare = {
   model: string;
   latents: Record<string, Line[]>;
@@ -99,9 +99,10 @@ export type PairCompare = {
   sameScale: boolean;
   /** 原系の軌道の上の潜在の傾きの比べ（列の学習器の右辺と正解）。置き換えていない区画か、右辺を評価しない形（form=sindy）なら null。error は掃引の点の全区間。 */
   slopes: SlopeCompare | null;
-  /** この入力の上での圧縮：列の学習器ごとの群のゲートの、元のモデルの時系列と、それを列の圧縮器で写した z から decoder で作り直した時系列（範囲 zoom。既定は最初の発火の 5 ms 前から 50 ms）。
+  /** この入力の上での圧縮：列の学習器ごとの群のゲートの、元のモデルの時系列と、それを列の圧縮器で写した z から decoder で作り直した時系列。
    * order は区画の型の状態の並び（ゲートの色をほかのページと揃える）。KAM のモデル（学習器を持たない）と、置き換えていない区画では空。 */
   rebuilt: GateRebuild[];
+  /** 時系列の範囲。KAM のモデルでも決まる。 */
   zoom: Window;
   order: string[];
   /** 同じ入力の上の、群のゲートごとの再構成誤差（掃引の点 point の全区間。原系のゲートと、射影した z から作り直したゲートの差の RMSE と、ゲートの振れ幅）。学習の系列の入力では学習データの上の値。 */
