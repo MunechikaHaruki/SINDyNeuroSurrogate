@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { hashOf, inputKey } from '../shared/hash.ts';
-import { FORMATS, type Plans, type Spec } from '../shared/spec.ts';
+import { FORMATS, pointsOf, type Plans, type Spec } from '../shared/spec.ts';
 import type { WaveMeta } from '../shared/runs.ts';
 import type {
   ExperimentView,
@@ -38,7 +38,11 @@ const GROUP = {
   compressor_params: {},
   rhs_params: {},
 };
-const INPUT = { spec: { ...SIM, stim: 'soma' }, param: null, values: [] };
+const INPUT = { spec: { ...SIM, stim: 'soma' } };
+/** 系列 w：電流の amplitude を 2 と 10 に振る掃引。点ごとに入力 1 本の run になる。名前の順（amplitude=10 が先）と宣言の順が逆になる値にしてある。 */
+const SWEPT = { ...INPUT, sweep: { param: 'amplitude', values: [2, 10] }, replace_targets: ['soma'] };
+/** 系列 v：amplitude を 3 と 4 に振るが、置換系は 1 点しか回していない（組はまだ）。 */
+const HALF = { ...INPUT, sweep: { param: 'amplitude', values: [3, 4] }, replace_targets: ['soma'] };
 /** 系列 s の元のモデル。単発の入力で、学習器と KAM のモデルの学習データも兼ねる（学習の系列）。 */
 const ORIGINAL: Spec = { format: FORMATS.sim, device: 'cpu', kind: 'sim', input: INPUT, model: null };
 const TRAIN = inputKey({ format: FORMATS.sim, device: 'cpu', input: INPUT });
@@ -91,8 +95,12 @@ const PLANS: Plans = {
           config: { cell: 'hh', form: 'hybrid', data: SIM, groups: [GROUP], train_comp: null },
         },
       ],
-      series: { s: { ...INPUT, replace_targets: ['soma'] } },
-      pairs: [{ model: 'm', series: 's' }],
+      series: { s: { ...INPUT, sweep: null, replace_targets: ['soma'] }, w: SWEPT, v: HALF },
+      pairs: [
+        { model: 'm', series: 's' },
+        { model: 'm', series: 'w' },
+        { model: 'm', series: 'v' },
+      ],
       benches: [],
     },
     {
@@ -108,7 +116,7 @@ const PLANS: Plans = {
           config: { cell: 'hh', form: 'hybrid', data: SIM, groups: [KAM_GROUP], train_comp: null },
         },
       ],
-      series: { s: { ...INPUT, replace_targets: ['soma'] } },
+      series: { s: { ...INPUT, sweep: null, replace_targets: ['soma'] } },
       pairs: [],
       benches: [],
     },
@@ -153,7 +161,7 @@ function put(spec: Spec, kind: string, files: Record<string, unknown> = {}): str
   write(join(dir, 'spec.json'), JSON.stringify(spec));
   write(
     join(dir, 'meta.json'),
-    JSON.stringify({ kind, name: kind, created: '2026-11-16T00:00:00', elapsed: 1, unit: 'μA/cm²' }),
+    JSON.stringify({ kind, name: kind, created: '2026-11-16T00:00:00', elapsed: 1, units: { amplitude: 'μA/cm²' } }),
   );
   for (const [name, value] of Object.entries(files)) write(join(dir, name), JSON.stringify(value));
   return dir;
@@ -174,9 +182,9 @@ const meta = (second: string): WaveMeta => ({
 for (const [path, spec] of Object.entries({
   'e/parts/p': PART,
   'e/models/m': MODEL,
-  'e/sim/s/original': ORIGINAL,
-  'e/sim/s/m': REPLACED,
-  'k/sim/s/original': ORIGINAL,
+  'e/sim/s/original/single': ORIGINAL,
+  'e/sim/s/m/single': REPLACED,
+  'k/sim/s/original/single': ORIGINAL,
   'k/models/n': KAM_MODEL,
 }))
   write(join(resolved, `${path}.json`), JSON.stringify(spec));
@@ -237,6 +245,24 @@ waves(join(put(ORIGINAL, 'original'), 'waves'), meta('H'), 10);
 const replaced = put(REPLACED, 'replaced');
 waves(join(replaced, 'waves'), meta('h.z1'), 11);
 waves(join(replaced, 'projected/soma'), meta('h.z1'), 10);
+/** 系列 w の点ごとの元のモデルと置換系。点 2 の置換系は発火を 1 点だけ遅らせる。 */
+const sweptRuns = pointsOf(SWEPT).map(({ name, input }, k) => {
+  const original: Spec = { ...ORIGINAL, input };
+  const swapped: Spec = { ...REPLACED, input };
+  write(join(resolved, `e/sim/w/original/${name}.json`), JSON.stringify(original));
+  write(join(resolved, `e/sim/w/m/${name}.json`), JSON.stringify(swapped));
+  waves(join(put(original, 'original'), 'waves'), meta('H'), 10);
+  waves(join(put(swapped, 'replaced'), 'waves'), meta('h.z1'), 10 + k);
+  return dirOf(swapped);
+});
+pointsOf(HALF).forEach(({ name, input }, k) => {
+  const original: Spec = { ...ORIGINAL, input };
+  const swapped: Spec = { ...REPLACED, input };
+  write(join(resolved, `e/sim/v/original/${name}.json`), JSON.stringify(original));
+  write(join(resolved, `e/sim/v/m/${name}.json`), JSON.stringify(swapped));
+  waves(join(put(original, 'original'), 'waves'), meta('H'), 10);
+  if (k === 0) waves(join(put(swapped, 'replaced'), 'waves'), meta('h.z1'), 10);
+});
 
 async function post<T>(op: string, body: unknown): Promise<{ status: number; reply: T }> {
   const response = await handle(
@@ -254,8 +280,8 @@ test('the experiments come in the declared order with their progress and run nam
   expect(reply.groups.map(g => g.name)).toEqual(['g']);
   expect(reply.groups[0].experiments[0]).toMatchObject({
     id: 'e',
-    progress: '結果あり',
-    runs: { models: ['m'], inputs: ['s'], bench: [] },
+    progress: '途中',
+    runs: { models: ['m'], inputs: ['s', 'w', 'v'], bench: [] },
   });
   expect(reply.groups[0].experiments[0].runs.parts).toHaveLength(1);
   expect(reply.measures.coincidenceWindow).toBe(2);
@@ -267,8 +293,12 @@ test('an experiment gives its setup, the training input and learners of each mod
   expect(reply.models[0].name).toBe('m');
   expect(reply.models[0].train).toBe('s');
   expect(reply.parts.map(p => p.name)).toEqual(reply.models[0].parts);
-  expect(reply.pairs[0]).toEqual({ input: 's', model: 'm', state: 'done' });
-  expect(reply.rerun.done).toBe(reply.rerun.total);
+  expect(reply.pairs).toEqual([
+    { input: 's', model: 'm', state: 'done' },
+    { input: 'w', model: 'm', state: 'done' },
+    { input: 'v', model: 'm', state: 'todo' },
+  ]);
+  expect(reply.rerun.done).toBe(reply.rerun.total - 1);
 });
 
 test('an input compares the original with each model, keyed by model name', async () => {
@@ -281,6 +311,24 @@ test('an input compares the original with each model, keyed by model name', asyn
   expect(reply.summaries.m.gamma).toBeGreaterThan(0.9);
   expect(reply.spikes.original[0].times.length).toBe(reply.spikes.columns.m[0].times.length);
   expect((await post('inputs', { experiment: 'e', input: 's', comp: 'dend' })).status).toBe(400);
+});
+
+test('a swept input lines up one run per point in the declared order, and compares each point with its own runs', async () => {
+  const { reply } = await post<InputsReply>('inputs', { experiment: 'e', input: 'w' });
+  expect([reply.input.param, reply.input.values, reply.input.unit]).toEqual(['amplitude', [2, 10], 'μA/cm²']);
+  expect(reply.input.points).toEqual(['amplitude = 2 μA/cm²', 'amplitude = 10 μA/cm²']);
+  expect(reply.input.original.map(o => o.run)).toEqual(
+    pointsOf(SWEPT).map(({ input }) => dirOf({ ...ORIGINAL, input })),
+  );
+  expect(reply.columns[0].runs).toEqual(sweptRuns);
+  expect(reply.points).toHaveLength(2);
+  expect(reply.crossings.m.map(c => c.count)).toEqual([
+    [50, 50],
+    [50, 50],
+  ]);
+  expect(reply.summaries.m.rheobase).toEqual([2, 2]);
+  const half = (await post<InputsReply>('inputs', { experiment: 'e', input: 'v' })).reply;
+  expect(half.columns).toEqual([]);
 });
 
 test('a model gives only what its run holds: how it is built and the op cost', async () => {

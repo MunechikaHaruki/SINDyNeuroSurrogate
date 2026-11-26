@@ -1,11 +1,16 @@
 ---
 description: 単一区画で学習した縮約を Traub の 19 区画に当てる実験群
 ---
-# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指す。part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。
+# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指し、系列の差分には掃引 sweep: { <電流パラメータ>: [値...] } も書く。
+# part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。同じ指し方は YAML のアンカー（&名前 と *名前）で使い回す。
 base:
-  parts: [kam, pca-sindy, ae-sindy]
+  parts:
+    - { name: kam, from: traub, group: { compressor: kam, rhs: kam, rhs_params: { library_specs: null } } }
+    - { name: pca-sindy, from: traub }
+    - { name: ae-sindy, from: traub, group: { compressor: ae } }
   groupings: [h+n, a+c]
-  inputs: [traub-19comp-steady]
+  inputs:
+    - { name: traub-19comp-steady, from: traub, spec: { target: traub19 }, sweep: { value: [0, 2.5, 5, 7.5, 10] } }
 runs:
   transfer-to-19comp:
     replace: { soma: [soma], na-dr: [c05, c07, soma, c09, c11] }
@@ -13,9 +18,7 @@ runs:
     part: { data: { current_params: { duration: 1000 } } }
     groupings: [h+n]
     inputs:
-      - {
-          name: traub-19comp-steady-test,
-          from: traub-19comp-steady,
-          spec: { current_params: { duration: 100.0 } },
-          values: [0, 10],
-        }
+      - name: traub-19comp-steady-test
+        from: traub
+        spec: { target: traub19, current_params: { duration: 100.0 } }
+        sweep: { value: [0, 10] }

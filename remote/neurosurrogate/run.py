@@ -1,8 +1,8 @@
 """計算の入口: `uv run python -m neurosurrogate.run <spec.json> <run のディレクトリ>`。
 
-spec.json 1 つを受け取り、run のディレクトリを埋めるだけの純粋な計算。何を回すか、
-掃引、ハッシュ、重複の回避、run の置き場と一覧は bun の段取り
-(`../run/`) が持ち、spec の形は
+spec.json 1 つを受け取り、run のディレクトリを埋めるだけの純粋な計算。掃引は手元が
+入力 1 本ずつに開いて送り、何を回すか、ハッシュ、重複の回避、run の置き場と一覧は
+bun の段取り (`../run/`) が持ち、spec の形は
 `../../shared/spec.ts` が持つ。ドメインのどの層からも import されない最上位の層。
 spec の種類は 4 つ (`kind`)。学習の入力の元のモデル → 学習器 → モデル →
 シミュレーションの順に、後ろの spec が前の run を鍵で指す。学習データは置き場を
@@ -16,13 +16,14 @@ spec の種類は 4 つ (`kind`)。学習の入力の元のモデル → 学習�
           `cell`・`form`・`absorbed`。学習はせず、組んだ演算コストを書く。KAM の
           モデルは `parts` が空で、`kam` に群と学習の入力の鍵と区画を持つ。
           置き場は `runs/models/<ハッシュ>/`
-- `sim`   入力 × モデルのシミュレーション。`input` は `EvalSeries.to_dict`
-          から置換範囲を除いたもの (電流と掃引)。`model` は
+- `sim`   入力 × モデルのシミュレーション。`input` は電流 1 本 (`{spec}`。掃引は
+          手元が点ごとの入力に開いて送る)。`model` は
           `{surrogate, replace_targets}` か null (元のモデル)。置き場は
           `runs/inputs/<入力のハッシュ>/` の下で、元のモデルは `original/`、
           置き換えたモデルは段取りが組んだ鍵の名前。`surrogate` は
           `runs/models/` のモデルを指す
-- `bench` GPU の実測。`input` と `model` は sim と同じで、細胞を `cells` の数ずつ
+- `bench` GPU の実測。`inputs` は細胞に順に割り当てる入力の並び (系列の掃引の点)、
+          `model` は sim と同じで、細胞を `cells` の数ずつ
           並べて刻みごとに全細胞をそろえて GPU で回し、細胞の数ごとの `<細胞の数>/` に
           使ったツールの出力を加工せずにツールごとのファイルで書く
           (neurosurrogate.bench)。
@@ -36,7 +37,8 @@ gpu でも GPU を使うのは AE の学習だけで、シミュレーション�
 JSON の nan は null):
 
     spec.json  meta.json (kind = part / model / original / replaced / bench,
-               name, created, elapsed = 計算にかかった秒, 掃引の単位, env = 回した環境:
+               name, created, elapsed = 計算にかかった秒, units = sim の電流パラメータの単位,
+               env = 回した環境:
                backend、device、jax と python の版、host、コードとイメージの版)
     part       learner.joblib (圧縮器と右辺)、compressor/decode.json (潜在 →
                ゲートの曲線を潜在の軸ごとに。区画の型の状態の並びも)、
@@ -63,7 +65,8 @@ JSON の nan は null):
                ncu.csv (`ncu` が真なら)。どれもツールの出力のままで、集計は API が
                頼まれるたびに計算する (remote/read/bench.ts)
 
-    waves/meta.json           t0, dt, 点ごとの長さ n, features [[comp_id, 変数, gate]],
+    waves/meta.json           t0, dt, 点ごとの長さ n (sim は入力 1 本なので点 0 だけ),
+                              features [[comp_id, 変数, gate]],
                               I_internal の nodes, comp 名 → id
     waves/<点>/comp<id>.f64   その comp の変数 (features の並び順)。変数ごとに連続
     waves/<点>/I_ext.f64      waves/<点>/I_internal.f64 (node ごとに連続)
@@ -117,7 +120,7 @@ from .surrogate.model import (
 
 # spec の種類ごとの形式の版。段取りが spec に入れる = 形式を変えたらその種類の鍵が変わる
 # (shared/spec.ts の FORMATS と揃える)
-_FORMATS = {"part": 23, "model": 14, "sim": 13, "bench": 11}
+_FORMATS = {"part": 23, "model": 14, "sim": 14, "bench": 12}
 _NOT_REPLACEABLE = 3
 _RUNNING = 4
 _CLAIM_GRACE = 60.0  # [s] 書きかけを作ってから pid を置くまでの猶予 (これより古く pid の無いものは残骸)
@@ -312,37 +315,29 @@ def _sim(root: Path, spec: dict) -> dict:
     model = spec["model"]
     targets = model["replace_targets"] if model else []
     series = EvalSeries.from_dict({**spec["input"], "replace_targets": targets})
+    point = series.spec
     if model is None:
-        waves = [simulate(point.run_input()) for point in series.points]
-        _write_waves(root / "waves", waves, _names(series))
-        return {"unit": series.unit}
+        _write_waves(root / "waves", [simulate(point.run_input())], _names(series))
+        return {"units": series.units}
     runs = root.parents[2]
     surrogate = load_model(runs, model["surrogate"])
     if not applicable(surrogate.config, series):
         print(f"{model['surrogate']} は {targets} を置換できない")
         sys.exit(_NOT_REPLACEABLE)
-    originals = _read_waves(root.parent / "original/waves")
-    waves = []
-    for point in series.points:
-        ds = simulate(replace(surrogate, point.run_input(), targets))
-        if broken := [
-            c for c in targets if _diverged(potential(ds, point.net.index(c)))
-        ]:
-            _logger.warning("置換系の電位が発散 (%s): %s", point.current_type, broken)
-        waves.append(ds)
-    _write_waves(root / "waves", waves, _names(series))
-    net = series.spec.net
+    [original] = _read_waves(root.parent / "original/waves")
+    ds = simulate(replace(surrogate, point.run_input(), targets))
+    if broken := [c for c in targets if _diverged(potential(ds, point.net.index(c)))]:
+        _logger.warning("置換系の電位が発散 (%s): %s", point.current_type, broken)
+    _write_waves(root / "waves", [ds], _names(series))
+    net = point.net
     for comp in targets:
-        projected = [_project(surrogate, ds, net.index(comp)) for ds in originals]
-        _write_waves(root / "projected" / comp, projected)
-        slopes = [
-            _slopes(surrogate, ds, net.index(comp), point.net)
-            for ds, point in zip(originals, series.points, strict=True)
-        ]
-        if all(pair is not None for pair in slopes):
-            _write_waves(root / "slope" / comp, [p[0] for p in slopes])  # type: ignore[index]
-            _write_waves(root / "rhs" / comp, [p[1] for p in slopes])  # type: ignore[index]
-    return {"unit": series.unit}
+        projected = _project(surrogate, original, net.index(comp))
+        _write_waves(root / "projected" / comp, [projected])
+        slopes = _slopes(surrogate, original, net.index(comp), net)
+        if slopes is not None:
+            _write_waves(root / "slope" / comp, [slopes[0]])
+            _write_waves(root / "rhs" / comp, [slopes[1]])
+    return {"units": series.units}
 
 
 def _bench(root: Path, spec: dict) -> dict:

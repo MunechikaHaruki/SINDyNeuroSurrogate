@@ -497,13 +497,15 @@ def test_spike_features_cut_the_stdin_into_traces(
 
 
 def test_resolved_series_resolve() -> None:
-    """送る評価の spec (resolved/ の sim) は、電流と置換する区画まで名前で解ける。"""
-    for file in sorted(TESTS.parent.glob("*/sim/*/*.json")):
+    """送る評価の spec (resolved/ の sim/<系列>/<列>/<点>.json) は、電流と置換する
+    区画まで名前で解ける。"""
+    files = sorted(TESTS.parent.glob("*/sim/*/*/*.json"))
+    assert files
+    for file in files:
         sim = json.loads(file.read_text())
         targets = sim["model"]["replace_targets"] if sim["model"] else []
         series = EvalSeries.from_dict({**sim["input"], "replace_targets": targets})
-        for point in series.points:
-            assert len(point.current()) > 0
+        assert len(series.spec.current()) > 0
         assert set(series.replace_targets) <= set(series.spec.net.names)
 
 

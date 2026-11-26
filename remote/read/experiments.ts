@@ -11,7 +11,15 @@ import type {
   RunKind,
   SetupRow,
 } from '../../shared/api.ts';
-import type { ExperimentStatus, IndexEntry, PlanEntry, PlanModel, Plans, State } from '../../shared/spec.ts';
+import {
+  pointsOf,
+  type ExperimentStatus,
+  type IndexEntry,
+  type PlanEntry,
+  type PlanModel,
+  type Plans,
+  type State,
+} from '../../shared/spec.ts';
 import { jobs } from '../run-spec.ts';
 import { resolvedDir, scan } from '../run/places.ts';
 import { experimentStatus } from '../run/status.ts';
@@ -52,9 +60,9 @@ export function reducedOf(model: PlanModel): number {
   return reduced;
 }
 
-/** 系列の刺激が入る区間 [ms]。前後の silence_duration は電流が 0 の無刺激の区間で、掃引の 0 の点とは別のもの。 */
+/** 系列の刺激が入る区間 [ms]（最初の点の入力で読む。duration を掃引しても決まる）。前後の silence_duration は電流が 0 の無刺激の区間で、掃引の 0 の点とは別のもの。 */
 export function stimulusOf(plan: PlanEntry, series: string): [number, number] {
-  const { silence_duration: silence = 0, duration } = plan.series[series].spec.current_params;
+  const { silence_duration: silence = 0, duration } = pointsOf(plan.series[series])[0].input.spec.current_params;
   return [silence, duration - silence];
 }
 
@@ -129,7 +137,7 @@ function setupOf(plan: PlanEntry, window: number): SetupRow[] {
       ...params,
       `置き換え ${s.replace_targets.join('・')}`,
     ];
-    if (s.param) parts.push(`掃引 ${s.param} = ${s.values.join(', ')}`);
+    if (s.sweep) parts.push(`掃引 ${s.sweep.param} = ${s.sweep.values.join(', ')}`);
     return { name, value: parts.join('・') };
   });
   const compare: SetupRow['items'] = [];
@@ -159,8 +167,8 @@ function setupOf(plan: PlanEntry, window: number): SetupRow[] {
 export function rerunCost(found: ExperimentStatus, index: IndexEntry[]): ExperimentView['rerun'] {
   const ids = new Set<string>();
   for (const m of found.models) [m.run.id, ...m.parts.map(p => p.id)].forEach(id => ids.add(id));
-  for (const s of found.series) ids.add(s.original.id);
-  for (const p of found.pairs) ids.add(p.run.id);
+  for (const s of found.series) for (const p of s.points) ids.add(p.run.id);
+  for (const p of found.pairs) for (const q of p.points) ids.add(q.run.id);
   for (const b of found.benches) ids.add(b.run.id);
   let seconds = 0;
   let done = 0;
@@ -234,12 +242,13 @@ export function registry(runs: string): RegistryReply {
   const names: Record<string, string> = {};
   for (const plan of plans().experiments) {
     const found = experimentStatus(runs, plan.id);
-    for (const series of found.series) names[series.original.id] = series.series;
+    for (const series of found.series) for (const p of series.points) names[p.run.id] = `${series.series} ${p.point}`;
     for (const model of found.models) {
       names[model.run.id] = model.model;
       for (const part of model.parts) names[part.id] = part.name;
     }
-    for (const pair of found.pairs) names[pair.run.id] = `${pair.series} × ${pair.model}`;
+    for (const pair of found.pairs)
+      for (const p of pair.points) names[p.run.id] = `${pair.series} ${p.point} × ${pair.model}`;
     for (const bench of found.benches) names[bench.run.id] = bench.bench;
   }
   return {

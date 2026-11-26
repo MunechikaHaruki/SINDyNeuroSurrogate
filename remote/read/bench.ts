@@ -187,7 +187,7 @@ export function bench(ctx: Context, request: BenchRequest): BenchReply {
     model: declared.model === 'original' ? null : declared.model,
     cells: declared.cells,
     ncu: declared.ncu,
-    dt: spec.kind === 'bench' ? spec.input.spec.dt : 0.01,
+    dt: spec.kind === 'bench' ? spec.inputs[0].spec.dt : 0.01,
     run: { state: found.state, run: found.run.id },
     machine: meta && { device: meta.env.device, host: meta.env.host, created: meta.created },
     rows: done ? benchRows(ctx.files, found.run.id) : [],

@@ -1,0 +1,24 @@
+{
+  "format": 14,
+  "device": "cpu",
+  "kind": "sim",
+  "input": {
+    "spec": {
+      "target": "traub",
+      "current_type": "lin&steady",
+      "dt": 0.01,
+      "current_params": {
+        "silence_duration": 10,
+        "duration": 300,
+        "value": 2.5
+      },
+      "stim": "soma"
+    }
+  },
+  "model": {
+    "surrogate": "5254a2c5113d",
+    "replace_targets": [
+      "soma"
+    ]
+  }
+}

@@ -8,12 +8,10 @@ test('the key does not depend on the order the spec was written in', () => {
   );
   const input = {
     spec: { target: 'hh', current_type: 'steady', dt: 0.01, current_params: { a: 1, b: 2 } },
-    param: null,
-    values: [0],
   };
   const a: Spec = { format: FORMATS.sim, device: 'cpu', kind: 'sim', input, model: null };
   const b = JSON.parse(
-    `{"model":null,"input":{"values":[0],"param":null,"spec":{"current_params":{"b":2,"a":1},"dt":0.01,"current_type":"steady","target":"hh"}},"kind":"sim","device":"cpu","format":${FORMATS.sim}}`,
+    `{"model":null,"input":{"spec":{"current_params":{"b":2,"a":1},"dt":0.01,"current_type":"steady","target":"hh"}},"kind":"sim","device":"cpu","format":${FORMATS.sim}}`,
   ) as Spec;
   expect(hashOf(b)).toBe(hashOf(a));
 });

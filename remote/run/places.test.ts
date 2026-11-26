@@ -5,8 +5,6 @@ import { dirOf } from './places.ts';
 
 const input = {
   spec: { target: 'traub-19comp', current_type: 'steady', dt: 0.01, current_params: { amplitude: 1 } },
-  param: null,
-  values: [0],
 };
 const sim = (model: { surrogate: string; replace_targets: string[] } | null): Spec => ({
   format: FORMATS.sim,

@@ -1,18 +1,17 @@
 // 基準のファイル。送る形そのままの JSON を置き、実験はそこからの差分で書く（実験群は schema.ts）。
 // config/parts/<名前>.json は学習器 1 つ（学習の設定 SurrogateConfig から群の並びを除き、群のゲートを持たない群 group を 1 つ持つ形）、
-// config/inputs/<名前>.json は評価の系列 1 本（入力と置き換える区画）、config/measures.json は比べる物差し。値の既定はファイルに書き、ここが持つ値は、学習の系列で soma を置き換えることだけ（TRAIN_REPLACE）。
+// config/inputs/<名前>.json は評価の系列 1 本（電流 1 本と置き換える区画）、config/measures.json は比べる物差し。値の既定はファイルに書き、ここが持つ値は、学習の系列で soma を置き換えることだけ（TRAIN_REPLACE）。
 // 差分は JSON Merge Patch（RFC 7386：オブジェクトは欄ごとに重ね、null はその欄を消し、ほかは置き換える。そのため null という値は差分で書けない）で順に当て、当てた結果を送る形の型で確かめる（書ける欄は送る形が決める）。
+// 掃引（どの電流パラメータをどの値で振るか）は送る形に無く、実験群の YAML の系列の指し方 `{ name, from, sweep, ...差分 }` だけが持つ。
 // テスト専用のモデルは隣の test-models.ts が持つ。形は ../../../shared/spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（remote/tests/test_surrogate.py）。
 import { readFileSync, readdirSync } from 'node:fs';
 import { z } from 'zod';
 import { TEST_COMMON, TEST_DECLARATIONS } from './test-models.ts';
-import type { Group, Input, SurrogateConfig } from '../../../shared/spec.ts';
+import type { Group, PlanSeries, SurrogateConfig } from '../../../shared/spec.ts';
 
-/** 評価の系列 1 本。入力（電流と掃引）と、置き換えたモデルの側の置換範囲。送る spec ではこの二つに分かれる（入力が run の置き場の inputs/<鍵>/、範囲が列の名前の @ の後ろ）。 */
-export type Series = Input & {
-  /** 置換するノード名。互換かどうかは Python が名前ごとに検証する。 */
-  replace_targets: string[];
-};
+/** 評価の系列 1 本。電流（掃引する前）と掃引と、置き換えたモデルの側の置換範囲（置換するノード名。互換かどうかは Python が名前ごとに検証する）。
+ * 送る spec では、掃引の点ごとの入力（run の置き場の inputs/<鍵>/）と、範囲（列の名前の @ の後ろ）に分かれる。 */
+export type Series = PlanSeries;
 
 /** モデル 1 つの宣言。name はモデルの名前（実験の中の `<学習器の名前>.<群分け>` かテストの名前）で、同一性には入らない。config は群ごとの学習器の設定と、それらを組む形。 */
 export type ModelDecl = { name: string; config: SurrogateConfig };
@@ -38,18 +37,29 @@ export function patched(target: Json, patch: Json): Json {
   return out;
 }
 
-/** 基準のファイルの指し方。ファイルの名前か、名前を付けた差分 `{ name, from, ...差分 }`（name は実験の中の名前）。 */
-export const Ref = z.union([z.string(), z.looseObject({ name: z.string(), from: z.string() })]);
+/** 掃引の書き方 `{ <電流パラメータ>: [値...] }`。振るパラメータは 1 つで、値は重ならない。 */
+const SweepShape = z
+  .record(z.string(), z.array(z.number()).nonempty())
+  .refine(s => Object.keys(s).length === 1, '掃引は電流パラメータ 1 つ（{ value: [0, 2.5] } の形）')
+  .refine(s => Object.values(s).every(v => new Set(v).size === v.length), '掃引の値が重なる');
+
+/** 基準のファイルの指し方。ファイルの名前か、名前を付けた差分 `{ name, from, ...差分 }`（name は実験の中の名前）。系列は掃引 sweep も書ける。 */
+export const Ref = z.union([
+  z.string(),
+  z.looseObject({ name: z.string(), from: z.string(), sweep: SweepShape.optional() }),
+]);
 export type Ref = z.infer<typeof Ref>;
 /** どの基準にも重ねる差分。 */
 export const Patch = z.record(z.string(), z.unknown());
 export type Patch = z.infer<typeof Patch>;
 
-/** 指し方の名前と、基準のファイルの名前と差分。 */
-export function named(ref: Ref): { name: string; from: string; diff: Patch } {
-  if (typeof ref === 'string') return { name: ref, from: ref, diff: {} };
-  const { name, from, ...diff } = ref;
-  return { name, from, diff };
+/** 指し方の名前と、基準のファイルの名前と、掃引（書かなければ null）と差分。 */
+export function named(ref: Ref): { name: string; from: string; sweep: Series['sweep']; diff: Patch } {
+  if (typeof ref === 'string') return { name: ref, from: ref, sweep: null, diff: {} };
+  const { name, from, sweep, ...diff } = ref;
+  if (sweep === undefined) return { name, from, sweep: null, diff };
+  const [[param, values]] = Object.entries(parsed(SweepShape, `${name} の掃引`, sweep));
+  return { name, from, sweep: { param, values }, diff };
 }
 
 const CONFIG = new URL('../config/', import.meta.url);
@@ -122,7 +132,8 @@ export const PART_NAMES = Object.keys(PARTS);
 
 /** 学習器を値にする。基準のファイルに、自分の差分、次にどの学習器にも重ねる差分 commons を順に当てて形を確かめる。where は誤りの文に出す場所。 */
 export function partOf(ref: Ref, commons: Patch[] = [], where = ''): Part {
-  const { from, diff } = named(ref);
+  const { from, sweep, diff } = named(ref);
+  if (sweep) throw new Error(`${where}学習器 ${from}：掃引 sweep は系列だけが持つ`);
   const value = [diff, ...commons].reduce(patched, base(PARTS, from, 'parts'));
   return parsed(Part, `${where}学習器 ${from}${shown(diff, commons)}`, value);
 }
@@ -177,8 +188,6 @@ export function modelFrom(name: string, part: Part, grouping: string): ModelDecl
 /** 評価の系列 1 本の形（config/inputs/<名前>.json）。 */
 const SeriesShape = z.strictObject({
   spec: SimSpec.required({ stim: true }),
-  param: z.string().nullable(),
-  values: z.array(z.number()),
   replace_targets: z.array(z.string()).nonempty(),
 });
 
@@ -186,11 +195,14 @@ const INPUTS = files('inputs');
 /** 系列の基準のファイルの名前。 */
 export const INPUT_NAMES = Object.keys(INPUTS);
 
-/** 系列を値にする。基準のファイルに、自分の差分、次にどの系列にも重ねる差分 commons を順に当てて形を確かめる。where は誤りの文に出す場所。 */
+/** 系列を値にする。基準のファイルに、自分の差分、次にどの系列にも重ねる差分 commons を順に当てて形を確かめ、指し方の掃引を添える。where は誤りの文に出す場所。 */
 export function inputOf(ref: Ref, commons: Patch[] = [], where = ''): Series {
-  const { from, diff } = named(ref);
+  const { from, sweep, diff } = named(ref);
   const value = [diff, ...commons].reduce(patched, base(INPUTS, from, 'inputs'));
-  return parsed(SeriesShape, `${where}系列 ${from}${shown(diff, commons)}`, value);
+  const { spec, replace_targets } = parsed(SeriesShape, `${where}系列 ${from}${shown(diff, commons)}`, value);
+  if (sweep && sweep.param in spec.current_params)
+    throw new Error(`${where}系列 ${from}：掃引する ${sweep.param} を current_params にも書いている（どちらか一方に）`);
+  return { spec, sweep, replace_targets };
 }
 
 /** 学習の系列で置き換える区画。 */
@@ -201,7 +213,7 @@ const TRAIN_REPLACE = ['soma'];
 export function trainSeries(config: SurrogateConfig): { name: string; series: Series } {
   const { target, current_type, current_params } = config.data;
   const name = [target, current_type, ...Object.entries(current_params).map(([k, v]) => `${k}-${v}`)].join('-');
-  return { name, series: { spec: config.data, param: null, values: [], replace_targets: TRAIN_REPLACE } };
+  return { name, series: { spec: config.data, sweep: null, replace_targets: TRAIN_REPLACE } };
 }
 
 /** 基準のファイルを読み込むときに全部一度確かめ、使わないファイルの誤りもここで落とす。 */

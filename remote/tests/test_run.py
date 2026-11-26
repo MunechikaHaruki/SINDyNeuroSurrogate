@@ -20,14 +20,13 @@ from neurosurrogate.physics.simulate import EvalSeries, potential, simulate
 
 
 def _series() -> dict:
-    """学習と同じ入力を**さらに短く**した 2 点の掃引。見たいのは保存と読込の往復で
+    """学習と同じ入力を**さらに短く**した入力 1 本。見たいのは保存と読込の往復で
     あって波形の質ではないので、シミュ長は最小で足りる。"""
     spec = declared_config("_test_hh_sindy")["data"]
+    params = {**spec["current_params"], "duration": 170.0}
     return {
-        "spec": {**spec, "stim": "soma"},
+        "spec": {**spec, "stim": "soma", "current_params": params},
         "replace_targets": ["soma"],
-        "param": "duration",
-        "values": [170.0, 190.0],
     }
 
 
@@ -43,12 +42,12 @@ def _put(tmp: Path, place: str, spec: dict) -> Path:
 
 def _train(config: dict) -> dict:
     """学習用の電流を単発で回す学習の入力の、元のモデルの sim の spec。"""
-    input_ = {"spec": config["data"], "param": None, "values": []}
+    input_ = {"spec": config["data"]}
     return {"kind": "sim", "input": input_, "model": None}
 
 
 def _sim(series: dict, model: dict | None) -> dict:
-    """系列を入力とモデルに分けた sim の spec。"""
+    """入力 1 本を、入力とモデル (置換範囲) に分けた sim の spec。"""
     input_ = {k: v for k, v in series.items() if k != "replace_targets"}
     return {"kind": "sim", "input": input_, "model": model}
 
@@ -74,18 +73,16 @@ def runs(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def test_runs_round_trip_and_are_not_rerun(runs: Path) -> None:
-    """波形は点の並びごと float64 で往復し、ディレクトリがあれば回し直さない。"""
+    """波形は float64 で往復し、ディレクトリがあれば回し直さない。"""
     series = EvalSeries.from_dict(_series())
-    waves = run._read_waves(runs / "inputs/I/original/waves")
+    [wave] = run._read_waves(runs / "inputs/I/original/waves")
     np.testing.assert_allclose(
-        potential(waves[1], 0),
-        potential(simulate(series.points[1].run_input()), 0),
-        rtol=1e-5,
+        potential(wave, 0), potential(simulate(series.spec.run_input()), 0), rtol=1e-5
     )
-    surr = run._read_waves(runs / "inputs/I/R/waves")
-    assert not np.allclose(potential(surr[1], 0), potential(waves[1], 0))
+    [surr] = run._read_waves(runs / "inputs/I/R/waves")
+    assert not np.allclose(potential(surr, 0), potential(wave, 0))
     meta = json.loads((runs / "inputs/I/R/meta.json").read_text())
-    assert (meta["kind"], meta["name"], meta["unit"]) == ("replaced", "inputs/I/R", "")
+    assert (meta["kind"], meta["name"], meta["units"]) == ("replaced", "inputs/I/R", {})
     original = json.loads((runs / "inputs/I/original/meta.json").read_text())
     assert original["kind"] == "original"
     before = (runs / "inputs/I/original/meta.json").read_text()
@@ -117,8 +114,8 @@ def test_runs_hold_what_the_figures_read(runs: Path) -> None:
     meta = json.loads((runs / "inputs/I/original/waves/meta.json").read_text())
     assert meta["names"] == {"soma": 0}
     n_vars = sum(1 for comp, _, _ in meta["features"] if comp == 0)
-    raw = np.fromfile(runs / "inputs/I/original/waves/1/comp0.f64", dtype="<f8")
-    assert raw.size == n_vars * meta["n"][1]
+    raw = np.fromfile(runs / "inputs/I/original/waves/0/comp0.f64", dtype="<f8")
+    assert raw.size == n_vars * meta["n"][0]
 
     def strict(path: str) -> dict:
         def reject(token: str) -> None:
@@ -175,8 +172,6 @@ def _unreplaceable() -> dict:
             "stim": "soma",
         },
         "replace_targets": ["soma"],
-        "param": None,
-        "values": [],
     }
 
 

@@ -1,29 +1,27 @@
 ---
 description: 元のモデルと縮約を GPU に並べ、VRAM とレジスタを測る実験群
 ---
-# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指す。part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。
-# benches は GPU で測る系列。その系列で元のモデルと実験のモデルを全部測る。
+# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指し、系列の差分には掃引 sweep: { <電流パラメータ>: [値...] } も書く。
+# part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。同じ指し方は YAML のアンカー（&名前 と *名前）で使い回す。
+# benches は GPU で測る系列。その系列で元のモデルと実験のモデルを全部測る（掃引の点を細胞に順に割り当てる）。
 base:
-  parts: [kam, pca-sindy]
+  parts:
+    - &kam { name: kam, from: traub, group: { compressor: kam, rhs: kam, rhs_params: { library_specs: null } } }
+    - { name: pca-sindy, from: traub }
   groupings: [h+n]
   cells: [1024, 1048576]
   ncu: true
 runs:
   gpu-memory:
     inputs:
-      - traub-1comp-steady
-      - { name: traub-19comp-steady@soma, from: traub-19comp-steady }
-      - { name: traub-19comp-steady@na-dr, from: traub-19comp-steady, replace_targets: [c05, c07, soma, c09, c11] }
+      - { name: traub-1comp-steady, from: traub, sweep: { value: [0, 2.5, 5, 7.5, 10] } }
+      - &steady-19 { name: traub-19comp-steady@soma, from: traub, spec: { target: traub19 }, sweep: { value: [0, 2.5, 5, 7.5, 10] } }
+      - { <<: *steady-19, name: traub-19comp-steady@na-dr, replace_targets: [c05, c07, soma, c09, c11] }
     benches: [traub-1comp-steady, traub-19comp-steady@soma, traub-19comp-steady@na-dr]
   test-gpu:
-    parts: [kam]
+    parts: [*kam]
     part: { data: { current_params: { duration: 1000 } } }
     cells: [1024]
     inputs:
-      - {
-          name: traub-1comp-steady-test,
-          from: traub-1comp-steady,
-          spec: { current_params: { duration: 100.0 } },
-          values: [0, 10],
-        }
+      - { name: traub-1comp-steady-test, from: traub, spec: { current_params: { duration: 100.0 } }, sweep: { value: [0, 10] } }
     benches: [traub-1comp-steady-test]

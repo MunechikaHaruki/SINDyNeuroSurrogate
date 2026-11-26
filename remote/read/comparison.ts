@@ -21,9 +21,16 @@ export type CrossingRow = {
 
 /** 元のモデルとの差（Γ を除く）。 */
 export type CrossingDiff = Omit<CrossingRow, 'gamma'>;
-/** 系列 1 つの、原系と置き換えた列（run の id）の 1 区画の指標の頼み方。delta は Γ の許容幅 Δ [ms]。 */
-export type SeriesRequest = { original: string; columns: string[]; comp: string; delta: number };
-/** 系列の指標。キーは列の run の id、並びは掃引の点。trains は原系と列の点ごとの発火、lost は点ごとの原系が発散したか。 */
+/** 系列 1 つの、原系と置き換えた列の 1 区画の指標の頼み方。originals は点ごとの原系の run の id、columns は列の名前 → 点ごとの run の id（どちらも掃引の点の順。run 1 本が点 1 つ）、
+ * delta は Γ の許容幅 Δ [ms]、values は掃引の値（発火の始まりを決める。掃引しなければ空）。 */
+export type SeriesRequest = {
+  originals: string[];
+  columns: Record<string, string[]>;
+  comp: string;
+  delta: number;
+  values: number[];
+};
+/** 系列の指標。キーは列の名前、並びは掃引の点。trains は原系と列の点ごとの発火、lost は点ごとの原系が発散したか。 */
 export type SeriesMetrics = {
   lost: boolean[];
   pairs: Record<string, PairMetrics[]>;
@@ -32,7 +39,6 @@ export type SeriesMetrics = {
   trains: { original: SpikeTrain[]; columns: Record<string, SpikeTrain[]> };
 };
 import { compArray, RUN, type WaveMeta } from '../../shared/runs.ts';
-import type { Spec } from '../../shared/spec.ts';
 import { PROJECT, PYTHON } from '../run/places.ts';
 import type { RunFiles } from './waves.ts';
 
@@ -308,64 +314,62 @@ export function seriesMetrics(
 
 /** 系列の比べを、読み方 files で組む。特徴量は run・区画ごとに、答えは頼み方ごとに覚えておく。 */
 export function seriesComparison(files: RunFiles): (request: SeriesRequest) => SeriesMetrics {
-  const known = new Map<string, TraceFeatures[]>();
+  const known = new Map<string, TraceFeatures>();
   const answers = new Map<string, SeriesMetrics>();
 
-  /** run の点ごとの、区画 comp の膜電位。 */
-  function voltages(run: string, comp: string): { v: Float64Array[]; dt: number } {
+  /** run（入力 1 本）の、区画 comp の膜電位と刻み。 */
+  function voltage(run: string, comp: string): { v: Float64Array; dt: number } {
     const meta = files.json<WaveMeta>(run, RUN.meta(RUN.waves));
     const compId = meta.names ? meta.names[comp] : 0;
     if (compId === undefined) throw new Error(`${run} に区画 ${comp} が無い（${Object.keys(meta.names!).join('、')}）`);
-    return { v: meta.n.map((_, k) => files.column(compArray(run, RUN.waves, meta, k, compId, 'V'))), dt: meta.dt };
+    return { v: files.column(compArray(run, RUN.waves, meta, 0, compId, 'V')), dt: meta.dt };
   }
 
-  /** run ごと・点ごとの、区画 comp の膜電位の特徴量。まだ無い run だけ、刻みごとに eFEL を一度起こす。 */
-  function features(runs: string[], comp: string): Record<string, TraceFeatures[]> {
-    const missing = runs.filter(run => !known.has(`${run} ${comp}`));
-    const read = new Map(missing.map(run => [run, voltages(run, comp)]));
+  /** run ごとの、区画 comp の膜電位の特徴量。まだ無い run だけ、刻みごとに eFEL を一度起こす。 */
+  function features(runs: string[], comp: string): Map<string, TraceFeatures> {
+    const missing = [...new Set(runs.filter(run => !known.has(`${run} ${comp}`)))];
+    const read = new Map(missing.map(run => [run, voltage(run, comp)]));
     for (const dt of new Set([...read.values()].map(r => r.dt))) {
       const group = missing.filter(run => read.get(run)!.dt === dt);
       const found = efel(
-        group.flatMap(run => read.get(run)!.v),
+        group.map(run => read.get(run)!.v),
         dt,
       );
-      let at = 0;
-      for (const run of group) {
-        const list = read.get(run)!.v.map((v, k) => ({
-          spikes: found[at + k],
+      group.forEach((run, i) => {
+        const { v } = read.get(run)!;
+        known.set(`${run} ${comp}`, {
+          spikes: found[i],
           crossings: crossings(v, dt),
-          shape: shape(v, found[at + k].peak_indices ?? [], dt),
+          shape: shape(v, found[i].peak_indices ?? [], dt),
           diverged: diverged(v),
-        }));
-        at += list.length;
-        known.set(`${run} ${comp}`, list);
-      }
+        });
+      });
     }
-    return Object.fromEntries(runs.map(run => [run, known.get(`${run} ${comp}`)!]));
+    return new Map(runs.map(run => [run, known.get(`${run} ${comp}`)!]));
   }
 
   return request => {
     const key = JSON.stringify(request);
     const hit = answers.get(key);
     if (hit) return hit;
-    const { original, columns, comp, delta } = request;
+    const { originals, columns, comp, delta, values } = request;
     if (!(Number.isFinite(delta) && delta > 0)) throw new Error(`Γ の許容幅 delta ${delta} が正の数でない`);
-    const found = features([original, ...columns], comp);
-    const base = voltages(original, comp).v;
+    for (const [name, runs] of Object.entries(columns))
+      if (runs.length !== originals.length) throw new Error(`列 ${name} の点の数が原系と違う`);
+    if (values.length !== 0 && values.length !== originals.length) throw new Error('掃引の値の数が点の数と違う');
+    const found = features([...originals, ...Object.values(columns).flat()], comp);
+    const base = originals.map(run => voltage(run, comp));
     const distances: Record<string, Distance[]> = {};
     const own: Record<string, TraceFeatures[]> = {};
-    for (const run of columns) {
-      distances[run] = voltages(run, comp).v.map((v, k) => distance(base[k], v));
-      own[run] = found[run];
+    for (const [name, runs] of Object.entries(columns)) {
+      distances[name] = runs.map((run, k) => distance(base[k].v, voltage(run, comp).v));
+      own[name] = runs.map(run => found.get(run)!);
     }
-    const meta = files.json<WaveMeta>(original, RUN.meta(RUN.waves));
-    const spec = files.json<Spec>(original, 'spec.json');
-    const values = spec.kind === 'sim' ? spec.input.values : [];
     const result = seriesMetrics(
-      found[original],
+      originals.map(run => found.get(run)!),
       own,
       distances,
-      meta.n.map(n => n * meta.dt),
+      base.map(b => b.v.length * b.dt),
       values,
       delta,
     );

@@ -58,16 +58,16 @@ function need(runs: string, id: string): void {
   ensure(runs, found.spec, found.path.replace(/\.json$/, ''));
 }
 
-/** 指される spec の置き場（resolved/<実験>/ の下）：学習器 parts/、モデル models/、元のモデル sim/<系列>/original.json。 */
-function pointable(parent: string, file: string): boolean {
-  return ['parts', 'models'].includes(basename(parent)) || file === 'original.json';
+/** 指される spec の置き場（resolved/<実験>/ の下）：学習器 parts/、モデル models/、元のモデル sim/<系列>/original/<点>.json。 */
+function pointable(parent: string): boolean {
+  return ['parts', 'models', 'original'].includes(basename(parent));
 }
 
 /** 置き場（runs/ の下のパス）→ resolved/ の spec.json（学習の入力の元のモデル・学習器・モデルのどれか）。 */
 function specOf(id: string): { path: string; spec: Spec } {
   const dir = resolvedDir();
   for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
-    if (!entry.isFile() || !pointable(entry.parentPath, entry.name)) continue;
+    if (!entry.isFile() || !pointable(entry.parentPath)) continue;
     const path = relative(dir, join(entry.parentPath, entry.name));
     const spec = specAt(path);
     if (dirOf(spec) === id) return { path, spec };

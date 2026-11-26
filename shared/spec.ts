@@ -48,18 +48,13 @@ export type SurrogateConfig = {
  * spec の形式の版。spec の種類ごとに持ち、neurosurrogate/run.py の _FORMATS と揃える（remote/run/places.test.ts が確かめる）。
  * spec に入るので、変えるとその種類の鍵が変わり、その run と、ハッシュでそれを指す後ろの run（学習器なら、モデル・置換系・GPU の実測）だけが回し直される。
  */
-export const FORMATS = { part: 23, model: 14, sim: 13, bench: 11 } as const;
+export const FORMATS = { part: 23, model: 14, sim: 14, bench: 12 } as const;
 
 /** 回す backend。同じ spec でも計算の順序が変わって結果がずれるので、spec に入れて run を分ける。 */
 export type Device = 'cpu' | 'gpu';
 
-/** 入力：電流と掃引（param が null なら単発で点 1 つ）。同じ入力の結果は一つのディレクトリにまとまる。 */
-export type Input = {
-  spec: SimSpec;
-  /** 掃引する電流パラメータ名。図の x 軸。 */
-  param: string | null;
-  values: number[];
-};
+/** 入力：電流 1 本。掃引は宣言の側が点ごとの入力に開いてから送る（pointsOf）。同じ入力の結果は一つのディレクトリにまとまる。 */
+export type Input = { spec: SimSpec };
 /** 置き換えたモデル：どのモデル（runs/models/ のハッシュ）で、どの区画を置き換えるか。 */
 export type Model = { surrogate: string; replace_targets: string[] };
 
@@ -100,15 +95,32 @@ export type Spec =
       format: number;
       device: Device;
       kind: 'bench';
-      input: Input;
+      /** 細胞に順に割り当てる入力（系列の掃引の点）。 */
+      inputs: Input[];
       model: Model | null;
       cells: number[];
       /** Nsight Compute で 1 刻みのカーネルを測るか。 */
       ncu: boolean;
     };
 
-/** 宣言の系列 1 つ。入力と、置き換える区画。 */
-export type PlanSeries = Input & { replace_targets: string[] };
+/** 掃引：振る電流パラメータ 1 つと、その値の並び（宣言の `sweep: { <パラメータ>: [値...] }`）。 */
+export type Sweep = { param: string; values: number[] };
+/** 宣言の系列 1 つ。電流（掃引する前）と掃引（無ければ単発）と、置き換える区画。 */
+export type PlanSeries = Input & { sweep: Sweep | null; replace_targets: string[] };
+
+/** 単発の系列の点の名前。 */
+export const SINGLE = 'single';
+
+/** 系列の点の名前と、その点の入力。掃引すれば値ごとに `<パラメータ>=<値>`（current_params のその欄に値を入れる）、単発なら single の 1 点。
+ * resolved/ の葉のファイルの名前（sim/<系列>/<original かモデル>/<点>.json）で、手元と計算する機械がここだけで組む。 */
+export function pointsOf(series: Pick<PlanSeries, 'spec' | 'sweep'>): { name: string; input: Input }[] {
+  const { spec, sweep } = series;
+  if (sweep === null) return [{ name: SINGLE, input: { spec } }];
+  return sweep.values.map(value => ({
+    name: `${sweep.param}=${value}`,
+    input: { spec: { ...spec, current_params: { ...spec.current_params, [sweep.param]: value } } },
+  }));
+}
 /** 宣言のモデル 1 つ。name は `<仕方>.<群分け>`、method と grouping はその仕方と群分けの名前。 */
 export type PlanModel = { name: string; method: string; grouping: string; config: SurrogateConfig };
 /** 宣言の GPU の実測 1 つ。model が null なら元のモデル。 */
@@ -153,7 +165,8 @@ export type IndexEntry = {
   created: string;
   /** 計算にかかった秒（run.py が測る。同一性に入らない）。 */
   elapsed?: number;
-  unit?: string;
+  /** sim の run の、電流パラメータの名前 → 単位（Python の PARAM_UNITS のうち、その入力が持つもの）。 */
+  units?: Record<string, string>;
   env: RunEnv;
   spec: Spec;
 };
@@ -167,13 +180,16 @@ export type JobState = { job: Job; started: string; state: 'running' | 'done' | 
 
 /** resolved/ の spec 1 つの名前・場所・状態。id は runs/ の下のパスで、図はここを読む。spec は回す resolved/ の下のパス。 */
 export type RunStatus = { name: string; id: string; spec: string; state: State };
-/** 実験（resolved/ の下のディレクトリ）1 つの状態。モデル（とその学習器と学習データ）、系列の元のモデル、組（系列 × モデルの置換系）を名前の順に並べる（宣言の順は API の答えが宣言の写しで並べる）。state は起こした仕事も見た状態。 */
+/** 系列の掃引の点 1 つの run。point は点の名前（pointsOf）。 */
+export type PointRun = { point: string; run: RunStatus };
+/** 実験（resolved/ の下のディレクトリ）1 つの状態。モデル（とその学習器と学習データ）、系列の点ごとの元のモデル、組（系列 × モデルの点ごとの置換系）を名前の順に並べる（点も名前の順。宣言の順は API の答えが宣言の写しで並べる）。state は起こした仕事も見た状態。 */
 export type ExperimentStatus = {
   name: string;
-  /** モデルごとの組み立ての run と、組んだ学習器（群の順）と、学習した入力の元のモデル（学習の系列の original）。state は学習器と学習の入力も見た状態。 */
+  /** モデルごとの組み立ての run と、組んだ学習器（群の順）と、学習した入力の元のモデル（学習の系列の単発の点の original。name は学習の系列の名前）。state は学習器と学習の入力も見た状態。 */
   models: { model: string; state: State; run: RunStatus; parts: RunStatus[]; train: RunStatus }[];
-  series: { series: string; original: RunStatus }[];
-  pairs: { series: string; model: string; state: State; run: RunStatus }[];
+  series: { series: string; points: PointRun[] }[];
+  /** state は点を合わせた状態（どれかが回っていれば計算中、どれかが置換できなければ置換できない、全部済めば済み）。 */
+  pairs: { series: string; model: string; state: State; points: PointRun[] }[];
   benches: { bench: string; state: State; run: RunStatus }[];
 };
 /** 実験ごとの状態と、起こした仕事。外の画面が status で受け取る。 */

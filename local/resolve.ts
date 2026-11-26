@@ -1,6 +1,7 @@
 // 手元の側の出口。宣言（../config/ と隣の TS）から、実験ごとに送る spec.json を組んで resolved/ に置く。テスト専用の学習の設定も resolved/tests.json（計算する機械の pytest が読む）に、宣言の写しを resolved/plans.json（計算する機械の API が画面の答えを組むのに読む）に置く。計算する機械（../../remote/）は宣言を読まず、ここが書いた resolved/ だけを受け取って回す。
 // パスは識別のための名前で、送るのは中身だけ：学習器 `<実験>/parts/<圧縮器と右辺>.<群>.json`、それを組んだモデル `<実験>/models/<モデル>.json`、
-// `<実験>/sim/<系列>/original.json`（元のモデル）と `<モデル>.json`、`<実験>/bench/<GPU の実測>.json`。宣言のモデル 1 つは、群ごとの学習器・それを組んだモデルの spec に分かれる。
+// 系列の掃引の点ごとの `<実験>/sim/<系列>/original/<点>.json`（元のモデル）と `<実験>/sim/<系列>/<モデル>/<点>.json`、`<実験>/bench/<GPU の実測>.json`。
+// 点の名前は掃引の `<パラメータ>=<値>` か単発の single（shared/spec.ts の pointsOf）で、1 ファイルが入力 1 本の run 1 本。宣言のモデル 1 つは、群ごとの学習器・それを組んだモデルの spec に分かれる。
 // 学習データは、実験の系列に足した学習の系列（experiments.ts の withTraining）の元のモデルの run で、学習器はその入力を鍵で指す。
 // KAM のモデル（全部の群が kam）は学習器を持たず、群と学習の入力（元のモデルと縮約を描くのに使う）をモデルの spec が直に持つ。KAM と学習器を混ぜたモデルは組まない。
 // 学習器の名前は中身から付け、同じ中身は実験の中で 1 ファイルにまとめ、同じ名前に違う中身が来たら投げる（名前に出ない違いがある）。
@@ -21,7 +22,7 @@ import {
 } from './experiments/schema/base.ts';
 import { EXPERIMENTS, GROUPS, type GroupedPlan } from './experiments/schema/experiments.ts';
 import { hashOf, inputKey } from '../shared/hash.ts';
-import { FORMATS, type Device, type Group, type Input, type Plans, type Spec } from '../shared/spec.ts';
+import { FORMATS, pointsOf, type Device, type Group, type Input, type Plans, type Spec } from '../shared/spec.ts';
 import type { Bench } from './experiments/schema/schema.ts';
 
 /** 送る spec.json の置き場。 */
@@ -32,9 +33,10 @@ function trainDevice(model: ModelDecl): Device {
   return model.name.startsWith('_test_') ? 'cpu' : 'gpu';
 }
 
-/** モデルが学習する入力の鍵。学習の系列の元のモデルの run（runs/inputs/<鍵>/original/）が学習データ。 */
+/** モデルが学習する入力の鍵。学習の系列（単発）の元のモデルの run（runs/inputs/<鍵>/original/）が学習データ。 */
 export function trainKey(model: ModelDecl): string {
-  const spec = simSpec(trainSeries(model.config).series, null);
+  const [point] = pointsOf(trainSeries(model.config).series);
+  const spec = simSpec(point.input, [], null);
   if (spec.kind !== 'sim') throw new Error('sim の spec でない');
   return inputKey(spec);
 }
@@ -88,26 +90,20 @@ export function partName(group: Group): string {
   return `${kind}${group.d === 1 ? '' : `-d${group.d}`}.${group.gates.map(gate => gate.toLowerCase()).join('+')}`;
 }
 
-/** 系列の入力（電流と掃引）。置換範囲はモデルの側に入る。 */
-export function inputOf(series: Series): Input {
-  const { replace_targets: _targets, ...input } = series;
-  return input;
+/** 入力 1 本をモデル（ハッシュ）で区画 targets を置き換えて回す spec。surrogate が null なら元のモデル。1 細胞を順に進めるので CPU（GPU は 1 刻みの命令の往復で遅い）。 */
+export function simSpec(input: Input, targets: string[], surrogate: string | null): Spec {
+  const model = surrogate === null ? null : { surrogate, replace_targets: targets };
+  return { format: FORMATS.sim, device: 'cpu', kind: 'sim', input, model };
 }
 
-/** 系列をモデル（ハッシュ）で置き換えて回す spec。surrogate が null なら元のモデル。1 細胞を順に進めるので CPU（GPU は 1 刻みの命令の往復で遅い）。 */
-export function simSpec(series: Series, surrogate: string | null): Spec {
-  const model = surrogate === null ? null : { surrogate, replace_targets: series.replace_targets };
-  return { format: FORMATS.sim, device: 'cpu', kind: 'sim', input: inputOf(series), model };
-}
-
-/** GPU の実測の spec。細胞を並べて GPU で回す。surrogate はモデルのハッシュで、null なら元のモデル。 */
+/** GPU の実測の spec。系列の掃引の点を細胞に順に割り当て、細胞を並べて GPU で回す。surrogate はモデルのハッシュで、null なら元のモデル。 */
 export function benchSpec(series: Series, surrogate: string | null, bench: Bench): Spec {
   const model = surrogate === null ? null : { surrogate, replace_targets: series.replace_targets };
   return {
     format: FORMATS.bench,
     device: 'gpu',
     kind: 'bench',
-    input: inputOf(series),
+    inputs: pointsOf(series).map(p => p.input),
     model,
     cells: bench.cells,
     ncu: bench.ncu,
@@ -133,9 +129,15 @@ export function resolved(plan: GroupedPlan): Record<string, Spec> {
       for (const group of m.config.groups) put(`${plan.id}/parts/${partName(group)}.json`, partSpec(m, group));
     put(`${plan.id}/models/${m.name}.json`, modelSpec(m));
   }
-  for (const [name, s] of Object.entries(plan.series)) files[`${plan.id}/sim/${name}/original.json`] = simSpec(s, null);
-  for (const p of plan.pairs)
-    files[`${plan.id}/sim/${p.series}/${p.model}.json`] = simSpec(plan.series[p.series], modelHash(p.model));
+  for (const [name, s] of Object.entries(plan.series))
+    for (const point of pointsOf(s))
+      files[`${plan.id}/sim/${name}/original/${point.name}.json`] = simSpec(point.input, s.replace_targets, null);
+  for (const p of plan.pairs) {
+    const s = plan.series[p.series];
+    const hash = modelHash(p.model);
+    for (const point of pointsOf(s))
+      files[`${plan.id}/sim/${p.series}/${p.model}/${point.name}.json`] = simSpec(point.input, s.replace_targets, hash);
+  }
   for (const b of plan.benches)
     files[`${plan.id}/bench/${b.name}.json`] = benchSpec(
       plan.series[b.series],

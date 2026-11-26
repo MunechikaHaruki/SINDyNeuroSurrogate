@@ -7,9 +7,7 @@
 あとに、区画ごとの状態が続く。
 """
 
-from collections.abc import Sequence
 from dataclasses import dataclass, field
-from dataclasses import replace as dc_replace
 from typing import Any, Self
 
 import jax
@@ -276,33 +274,20 @@ class SimSpec:
 
 @dataclass(frozen=True)
 class EvalSeries:
-    """1 回の掃引: 何を、どこを置き換えて、どの電流パラメータで振るか。"""
+    """入力 1 本: 何を、どこを置き換えて回すか。掃引は手元が点ごとの入力に開いて送る。"""
 
     spec: SimSpec
     replace_targets: tuple[str, ...]
-    param: str | None = None  # 掃引する電流パラメータ (None は単発)
-    values: Sequence[float] = ()
 
     @classmethod
     def from_dict(cls, d: dict) -> Self:
         return cls(
             spec=SimSpec.from_dict(d["spec"]),
             replace_targets=tuple(d["replace_targets"]),
-            param=d["param"] or None,
-            values=[float(v) for v in d["values"]],
         )
 
     @property
-    def points(self) -> list[SimSpec]:
-        """点ごとの計算入力 (current_params[param] に値を埋めたもの)。"""
-        if self.param is None:
-            return [self.spec]
-        points = []
-        for v in self.values:
-            params = {**self.spec.current_params, self.param: float(v)}
-            points.append(dc_replace(self.spec, current_params=params))
-        return points
-
-    @property
-    def unit(self) -> str:
-        return PARAM_UNITS.get(self.param or "", "")
+    def units(self) -> dict[str, str]:
+        """電流パラメータの名前 → 単位 (単位を知っているものだけ)。"""
+        params = self.spec.current_params
+        return {k: PARAM_UNITS[k] for k in params if k in PARAM_UNITS}

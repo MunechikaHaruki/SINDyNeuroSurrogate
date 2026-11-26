@@ -55,8 +55,9 @@ export type SpikeTrain = { times: number[]; features: Record<string, (number | n
 /** 列 1 本のまとめ。gamma は決まる点での Γ の平均、rheobase は発火の始まり [原系, 置換系]（掃引しなければ null）。 */
 export type ColumnSummary = { gamma: number | null; rheobase: [number | null, number | null] };
 
-/** 入力（系列）1 つ。points は掃引の点の見出し（単発なら「単発」）、comps は区画の名前、stimulus は刺激が入る区間 [ms]、duration は系列の長さ [ms]。
- * spec は電流の宣言（表に出す）、original は元のモデルの run の id、trained はこの入力を学習データにしたモデル（学習の系列なら空でない）。 */
+/** 入力（系列）1 つ。param と values は掃引するパラメータと値（単発なら null と空）、unit はそのパラメータの単位、points は掃引の点の見出し（単発なら「単発」）、
+ * comps は区画の名前、stimulus は刺激が入る区間 [ms]、duration は系列の長さ [ms]。
+ * spec は電流の宣言（掃引する前。表に出す）、original は点ごとの元のモデルの run（掃引の点の順。点 1 つが run 1 本）、trained はこの入力を学習データにしたモデル（学習の系列なら空でない）。 */
 export type InputView = {
   name: string;
   param: string | null;
@@ -69,11 +70,11 @@ export type InputView = {
   duration: number;
   dt: number;
   spec: { target: string; current_type: string; stim: string; current_params: Record<string, number> };
-  original: { state: State; run: string };
+  original: { state: State; run: string }[];
   trained: string[];
 };
-/** 入力を 1 つのモデルで置き換えて回し終えた列。reduced は ExperimentView と同じ。 */
-export type ColumnView = { model: string; method: string; grouping: string; reduced: number; run: string };
+/** 入力を 1 つのモデルで置き換えて、全部の点で回し終えた列。reduced は ExperimentView と同じ、runs は点ごとの run の id（掃引の点の順）。 */
+export type ColumnView = { model: string; method: string; grouping: string; reduced: number; runs: string[] };
 /** 電位の線 1 本。model は列のモデルの名前で、原系は null。 */
 export type VoltageLine = Line & { model: string | null };
 /** 入力の頼み方。comp は比べる区画（省けば置き換えた区画のうち刺激する区画、無ければ最初に置き換える区画）、models は重ねるモデル（省けば回し終えた全部）、window は線の時間の範囲、waves が false なら線を返さない（指標だけを使う実験のページ）。

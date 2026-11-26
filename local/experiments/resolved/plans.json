@@ -2600,8 +2600,7 @@
               "duration": 9000
             }
           },
-          "param": null,
-          "values": [],
+          "sweep": null,
           "replace_targets": [
             "soma"
           ]
@@ -2617,14 +2616,16 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              2.5,
+              5,
+              7.5,
+              10
+            ]
+          },
           "replace_targets": [
             "soma"
           ]
@@ -3234,8 +3235,7 @@
               "duration": 9000
             }
           },
-          "param": null,
-          "values": [],
+          "sweep": null,
           "replace_targets": [
             "soma"
           ]
@@ -3251,14 +3251,16 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              2.5,
+              5,
+              7.5,
+              10
+            ]
+          },
           "replace_targets": [
             "soma"
           ]
@@ -3276,13 +3278,15 @@
             },
             "stim": "soma"
           },
-          "param": "sigma",
-          "values": [
-            10,
-            15,
-            20,
-            30
-          ],
+          "sweep": {
+            "param": "sigma",
+            "values": [
+              10,
+              15,
+              20,
+              30
+            ]
+          },
           "replace_targets": [
             "soma"
           ]
@@ -3549,8 +3553,7 @@
               "duration": 1000
             }
           },
-          "param": null,
-          "values": [],
+          "sweep": null,
           "replace_targets": [
             "soma"
           ]
@@ -3566,11 +3569,13 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              10
+            ]
+          },
           "replace_targets": [
             "soma"
           ]
@@ -3886,8 +3891,7 @@
               "duration": 9000
             }
           },
-          "param": null,
-          "values": [],
+          "sweep": null,
           "replace_targets": [
             "soma"
           ]
@@ -3903,14 +3907,16 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              2.5,
+              5,
+              7.5,
+              10
+            ]
+          },
           "replace_targets": [
             "soma"
           ]
@@ -3926,14 +3932,16 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              2.5,
+              5,
+              7.5,
+              10
+            ]
+          },
           "replace_targets": [
             "c05",
             "c07",
@@ -4171,8 +4179,7 @@
               "duration": 1000
             }
           },
-          "param": null,
-          "values": [],
+          "sweep": null,
           "replace_targets": [
             "soma"
           ]
@@ -4188,11 +4195,13 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              10
+            ]
+          },
           "replace_targets": [
             "soma"
           ]
@@ -4328,8 +4337,7 @@
               "duration": 9000
             }
           },
-          "param": null,
-          "values": [],
+          "sweep": null,
           "replace_targets": [
             "soma"
           ]
@@ -4345,14 +4353,16 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              2.5,
+              5,
+              7.5,
+              10
+            ]
+          },
           "replace_targets": [
             "soma"
           ]
@@ -4368,14 +4378,16 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              2.5,
+              5,
+              7.5,
+              10
+            ]
+          },
           "replace_targets": [
             "soma"
           ]
@@ -4391,14 +4403,16 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              2.5,
+              5,
+              7.5,
+              10
+            ]
+          },
           "replace_targets": [
             "c05",
             "c07",
@@ -4587,8 +4601,7 @@
               "duration": 1000
             }
           },
-          "param": null,
-          "values": [],
+          "sweep": null,
           "replace_targets": [
             "soma"
           ]
@@ -4604,11 +4617,13 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              10
+            ]
+          },
           "replace_targets": [
             "soma"
           ]
@@ -4719,8 +4734,7 @@
               "duration": 1000
             }
           },
-          "param": null,
-          "values": [],
+          "sweep": null,
           "replace_targets": [
             "soma"
           ]
@@ -4736,14 +4750,16 @@
             },
             "stim": "soma"
           },
-          "param": "value",
-          "values": [
-            0,
-            2.5,
-            5,
-            7.5,
-            10
-          ],
+          "sweep": {
+            "param": "value",
+            "values": [
+              0,
+              2.5,
+              5,
+              7.5,
+              10
+            ]
+          },
           "replace_targets": [
             "soma"
           ]

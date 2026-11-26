@@ -1,6 +1,6 @@
 // 実験の状態。resolved/ の実験ごとに、モデル（とその学習器・学習の入力）・系列と組・GPU の実測の置き場と状態を組み、画面から起こした仕事と合わせて返す。並びは名前の順で、宣言の順は答えを組む側（../read/）が宣言の写しで並べる。
 import { join } from 'node:path';
-import type { ExperimentStatus, RunStatus, State, Status } from '../../shared/spec.ts';
+import type { ExperimentStatus, PointRun, RunStatus, State, Status } from '../../shared/spec.ts';
 import { jobRunning, jobs } from '../run-spec.ts';
 import { existsSync, readdirSync } from 'node:fs';
 import { hashOf } from '../../shared/hash.ts';
@@ -51,15 +51,30 @@ function modelState(runs: string, run: RunStatus, pointed: RunStatus[]): State {
   return [run, ...pointed].some(r => withJob(runs, r) === 'running') ? 'running' : run.state;
 }
 
-/** resolved/<実験>/ の spec の、置き場と状態。モデルは models/（指す学習器は parts/、学習データは学習の系列の sim/<系列>/original。KAM のモデルは学習の入力を直に指す）、系列は sim/<系列>/ の original とモデルの名前、GPU の実測は bench/。並びは名前の順で、宣言の順は使う側が持つ。 */
+/** resolved/<実験>/sim/<系列>/<列>/ の点ごとの spec の、置き場と状態（点の名前の順）。名前は系列の名前。 */
+function pointRuns(runs: string, name: string, series: string, column: string): PointRun[] {
+  const dir = `${name}/sim/${series}/${column}`;
+  return specNames(join(resolvedDir(), dir)).map(point => ({
+    point,
+    run: runStatus(runs, `${dir}/${point}.json`, series),
+  }));
+}
+
+/** 組の点を合わせた状態。どれかが回っていれば計算中、どれかが置換できなければ置換できない（置換できるかはモデルと区画だけで決まる）、全部済めば済み。 */
+function pairState(runs: string, points: PointRun[], before: (State | undefined)[]): State {
+  const states = points.map(p => withJob(runs, p.run));
+  if (states.includes('running') || before.includes('running')) return 'running';
+  if (states.includes('unreplaceable')) return 'unreplaceable';
+  return states.every(s => s === 'done') ? 'done' : 'todo';
+}
+
+/** resolved/<実験>/ の spec の、置き場と状態。モデルは models/（指す学習器は parts/、学習データは学習の系列の sim/<系列>/original/single。KAM のモデルは学習の入力を直に指す）、
+ * 系列は sim/<系列>/ の original とモデルの名前の下の点ごとの spec、GPU の実測は bench/。並びは名前の順で、宣言の順は使う側が持つ。 */
 export function experimentStatus(runs: string, name: string): ExperimentStatus {
   const root = join(resolvedDir(), name);
   const result: ExperimentStatus = { name, models: [], series: [], pairs: [], benches: [] };
   const parts = byHash(runs, name, 'parts');
-  const originals = subdirs(join(root, 'sim')).map(s => ({
-    series: s,
-    original: runStatus(runs, `${name}/sim/${s}/original.json`, s),
-  }));
+  const originals = subdirs(join(root, 'sim')).map(s => ({ series: s, points: pointRuns(runs, name, s, 'original') }));
   for (const model of specNames(join(root, 'models'))) {
     const path = `${name}/models/${model}.json`;
     const spec = specAt(path);
@@ -68,18 +83,18 @@ export function experimentStatus(runs: string, name: string): ExperimentStatus {
     const own = spec.parts.map(hash => parts.get(hash)!);
     const pointed = own.map(p => specAt(p.spec)).find(s => s.kind === 'part');
     const key = spec.kam?.input ?? (pointed?.kind === 'part' ? pointed.input : undefined);
-    const train = originals.find(s => s.original.id === `inputs/${key}/original`)?.original;
+    const train = originals.flatMap(s => s.points).find(p => p.run.id === `inputs/${key}/original`)?.run;
     if (!train) throw new Error(`resolved/${path} の学習の入力を回す系列が無い`);
     result.models.push({ model, state: modelState(runs, run, [...own, train]), run, parts: own, train });
   }
-  for (const { series, original } of originals) {
-    result.series.push({ series, original });
-    for (const model of specNames(join(root, 'sim', series))) {
+  for (const { series, points } of originals) {
+    result.series.push({ series, points });
+    for (const model of subdirs(join(root, 'sim', series))) {
       if (model === 'original') continue;
-      const run = runStatus(runs, `${name}/sim/${series}/${model}.json`, model);
+      const own = pointRuns(runs, name, series, model);
       const train = result.models.find(m => m.model === model)?.state;
-      const running = jobRunning(runs, { spec: run.spec }) || [original.state, train, run.state].includes('running');
-      result.pairs.push({ series, model, state: running ? 'running' : run.state, run });
+      const state = pairState(runs, own, [train, ...points.map(p => p.run.state)]);
+      result.pairs.push({ series, model, state, points: own });
     }
   }
   for (const bench of specNames(join(root, 'bench'))) {

@@ -1,5 +1,6 @@
-// 入力（runs/inputs/<入力>/）の答え。入力の下の run（元のモデル original/ と置き換えた列 <モデル>@<区画>/）だけを読み、実験の系列 1 つを元のモデルと回し終えたモデルの列で並べる：
-// 掃引の点ごとの電流と電位の線、原系との指標と発火、頼めば 1 組の潜在空間（原系は列の圧縮器で写した projected/）と、元のモデルの全区画の膜電位・内部電流・ゲート。
+// 入力（runs/inputs/<入力>/）の答え。入力の下の run（元のモデル original/ と置き換えた列 <モデル>@<区画>/）だけを読み、実験の系列 1 つを元のモデルと回し終えたモデルの列で並べる。
+// 系列の掃引の点は 1 点が入力 1 本（runs/inputs/<点の入力>/）で、点の並びは宣言の順（shared/spec.ts の pointsOf）。
+// 返すのは、点ごとの電流と電位の線、原系との指標と発火、頼めば 1 組の潜在空間（原系は列の圧縮器で写した projected/）と、元のモデルの全区画の膜電位・内部電流・ゲート。
 import type {
   ColumnView,
   InputsReply,
@@ -22,11 +23,14 @@ import {
   type DecodeJson,
   type WaveMeta,
 } from '../../shared/runs.ts';
-import type { ExperimentStatus, PlanEntry, RunStatus, Spec } from '../../shared/spec.ts';
+import { pointsOf, type ExperimentStatus, type PlanEntry, type PointRun, type RunStatus, type Spec } from '../../shared/spec.ts';
 import { experimentStatus } from '../run/status.ts';
 import { type Context, modelOf, planOf, plans, reducedOf, stimulusOf } from './experiments.ts';
 import { errorOf, rebuiltOf, reconstructor } from './comparison.ts';
 import { arrayLine, isFraction, line, slopeCompare, trajectory, zoomOf, type Span } from './waves.ts';
+
+/** run の波形の点の番号。run 1 本は入力 1 本なので、波形の点は 0 だけ。 */
+const WAVE = 0;
 
 /** 元のモデルの run の目録（waves/meta.json）。 */
 export function wavesOf(ctx: Context, run: string): WaveMeta {
@@ -39,26 +43,27 @@ export function spanOf(meta: { t0: number; dt: number }, window: Window | undefi
   return { t0: meta.t0, dt: meta.dt, start, end };
 }
 
-/** 実験の系列 1 つの見出し。trained はこの入力を学習データにしたモデル。元のモデルをまだ回していなければ null。 */
+/** 実験の系列 1 つの見出し。originals は点ごとの元のモデルの run（宣言の順）、trained はこの入力を学習データにしたモデル。元のモデルをまだ回していない点があれば null。 */
 export function inputView(
   ctx: Context,
   plan: PlanEntry,
   name: string,
-  original: RunStatus,
+  originals: RunStatus[],
   trained: string[],
 ): InputView | null {
   const declared = plan.series[name];
   if (!declared) throw new Error(`${plan.id} に入力 ${name} が無い`);
-  if (original.state !== 'done') return null;
-  const meta = wavesOf(ctx, original.id);
-  const unit = ctx.files.json<{ unit?: string }>(original.id, 'meta.json').unit ?? '';
-  const { spec } = declared;
+  if (originals.some(o => o.state !== 'done')) return null;
+  const meta = wavesOf(ctx, originals[0].id);
+  const { spec, sweep } = declared;
+  const units = ctx.files.json<{ units?: Record<string, string> }>(originals[0].id, 'meta.json').units ?? {};
+  const unit = sweep ? (units[sweep.param] ?? '') : '';
   return {
     name,
-    param: declared.param,
+    param: sweep?.param ?? null,
     unit,
-    values: declared.values,
-    points: meta.n.map((_, k) => (declared.param ? `${declared.param} = ${declared.values[k]} ${unit}` : '単発')),
+    values: sweep?.values ?? [],
+    points: sweep ? sweep.values.map(v => `${sweep.param} = ${v} ${unit}`) : ['単発'],
     comps: Object.keys(meta.names ?? { soma: 0 }),
     replaceTargets: declared.replace_targets,
     stimulus: stimulusOf(plan, name),
@@ -70,16 +75,25 @@ export function inputView(
       stim: spec.stim ?? 'soma',
       current_params: spec.current_params,
     },
-    original: { state: original.state, run: original.id },
+    original: originals.map(o => ({ state: o.state, run: o.id })),
     trained,
   };
 }
 
-/** 系列の元のモデルの状態。 */
-export function originalOf(found: ExperimentStatus, name: string): RunStatus {
+/** 点の run を宣言の点の順に並べる。宣言の点が resolved/ に無ければ投げる。 */
+function ordered(plan: PlanEntry, name: string, points: PointRun[]): RunStatus[] {
+  return pointsOf(plan.series[name]).map(({ name: point }) => {
+    const found = points.find(p => p.point === point);
+    if (!found) throw new Error(`${plan.id} の ${name} の点 ${point} が resolved/ に無い`);
+    return found.run;
+  });
+}
+
+/** 系列の点ごとの元のモデルの状態（宣言の順）。 */
+export function originalsOf(plan: PlanEntry, found: ExperimentStatus, name: string): RunStatus[] {
   const series = found.series.find(s => s.series === name);
   if (!series) throw new Error(`${found.name} に入力 ${name} が無い`);
-  return series.original;
+  return ordered(plan, name, series.points);
 }
 
 /** 比べる区画。頼まれた名前が無ければ投げ、省けば置き換えた区画のうち刺激する区画（無ければ最初に置き換える区画）。 */
@@ -92,20 +106,20 @@ export function compOf(input: InputView, comp: string | undefined): string {
   return chosen;
 }
 
-/** 系列を回し終えたモデルの列（宣言の順）。models で絞る。 */
+/** 系列を全部の点で回し終えたモデルの列（宣言の順）。runs は点ごとの run（宣言の点の順）。models で絞る。 */
 function columnsOf(plan: PlanEntry, found: ExperimentStatus, input: string, models?: string[]): ColumnView[] {
   const list: ColumnView[] = [];
   for (const pair of plan.pairs) {
     if (pair.series !== input || (models && !models.includes(pair.model))) continue;
-    const run = found.pairs.find(p => p.series === input && p.model === pair.model)?.run;
-    if (run?.state !== 'done') continue;
+    const status = found.pairs.find(p => p.series === input && p.model === pair.model);
+    if (status?.state !== 'done') continue;
     const model = modelOf(plan, pair.model);
     list.push({
       model: model.name,
       method: model.method,
       grouping: model.grouping,
       reduced: reducedOf(model),
-      run: run.id,
+      runs: ordered(plan, input, status.points).map(r => r.id),
     });
   }
   return list;
@@ -134,22 +148,21 @@ function rebuiltAt(
     meta: WaveMeta;
     projected: WaveMeta;
     root: string;
-    k: number;
     id: number;
     comp: string;
   },
   span: Span,
   requested: Window | undefined,
 ): Pick<PairCompare, 'rebuilt' | 'zoom' | 'order' | 'errors'> {
-  const { run, original, meta, projected, root, k, id, comp } = at;
-  const zoom = zoomOf(ctx.files.column(compArray(original, RUN.waves, meta, k, id, 'V')), span, requested);
+  const { run, original, meta, projected, root, id, comp } = at;
+  const zoom = zoomOf(ctx.files.column(compArray(original, RUN.waves, meta, WAVE, id, 'V')), span, requested);
   const close = { ...span, start: zoom[0], end: zoom[1] };
   const rebuilt: PairCompare['rebuilt'] = [];
   const errors: PairCompare['errors'] = [];
   const learners = learnersOf(ctx, run);
   for (const { decode, own } of learners) {
-    const latents = decode.axes.map(axis => ctx.files.column(compArray(run, root, projected, k, id, axis.latent)));
-    const refs = decode.gates.map(gate => compArray(original, RUN.waves, meta, k, id, gate));
+    const latents = decode.axes.map(axis => ctx.files.column(compArray(run, root, projected, WAVE, id, axis.latent)));
+    const refs = decode.gates.map(gate => compArray(original, RUN.waves, meta, WAVE, id, gate));
     const gates = refs.map(ref => ctx.files.column(ref));
     const built = rebuiltOf(reconstructor(decode, own), latents, decode.gates.length);
     decode.gates.forEach((gate, g) => {
@@ -165,14 +178,13 @@ function rebuiltAt(
   return { rebuilt, zoom, order: learners[0]?.decode.order ?? [], errors };
 }
 
-/** 1 組（元のモデル original と列 run）の、掃引の点 k・区画 comp の潜在空間。潜在ごとに z の時系列と (V, z) の相平面。kam はモデルが KAM か（潜在が mV）。
+/** 1 組（掃引の点 1 つの、元のモデル original と列 run）の、区画 comp の潜在空間。潜在ごとに z の時系列と (V, z) の相平面。kam はモデルが KAM か（潜在が mV）。
  * projected でなければ（区画を置き換えていない）潜在は無く、replaced でなければ（発散した点）置換系を描かない。 */
 function pairOf(
   ctx: Context,
   at: {
     model: string;
     run: string;
-    k: number;
     comp: string;
     id: number;
     projected: boolean;
@@ -184,38 +196,38 @@ function pairOf(
   span: Span,
   zoom: Window | undefined,
 ): PairCompare {
-  const { run, k, id, replaced } = at;
+  const { run, id, replaced } = at;
   const root = RUN.projected(at.comp);
   const projected = at.projected ? ctx.files.json<WaveMeta>(run, RUN.meta(root)) : undefined;
   const names = projected ? variablesOf(projected, id).filter(name => name !== 'V') : [];
   const own = wavesOf(ctx, run);
   const ownNames = variablesOf(own, id);
   // 時系列（z・ゲート・dz/dt）は同じ範囲で返す。(V, z) 平面は全区間
-  const window = zoomOf(ctx.files.column(compArray(at.original, RUN.waves, at.meta, k, id, 'V')), span, zoom);
+  const window = zoomOf(ctx.files.column(compArray(at.original, RUN.waves, at.meta, WAVE, id, 'V')), span, zoom);
   const close = { ...span, start: window[0], end: window[1] };
   const latents: Record<string, Line[]> = {};
   for (const name of names) {
-    latents[name] = [{ label: '原系', points: line(ctx.files, compArray(run, root, projected!, k, id, name), close) }];
+    latents[name] = [{ label: '原系', points: line(ctx.files, compArray(run, root, projected!, WAVE, id, name), close) }];
     if (replaced && ownNames.includes(name))
       latents[name].push({
         label: '置換系',
-        points: line(ctx.files, compArray(run, RUN.waves, own, k, id, name), close),
+        points: line(ctx.files, compArray(run, RUN.waves, own, WAVE, id, name), close),
       });
   }
   const phases: Record<string, Line[]> = {};
   if (projected) {
-    const v = compArray(run, root, projected, k, id, 'V');
+    const v = compArray(run, root, projected, WAVE, id, 'V');
     for (const name of names) {
       phases[name] = [
-        { label: '原系（射影）', points: trajectory(ctx.files, v, compArray(run, root, projected, k, id, name), span) },
+        { label: '原系（射影）', points: trajectory(ctx.files, v, compArray(run, root, projected, WAVE, id, name), span) },
       ];
       if (replaced && ownNames.includes('V') && ownNames.includes(name))
         phases[name].push({
           label: '置換系',
           points: trajectory(
             ctx.files,
-            compArray(run, RUN.waves, own, k, id, 'V'),
-            compArray(run, RUN.waves, own, k, id, name),
+            compArray(run, RUN.waves, own, WAVE, id, 'V'),
+            compArray(run, RUN.waves, own, WAVE, id, name),
             span,
           ),
         });
@@ -227,14 +239,14 @@ function pairOf(
           ctx.files,
           names.map(name => ({
             label: name,
-            slope: compArray(run, RUN.slope(at.comp), projected, k, id, name),
-            rhs: compArray(run, RUN.rhs(at.comp), projected, k, id, name),
+            slope: compArray(run, RUN.slope(at.comp), projected, WAVE, id, name),
+            rhs: compArray(run, RUN.rhs(at.comp), projected, WAVE, id, name),
           })),
           close,
         )
       : null;
   const heldOut = projected
-    ? rebuiltAt(ctx, { run, original: at.original, meta: at.meta, projected, root, k, id, comp: at.comp }, span, window)
+    ? rebuiltAt(ctx, { run, original: at.original, meta: at.meta, projected, root, id, comp: at.comp }, span, window)
     : { rebuilt: [], zoom: window, order: [], errors: [] };
   return {
     model: at.model,
@@ -247,8 +259,8 @@ function pairOf(
   };
 }
 
-/** 元のモデル original の掃引の点 k の、区画 comps の膜電位・内部電流・ゲート（0〜1 の状態）とゲートでない状態。 */
-function wholeOf(ctx: Context, original: string, meta: WaveMeta, k: number, comps: string[], span: Span): WholeWaves {
+/** 掃引の点 1 つの元のモデル original の、区画 comps の膜電位・内部電流・ゲート（0〜1 の状態）とゲートでない状態。 */
+function wholeOf(ctx: Context, original: string, meta: WaveMeta, comps: string[], span: Span): WholeWaves {
   const draw = (label: string, ref: Parameters<typeof line>[1]): Line => ({
     label,
     points: line(ctx.files, ref, span),
@@ -257,10 +269,10 @@ function wholeOf(ctx: Context, original: string, meta: WaveMeta, k: number, comp
   for (const name of comps) {
     const id = meta.names?.[name];
     if (id === undefined) continue;
-    whole.voltage.push(draw(name, compArray(original, RUN.waves, meta, k, id, 'V')));
-    if (meta.nodes?.includes(id)) whole.internal.push(draw(name, internalArray(original, RUN.waves, meta, k, id)));
+    whole.voltage.push(draw(name, compArray(original, RUN.waves, meta, WAVE, id, 'V')));
+    if (meta.nodes?.includes(id)) whole.internal.push(draw(name, internalArray(original, RUN.waves, meta, WAVE, id)));
     for (const gate of gatesOf(meta, id)) {
-      const ref = compArray(original, RUN.waves, meta, k, id, gate);
+      const ref = compArray(original, RUN.waves, meta, WAVE, id, gate);
       const drawn = draw(comps.length > 1 ? `${gate}（${name}）` : gate, ref);
       (isFraction(ctx.files.column(ref)) ? whole.gates : whole.states).push(drawn);
     }
@@ -268,91 +280,98 @@ function wholeOf(ctx: Context, original: string, meta: WaveMeta, k: number, comp
   return whole;
 }
 
-/** 入力 1 つを、回し終えたモデルの列と比べた答え。元のモデルをまだ回していなければ投げる。 */
+/** 入力 1 つを、回し終えたモデルの列と比べた答え。元のモデルをまだ回していない点があれば投げる。点の番号は宣言の点の順。 */
 export function inputs(ctx: Context, request: InputsRequest): InputsReply {
   const all = plans();
   const plan = planOf(all, request.experiment);
   const found = experimentStatus(ctx.runs, plan.id);
-  const original = originalOf(found, request.input);
-  const trained = found.models.filter(m => m.train.id === original.id).map(m => m.model);
-  const input = inputView(ctx, plan, request.input, original, trained);
-  if (!input) throw new Error(`${plan.id} の ${request.input} の元のモデルをまだ回していない`);
+  const originals = originalsOf(plan, found, request.input);
+  const trained = found.models.filter(m => originals.some(o => o.id === m.train.id)).map(m => m.model);
+  const input = inputView(ctx, plan, request.input, originals, trained);
+  if (!input) throw new Error(`${plan.id} の ${request.input} の元のモデルをまだ回していない点がある`);
   const comp = compOf(input, request.comp);
   const columns = columnsOf(plan, found, request.input, request.models);
   const metrics = ctx.metrics({
-    original: original.id,
-    columns: columns.map(c => c.run),
+    originals: originals.map(o => o.id),
+    columns: Object.fromEntries(columns.map(c => [c.model, c.runs])),
     comp,
     delta: all.measures.coincidence_window,
+    values: input.values,
   });
-  const meta = wavesOf(ctx, original.id);
-  const id = meta.names?.[comp] ?? 0;
-  const span = spanOf(meta, request.window, input.duration);
-  const points = meta.n.map((_, k) => {
-    const diverged = columns.filter(c => metrics.pairs[c.run]?.[k]?.diverged).map(c => c.model);
+  const metas = originals.map(o => wavesOf(ctx, o.id));
+  const id = metas[0].names?.[comp] ?? 0;
+  const span = spanOf(metas[0], request.window, input.duration);
+  const points = originals.map((original, k) => {
+    const meta = metas[k];
+    const diverged = columns.filter(c => metrics.pairs[c.model]?.[k]?.diverged).map(c => c.model);
     const lost = metrics.lost[k] ?? false;
     if (request.waves === false) return { current: [], voltages: [], diverged, lost };
     const voltages: VoltageLine[] = [
       {
         label: '原系',
         model: null,
-        points: line(ctx.files, compArray(original.id, RUN.waves, meta, k, id, 'V'), span),
+        points: line(ctx.files, compArray(original.id, RUN.waves, meta, WAVE, id, 'V'), span),
       },
     ];
     for (const c of columns) {
       if (diverged.includes(c.model)) continue;
-      const own = wavesOf(ctx, c.run);
+      const own = wavesOf(ctx, c.runs[k]);
       voltages.push({
         label: c.model,
         model: c.model,
-        points: line(ctx.files, compArray(c.run, RUN.waves, own, k, id, 'V'), span),
+        points: line(ctx.files, compArray(c.runs[k], RUN.waves, own, WAVE, id, 'V'), span),
       });
     }
-    return { current: line(ctx.files, currentArray(original.id, RUN.waves, meta, k), span), voltages, diverged, lost };
+    return { current: line(ctx.files, currentArray(original.id, RUN.waves, meta, WAVE), span), voltages, diverged, lost };
   });
-  const byModel = <T>(table: Record<string, T>) => Object.fromEntries(columns.map(c => [c.model, table[c.run]]));
-  const pointOf = (k: number) => Math.min(Math.max(0, k), meta.n.length - 1);
+  const pointOf = (k: number) => Math.min(Math.max(0, k), originals.length - 1);
   const paired = request.pair && columns.find(c => c.model === request.pair!.model);
   if (request.pair && !paired) throw new Error(`${request.input} を ${request.pair.model} でまだ回していない`);
-  const pair =
-    paired && request.pair
-      ? pairOf(
-          ctx,
-          {
-            model: paired.model,
-            run: paired.run,
-            k: pointOf(request.pair.point),
-            comp,
-            id,
-            projected: input.replaceTargets.includes(comp),
-            replaced: !metrics.pairs[paired.run]?.[pointOf(request.pair.point)]?.diverged,
-            kam: modelOf(plan, paired.model).config.groups.every(g => g.compressor === 'kam'),
-            original: original.id,
-            meta,
-          },
-          span,
-          request.pair.zoom,
-        )
-      : null;
+  let pair: PairCompare | null = null;
+  if (paired && request.pair) {
+    const k = pointOf(request.pair.point);
+    pair = pairOf(
+      ctx,
+      {
+        model: paired.model,
+        run: paired.runs[k],
+        comp,
+        id,
+        projected: input.replaceTargets.includes(comp),
+        replaced: !metrics.pairs[paired.model]?.[k]?.diverged,
+        kam: modelOf(plan, paired.model).config.groups.every(g => g.compressor === 'kam'),
+        original: originals[k].id,
+        meta: metas[k],
+      },
+      span,
+      request.pair.zoom,
+    );
+  }
   const whole = request.whole
-    ? wholeOf(ctx, original.id, meta, pointOf(request.whole.point), request.whole.comps, span)
+    ? wholeOf(
+        ctx,
+        originals[pointOf(request.whole.point)].id,
+        metas[pointOf(request.whole.point)],
+        request.whole.comps,
+        span,
+      )
     : null;
   return {
     input,
     comp,
     columns,
     points,
-    summaries: byModel(metrics.summaries),
-    spikes: { original: metrics.trains.original, columns: byModel(metrics.trains.columns) },
+    summaries: metrics.summaries,
+    spikes: metrics.trains,
     pair,
     whole,
     crossings: Object.fromEntries(
       columns.map(c => [
         c.model,
-        (metrics.crossings[c.run] ?? []).map((row, k) => ({
+        (metrics.crossings[c.model] ?? []).map((row, k) => ({
           count: row.count,
           gamma: row.gamma,
-          diverged: metrics.pairs[c.run]?.[k]?.diverged ?? false,
+          diverged: metrics.pairs[c.model]?.[k]?.diverged ?? false,
         })),
       ]),
     ),

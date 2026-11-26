@@ -1,25 +1,31 @@
 ---
 description: 単一区画の Traub で、群分けと縮約の仕方を比べる実験群
 ---
-# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指す。part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。
+# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指し、系列の差分には掃引 sweep: { <電流パラメータ>: [値...] } も書く。
+# part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。同じ指し方は YAML のアンカー（&名前 と *名前）で使い回す。
 base:
-  parts: [kam, kam-absorb-m, pca-sindy, ae-sindy]
-  inputs: [traub-1comp-steady]
+  parts:
+    - &kam { name: kam, from: traub, group: { compressor: kam, rhs: kam, rhs_params: { library_specs: null } } }
+    - { name: kam-absorb-m, from: traub, group: { compressor: kam, rhs: kam, rhs_params: { library_specs: null } }, absorbed: [M] }
+    - &pca-sindy { name: pca-sindy, from: traub }
+    - &ae-sindy { name: ae-sindy, from: traub, group: { compressor: ae } }
+  inputs:
+    - &steady { name: traub-1comp-steady, from: traub, sweep: { value: [0, 2.5, 5, 7.5, 10] } }
 runs:
   all-groupings-1comp:
     groupings: { all: [h, n, a, c] }
   fluctuating-input-1comp:
-    parts: [kam, pca-sindy, ae-sindy]
+    parts: [*kam, *pca-sindy, *ae-sindy]
     groupings: [h+n]
-    inputs: [traub-1comp-steady, traub-1comp-kistler]
+    inputs:
+      - *steady
+      - name: traub-1comp-kistler
+        from: traub
+        spec: { current_type: random&kistler, current_params: { duration: 2000, mean: 0, seed: 0 } }
+        sweep: { sigma: [10, 15, 20, 30] }
   test-1comp:
-    parts: [kam, pca-sindy, ae-sindy]
+    parts: [*kam, *pca-sindy, *ae-sindy]
     part: { data: { current_params: { duration: 1000 } } }
     groupings: [h+n_a+c]
     inputs:
-      - {
-          name: traub-1comp-steady-test,
-          from: traub-1comp-steady,
-          spec: { current_params: { duration: 100.0 } },
-          values: [0, 10],
-        }
+      - { name: traub-1comp-steady-test, from: traub, spec: { current_params: { duration: 100.0 } }, sweep: { value: [0, 10] } }

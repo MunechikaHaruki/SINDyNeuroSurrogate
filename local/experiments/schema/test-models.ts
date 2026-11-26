@@ -1,4 +1,4 @@
-// テスト専用のモデルの宣言。学習器の基準のファイル（config/parts/<from>.json）に差分を重ね、群分け grouping で並べる（base.ts の partOf と modelFrom）。
+// テスト専用のモデルの宣言。学習器の基準のファイル（config/parts/<from>.json。今は traub だけ）に差分を重ね、群分け grouping で並べる（base.ts の partOf と modelFrom）。
 // どのテストにも最後に TEST_COMMON（学習の電流を 180 ms に縮める）を当てる。名前は _test_ で始め、どの実験にも入れない。tests/ と resolve.test.ts が名前で引く。
 
 /** どのテストのモデルにも最後に当てる差分。学習の電流を 180 ms に縮める。 */
@@ -19,28 +19,28 @@ const HH = { cell: 'hh', data: { target: 'hh' } };
 export const TEST_DECLARATIONS: Record<string, { from: string; grouping: string } & Record<string, unknown>> = {
   /** テストは形と有限性だけを見るので、決定的で速い PCA にする（_test_ はどれもテスト専用で、tests が名前で引く）。 */
   _test_hh_sindy: {
-    from: 'pca-sindy',
+    from: 'traub',
     grouping: 'm+h+n',
     ...HH,
     form: 'sindy',
     group: { d: 3, rhs_params: { library_specs: HH_LIBRARY } },
   },
   _test_hh_hybrid: {
-    from: 'pca-sindy',
+    from: 'traub',
     grouping: 'm+h+n',
     ...HH,
     group: { d: 3, rhs_params: { library_specs: HH_LIBRARY } },
   },
   /** AE の経路を踏むだけなので epochs を切り詰める。 */
   _test_hh_ae: {
-    from: 'ae-sindy',
+    from: 'traub',
     grouping: 'm+h+n',
     ...HH,
-    group: { d: 2, compressor_params: { epochs: 20 }, rhs_params: { library_specs: HH_LIBRARY } },
+    group: { compressor: 'ae', d: 2, compressor_params: { epochs: 20 }, rhs_params: { library_specs: HH_LIBRARY } },
   },
-  _test_traub_hybrid: { from: 'pca-sindy', grouping: 'm+n+c+a+h+b+s+r', group: { d: 5 } },
+  _test_traub_hybrid: { from: 'traub', grouping: 'm+n+c+a+h+b+s+r', group: { d: 5 } },
   _test_traub_hybrid_sr_physics: {
-    from: 'pca-sindy',
+    from: 'traub',
     grouping: 'm+n+c+a+h+b',
     group: {
       d: 5,
@@ -55,16 +55,21 @@ export const TEST_DECLARATIONS: Record<string, { from: string; grouping: string 
       },
     },
   },
-  _test_traub_hybrid_hn: { from: 'pca-sindy', grouping: 'n+h' },
+  _test_traub_hybrid_hn: { from: 'traub', grouping: 'n+h' },
   /** 群を 2 つ持つ形。{h,n} と {a,c} をそれぞれ 1 本へ縮め、残りは元の式。 */
-  _test_traub_two_groups: { from: 'pca-sindy', grouping: 'n+h_a+c' },
-  _test_traub_kam: { from: 'kam', grouping: 'n+h_a+c' },
+  _test_traub_two_groups: { from: 'traub', grouping: 'n+h_a+c' },
+  _test_traub_kam: {
+    from: 'traub',
+    grouping: 'n+h_a+c',
+    group: { compressor: 'kam', rhs: 'kam', rhs_params: { library_specs: null } },
+  },
   /** encoder・decoder と潜在方程式（NN）を同じロスで学習する経路。項ライブラリは持たない。 */
   _test_traub_ude: {
-    from: 'ae-sindy',
+    from: 'traub',
     grouping: 'm+n+c+a+h+b+s+r',
     data: { target: 'traub19' },
     group: {
+      compressor: 'ae',
       d: 3,
       rhs: 'ude',
       compressor_params: { epochs: 20 },

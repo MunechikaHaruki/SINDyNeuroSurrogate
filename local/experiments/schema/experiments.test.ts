@@ -2,17 +2,22 @@ import { expect, test } from 'bun:test';
 import { groupings, inputOf, partOf, patched } from './base.ts';
 import { build, groupPlans } from './schema.ts';
 
+/** 基準 traub からの差分（実験群の YAML と同じ書き方）。 */
+const KAM = { name: 'kam', from: 'traub', group: { compressor: 'kam', rhs: 'kam', rhs_params: { library_specs: null } } };
+const STEADY = { name: 'steady', from: 'traub', sweep: { value: [0, 5] } };
+const STEADY_19 = { name: 'steady-19', from: 'traub', spec: { target: 'traub19' } };
+
 test('an experiment runs the product of its learners, groupings and inputs, and a learner can be a named diff of a base file', () => {
   const plan = build('test', 't', {
     groupings: ['h+n', 'a+c'],
-    parts: ['kam', { name: 'pca2', from: 'pca-sindy', group: { d: 2 } }],
-    inputs: ['traub-1comp-steady'],
+    parts: [KAM, { name: 'pca2', from: 'traub', group: { d: 2 } }],
+    inputs: [STEADY],
   });
   expect(plan.pairs.map(p => `${p.model}×${p.series}`)).toEqual([
-    'kam.h+n×traub-1comp-steady',
-    'kam.a+c×traub-1comp-steady',
-    'pca2.h+n×traub-1comp-steady',
-    'pca2.a+c×traub-1comp-steady',
+    'kam.h+n×steady',
+    'kam.a+c×steady',
+    'pca2.h+n×steady',
+    'pca2.a+c×steady',
   ]);
   expect(plan.models.map(m => [m.method, m.grouping, m.config.groups[0].d])).toEqual([
     ['kam', 'h+n', 1],
@@ -37,28 +42,28 @@ test('a diff is a JSON merge patch: objects merge field by field, null removes a
   });
   const ude = partOf({
     name: 'u',
-    from: 'ae-sindy',
-    group: { rhs: 'ude', rhs_params: { library_specs: null, epochs: 3 } },
+    from: 'traub',
+    group: { compressor: 'ae', rhs: 'ude', rhs_params: { library_specs: null, epochs: 3 } },
   });
   expect(ude.group.rhs_params).toEqual({ epochs: 3 });
 });
 
 test("a diff that applies to every learner is laid after the learner's own diff, and errors name where they come from", () => {
-  const part = partOf({ name: 'x', from: 'kam', data: { current_params: { duration: 500 } } }, [
+  const part = partOf({ ...KAM, name: 'x', data: { current_params: { duration: 500 } } }, [
     { data: { current_params: { duration: 1000 } } },
   ]);
   expect(part.data.current_params.duration).toBe(1000);
-  expect(() => partOf({ name: 'x', from: 'kam', grop: 1 }, [], 'ここ：')).toThrow(/^ここ：学習器 kam に差分/);
-  expect(() => partOf('kam', [{ data: { traget: 'traub' } }])).toThrow();
+  expect(() => partOf({ name: 'x', from: 'traub', grop: 1 }, [], 'ここ：')).toThrow(/^ここ：学習器 traub に差分/);
+  expect(() => partOf('traub', [{ data: { traget: 'traub' } }])).toThrow();
 });
 
 test('a diff may only write what the sent shape has', () => {
-  expect(() => partOf({ name: 'x', from: 'pca-sindy', grop: { d: 2 } })).toThrow();
-  expect(() => partOf({ name: 'x', from: 'pca-sindy', group: { compresor: 'ae' } })).toThrow();
-  expect(() => inputOf({ name: 'x', from: 'traub-1comp-steady', replace: ['soma'] })).toThrow();
+  expect(() => partOf({ name: 'x', from: 'traub', grop: { d: 2 } })).toThrow();
+  expect(() => partOf({ name: 'x', from: 'traub', group: { compresor: 'ae' } })).toThrow();
+  expect(() => inputOf({ name: 'x', from: 'traub', replace: ['soma'] })).toThrow();
   expect(() => partOf('nowhere')).toThrow(/config\/parts/);
   expect(
-    inputOf({ name: 'x', from: 'traub-1comp-steady', spec: { current_params: { seed: 3 } } }).spec.current_params,
+    inputOf({ name: 'x', from: 'traub', spec: { current_params: { seed: 3 } } }).spec.current_params,
   ).toMatchObject({
     duration: 300,
     seed: 3,
@@ -70,32 +75,40 @@ test('a run takes the group base, replaces the fields it writes, and lays its di
     { description: 'test' },
     {
       base: {
-        parts: ['kam'],
+        parts: [KAM],
         part: { data: { target: 'traub19', current_params: { duration: 1000 } } },
         groupings: { all: ['h', 'n'] },
-        inputs: ['traub-1comp-steady'],
+        inputs: [STEADY],
       },
-      runs: { base: null, run: { part: { data: { current_params: { seed: 1 } } }, inputs: ['traub-1comp-kistler'] } },
+      runs: {
+        base: null,
+        run: {
+          part: { data: { current_params: { seed: 1 } } },
+          inputs: [{ name: 'kistler', from: 'traub', spec: { current_type: 'random&kistler' }, sweep: { sigma: [10] } }],
+        },
+      },
     },
   ]).plans;
-  expect([base.groupings, Object.keys(base.series)]).toEqual([['h+n'], ['traub-1comp-steady']]);
-  expect(Object.keys(run.series)).toEqual(['traub-1comp-kistler']);
+  expect([base.groupings, Object.keys(base.series)]).toEqual([['h+n'], ['steady']]);
+  expect(base.series.steady.sweep).toEqual({ param: 'value', values: [0, 5] });
+  expect(Object.keys(run.series)).toEqual(['kistler']);
   expect(run.models[0].config.data).toMatchObject({ target: 'traub19', current_params: { duration: 1000, seed: 1 } });
   const [cleared] = groupPlans('t', [
     { description: 'test' },
     {
       base: {
-        parts: ['kam-absorb-m'],
+        parts: [{ ...KAM, absorbed: ['M'] }],
         part: { data: { current_params: { duration: 1000 } } },
         groupings: ['h+n'],
-        inputs: ['traub-1comp-steady'],
+        inputs: [STEADY],
+        input: { spec: { current_params: { seed: 1 } } },
       },
-      runs: { cleared: { part: { absorbed: null }, input: { values: [0] } } },
+      runs: { cleared: { part: { absorbed: null }, input: { spec: { current_params: { seed: null } } } } },
     },
   ]).plans;
   expect('absorbed' in cleared.models[0].config).toBe(false);
-  expect(cleared.series['traub-1comp-steady'].values).toEqual([0]);
-  expect(() => groupPlans('t', [{ description: 'x' }, { base: {}, runs: { r: { methods: ['kam'] } } }])).toThrow();
+  expect('seed' in cleared.series.steady.spec.current_params).toBe(false);
+  expect(() => groupPlans('t', [{ description: 'x' }, { base: {}, runs: { r: { methods: [KAM] } } }])).toThrow();
   expect(() => groupPlans('t', [{ description: 'x' }, { base: {}, vary: [], runs: { r: null } }])).toThrow();
   expect(() =>
     groupPlans('t', [
@@ -107,32 +120,32 @@ test('a run takes the group base, replaces the fields it writes, and lays its di
 
 test('an input is laid over each replacement range, named <input>@<range>', () => {
   const plan = build('test', 't', {
-    parts: ['kam'],
+    parts: [KAM],
     groupings: ['h+n'],
-    inputs: ['traub-19comp-steady'],
+    inputs: [STEADY_19],
     replace: { soma: ['soma'], 'na-dr': ['c05', 'c07', 'soma', 'c09', 'c11'] },
   });
   expect(Object.entries(plan.series).map(([name, s]) => [name, s.replace_targets.length])).toEqual([
-    ['traub-19comp-steady@soma', 1],
-    ['traub-19comp-steady@na-dr', 5],
+    ['steady-19@soma', 1],
+    ['steady-19@na-dr', 5],
   ]);
-  expect(plan.series['traub-19comp-steady@soma'].spec).toEqual(plan.series['traub-19comp-steady@na-dr'].spec);
+  expect(plan.series['steady-19@soma'].spec).toEqual(plan.series['steady-19@na-dr'].spec);
   const one = (inputs: unknown[]) =>
-    build('test', 't', { parts: ['kam'], groupings: ['h+n'], inputs: inputs as never });
-  expect(Object.keys(one(['traub-1comp-steady']).series)).toEqual(['traub-1comp-steady']);
-  expect(() => one(['traub-1comp-steady', 'traub-1comp-steady'])).toThrow(/二つ/);
+    build('test', 't', { parts: [KAM], groupings: ['h+n'], inputs: inputs as never });
+  expect(Object.keys(one([STEADY]).series)).toEqual(['steady']);
+  expect(() => one([STEADY, STEADY])).toThrow(/二つ/);
   const pinned = build('test', 't', {
-    parts: ['kam'],
+    parts: [KAM],
     groupings: ['h+n'],
-    inputs: [{ name: 'x', from: 'traub-19comp-steady', replace_targets: ['c05'] }],
+    inputs: [{ name: 'x', from: 'traub', spec: { target: 'traub19' }, replace_targets: ['c05'] }],
     replace: { soma: ['soma'] },
   });
   expect(pinned.series['x@soma'].replace_targets).toEqual(['soma']);
   expect(() =>
     build('test', 't', {
-      parts: ['kam'],
+      parts: [KAM],
       groupings: ['h+n'],
-      inputs: [{ name: 'a@b', from: 'traub-1comp-steady' }],
+      inputs: [{ name: 'a@b', from: 'traub' }],
       replace: { soma: ['soma'] },
     }),
   ).toThrow(/@/);

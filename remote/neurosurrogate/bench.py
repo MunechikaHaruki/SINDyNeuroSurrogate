@@ -75,8 +75,10 @@ def batch_input(
     """spec の入力を、ネットと区画ごとの GPU 用の型と、系列の点ごとの電流にする。"""
     model = spec["model"]
     targets = model["replace_targets"] if model else []
-    series = EvalSeries.from_dict({**spec["input"], "replace_targets": targets})
-    inputs = [point.run_input() for point in series.points]
+    inputs = [
+        EvalSeries.from_dict({**d, "replace_targets": targets}).spec.run_input()
+        for d in spec["inputs"]
+    ]
     surrogate = None
     if model is not None:
         surrogate = load_model(runs, model["surrogate"])

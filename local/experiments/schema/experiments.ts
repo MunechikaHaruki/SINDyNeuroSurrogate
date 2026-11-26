@@ -2,6 +2,7 @@
 // ここは並べて、モデルごとの学習の系列（base.ts の trainSeries）を足し、実験の id が重ならないことを確かめるだけ。モデルと系列の名前は実験の中で一意で、実験をまたいでは同じ名前が違う中身を指してよい。
 // 手元の側の中心。resolve.ts（送る spec を組む）と画面は、ここが返す解決済みの実験だけを使う。計算する機械（../../../remote/）は読まない。
 import { trainSeries, type Series } from './base.ts';
+import { pointsOf } from '../../../shared/spec.ts';
 import { groupPlans, type Plan } from './schema.ts';
 import group1comp from '../config/1comp.yaml';
 import group19comp from '../config/19comp.yaml';
@@ -40,13 +41,11 @@ export function withTraining(plan: Plan): Plan {
   for (const m of plan.models) {
     const { name, series } = trainSeries(m.config);
     if (plan.series[name]) throw new Error(`${plan.id}：系列 ${name} は学習の系列の名前と重なる`);
-    const input = sorted({ spec: series.spec, param: series.param, values: series.values });
-    const same = Object.entries(plan.series).find(
-      ([, s]) => sorted({ spec: s.spec, param: s.param, values: s.values }) === input,
-    );
+    const input = sorted(pointsOf(series)[0].input);
+    const same = Object.entries(plan.series).find(([, s]) => pointsOf(s).some(p => sorted(p.input) === input));
     if (same)
       throw new Error(
-        `${plan.id}：系列 ${same[0]} は ${m.name} の学習の入力と同じ入力（学習の系列 ${name} と見分けられない）`,
+        `${plan.id}：系列 ${same[0]} の点に ${m.name} の学習の入力と同じ入力がある（学習の系列 ${name} と見分けられない）`,
       );
     train[name] = series;
     pairs.push({ model: m.name, series: name });

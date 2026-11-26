@@ -20,7 +20,7 @@ import {
 const Cells = z.array(z.number().int().positive().multipleOf(128)).nonempty();
 
 /** 実験の欄。parts は学習器の基準（config/parts/）、part はどの学習器にも重ねる差分、groupings は群分けの名前の並びか `{ all: ゲート }`（その全部の群分け）、
- * inputs は評価の系列の基準（config/inputs/）、input はどの系列にも重ねる差分、replace は置き換える範囲（名前 → 区画。系列ごとに範囲の数だけ系列ができ、名前は `<系列>@<範囲>`）、
+ * inputs は評価の系列の基準（config/inputs/。指し方に掃引 sweep も書ける）、input はどの系列にも重ねる差分（送る形の欄だけで、掃引は書けない）、replace は置き換える範囲（名前 → 区画。系列ごとに範囲の数だけ系列ができ、名前は `<系列>@<範囲>`）、
  * benches は GPU で測る系列の名前で、その系列で元のモデルと全部のモデルを細胞の数 cells で測る（ncu なら Nsight Compute で 1 刻みのカーネルも）。 */
 const FIELDS = {
   parts: z.array(Ref).nonempty(),

@@ -1,29 +1,76 @@
 {
-  "format": 11,
+  "format": 12,
   "device": "gpu",
   "kind": "bench",
-  "input": {
-    "spec": {
-      "target": "traub19",
-      "current_type": "lin&steady",
-      "dt": 0.01,
-      "current_params": {
-        "silence_duration": 10,
-        "duration": 300
-      },
-      "stim": "soma"
+  "inputs": [
+    {
+      "spec": {
+        "target": "traub19",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10,
+          "duration": 300,
+          "value": 0
+        },
+        "stim": "soma"
+      }
     },
-    "param": "value",
-    "values": [
-      0,
-      2.5,
-      5,
-      7.5,
-      10
-    ]
-  },
+    {
+      "spec": {
+        "target": "traub19",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10,
+          "duration": 300,
+          "value": 2.5
+        },
+        "stim": "soma"
+      }
+    },
+    {
+      "spec": {
+        "target": "traub19",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10,
+          "duration": 300,
+          "value": 5
+        },
+        "stim": "soma"
+      }
+    },
+    {
+      "spec": {
+        "target": "traub19",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10,
+          "duration": 300,
+          "value": 7.5
+        },
+        "stim": "soma"
+      }
+    },
+    {
+      "spec": {
+        "target": "traub19",
+        "current_type": "lin&steady",
+        "dt": 0.01,
+        "current_params": {
+          "silence_duration": 10,
+          "duration": 300,
+          "value": 10
+        },
+        "stim": "soma"
+      }
+    }
+  ],
   "model": {
-    "surrogate": "c3fa30e25c6c",
+    "surrogate": "4bbd7178edc2",
     "replace_targets": [
       "soma"
     ]
