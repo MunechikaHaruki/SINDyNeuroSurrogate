@@ -1,24 +1,19 @@
 ---
 description: 単一区画で学習した縮約を Traub の 19 区画に当てる実験群
 ---
-# 基準のファイル（parts/ の学習器、inputs/ の系列。送る形そのまま）を名前か差分 { name, from, ...差分 } で指し、系列の差分には掃引 sweep: { <電流パラメータ>: [値...] } も書く。
-# part・input はどの学習器・系列にも重ねる差分。欄の形は ../schema/schema.ts の FIELDS。同じ指し方は YAML のアンカー（&名前 と *名前）で使い回す。
-base:
-  parts:
-    - { name: kam, from: traub, group: { compressor: kam, rhs: kam, rhs_params: { library_specs: null } } }
-    - { name: pca-sindy, from: traub }
-    - { name: ae-sindy, from: traub, group: { compressor: ae } }
-  groupings: [h+n, a+c]
-  inputs:
-    - { name: traub-19comp-steady, from: traub, spec: { target: traub19 }, sweep: { value: [0, 2.5, 5, 7.5, 10] } }
-runs:
+# 実験ごとに欄を全部書く。learners は学習器の名前 <圧縮器>-<右辺>[-d<潜在>][-absorb-<ゲート>]（圧縮器と右辺が同じなら 1 語）。
+# inputs は系列の基準（input.json）からの差分で、掃引 sweep: { <電流パラメータ>: [値...] } と置き換える区画 replace_targets も書く。系列の名前は <細胞>-<電流の種類>@<区画> と中身から付く。
+# train は学習の電流への差分、bench の series は系列の名前。欄の形は ../schema/schema.ts。実験どうしで同じものは YAML のアンカー（&名前・*名前）で使い回す。
+experiments:
   transfer-to-19comp:
-    replace: { soma: [soma], na-dr: [c05, c07, soma, c09, c11] }
+    learners: [kam, pca-sindy, ae-sindy]
+    groupings: [h+n, a+c]
+    inputs:
+      - &steady-19 { spec: { target: traub19 }, sweep: { value: [0, 2.5, 5, 7.5, 10] } }
+      - { <<: *steady-19, replace_targets: [c05, c07, soma, c09, c11] }
   test-19comp:
-    part: { data: { current_params: { duration: 1000 } } }
+    learners: [kam, pca-sindy, ae-sindy]
+    train: { current_params: { duration: 1000 } }
     groupings: [h+n]
     inputs:
-      - name: traub-19comp-steady-test
-        from: traub
-        spec: { target: traub19, current_params: { duration: 100.0 } }
-        sweep: { value: [0, 10] }
+      - { spec: { target: traub19, current_params: { duration: 100.0 } }, sweep: { value: [0, 10] } }

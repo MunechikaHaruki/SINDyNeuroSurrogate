@@ -1,10 +1,11 @@
 // 基準のファイル。送る形そのままの JSON を置き、実験はそこからの差分で書く（実験群は schema.ts）。
-// config/parts/<名前>.json は学習器 1 つ（学習の設定 SurrogateConfig から群の並びを除き、群のゲートを持たない群 group を 1 つ持つ形）、
-// config/inputs/<名前>.json は評価の系列 1 本（電流 1 本と置き換える区画）、config/measures.json は比べる物差し。値の既定はファイルに書き、ここが持つ値は、学習の系列で soma を置き換えることだけ（TRAIN_REPLACE）。
+// config/learner.json は学習器 1 つ（学習の設定 SurrogateConfig から群の並びを除き、群のゲートを持たない群 group を 1 つ持つ形）、
+// config/input.json は評価の系列 1 本（電流 1 本と置き換える区画）、config/measures.json は比べる物差し。基準はそれぞれ 1 つだけで、どの指し方もそこからの差分。
+// 値の既定はファイルに書き、ここが持つ値は、学習の系列で soma を置き換えることだけ（TRAIN_REPLACE）。
 // 差分は JSON Merge Patch（RFC 7386：オブジェクトは欄ごとに重ね、null はその欄を消し、ほかは置き換える。そのため null という値は差分で書けない）で順に当て、当てた結果を送る形の型で確かめる（書ける欄は送る形が決める）。
-// 掃引（どの電流パラメータをどの値で振るか）は送る形に無く、実験群の YAML の系列の指し方 `{ name, from, sweep, ...差分 }` だけが持つ。
+// 学習器は名前（learnerDiff の文法）が宣言そのもので、系列は差分から名前を付ける（seriesName）。掃引（どの電流パラメータをどの値で振るか）は送る形に無く、系列の指し方 `{ sweep, ...差分 }` だけが持つ。
 // テスト専用のモデルは隣の test-models.ts が持つ。形は ../../../shared/spec.ts。綴りの確かめはここと、pytest が Python のドメインに当てて見る（remote/tests/test_surrogate.py）。
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { TEST_COMMON, TEST_DECLARATIONS } from './test-models.ts';
 import type { Group, PlanSeries, SurrogateConfig } from '../../../shared/spec.ts';
@@ -43,41 +44,18 @@ const SweepShape = z
   .refine(s => Object.keys(s).length === 1, '掃引は電流パラメータ 1 つ（{ value: [0, 2.5] } の形）')
   .refine(s => Object.values(s).every(v => new Set(v).size === v.length), '掃引の値が重なる');
 
-/** 基準のファイルの指し方。ファイルの名前か、名前を付けた差分 `{ name, from, ...差分 }`（name は実験の中の名前）。系列は掃引 sweep も書ける。 */
-export const Ref = z.union([
-  z.string(),
-  z.looseObject({ name: z.string(), from: z.string(), sweep: SweepShape.optional() }),
-]);
-export type Ref = z.infer<typeof Ref>;
-/** どの基準にも重ねる差分。 */
+/** 基準に重ねる差分。 */
 export const Patch = z.record(z.string(), z.unknown());
 export type Patch = z.infer<typeof Patch>;
-
-/** 指し方の名前と、基準のファイルの名前と、掃引（書かなければ null）と差分。 */
-export function named(ref: Ref): { name: string; from: string; sweep: Series['sweep']; diff: Patch } {
-  if (typeof ref === 'string') return { name: ref, from: ref, sweep: null, diff: {} };
-  const { name, from, sweep, ...diff } = ref;
-  if (sweep === undefined) return { name, from, sweep: null, diff };
-  const [[param, values]] = Object.entries(parsed(SweepShape, `${name} の掃引`, sweep));
-  return { name, from, sweep: { param, values }, diff };
-}
+/** 系列の指し方。系列の基準からの差分に、掃引 sweep を添えたもの（名前は中身から付く。seriesName）。 */
+export const SeriesRef = z.looseObject({ sweep: SweepShape.optional() });
+export type SeriesRef = z.infer<typeof SeriesRef>;
 
 const CONFIG = new URL('../config/', import.meta.url);
 
-/** config/<dir>/ の JSON を名前 → 中身で。 */
-function files(dir: string): Record<string, Json> {
-  const found: Record<string, Json> = {};
-  for (const file of readdirSync(new URL(`${dir}/`, CONFIG))
-    .filter(f => f.endsWith('.json'))
-    .sort())
-    found[file.replace(/\.json$/, '')] = JSON.parse(readFileSync(new URL(`${dir}/${file}`, CONFIG), 'utf8'));
-  return found;
-}
-
-/** 基準のファイルを名前で引く。無ければ並びを添えて投げる。 */
-function base(table: Record<string, Json>, from: string, dir: string): Json {
-  if (!(from in table)) throw new Error(`config/${dir}/${from}.json が無い（${Object.keys(table).join(', ')}）`);
-  return table[from];
+/** config/<名前> の JSON。 */
+function config(name: string): Json {
+  return JSON.parse(readFileSync(new URL(name, CONFIG), 'utf8'));
 }
 
 /** 誤りの文に出す差分。当てた順に並べる。 */
@@ -90,7 +68,7 @@ function shown(diff: Patch, commons: Patch[]): string {
 export const MEASURES = parsed(
   z.strictObject({ coincidence_window: z.number().positive() }),
   'config/measures.json',
-  JSON.parse(readFileSync(new URL('measures.json', CONFIG), 'utf8')),
+  config('measures.json'),
 );
 
 // ---- 学習器とモデル
@@ -103,7 +81,7 @@ const SimSpec = z.strictObject({
   stim: z.string().optional(),
 });
 
-/** 学習器 1 つの形（config/parts/<名前>.json）。群のゲートは群分けが決める。 */
+/** 学習器 1 つの形（config/learner.json）。群のゲートは群分けが決める。 */
 const Part = z
   .strictObject({
     cell: z.string(),
@@ -126,16 +104,40 @@ const Part = z
   .refine(p => p.absorbed === undefined || p.form === 'hybrid', 'absorbed は hybrid だけ');
 export type Part = z.infer<typeof Part>;
 
-const PARTS = files('parts');
-/** 学習器の基準のファイルの名前。 */
-export const PART_NAMES = Object.keys(PARTS);
+/** 学習器の基準。 */
+const LEARNER = config('learner.json');
 
-/** 学習器を値にする。基準のファイルに、自分の差分、次にどの学習器にも重ねる差分 commons を順に当てて形を確かめる。where は誤りの文に出す場所。 */
-export function partOf(ref: Ref, commons: Patch[] = [], where = ''): Part {
-  const { from, sweep, diff } = named(ref);
-  if (sweep) throw new Error(`${where}学習器 ${from}：掃引 sweep は系列だけが持つ`);
-  const value = [diff, ...commons].reduce(patched, base(PARTS, from, 'parts'));
-  return parsed(Part, `${where}学習器 ${from}${shown(diff, commons)}`, value);
+/** 学習器を値にする。基準に、差分 diff、次に重ねる差分 commons を順に当てて形を確かめる。where は誤りの文に出す場所、label は学習器の名前。 */
+export function partOf(diff: Patch, commons: Patch[] = [], where = '', label = '基準'): Part {
+  const value = [diff, ...commons].reduce(patched, LEARNER);
+  return parsed(Part, `${where}学習器 ${label}${shown(diff, commons)}`, value);
+}
+
+const COMPRESSORS = ['pca', 'ae', 'kam'] as const;
+const RHS = ['sindy', 'ude', 'kam'] as const;
+
+/** 学習器の名前（`<圧縮器>-<右辺>[-d<潜在>][-absorb-<ゲート>]`、圧縮器と右辺が同じなら 1 語。例 kam、kam-absorb-m、pca-sindy、ae-sindy-d5）を、学習器の基準への差分にする。
+ * 名前が宣言そのもので、名前に出ない設定は書けない。文法に合わないか、書き方が一通りでなければ投げる。 */
+export function learnerDiff(name: string): Patch {
+  const match = /^([a-z]+)(?:-([a-z]+))?(?:-d(\d+))?(?:-absorb-([a-z](?:\+[a-z])*))?$/.exec(name);
+  const [, compressor, rhs = compressor, d, absorbed] = match ?? [];
+  if (!COMPRESSORS.includes(compressor as never) || !RHS.includes(rhs as never))
+    throw new Error(`学習器 ${name} は <圧縮器>-<右辺>[-d<潜在>][-absorb-<ゲート>] でない（圧縮器 ${COMPRESSORS.join('・')}、右辺 ${RHS.join('・')}）`);
+  if ((compressor === 'kam') !== (rhs === 'kam')) throw new Error(`学習器 ${name}：KAM は圧縮器と右辺の両方が kam（kam と書く）`);
+  if (rhs === 'ude' && compressor !== 'ae') throw new Error(`学習器 ${name}：UDE は AE を一緒に学習するので圧縮器は ae`);
+  const group: Patch = { compressor, rhs };
+  if (rhs !== 'sindy') group.rhs_params = { library_specs: null };
+  if (d !== undefined) group.d = Number(d);
+  const diff: Patch = { group };
+  if (absorbed) diff.absorbed = absorbed.split('+').map(g => g.toUpperCase());
+  const canonical = `${compressor === rhs ? compressor : `${compressor}-${rhs}`}${d !== undefined && d !== '1' ? `-d${d}` : ''}${absorbed ? `-absorb-${absorbed}` : ''}`;
+  if (canonical !== name) throw new Error(`学習器 ${name} は ${canonical} と書く`);
+  return diff;
+}
+
+/** 名前の学習器を値にする。commons は名前の差分の後に重ねる差分（実験の train）。 */
+export function learnerOf(name: string, commons: Patch[] = [], where = ''): Part {
+  return partOf(learnerDiff(name), commons, where, name);
 }
 
 /** ゲートの群分けを全部並べる。2 つ以上のゲートを入れた群だけを、群の中は `+`、群の間は `_` でつないで名前にし（例 h+n_a+c）、全部が 1 つずつの分け方は除く。減らす状態の少ない順、同じなら名前の順。 */
@@ -185,42 +187,48 @@ export function modelFrom(name: string, part: Part, grouping: string): ModelDecl
 
 // ---- 評価の系列
 
-/** 評価の系列 1 本の形（config/inputs/<名前>.json）。 */
+/** 評価の系列 1 本の形（config/input.json）。 */
 const SeriesShape = z.strictObject({
   spec: SimSpec.required({ stim: true }),
   replace_targets: z.array(z.string()).nonempty(),
 });
 
-const INPUTS = files('inputs');
-/** 系列の基準のファイルの名前。 */
-export const INPUT_NAMES = Object.keys(INPUTS);
+/** 系列の基準。 */
+const INPUT = config('input.json');
 
-/** 系列を値にする。基準のファイルに、自分の差分、次にどの系列にも重ねる差分 commons を順に当てて形を確かめ、指し方の掃引を添える。where は誤りの文に出す場所。 */
-export function inputOf(ref: Ref, commons: Patch[] = [], where = ''): Series {
-  const { from, sweep, diff } = named(ref);
-  const value = [diff, ...commons].reduce(patched, base(INPUTS, from, 'inputs'));
-  const { spec, replace_targets } = parsed(SeriesShape, `${where}系列 ${from}${shown(diff, commons)}`, value);
+/** 系列の名前。中身から付ける：`<細胞>-<電流の種類（& の後ろ）>@<置き換える区画を + でつないだもの>`（例 traub-steady@soma、traub19-steady@c05+c07+soma+c09+c11）。 */
+export function seriesName(series: Pick<Series, 'spec' | 'replace_targets'>): string {
+  const kind = series.spec.current_type.split('&').at(-1);
+  return `${series.spec.target}-${kind}@${series.replace_targets.join('+')}`;
+}
+
+/** 系列を値にする。基準に差分を当てて形を確かめ、指し方の掃引を添えて、中身から名前を付ける。where は誤りの文に出す場所。 */
+export function inputOf(ref: SeriesRef, where = ''): { name: string; series: Series } {
+  const { sweep: written, ...diff } = parsed(SeriesRef, `${where}系列`, ref);
+  const value = patched(INPUT, diff);
+  const { spec, replace_targets } = parsed(SeriesShape, `${where}系列${shown(diff, [])}`, value);
+  const sweep = written ? (([param, values]) => ({ param, values }))(Object.entries(written)[0]) : null;
+  const name = seriesName({ spec, replace_targets });
   if (sweep && sweep.param in spec.current_params)
-    throw new Error(`${where}系列 ${from}：掃引する ${sweep.param} を current_params にも書いている（どちらか一方に）`);
-  return { spec, sweep, replace_targets };
+    throw new Error(`${where}系列 ${name}：掃引する ${sweep.param} を current_params にも書いている（どちらか一方に）`);
+  return { name, series: { spec, sweep, replace_targets } };
 }
 
 /** 学習の系列で置き換える区画。 */
 const TRAIN_REPLACE = ['soma'];
 
 /** モデルの学習の系列。学習用の電流（config.data）を単発で回す入力で、その元のモデルの run が学習器の学習データになる。soma を置き換える。
- * 名前は中身から付ける（traub-train-duration-9000）。 */
+ * 名前はほかの系列と同じく中身から付ける（traub-train@soma）。 */
 export function trainSeries(config: SurrogateConfig): { name: string; series: Series } {
-  const { target, current_type, current_params } = config.data;
-  const name = [target, current_type, ...Object.entries(current_params).map(([k, v]) => `${k}-${v}`)].join('-');
-  return { name, series: { spec: config.data, sweep: null, replace_targets: TRAIN_REPLACE } };
+  const series: Series = { spec: config.data, sweep: null, replace_targets: TRAIN_REPLACE };
+  return { name: seriesName(series), series };
 }
 
-/** 基準のファイルを読み込むときに全部一度確かめ、使わないファイルの誤りもここで落とす。 */
-for (const name of PART_NAMES) partOf(name);
-for (const name of INPUT_NAMES) inputOf(name);
+/** 基準のファイルを読み込むときに確かめる。 */
+partOf({});
+inputOf({});
 
 /** テスト専用のモデル。学習器の基準に差分を重ね、テストの共通の差分（学習の電流を縮める）を最後に当てる。 */
 export const TESTS: Record<string, ModelDecl> = {};
-for (const [name, { from, grouping, ...diff }] of Object.entries(TEST_DECLARATIONS))
-  TESTS[name] = modelFrom(name, partOf({ name, from, ...diff }, [TEST_COMMON], `テスト ${name} の `), grouping);
+for (const [name, { grouping, ...diff }] of Object.entries(TEST_DECLARATIONS))
+  TESTS[name] = modelFrom(name, partOf(diff, [TEST_COMMON], `テスト ${name} の `, name), grouping);

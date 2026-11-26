@@ -12,9 +12,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  INPUT_NAMES,
   MEASURES,
-  PART_NAMES,
   TESTS,
   trainSeries,
   type ModelDecl,
@@ -210,8 +208,6 @@ function main([name]: string[]): void {
   } else
     console.log(
       [
-        `学習器の基準: ${PART_NAMES.join(' ')}`,
-        `系列の基準: ${INPUT_NAMES.join(' ')}`,
         `テスト: ${Object.keys(TESTS).join(' ')}`,
         ...EXPERIMENTS.map(
           e =>

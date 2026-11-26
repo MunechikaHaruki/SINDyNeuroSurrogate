@@ -2591,7 +2591,7 @@
         }
       ],
       "series": {
-        "traub-train-duration-9000": {
+        "traub-train@soma": {
           "spec": {
             "target": "traub",
             "current_type": "train",
@@ -2605,7 +2605,7 @@
             "soma"
           ]
         },
-        "traub-1comp-steady": {
+        "traub-steady@soma": {
           "spec": {
             "target": "traub",
             "current_type": "lin&steady",
@@ -2634,451 +2634,451 @@
       "pairs": [
         {
           "model": "kam.a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+a_n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+c_n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n_a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.n+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+a_n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+c_n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+n_a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.n+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam-absorb-m.h+n+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+a_n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+c_n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n_a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.n+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+a_n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+c_n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+n_a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+n+a",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+n+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.n+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+n+a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+a_n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+c_n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+n_a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.n+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+n+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+n",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+a_n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+c_n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+n_a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.n+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam-absorb-m.h+n+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+a_n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+c_n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+n_a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.n+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+n+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+a_n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+c_n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+n_a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+n+a",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+n+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.n+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+n+a+c",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         }
       ],
       "benches": [],
@@ -3226,7 +3226,7 @@
         }
       ],
       "series": {
-        "traub-train-duration-9000": {
+        "traub-train@soma": {
           "spec": {
             "target": "traub",
             "current_type": "train",
@@ -3240,7 +3240,7 @@
             "soma"
           ]
         },
-        "traub-1comp-steady": {
+        "traub-steady@soma": {
           "spec": {
             "target": "traub",
             "current_type": "lin&steady",
@@ -3265,7 +3265,7 @@
             "soma"
           ]
         },
-        "traub-1comp-kistler": {
+        "traub-kistler@soma": {
           "spec": {
             "target": "traub",
             "current_type": "random&kistler",
@@ -3295,39 +3295,39 @@
       "pairs": [
         {
           "model": "kam.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-1comp-kistler"
+          "series": "traub-kistler@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-1comp-kistler"
+          "series": "traub-kistler@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-1comp-kistler"
+          "series": "traub-kistler@soma"
         }
       ],
       "benches": [],
@@ -3544,7 +3544,7 @@
         }
       ],
       "series": {
-        "traub-train-duration-1000": {
+        "traub-train@soma": {
           "spec": {
             "target": "traub",
             "current_type": "train",
@@ -3558,7 +3558,7 @@
             "soma"
           ]
         },
-        "traub-1comp-steady-test": {
+        "traub-steady@soma": {
           "spec": {
             "target": "traub",
             "current_type": "lin&steady",
@@ -3584,27 +3584,27 @@
       "pairs": [
         {
           "model": "kam.h+n_a+c",
-          "series": "traub-train-duration-1000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n_a+c",
-          "series": "traub-train-duration-1000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+n_a+c",
-          "series": "traub-train-duration-1000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n_a+c",
-          "series": "traub-1comp-steady-test"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+n_a+c",
-          "series": "traub-1comp-steady-test"
+          "series": "traub-steady@soma"
         },
         {
           "model": "ae-sindy.h+n_a+c",
-          "series": "traub-1comp-steady-test"
+          "series": "traub-steady@soma"
         }
       ],
       "benches": [],
@@ -3882,7 +3882,7 @@
         }
       ],
       "series": {
-        "traub-train-duration-9000": {
+        "traub-train@soma": {
           "spec": {
             "target": "traub",
             "current_type": "train",
@@ -3896,7 +3896,7 @@
             "soma"
           ]
         },
-        "traub-19comp-steady@soma": {
+        "traub19-steady@soma": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -3921,7 +3921,7 @@
             "soma"
           ]
         },
-        "traub-19comp-steady@na-dr": {
+        "traub19-steady@c05+c07+soma+c09+c11": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -3954,75 +3954,75 @@
       "pairs": [
         {
           "model": "kam.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.a+c",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-19comp-steady@soma"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-19comp-steady@na-dr"
+          "series": "traub19-steady@c05+c07+soma+c09+c11"
         },
         {
           "model": "kam.a+c",
-          "series": "traub-19comp-steady@soma"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "kam.a+c",
-          "series": "traub-19comp-steady@na-dr"
+          "series": "traub19-steady@c05+c07+soma+c09+c11"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady@soma"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady@na-dr"
+          "series": "traub19-steady@c05+c07+soma+c09+c11"
         },
         {
           "model": "pca-sindy.a+c",
-          "series": "traub-19comp-steady@soma"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "pca-sindy.a+c",
-          "series": "traub-19comp-steady@na-dr"
+          "series": "traub19-steady@c05+c07+soma+c09+c11"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-19comp-steady@soma"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-19comp-steady@na-dr"
+          "series": "traub19-steady@c05+c07+soma+c09+c11"
         },
         {
           "model": "ae-sindy.a+c",
-          "series": "traub-19comp-steady@soma"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "ae-sindy.a+c",
-          "series": "traub-19comp-steady@na-dr"
+          "series": "traub19-steady@c05+c07+soma+c09+c11"
         }
       ],
       "benches": [],
@@ -4170,7 +4170,7 @@
         }
       ],
       "series": {
-        "traub-train-duration-1000": {
+        "traub-train@soma": {
           "spec": {
             "target": "traub",
             "current_type": "train",
@@ -4184,7 +4184,7 @@
             "soma"
           ]
         },
-        "traub-19comp-steady-test": {
+        "traub19-steady@soma": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -4210,27 +4210,27 @@
       "pairs": [
         {
           "model": "kam.h+n",
-          "series": "traub-train-duration-1000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-train-duration-1000"
+          "series": "traub-train@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-train-duration-1000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-19comp-steady-test"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady-test"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "ae-sindy.h+n",
-          "series": "traub-19comp-steady-test"
+          "series": "traub19-steady@soma"
         }
       ],
       "benches": [],
@@ -4328,7 +4328,7 @@
         }
       ],
       "series": {
-        "traub-train-duration-9000": {
+        "traub-train@soma": {
           "spec": {
             "target": "traub",
             "current_type": "train",
@@ -4342,7 +4342,7 @@
             "soma"
           ]
         },
-        "traub-1comp-steady": {
+        "traub-steady@soma": {
           "spec": {
             "target": "traub",
             "current_type": "lin&steady",
@@ -4367,7 +4367,7 @@
             "soma"
           ]
         },
-        "traub-19comp-steady@soma": {
+        "traub19-steady@soma": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -4392,7 +4392,7 @@
             "soma"
           ]
         },
-        "traub-19comp-steady@na-dr": {
+        "traub19-steady@c05+c07+soma+c09+c11": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -4425,42 +4425,42 @@
       "pairs": [
         {
           "model": "kam.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-train-duration-9000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-19comp-steady@soma"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-19comp-steady@na-dr"
+          "series": "traub19-steady@c05+c07+soma+c09+c11"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-1comp-steady"
+          "series": "traub-steady@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady@soma"
+          "series": "traub19-steady@soma"
         },
         {
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady@na-dr"
+          "series": "traub19-steady@c05+c07+soma+c09+c11"
         }
       ],
       "benches": [
         {
-          "name": "original@traub-1comp-steady",
+          "name": "original@traub-steady@soma",
           "model": null,
-          "series": "traub-1comp-steady",
+          "series": "traub-steady@soma",
           "cells": [
             1024,
             1048576
@@ -4468,9 +4468,9 @@
           "ncu": true
         },
         {
-          "name": "kam.h+n@traub-1comp-steady",
+          "name": "kam.h+n@traub-steady@soma",
           "model": "kam.h+n",
-          "series": "traub-1comp-steady",
+          "series": "traub-steady@soma",
           "cells": [
             1024,
             1048576
@@ -4478,9 +4478,9 @@
           "ncu": true
         },
         {
-          "name": "pca-sindy.h+n@traub-1comp-steady",
+          "name": "pca-sindy.h+n@traub-steady@soma",
           "model": "pca-sindy.h+n",
-          "series": "traub-1comp-steady",
+          "series": "traub-steady@soma",
           "cells": [
             1024,
             1048576
@@ -4488,9 +4488,9 @@
           "ncu": true
         },
         {
-          "name": "original@traub-19comp-steady@soma",
+          "name": "original@traub19-steady@soma",
           "model": null,
-          "series": "traub-19comp-steady@soma",
+          "series": "traub19-steady@soma",
           "cells": [
             1024,
             1048576
@@ -4498,9 +4498,9 @@
           "ncu": true
         },
         {
-          "name": "kam.h+n@traub-19comp-steady@soma",
+          "name": "kam.h+n@traub19-steady@soma",
           "model": "kam.h+n",
-          "series": "traub-19comp-steady@soma",
+          "series": "traub19-steady@soma",
           "cells": [
             1024,
             1048576
@@ -4508,9 +4508,9 @@
           "ncu": true
         },
         {
-          "name": "pca-sindy.h+n@traub-19comp-steady@soma",
+          "name": "pca-sindy.h+n@traub19-steady@soma",
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady@soma",
+          "series": "traub19-steady@soma",
           "cells": [
             1024,
             1048576
@@ -4518,9 +4518,9 @@
           "ncu": true
         },
         {
-          "name": "original@traub-19comp-steady@na-dr",
+          "name": "original@traub19-steady@c05+c07+soma+c09+c11",
           "model": null,
-          "series": "traub-19comp-steady@na-dr",
+          "series": "traub19-steady@c05+c07+soma+c09+c11",
           "cells": [
             1024,
             1048576
@@ -4528,9 +4528,9 @@
           "ncu": true
         },
         {
-          "name": "kam.h+n@traub-19comp-steady@na-dr",
+          "name": "kam.h+n@traub19-steady@c05+c07+soma+c09+c11",
           "model": "kam.h+n",
-          "series": "traub-19comp-steady@na-dr",
+          "series": "traub19-steady@c05+c07+soma+c09+c11",
           "cells": [
             1024,
             1048576
@@ -4538,9 +4538,9 @@
           "ncu": true
         },
         {
-          "name": "pca-sindy.h+n@traub-19comp-steady@na-dr",
+          "name": "pca-sindy.h+n@traub19-steady@c05+c07+soma+c09+c11",
           "model": "pca-sindy.h+n",
-          "series": "traub-19comp-steady@na-dr",
+          "series": "traub19-steady@c05+c07+soma+c09+c11",
           "cells": [
             1024,
             1048576
@@ -4592,7 +4592,7 @@
         }
       ],
       "series": {
-        "traub-train-duration-1000": {
+        "traub-train@soma": {
           "spec": {
             "target": "traub",
             "current_type": "train",
@@ -4606,7 +4606,7 @@
             "soma"
           ]
         },
-        "traub-1comp-steady-test": {
+        "traub-steady@soma": {
           "spec": {
             "target": "traub",
             "current_type": "lin&steady",
@@ -4632,27 +4632,27 @@
       "pairs": [
         {
           "model": "kam.h+n",
-          "series": "traub-train-duration-1000"
+          "series": "traub-train@soma"
         },
         {
           "model": "kam.h+n",
-          "series": "traub-1comp-steady-test"
+          "series": "traub-steady@soma"
         }
       ],
       "benches": [
         {
-          "name": "original@traub-1comp-steady-test",
+          "name": "original@traub-steady@soma",
           "model": null,
-          "series": "traub-1comp-steady-test",
+          "series": "traub-steady@soma",
           "cells": [
             1024
           ],
           "ncu": true
         },
         {
-          "name": "kam.h+n@traub-1comp-steady-test",
+          "name": "kam.h+n@traub-steady@soma",
           "model": "kam.h+n",
-          "series": "traub-1comp-steady-test",
+          "series": "traub-steady@soma",
           "cells": [
             1024
           ],
@@ -4667,11 +4667,11 @@
         "m+h+n+a+b+c"
       ],
       "methods": [
-        "ae-latent5-sindy"
+        "ae-sindy-d5"
       ],
       "models": [
         {
-          "name": "ae-latent5-sindy.m+h+n+a+b+c",
+          "name": "ae-sindy-d5.m+h+n+a+b+c",
           "config": {
             "cell": "traub",
             "form": "hybrid",
@@ -4720,12 +4720,12 @@
             ],
             "train_comp": null
           },
-          "method": "ae-latent5-sindy",
+          "method": "ae-sindy-d5",
           "grouping": "m+h+n+a+b+c"
         }
       ],
       "series": {
-        "traub19-train-duration-1000": {
+        "traub19-train@soma": {
           "spec": {
             "target": "traub19",
             "current_type": "train",
@@ -4739,7 +4739,7 @@
             "soma"
           ]
         },
-        "traub-19comp-steady": {
+        "traub19-steady@soma": {
           "spec": {
             "target": "traub19",
             "current_type": "lin&steady",
@@ -4767,12 +4767,12 @@
       },
       "pairs": [
         {
-          "model": "ae-latent5-sindy.m+h+n+a+b+c",
-          "series": "traub19-train-duration-1000"
+          "model": "ae-sindy-d5.m+h+n+a+b+c",
+          "series": "traub19-train@soma"
         },
         {
-          "model": "ae-latent5-sindy.m+h+n+a+b+c",
-          "series": "traub-19comp-steady"
+          "model": "ae-sindy-d5.m+h+n+a+b+c",
+          "series": "traub19-steady@soma"
         }
       ],
       "benches": [],
