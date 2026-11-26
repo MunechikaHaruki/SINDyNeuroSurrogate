@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { groupings, inputOf, partOf, patched } from './base.ts';
 import { build, groupPlans } from './schema.ts';
 
-/** 系列の基準からの差分（実験群の YAML と同じ書き方）。名前は traub-steady@soma と中身から付く。 */
+/** 系列の基準からの差分（宣言の YAML と同じ書き方）。名前は traub-steady@soma と中身から付く。 */
 const STEADY = { sweep: { value: [0, 5] } };
 
 test('an experiment runs the product of its learners, groupings and inputs', () => {
@@ -67,16 +67,24 @@ test('a diff may only write what the sent shape has, and errors name where they 
   });
 });
 
-test('a group file lists whole experiments, and anything else is refused', () => {
-  const doc = (experiments: unknown) => [{ description: 'test' }, { experiments }];
-  const [one] = groupPlans('t', doc({ e: { learners: ['kam'], groupings: ['h+n'], inputs: [STEADY] } })).plans;
-  expect(one.id).toBe('e');
-  expect(() => groupPlans('t', doc({}))).toThrow();
-  expect(() => groupPlans('t', doc({ e: { learners: ['kam'], groupings: ['h+n'] } }))).toThrow();
-  expect(() => groupPlans('t', doc({ e: { learners: ['kam'], groupings: ['h+n'], inputs: [STEADY], part: {} } }))).toThrow();
-  expect(() => groupPlans('t', doc({ e: { learners: ['kam-sindy'], groupings: ['h+n'], inputs: [STEADY] } }))).toThrow();
-  expect(() => groupPlans('t', [{ description: 'x' }, { base: {}, experiments: {} }])).toThrow();
-  expect(() => groupPlans('t', [{ description: 'x', extra: 1 }, { experiments: {} }])).toThrow();
+test('the declaration file lists groups of whole experiments in the written order, and anything else is refused', () => {
+  const doc = (groups: unknown) => [{ description: 'test' }, { groups }];
+  const one = { learners: ['kam'], groupings: ['h+n'], inputs: [STEADY] };
+  const groups = groupPlans(doc({ b: { description: 'B', experiments: { e: one } }, a: { description: 'A', experiments: { f: one } } }));
+  expect(groups.map(g => [g.name, g.description, g.plans.map(p => p.id)])).toEqual([
+    ['b', 'B', ['e']],
+    ['a', 'A', ['f']],
+  ]);
+  const wrong = [
+    doc({}),
+    doc({ g: { description: 'x', experiments: {} } }),
+    doc({ g: { experiments: { e: one } } }),
+    doc({ g: { description: 'x', experiments: { e: { learners: ['kam'], groupings: ['h+n'] } } } }),
+    doc({ g: { description: 'x', experiments: { e: { ...one, part: {} } } } }),
+    doc({ g: { description: 'x', experiments: { e: { ...one, learners: ['kam-sindy'] } } } }),
+    [{ description: 'x', extra: 1 }, { groups: { g: { description: 'x', experiments: { e: one } } } }],
+  ];
+  for (const w of wrong) expect(() => groupPlans(w)).toThrow();
 });
 
 test('series that differ only in what they replace share the current, and series names are unique', () => {

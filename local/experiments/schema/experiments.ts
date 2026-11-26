@@ -1,26 +1,15 @@
-// 実験を並べる。実験群ごとに config/<群>.yaml（形と組み立ては schema.ts、基準のファイルは base.ts）を読む。
+// 実験を並べる。宣言 config/experiments.yaml（形と組み立ては schema.ts、基準のファイルは base.ts）を読む。
 // ここは並べて、モデルごとの学習の系列（base.ts の trainSeries）を足し、実験の id が重ならないことを確かめるだけ。モデルと系列の名前は実験の中で一意で、実験をまたいでは同じ名前が違う中身を指してよい。
 // 手元の側の中心。resolve.ts（送る spec を組む）と画面は、ここが返す解決済みの実験だけを使う。計算する機械（../../../remote/）は読まない。
 import { trainSeries, type Series } from './base.ts';
 import { pointsOf } from '../../../shared/spec.ts';
 import { groupPlans, type Plan } from './schema.ts';
-import group1comp from '../config/1comp.yaml';
-import group19comp from '../config/19comp.yaml';
-import groupGpu from '../config/gpu.yaml';
-import groupNeuro2026 from '../config/neuro2026.yaml';
-
-/** 実験群。読む順に、名前と YAML。 */
-const GROUP_SOURCES: { name: string; doc: unknown }[] = [
-  { name: '1comp', doc: group1comp },
-  { name: '19comp', doc: group19comp },
-  { name: 'gpu', doc: groupGpu },
-  { name: 'neuro2026', doc: groupNeuro2026 },
-];
+import declared from '../config/experiments.yaml';
 
 /** 実験 1 つ。解決済みの実験に、宣言を置いた実験群の名前を添える。画面は実験群ごとに実験を並べる。 */
 export type GroupedPlan = Plan & { group: string };
 
-/** 実験群の名前 → frontmatter の description。 */
+/** 実験群の名前 → description。 */
 export const GROUPS: Record<string, string> = {};
 /** 実験。実験群の順、実験群の中は書いた順。 */
 export const EXPERIMENTS: GroupedPlan[] = [];
@@ -53,13 +42,11 @@ export function withTraining(plan: Plan): Plan {
   return { ...plan, series: { ...train, ...plan.series }, pairs: [...pairs, ...plan.pairs] };
 }
 
-for (const source of GROUP_SOURCES) {
-  const group = groupPlans(source.name, source.doc);
-  GROUPS[source.name] = group.description;
-  for (const declared of group.plans) {
-    const plan = withTraining(declared);
+for (const group of groupPlans(declared)) {
+  GROUPS[group.name] = group.description;
+  for (const plan of group.plans.map(withTraining)) {
     if (EXPERIMENTS.some(e => e.id === plan.id))
-      throw new Error(`${source.name} の ${plan.id}：実験の id がほかの実験と重なる`);
-    EXPERIMENTS.push({ ...plan, group: source.name });
+      throw new Error(`${group.name} の ${plan.id}：実験の id がほかの実験と重なる`);
+    EXPERIMENTS.push({ ...plan, group: group.name });
   }
 }

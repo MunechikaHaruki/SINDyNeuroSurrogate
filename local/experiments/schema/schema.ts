@@ -1,4 +1,4 @@
-// 実験群（config/<群>.yaml）。frontmatter（description）の文書と、実験の並び experiments の文書の二つ。
+// 実験の宣言（config/experiments.yaml）。frontmatter（description）の文書と、群 → 実験の文書の二つ。群は冊のページの単位で、道案内の一文 description と実験の並び experiments を持つ。
 // 実験は欄を全部自分で書く。学習器は名前（base.ts の learnerDiff の文法）で、系列は基準からの差分で指し、系列の名前は中身から付く（seriesName）。実験どうしで同じものは YAML のアンカー（&名前・*名前・<<:）で使い回し、ここは上書きの規則を持たない。
 // 書ける欄はここの Setting、差分に書ける欄は送る形（base.ts の型）が決める。何を回して何を見る実験かの説明は冊の側（outputs/experiments/groups/<群>.yaml）が持つ。
 // 返すのはモデルと系列を値で持つ解決済みの実験（Plan）だけで、resolve.ts と画面は宣言の形を知らない。
@@ -43,12 +43,15 @@ export type Plan = {
   benches: Bench[];
 };
 
-/** 実験群の二つの文書。 */
-const GroupDocument = z.tuple([
+/** 群 1 つ。 */
+const Group = z.strictObject({
+  description: z.string().min(1),
+  experiments: z.record(z.string(), Setting).refine(e => Object.keys(e).length > 0, 'experiments が空'),
+});
+/** 宣言のファイルの二つの文書。 */
+const Document = z.tuple([
   z.strictObject({ description: z.string().min(1) }),
-  z.strictObject({
-    experiments: z.record(z.string(), Setting).refine(e => Object.keys(e).length > 0, 'experiments が空'),
-  }),
+  z.strictObject({ groups: z.record(z.string(), Group).refine(g => Object.keys(g).length > 0, 'groups が空') }),
 ]);
 
 /** 解決済みの実験を組む。回す組は 学習器 × 群分け × 系列 の直積。 */
@@ -77,10 +80,13 @@ export function build(where: string, id: string, setting: Setting): Plan {
   return { id, groupings: groupingList, methods: learners, models, series, pairs, benches };
 }
 
-/** 実験群 1 つを解決済みの実験にする。doc は実験群の YAML を読んだ二つの文書。 */
-export function groupPlans(name: string, doc: unknown): { description: string; plans: Plan[] } {
-  const where = `config/${name}.yaml`;
-  const [front, body] = parsed(GroupDocument, where, doc);
-  const plans = Object.entries(body.experiments).map(([id, setting]) => build(`${where} の ${id}`, id, setting));
-  return { description: front.description, plans };
+/** 宣言を群ごとの解決済みの実験にする（群も実験も書いた順）。doc は宣言の YAML を読んだ二つの文書。 */
+export function groupPlans(doc: unknown): { name: string; description: string; plans: Plan[] }[] {
+  const where = 'config/experiments.yaml';
+  const [, body] = parsed(Document, where, doc);
+  return Object.entries(body.groups).map(([name, group]) => ({
+    name,
+    description: group.description,
+    plans: Object.entries(group.experiments).map(([id, setting]) => build(`${where} の ${name} の ${id}`, id, setting)),
+  }));
 }

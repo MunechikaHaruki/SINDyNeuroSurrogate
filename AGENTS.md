@@ -14,7 +14,7 @@ HH 型マルチコンパートメントニューロンの一部ノードを SIND
 
 | 中身 | 場所 |
 | --- | --- |
-| 人が書いて確かめる宣言（送る形そのままの基準：学習器 `learner.json`・評価の系列 `input.json`、比べる物差し `measures.json`、そこからの差分で書く実験群 `<群>.yaml`） | `local/experiments/config/` |
+| 人が書いて確かめる宣言（送る形そのままの基準：学習器 `learner.json`・評価の系列 `input.json`、比べる物差し `measures.json`、そこからの差分で群ごとの実験を書く宣言 `experiments.yaml`） | `local/experiments/config/` |
 | API に送る前処理の TS。宣言を解く部品（基準のファイルを読んで差分を当て、系列とモデルの形を持つ `base.ts`、実験群から解決済みの実験を組む `schema.ts`、並べる `experiments.ts`） | `local/experiments/schema/` |
 | 入口。送る spec を組んで `local/experiments/resolved/` に書く（write）、古くないか確かめる（check） | `local/resolve.ts` |
 | 手元の側の通信。計算する機械へ ssh でコードを送り、イメージを用意して API を立て、段取りとテストを回す script | `local/remote.sh` |
