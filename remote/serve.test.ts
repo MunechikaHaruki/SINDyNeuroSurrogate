@@ -308,7 +308,7 @@ test('an input compares the original with each model, keyed by model name', asyn
   expect(reply.columns.map(c => c.model)).toEqual(['m']);
   expect(reply.points[0].voltages.map(v => v.model)).toEqual([null, 'm']);
   expect(reply.points[0].voltages[0].points.length).toBeLessThanOrEqual(800);
-  expect(reply.summaries.m.gamma).toBeGreaterThan(0.9);
+  expect(reply.crossings.m[0].gamma?.value).toBeGreaterThan(0.9);
   expect(reply.spikes.original[0].times.length).toBe(reply.spikes.columns.m[0].times.length);
   expect((await post('inputs', { experiment: 'e', input: 's', comp: 'dend' })).status).toBe(400);
 });

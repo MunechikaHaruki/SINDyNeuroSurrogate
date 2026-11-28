@@ -7,7 +7,6 @@ import {
   distance,
   diverged,
   efel,
-  meanGamma,
   rheobase,
   seriesMetrics,
   shape,
@@ -61,11 +60,6 @@ test('eFEL runs once over several traces and finds no spike in a flat one', () =
   expect(none.peak_indices).toEqual([]);
 });
 
-test('the mean Γ skips undecided points', () => {
-  expect(meanGamma([1, null, 0.5])).toBe(0.75);
-  expect(meanGamma([null, null])).toBeNull();
-});
-
 test('rheobase is the smallest swept value that fires', () => {
   expect(rheobase([0, 2.5, 5], [0, 0, 4])).toBe(5);
   expect(rheobase([5, 0], [1, 0])).toBe(5);
@@ -117,14 +111,14 @@ test('the crossing diff compares the last shared spike', () => {
 test('the series metrics pair each column with the original point by point', () => {
   const m = seriesMetrics([spiking], { r: [spiking] }, { r: [{ rmse: 0, mae: 0 }] }, [11.5], [5], 2);
   expect(m.crossings.r[0].count).toEqual([2, 2]);
-  expect(m.crossings.r[0].gamma).toBeCloseTo(1);
+  expect(m.crossings.r[0].gamma?.value).toBeCloseTo(1);
   expect(m.pairs.r).toHaveLength(1);
   expect(m.trains.columns.r[0].features.peak_voltage).toEqual([30, 30]);
   expect(m.trains.original[0].features.AHP_depth).toEqual([]);
-  expect(m.summaries.r).toEqual({ gamma: m.crossings.r[0].gamma, rheobase: [5, 5] });
+  expect(m.summaries.r).toEqual({ rheobase: [5, 5] });
 });
 
-test('a point where the column or the original diverged has no Γ and stays out of the column mean', () => {
+test('a point where the column or the original diverged has no Γ', () => {
   const blown = { ...spiking, diverged: true };
   const m = seriesMetrics(
     [spiking, spiking],
@@ -140,17 +134,17 @@ test('a point where the column or the original diverged has no Γ and stays out 
     2,
   );
   expect(m.crossings.r[1].gamma).toBeNull();
-  expect(m.summaries.r.gamma).toBe(m.crossings.r[0].gamma);
+  expect(m.crossings.r[0].gamma?.value).toBeCloseTo(1);
   const lost = seriesMetrics([blown], { r: [spiking] }, { r: [{ rmse: null, mae: null }] }, [11.5], [5], 2);
   expect(lost.crossings.r[0].gamma).toBeNull();
 });
 
 test('coincidence is 1 for the same spikes, near 0 for unrelated ones, and null with no spikes', () => {
-  expect(coincidence([10, 50, 90], [10, 50, 90], 100, 2)).toBeCloseTo(1);
-  expect(coincidence([10, 50, 90], [11.5, 51, 88.5], 100, 2)).toBeCloseTo(1);
-  expect(coincidence([10, 50, 90], [30, 70], 100, 2)).toBeLessThan(0);
+  expect(coincidence([10, 50, 90], [10, 50, 90], 100, 2)?.value).toBeCloseTo(1);
+  expect(coincidence([10, 50, 90], [11.5, 51, 88.5], 100, 2)?.value).toBeCloseTo(1);
+  expect(coincidence([10, 50, 90], [30, 70], 100, 2)?.value).toBeLessThan(0);
   expect(coincidence([], [], 100, 2)).toBeNull();
-  expect(coincidence([10], [], 100, 2)).toBe(0);
+  expect(coincidence([10], [], 100, 2)?.value).toBe(0);
 });
 
 test('coincidence follows Kistler et al. 1997 eq. (4.1) when the rates differ', () => {
@@ -162,5 +156,7 @@ test('coincidence follows Kistler et al. 1997 eq. (4.1) when the rates differ', 
   for (let i = 0; i < 170; i++) model.push(26.5 + i * 33);
   model.sort((a, b) => a - b);
   const expected = (280 - (450 * 300) / 2500) / (0.5 * (300 + 450)) / (1 - 300 / 2500);
-  expect(coincidence(original, model, 10000, 2)).toBeCloseTo(expected, 6);
+  const terms = coincidence(original, model, 10000, 2);
+  expect(terms?.value).toBeCloseTo(expected, 6);
+  expect([terms?.matched, terms?.bins, terms?.expected]).toEqual([280, 2500, (450 * 300) / 2500]);
 });

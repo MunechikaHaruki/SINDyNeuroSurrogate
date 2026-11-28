@@ -52,8 +52,11 @@ export type ExperimentView = {
 
 /** 1 本の波形の発火。times は AP の山の時刻 [ms]、features は AP ごとの特徴量（eFEL。times と同じ順）。null は値が無い（nan）。 */
 export type SpikeTrain = { times: number[]; features: Record<string, (number | null)[]> };
-/** 列 1 本のまとめ。gamma は決まる点での Γ の平均、rheobase は発火の始まり [原系, 置換系]（掃引しなければ null）。 */
-export type ColumnSummary = { gamma: number | null; rheobase: [number | null, number | null] };
+/** 1 点の Γ と、その式の各項（Kistler et al. 1997 の式 (4.1)）。matched は ±Δ 以内で一致した発火の数 N_coinc、bins は全体を幅 2Δ で割ったビンの数 K、
+ * expected は偶然の一致の数 N_model N_original / K、normalization は 1 − N_original / K、value は Γ = (N_coinc − expected) / ((N_original + N_model) / 2) / normalization。 */
+export type Coincidence = { value: number; matched: number; bins: number; expected: number; normalization: number };
+/** 列 1 本のまとめ。rheobase は発火の始まり [原系, 置換系]（掃引しなければ null）。 */
+export type ColumnSummary = { rheobase: [number | null, number | null] };
 
 /** 入力（系列）1 つ。param と values は掃引するパラメータと値（単発なら null と空）、unit はそのパラメータの単位、points は掃引の点の見出し（単発なら「単発」）、
  * comps は区画の名前、stimulus は刺激が入る区間 [ms]、duration は系列の長さ [ms]。
@@ -120,8 +123,8 @@ export type InputsReply = {
   spikes: { original: SpikeTrain[]; columns: Record<string, SpikeTrain[]> };
   pair: PairCompare | null;
   whole: WholeWaves | null;
-  /** 列ごと（キーはモデルの名前）・掃引の点ごとの、選んだ区画の発火の比べ。count は 0 mV を上向きに横切った数（原系・列）、gamma は Γ（どちらも発火しないか、原系か列が発散した点では null）、diverged は列が発散したか。 */
-  crossings: Record<string, { count: [number, number]; gamma: number | null; diverged: boolean }[]>;
+  /** 列ごと（キーはモデルの名前）・掃引の点ごとの、選んだ区画の発火の比べ。count は 0 mV を上向きに横切った数（原系・列）、gamma は Γ とその式の各項（どちらも発火しないか、原系か列が発散した点では null）、diverged は列が発散したか。 */
+  crossings: Record<string, { count: [number, number]; gamma: Coincidence | null; diverged: boolean }[]>;
 };
 
 /** モデルのページの頼み方。model は宣言の名前（実験の models の一覧）。 */

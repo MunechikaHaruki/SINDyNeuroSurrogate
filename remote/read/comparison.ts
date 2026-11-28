@@ -1,8 +1,8 @@
 // 比べ。run は生データ（波形）だけを持つので、波形から先の量は全部ここが頼まれるたびに純粋関数で計算する：
 // 波形 1 本の特徴量（eFEL・0 mV の上向きの横切り・山の平均の形・発散）、原系と置き換えた列の点ごとの指標（rmse・mae、ISI の統計、周期の差、形の相関、横切りで数えた差、
-// coincidence factor Γ）と、列ごとのまとめ（決まる点での Γ の平均、発火の始まり）。eFEL は Python（neurosurrogate/spikes.py）を子プロセスで起こし、波形を標準入力で渡す。
+// coincidence factor Γ）と、列ごとのまとめ（発火の始まり）。eFEL は Python（neurosurrogate/spikes.py）を子プロセスで起こし、波形を標準入力で渡す。
 // 物差しの値（Γ の許容幅 Δ）は手元が頼み方で渡す。run は書き換わらないので、特徴量は run・区画ごとに、答えは頼み方ごとに覚えておく。
-import type { ColumnSummary, SpikeTrain } from '../../shared/api.ts';
+import type { Coincidence, ColumnSummary, SpikeTrain } from '../../shared/api.ts';
 import type { CompressorJson, DecodeJson } from '../../shared/runs.ts';
 
 /** 1 ペア（原系, 置換系）の 1 区画の指標。rows は両方にある指標の [原系, 置換系]、scalars は比べて決まる指標。null は値が無い（nan）。答えには出さず、発散と Γ のまとめに使う。 */
@@ -11,12 +11,12 @@ export type PairMetrics = {
   scalars: Record<string, number | null>;
   diverged: boolean;
 };
-/** 1 点の原系との差。count は 0 mV の横切りで数えた発火回数 [原系, 置換系]、peak は山の平均の差（置換系 − 原系）、lastShift は両方にある最後の山の時刻の差の大きさ、gamma は Γ。 */
+/** 1 点の原系との差。count は 0 mV の横切りで数えた発火回数 [原系, 置換系]、peak は山の平均の差（置換系 − 原系）、lastShift は両方にある最後の山の時刻の差の大きさ、gamma は Γ とその式の各項。 */
 export type CrossingRow = {
   count: [number, number];
   peak: number | null;
   lastShift: number | null;
-  gamma: number | null;
+  gamma: Coincidence | null;
 };
 
 /** 元のモデルとの差（Γ を除く）。 */
@@ -227,7 +227,7 @@ export function crossingDiff(original: Crossings, model: Crossings): CrossingDif
 /** coincidence factor Γ（Kistler et al. 1997 の式(4.1)、https://doi.org/10.1162/neco.1997.9.5.1015）。±Δ 以内で一致した発火の数を偶然の一致で補正する。
  * 1 が完全一致、0 が偶然と同じ。全体を幅 2Δ のビン K 個に分け、偶然の一致を N_model N_original / K、正規化を 1 − N_original / K とする。
  * どちらにも発火が無ければ決まらないので null。duration は波形の長さ [ms]、delta は許容幅 Δ [ms]（物差しは頼む側が決める）。 */
-export function coincidence(original: number[], model: number[], duration: number, delta: number): number | null {
+export function coincidence(original: number[], model: number[], duration: number, delta: number): Coincidence | null {
   if (original.length + model.length === 0) return null;
   let matched = 0;
   let j = 0;
@@ -241,19 +241,8 @@ export function coincidence(original: number[], model: number[], duration: numbe
   const bins = duration / (2 * delta);
   const expected = (model.length * original.length) / bins;
   const normalization = 1 - original.length / bins;
-  return (matched - expected) / (0.5 * (original.length + model.length)) / normalization;
-}
-
-/** 決まる点（どちらかが発火した点）での Γ の平均。決まる点が無ければ null。 */
-export function meanGamma(gammas: (number | null)[]): number | null {
-  let sum = 0;
-  let n = 0;
-  for (const g of gammas) {
-    if (g === null) continue;
-    sum += g;
-    n++;
-  }
-  return n > 0 ? sum / n : null;
+  const value = (matched - expected) / (0.5 * (original.length + model.length)) / normalization;
+  return { value, matched, bins, expected, normalization };
 }
 
 /** 発火の始まり（rheobase）。掃引の値を小さい順に見て、初めて発火した値。どこでも発火しなければ null。 */
@@ -281,7 +270,7 @@ export function seriesMetrics(
   };
   for (const [run, features] of Object.entries(columns)) {
     result.pairs[run] = features.map((f, k) => compare(original[k], f, distances[run][k]));
-    // 原系か列が発散した点の Γ は、発散するまでの発火で数えても比べにならないので決まらない（null）とし、列の平均からも外す
+    // 原系か列が発散した点の Γ は、発散するまでの発火で数えても比べにならないので決まらない（null）とする
     const rows: CrossingRow[] = features.map((f, k) => ({
       ...crossingDiff(original[k].crossings, f.crossings),
       gamma:
@@ -291,7 +280,6 @@ export function seriesMetrics(
     }));
     result.crossings[run] = rows;
     const summary: ColumnSummary = {
-      gamma: meanGamma(rows.map(r => r.gamma)),
       rheobase:
         values.length === 0
           ? [null, null]
